@@ -2,9 +2,10 @@
 //!
 //! 流程：
 //! 1. `posix_openpt` 打开主设备（master），`grantpt`/`unlockpt` 解锁从设备（slave）
-//! 2. `fork` 出子进程。子进程里：`setsid` 新建会话 → 打开从设备并设为控制终端
-//!    → 把它接到 stdin/stdout/stderr → `execve` 启动 shell
-//! 3. 父进程读写主设备，就等于在和 shell 的终端交互
+//! 2. 父进程打开从设备并设置窗口尺寸（和 BSD 的 `openpty()` 一样）
+//! 3. `fork` 出子进程。子进程里：`setsid` 新建会话 → 把从设备设为控制终端
+//!    → 接到 stdin/stdout/stderr → `execve` 启动 shell。父进程关掉自己手里的从设备
+//! 4. 父进程读写主设备，就等于在和 shell 的终端交互
 
 use super::{EventSink, PtyEvent};
 use std::ffi::{CStr, CString, c_char, c_int, c_ulong, c_ushort};
@@ -45,7 +46,8 @@ const O_RDWR: c_int = 2;
 const F_SETFD: c_int = 2;
 const FD_CLOEXEC: c_int = 1;
 const SIGHUP: c_int = 1;
-const SIGPIPE: c_int = 13;
+/// Linux 和 macOS 的标准信号都是 1..=31
+const NSIG: c_int = 32;
 const SIG_DFL: usize = 0;
 
 unsafe extern "C" {
@@ -92,8 +94,14 @@ impl Pty {
         if name.is_null() {
             return Err(os_error("ptsname"));
         }
-        let slave_path = unsafe { CStr::from_ptr(name) }.to_owned();
-        set_winsize(fd, cols, rows)?;
+        let slave_fd = unsafe { open(name, O_RDWR | O_NOCTTY) };
+        if slave_fd < 0 {
+            return Err(os_error("open(slave)"));
+        }
+        let slave = unsafe { OwnedFd::from_raw_fd(slave_fd) };
+        unsafe { fcntl(slave_fd, F_SETFD, FD_CLOEXEC) };
+        // macOS 上从设备被打开之前，对主设备设置尺寸会失败（ENOTTY），所以在从设备上设置
+        set_winsize(slave_fd, cols, rows)?;
 
         // 2. 在 fork 之前准备好子进程要用的所有数据。
         //    fork 之后的子进程里只能调用 async-signal-safe 的函数，不能分配内存。
@@ -110,8 +118,10 @@ impl Pty {
             return Err(os_error("fork"));
         }
         if pid == 0 {
-            unsafe { exec_child(&slave_path, fd, &shell, argv.as_ptr(), envp.as_ptr()) }
+            unsafe { exec_child(slave_fd, fd, &shell, argv.as_ptr(), envp.as_ptr()) }
         }
+        // 父进程不需要从设备。必须关掉，否则 shell 退出后读主设备永远等不到 EOF。
+        drop(slave);
 
         // 4. 父进程：开一个线程专门读 shell 的输出
         let master = File::from(master);
@@ -153,7 +163,7 @@ impl Drop for Pty {
 
 /// fork 出来的子进程执行的代码，最终变成 shell
 unsafe fn exec_child(
-    slave_path: &CStr,
+    slave: c_int,
     master_fd: c_int,
     shell: &CStr,
     argv: *const *const c_char,
@@ -162,10 +172,6 @@ unsafe fn exec_child(
     unsafe {
         // 新建会话，脱离父进程的控制终端
         setsid();
-        let slave = open(slave_path.as_ptr(), O_RDWR);
-        if slave < 0 {
-            _exit(126);
-        }
         // 让从设备成为这个会话的控制终端，这样 Ctrl+C 才能变成 SIGINT
         ioctl(slave, TIOCSCTTY, 0 as c_int);
         dup2(slave, 0);
@@ -175,8 +181,11 @@ unsafe fn exec_child(
             close(slave);
         }
         close(master_fd);
-        // Rust 运行时把 SIGPIPE 设成了忽略，这个设置会被 exec 继承，要恢复默认
-        signal(SIGPIPE, SIG_DFL);
+        // 被忽略的信号会经过 exec 继承下去：Rust 运行时忽略了 SIGPIPE，
+        // 从脚本后台启动时 SIGINT 也可能被忽略（那样 Ctrl+C 就失效了）。全部恢复默认。
+        for sig in 1..NSIG {
+            signal(sig, SIG_DFL);
+        }
         execve(shell.as_ptr(), argv, envp);
         _exit(127);
     }
