@@ -30,7 +30,7 @@ jobs:
             os: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 安装 Rust
         shell: bash
@@ -91,7 +91,7 @@ jobs:
 
       - name: 上传冒烟测试截图
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: smoke-${{ matrix.name }}
           path: smoke/
@@ -113,22 +113,42 @@ jobs:
           fi
 
       - name: 上传安装包
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: congminal-${{ matrix.name }}
           path: |
             congminal-*.zip
             congminal-*.tar.gz
 
+  # 用 Cargo.toml 里声明的最低版本（rust-version）编译三个平台，防止不小心用了更新的 API
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 安装最低支持版本的 Rust
+        run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)
+          echo "MSRV=$msrv" >> "$GITHUB_ENV"
+          rustup toolchain install "$msrv" --profile minimal \
+            --target x86_64-pc-windows-gnu,aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: 编译检查
+        run: |
+          for target in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo +"$MSRV" check --all-targets --target "$target"
+          done
+
   # 推送 v 开头的标签时（如 v0.1.0-alpha.1），把三个平台的包发布为预发布版本
   release:
-    needs: build
+    needs: [build, msrv]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: congminal-*
           merge-multiple: true
