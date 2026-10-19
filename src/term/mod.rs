@@ -1,0 +1,1003 @@
+//! 终端状态机：把解析器产生的动作翻译成对屏幕网格的操作。
+//!
+//! 行为参考 xterm。权威资料：
+//! - <https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
+//! - <https://vt100.net/docs/vt510-rm/contents.html>
+
+mod grid;
+
+pub use grid::{Cell, Color, Flags, Grid};
+
+use crate::vt::{Params, Perform};
+use std::sync::OnceLock;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorShape {
+    Block,
+    Underline,
+    Bar,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Charset {
+    Ascii,
+    /// DEC 特殊图形字符集，老程序用它画表格线（`ESC ( 0`）
+    DecSpecialGraphics,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Modes {
+    /// DECAWM：写到行尾后自动换行
+    pub autowrap: bool,
+    /// DECOM：光标坐标相对于滚动区域
+    pub origin: bool,
+    /// IRM：插入模式
+    pub insert: bool,
+    /// DECCKM：方向键发送 `ESC O A` 而不是 `ESC [ A`
+    pub app_cursor: bool,
+    /// DECKPAM：小键盘应用模式
+    pub app_keypad: bool,
+    /// DECTCEM：显示光标
+    pub cursor_visible: bool,
+    /// 粘贴时用 `ESC [200~` / `ESC [201~` 包起来
+    pub bracketed_paste: bool,
+    /// LNM：换行时同时回车
+    pub linefeed_newline: bool,
+    /// DECSCNM：整屏反色
+    pub reverse_video: bool,
+}
+
+impl Default for Modes {
+    fn default() -> Modes {
+        Modes {
+            autowrap: true,
+            origin: false,
+            insert: false,
+            app_cursor: false,
+            app_keypad: false,
+            cursor_visible: true,
+            bracketed_paste: false,
+            linefeed_newline: false,
+            reverse_video: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Cursor {
+    row: usize,
+    col: usize,
+    /// 新写入字符使用的属性（颜色、粗体……）
+    template: Cell,
+    /// 写满最后一列后，光标停在原地，等下一个字符到来时才真正换行。
+    /// 这是 VT100 的经典行为，处理不好会导致各种错位。
+    pending_wrap: bool,
+}
+
+/// DECSC 保存的光标状态
+#[derive(Clone, Copy, Debug)]
+struct SavedCursor {
+    row: usize,
+    col: usize,
+    template: Cell,
+    pending_wrap: bool,
+    origin: bool,
+    charsets: [Charset; 2],
+    active_charset: usize,
+}
+
+impl Default for SavedCursor {
+    fn default() -> SavedCursor {
+        SavedCursor {
+            row: 0,
+            col: 0,
+            template: Cell::default(),
+            pending_wrap: false,
+            origin: false,
+            charsets: [Charset::Ascii; 2],
+            active_charset: 0,
+        }
+    }
+}
+
+pub struct Terminal {
+    grid: Grid,
+    /// 备用屏幕（vim、less、htop 用它，退出后恢复原来的内容）
+    alt_grid: Grid,
+    alt_active: bool,
+    cursor: Cursor,
+    /// 主屏和备用屏各有一份保存的光标
+    saved: [SavedCursor; 2],
+    /// 滚动区域（DECSTBM），闭区间
+    scroll_top: usize,
+    scroll_bottom: usize,
+    modes: Modes,
+    tabs: Vec<bool>,
+    charsets: [Charset; 2],
+    active_charset: usize,
+    /// REP（重复上一个字符）要用
+    last_char: char,
+    cursor_shape: CursorShape,
+    title: Option<String>,
+    /// 需要回写给 PTY 的应答（比如光标位置报告）
+    response: Vec<u8>,
+}
+
+impl Terminal {
+    pub fn new(cols: usize, rows: usize) -> Terminal {
+        let cols = cols.max(1);
+        let rows = rows.max(1);
+        Terminal {
+            grid: Grid::new(cols, rows),
+            alt_grid: Grid::new(cols, rows),
+            alt_active: false,
+            cursor: Cursor { row: 0, col: 0, template: Cell::default(), pending_wrap: false },
+            saved: [SavedCursor::default(); 2],
+            scroll_top: 0,
+            scroll_bottom: rows - 1,
+            modes: Modes::default(),
+            tabs: default_tabs(cols),
+            charsets: [Charset::Ascii; 2],
+            active_charset: 0,
+            last_char: ' ',
+            cursor_shape: CursorShape::Block,
+            title: None,
+            response: Vec::new(),
+        }
+    }
+
+    pub fn grid(&self) -> &Grid {
+        &self.grid
+    }
+
+    pub fn cols(&self) -> usize {
+        self.grid.cols()
+    }
+
+    pub fn rows(&self) -> usize {
+        self.grid.rows()
+    }
+
+    /// 光标位置 (行, 列)
+    pub fn cursor_position(&self) -> (usize, usize) {
+        (self.cursor.row, self.cursor.col)
+    }
+
+    pub fn cursor_shape(&self) -> CursorShape {
+        self.cursor_shape
+    }
+
+    pub fn modes(&self) -> &Modes {
+        &self.modes
+    }
+
+    /// 取出新设置的窗口标题（如果有）
+    pub fn take_title(&mut self) -> Option<String> {
+        self.title.take()
+    }
+
+    /// 取出需要写回 PTY 的应答数据
+    pub fn take_response(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.response)
+    }
+
+    pub fn resize(&mut self, cols: usize, rows: usize) {
+        let cols = cols.max(1);
+        let rows = rows.max(1);
+        if cols == self.cols() && rows == self.rows() {
+            return;
+        }
+
+        // 变矮时把光标上方的内容往上推，保证光标所在的行仍然可见
+        if self.cursor.row >= rows {
+            let shift = self.cursor.row + 1 - rows;
+            self.grid.drop_top_rows(shift);
+            self.cursor.row -= shift;
+        }
+        self.grid.resize(cols, rows);
+        self.alt_grid.resize(cols, rows);
+
+        let old_cols = self.tabs.len();
+        self.tabs.resize(cols, false);
+        for col in old_cols..cols {
+            self.tabs[col] = col % 8 == 0;
+        }
+
+        self.scroll_top = 0;
+        self.scroll_bottom = rows - 1;
+        self.cursor.row = self.cursor.row.min(rows - 1);
+        self.cursor.col = self.cursor.col.min(cols - 1);
+        self.cursor.pending_wrap = false;
+    }
+
+    // ---- 写字符 ----
+
+    fn print_char(&mut self, c: char) {
+        let c = self.translate_charset(c);
+        let cols = self.cols();
+
+        if self.cursor.pending_wrap && self.modes.autowrap {
+            self.grid[self.cursor.row].wrapped = true;
+            self.cursor.col = 0;
+            self.index();
+        }
+        if self.modes.insert {
+            self.insert_blanks(1);
+        }
+
+        let template = self.cursor.template;
+        self.grid[self.cursor.row][self.cursor.col] = Cell { c, ..template };
+
+        if self.cursor.col + 1 < cols {
+            self.cursor.col += 1;
+        } else {
+            self.cursor.pending_wrap = self.modes.autowrap;
+        }
+        self.last_char = c;
+    }
+
+    fn translate_charset(&self, c: char) -> char {
+        if self.charsets[self.active_charset] != Charset::DecSpecialGraphics {
+            return c;
+        }
+        match c {
+            '`' => '◆',
+            'a' => '▒',
+            'b' => '␉',
+            'c' => '␌',
+            'd' => '␍',
+            'e' => '␊',
+            'f' => '°',
+            'g' => '±',
+            'h' => '␤',
+            'i' => '␋',
+            'j' => '┘',
+            'k' => '┐',
+            'l' => '┌',
+            'm' => '└',
+            'n' => '┼',
+            'o' => '⎺',
+            'p' => '⎻',
+            'q' => '─',
+            'r' => '⎼',
+            's' => '⎽',
+            't' => '├',
+            'u' => '┤',
+            'v' => '┴',
+            'w' => '┬',
+            'x' => '│',
+            'y' => '≤',
+            'z' => '≥',
+            '{' => 'π',
+            '|' => '≠',
+            '}' => '£',
+            '~' => '·',
+            _ => c,
+        }
+    }
+
+    fn blank(&self) -> Cell {
+        Cell::blank(&self.cursor.template)
+    }
+
+    fn respond(&mut self, bytes: &[u8]) {
+        self.response.extend_from_slice(bytes);
+    }
+
+    // ---- 光标移动 ----
+
+    /// 移动到绝对坐标。原点模式下会被限制在滚动区域内。
+    fn goto(&mut self, row: usize, col: usize) {
+        let (top, bottom) =
+            if self.modes.origin { (self.scroll_top, self.scroll_bottom) } else { (0, self.rows() - 1) };
+        self.cursor.row = row.clamp(top, bottom);
+        self.cursor.col = col.min(self.cols() - 1);
+        self.cursor.pending_wrap = false;
+    }
+
+    /// 移动到相对于"原点"的坐标（CUP 等命令用）
+    fn goto_origin(&mut self, row: usize, col: usize) {
+        let offset = if self.modes.origin { self.scroll_top } else { 0 };
+        self.goto(row + offset, col);
+    }
+
+    fn goto_col(&mut self, col: usize) {
+        self.cursor.col = col.min(self.cols() - 1);
+        self.cursor.pending_wrap = false;
+    }
+
+    fn move_up(&mut self, n: usize) {
+        // 光标在滚动区域内时，不能移出区域顶部
+        let top = if self.cursor.row >= self.scroll_top { self.scroll_top } else { 0 };
+        self.cursor.row = self.cursor.row.saturating_sub(n).max(top);
+        self.cursor.pending_wrap = false;
+    }
+
+    fn move_down(&mut self, n: usize) {
+        let bottom = if self.cursor.row <= self.scroll_bottom { self.scroll_bottom } else { self.rows() - 1 };
+        self.cursor.row = (self.cursor.row + n).min(bottom);
+        self.cursor.pending_wrap = false;
+    }
+
+    fn move_left(&mut self, n: usize) {
+        self.cursor.col = self.cursor.col.saturating_sub(n);
+        self.cursor.pending_wrap = false;
+    }
+
+    fn move_right(&mut self, n: usize) {
+        self.cursor.col = (self.cursor.col + n).min(self.cols() - 1);
+        self.cursor.pending_wrap = false;
+    }
+
+    /// IND：光标下移一行，到达滚动区域底部时整个区域上滚
+    fn index(&mut self) {
+        if self.cursor.row == self.scroll_bottom {
+            let blank = self.blank();
+            self.grid.scroll_up(self.scroll_top, self.scroll_bottom, 1, blank);
+        } else if self.cursor.row + 1 < self.rows() {
+            self.cursor.row += 1;
+        }
+        self.cursor.pending_wrap = false;
+    }
+
+    /// RI：光标上移一行，到达滚动区域顶部时整个区域下滚
+    fn reverse_index(&mut self) {
+        if self.cursor.row == self.scroll_top {
+            let blank = self.blank();
+            self.grid.scroll_down(self.scroll_top, self.scroll_bottom, 1, blank);
+        } else if self.cursor.row > 0 {
+            self.cursor.row -= 1;
+        }
+        self.cursor.pending_wrap = false;
+    }
+
+    fn linefeed(&mut self) {
+        self.index();
+        if self.modes.linefeed_newline {
+            self.cursor.col = 0;
+        }
+    }
+
+    fn tab_forward(&mut self) {
+        let last = self.cols() - 1;
+        let mut col = self.cursor.col;
+        while col < last {
+            col += 1;
+            if self.tabs[col] {
+                break;
+            }
+        }
+        self.cursor.col = col;
+        self.cursor.pending_wrap = false;
+    }
+
+    fn tab_backward(&mut self) {
+        let mut col = self.cursor.col;
+        while col > 0 {
+            col -= 1;
+            if self.tabs[col] {
+                break;
+            }
+        }
+        self.cursor.col = col;
+        self.cursor.pending_wrap = false;
+    }
+
+    fn save_cursor(&mut self) {
+        self.saved[self.alt_active as usize] = SavedCursor {
+            row: self.cursor.row,
+            col: self.cursor.col,
+            template: self.cursor.template,
+            pending_wrap: self.cursor.pending_wrap,
+            origin: self.modes.origin,
+            charsets: self.charsets,
+            active_charset: self.active_charset,
+        };
+    }
+
+    fn restore_cursor(&mut self) {
+        let saved = self.saved[self.alt_active as usize];
+        self.cursor.template = saved.template;
+        self.modes.origin = saved.origin;
+        self.charsets = saved.charsets;
+        self.active_charset = saved.active_charset;
+        self.cursor.row = saved.row.min(self.rows() - 1);
+        self.cursor.col = saved.col.min(self.cols() - 1);
+        self.cursor.pending_wrap = saved.pending_wrap;
+    }
+
+    // ---- 擦除和编辑 ----
+
+    fn erase_display(&mut self, mode: usize) {
+        let blank = self.blank();
+        let (row, col) = (self.cursor.row, self.cursor.col);
+        let cols = self.cols();
+        match mode {
+            // 光标到屏幕末尾
+            0 => {
+                self.grid[row].erase(col, cols, blank);
+                for r in row + 1..self.rows() {
+                    self.grid[r].reset(blank);
+                }
+            }
+            // 屏幕开头到光标（含光标）
+            1 => {
+                for r in 0..row {
+                    self.grid[r].reset(blank);
+                }
+                self.grid[row].erase(0, col + 1, blank);
+            }
+            2 => self.grid.clear(blank),
+            // 3 = 清除回滚缓冲区，等实现了回滚再处理
+            _ => {}
+        }
+    }
+
+    fn erase_line(&mut self, mode: usize) {
+        let blank = self.blank();
+        let (row, col) = (self.cursor.row, self.cursor.col);
+        let cols = self.cols();
+        match mode {
+            0 => self.grid[row].erase(col, cols, blank),
+            1 => self.grid[row].erase(0, col + 1, blank),
+            2 => self.grid[row].erase(0, cols, blank),
+            _ => {}
+        }
+    }
+
+    /// ICH：在光标处插入 n 个空格，右边的字符往右挤，挤出行尾的丢掉
+    fn insert_blanks(&mut self, n: usize) {
+        let blank = self.blank();
+        let cols = self.cols();
+        let col = self.cursor.col;
+        let n = n.min(cols - col);
+        let cells = &mut self.grid[self.cursor.row].cells;
+        cells.copy_within(col..cols - n, col + n);
+        cells[col..col + n].fill(blank);
+    }
+
+    /// DCH：删除光标处的 n 个字符，右边的字符往左补，行尾补空格
+    fn delete_chars(&mut self, n: usize) {
+        let blank = self.blank();
+        let cols = self.cols();
+        let col = self.cursor.col;
+        let n = n.min(cols - col);
+        let cells = &mut self.grid[self.cursor.row].cells;
+        cells.copy_within(col + n..cols, col);
+        cells[cols - n..].fill(blank);
+        self.cursor.pending_wrap = false;
+    }
+
+    /// ECH：把光标开始的 n 个字符擦成空格，不移动其他字符
+    fn erase_chars(&mut self, n: usize) {
+        let blank = self.blank();
+        let col = self.cursor.col;
+        self.grid[self.cursor.row].erase(col, col + n, blank);
+        self.cursor.pending_wrap = false;
+    }
+
+    /// IL：在光标所在行插入 n 个空行（只在滚动区域内生效）
+    fn insert_lines(&mut self, n: usize) {
+        let row = self.cursor.row;
+        if row < self.scroll_top || row > self.scroll_bottom {
+            return;
+        }
+        let blank = self.blank();
+        self.grid.scroll_down(row, self.scroll_bottom, n, blank);
+        self.cursor.col = 0;
+        self.cursor.pending_wrap = false;
+    }
+
+    /// DL：删除光标所在行开始的 n 行（只在滚动区域内生效）
+    fn delete_lines(&mut self, n: usize) {
+        let row = self.cursor.row;
+        if row < self.scroll_top || row > self.scroll_bottom {
+            return;
+        }
+        let blank = self.blank();
+        self.grid.scroll_up(row, self.scroll_bottom, n, blank);
+        self.cursor.col = 0;
+        self.cursor.pending_wrap = false;
+    }
+
+    fn set_scroll_region(&mut self, top: usize, bottom: usize) {
+        let bottom = if bottom == 0 { self.rows() } else { bottom };
+        if top < bottom && bottom <= self.rows() {
+            self.scroll_top = top - 1;
+            self.scroll_bottom = bottom - 1;
+            self.goto_origin(0, 0);
+        }
+    }
+
+    // ---- 模式 ----
+
+    fn set_ansi_mode(&mut self, mode: u16, on: bool) {
+        match mode {
+            4 => self.modes.insert = on,
+            20 => self.modes.linefeed_newline = on,
+            _ => trace(format_args!("未处理的 ANSI 模式 {mode}")),
+        }
+    }
+
+    fn set_private_mode(&mut self, mode: u16, on: bool) {
+        match mode {
+            1 => self.modes.app_cursor = on,
+            5 => self.modes.reverse_video = on,
+            6 => {
+                self.modes.origin = on;
+                self.goto_origin(0, 0);
+            }
+            7 => self.modes.autowrap = on,
+            12 => {} // 光标闪烁
+            25 => self.modes.cursor_visible = on,
+            47 => self.switch_screen(on, false),
+            1047 => self.switch_screen(on, !on),
+            1048 => {
+                if on {
+                    self.save_cursor()
+                } else {
+                    self.restore_cursor()
+                }
+            }
+            1049 => {
+                if on {
+                    self.save_cursor();
+                    self.switch_screen(true, false);
+                    self.grid.clear(self.blank());
+                } else {
+                    self.switch_screen(false, false);
+                    self.restore_cursor();
+                }
+            }
+            2004 => self.modes.bracketed_paste = on,
+            // 鼠标上报、焦点事件、同步输出：以后实现
+            1000 | 1002 | 1003 | 1004 | 1005 | 1006 | 1015 | 2026 => {}
+            _ => trace(format_args!("未处理的私有模式 ?{mode} {}", if on { 'h' } else { 'l' })),
+        }
+    }
+
+    /// 在主屏和备用屏之间切换
+    fn switch_screen(&mut self, to_alt: bool, clear_before_leaving: bool) {
+        if to_alt == self.alt_active {
+            return;
+        }
+        if clear_before_leaving {
+            self.grid.clear(self.blank());
+        }
+        std::mem::swap(&mut self.grid, &mut self.alt_grid);
+        self.alt_active = to_alt;
+    }
+
+    // ---- SGR（字符属性） ----
+
+    fn sgr(&mut self, params: &Params) {
+        let t = &mut self.cursor.template;
+        if params.is_empty() {
+            *t = Cell::default();
+            return;
+        }
+        let mut groups = params.iter();
+        while let Some(group) = groups.next() {
+            match group[0] {
+                0 => *t = Cell::default(),
+                1 => t.flags.insert(Flags::BOLD),
+                2 => t.flags.insert(Flags::DIM),
+                3 => t.flags.insert(Flags::ITALIC),
+                // `4:0` 表示关闭下划线，其他子参数（波浪线等）先都当普通下划线
+                4 if group.get(1) == Some(&0) => t.flags.remove(Flags::UNDERLINE),
+                4 | 21 => t.flags.insert(Flags::UNDERLINE),
+                5 | 6 => t.flags.insert(Flags::BLINK),
+                7 => t.flags.insert(Flags::INVERSE),
+                8 => t.flags.insert(Flags::HIDDEN),
+                9 => t.flags.insert(Flags::STRIKE),
+                22 => t.flags.remove(Flags::BOLD | Flags::DIM),
+                23 => t.flags.remove(Flags::ITALIC),
+                24 => t.flags.remove(Flags::UNDERLINE),
+                25 => t.flags.remove(Flags::BLINK),
+                27 => t.flags.remove(Flags::INVERSE),
+                28 => t.flags.remove(Flags::HIDDEN),
+                29 => t.flags.remove(Flags::STRIKE),
+                n @ 30..=37 => t.fg = Color::Indexed((n - 30) as u8),
+                38 => {
+                    if let Some(color) = extended_color(group, &mut groups) {
+                        t.fg = color;
+                    }
+                }
+                39 => t.fg = Color::Default,
+                n @ 40..=47 => t.bg = Color::Indexed((n - 40) as u8),
+                48 => {
+                    if let Some(color) = extended_color(group, &mut groups) {
+                        t.bg = color;
+                    }
+                }
+                49 => t.bg = Color::Default,
+                // 下划线颜色：还不支持，但必须把后面的颜色参数吃掉
+                58 => {
+                    extended_color(group, &mut groups);
+                }
+                n @ 90..=97 => t.fg = Color::Indexed((n - 90 + 8) as u8),
+                n @ 100..=107 => t.bg = Color::Indexed((n - 100 + 8) as u8),
+                n => trace(format_args!("未处理的 SGR {n}")),
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        let (cols, rows) = (self.cols(), self.rows());
+        *self = Terminal::new(cols, rows);
+    }
+
+    /// DECSTR：软复位，不清屏
+    fn soft_reset(&mut self) {
+        self.modes = Modes::default();
+        self.cursor.template = Cell::default();
+        self.cursor.pending_wrap = false;
+        self.scroll_top = 0;
+        self.scroll_bottom = self.rows() - 1;
+        self.charsets = [Charset::Ascii; 2];
+        self.active_charset = 0;
+        self.saved = [SavedCursor::default(); 2];
+    }
+}
+
+impl Perform for Terminal {
+    fn print(&mut self, c: char) {
+        self.print_char(c);
+    }
+
+    fn execute(&mut self, byte: u8) {
+        match byte {
+            0x07 => {} // BEL：以后可以做闪屏提示
+            0x08 => self.move_left(1),
+            0x09 => self.tab_forward(),
+            0x0A..=0x0C => self.linefeed(),
+            0x0D => self.goto_col(0),
+            0x0E => self.active_charset = 1,
+            0x0F => self.active_charset = 0,
+            _ => {}
+        }
+    }
+
+    fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: u8) {
+        if ignore {
+            return;
+        }
+        // 绝大多数命令的参数缺省值是 1
+        let n = arg(params, 0, 1);
+        match (intermediates, action) {
+            ([], b'@') => self.insert_blanks(n),
+            ([], b'A') => self.move_up(n),
+            ([], b'B' | b'e') => self.move_down(n),
+            ([], b'C' | b'a') => self.move_right(n),
+            ([], b'D') => self.move_left(n),
+            ([], b'E') => {
+                self.move_down(n);
+                self.goto_col(0);
+            }
+            ([], b'F') => {
+                self.move_up(n);
+                self.goto_col(0);
+            }
+            ([], b'G' | b'`') => self.goto_col(n - 1),
+            ([], b'H' | b'f') => self.goto_origin(n - 1, arg(params, 1, 1) - 1),
+            ([], b'd') => self.goto_origin(n - 1, self.cursor.col),
+            ([], b'I') => (0..n).for_each(|_| self.tab_forward()),
+            ([], b'Z') => (0..n).for_each(|_| self.tab_backward()),
+            ([] | [b'?'], b'J') => self.erase_display(arg(params, 0, 0)),
+            ([] | [b'?'], b'K') => self.erase_line(arg(params, 0, 0)),
+            ([], b'L') => self.insert_lines(n),
+            ([], b'M') => self.delete_lines(n),
+            ([], b'P') => self.delete_chars(n),
+            ([], b'X') => self.erase_chars(n),
+            ([], b'S') => {
+                let blank = self.blank();
+                self.grid.scroll_up(self.scroll_top, self.scroll_bottom, n, blank);
+            }
+            ([], b'T') => {
+                let blank = self.blank();
+                self.grid.scroll_down(self.scroll_top, self.scroll_bottom, n, blank);
+            }
+            ([], b'b') => {
+                let c = self.last_char;
+                for _ in 0..n.min(self.cols() * self.rows()) {
+                    self.print_char(c);
+                }
+            }
+            // DA1：告诉程序"我是一台 VT220，支持 ANSI 颜色"
+            ([], b'c') if arg(params, 0, 0) == 0 => self.respond(b"\x1b[?62;22c"),
+            // DA2：终端类型和版本号
+            ([b'>'], b'c') if arg(params, 0, 0) == 0 => self.respond(b"\x1b[>0;100;0c"),
+            ([], b'g') => match arg(params, 0, 0) {
+                0 => self.tabs[self.cursor.col] = false,
+                3 => self.tabs.fill(false),
+                _ => {}
+            },
+            ([], b'h' | b'l') => {
+                for group in params.iter() {
+                    self.set_ansi_mode(group[0], action == b'h');
+                }
+            }
+            ([b'?'], b'h' | b'l') => {
+                for group in params.iter() {
+                    self.set_private_mode(group[0], action == b'h');
+                }
+            }
+            ([], b'm') => self.sgr(params),
+            ([], b'n') => match arg(params, 0, 0) {
+                5 => self.respond(b"\x1b[0n"),
+                6 => {
+                    let top = if self.modes.origin { self.scroll_top } else { 0 };
+                    let report = format!("\x1b[{};{}R", self.cursor.row - top + 1, self.cursor.col + 1);
+                    self.respond(report.as_bytes());
+                }
+                _ => {}
+            },
+            ([], b'r') => self.set_scroll_region(arg(params, 0, 1), arg(params, 1, 0)),
+            ([], b's') => self.save_cursor(),
+            ([], b'u') => self.restore_cursor(),
+            ([b' '], b'q') => {
+                self.cursor_shape = match arg(params, 0, 0) {
+                    3 | 4 => CursorShape::Underline,
+                    5 | 6 => CursorShape::Bar,
+                    _ => CursorShape::Block,
+                }
+            }
+            ([b'!'], b'p') => self.soft_reset(),
+            _ => trace(format_args!("未处理的 CSI {:?} {}", String::from_utf8_lossy(intermediates), action as char)),
+        }
+    }
+
+    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
+        if ignore {
+            return;
+        }
+        match (intermediates, byte) {
+            ([], b'7') => self.save_cursor(),
+            ([], b'8') => self.restore_cursor(),
+            ([], b'D') => self.index(),
+            ([], b'E') => {
+                self.goto_col(0);
+                self.index();
+            }
+            ([], b'H') => self.tabs[self.cursor.col] = true,
+            ([], b'M') => self.reverse_index(),
+            ([], b'c') => self.reset(),
+            ([], b'=') => self.modes.app_keypad = true,
+            ([], b'>') => self.modes.app_keypad = false,
+            ([], b'\\') => {} // ST：字符串结束符，OSC/DCS 已经处理过了
+            // DECALN：用 E 填满屏幕，用来校准屏幕
+            ([b'#'], b'8') => {
+                for r in 0..self.rows() {
+                    self.grid[r].reset(Cell { c: 'E', ..Cell::default() });
+                }
+                self.goto(0, 0);
+            }
+            ([slot @ (b'(' | b')')], set) => {
+                let index = if *slot == b'(' { 0 } else { 1 };
+                self.charsets[index] = if set == b'0' { Charset::DecSpecialGraphics } else { Charset::Ascii };
+            }
+            _ => trace(format_args!("未处理的 ESC {:?} {}", String::from_utf8_lossy(intermediates), byte as char)),
+        }
+    }
+
+    fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
+        match params {
+            [b"0" | b"2", title @ ..] => {
+                let parts: Vec<_> = title.iter().map(|p| String::from_utf8_lossy(p)).collect();
+                self.title = Some(parts.join(";"));
+            }
+            [b"1", ..] => {} // 图标名
+            _ => trace(format_args!(
+                "未处理的 OSC {}",
+                params.first().map(|p| String::from_utf8_lossy(p)).unwrap_or_default()
+            )),
+        }
+    }
+}
+
+/// 取第 i 个参数，缺省或为 0 时返回 default
+fn arg(params: &Params, i: usize, default: usize) -> usize {
+    match params.iter().nth(i) {
+        Some(group) if group[0] != 0 => group[0] as usize,
+        _ => default,
+    }
+}
+
+/// 解析 SGR 38/48/58 后面的扩展颜色，支持两种写法：
+/// - 分号：`38;5;n`、`38;2;r;g;b`（颜色值占用后面几个参数）
+/// - 冒号：`38:5:n`、`38:2::r:g:b`（颜色值是子参数）
+fn extended_color<'a>(group: &[u16], rest: &mut impl Iterator<Item = &'a [u16]>) -> Option<Color> {
+    if group.len() > 1 {
+        return match group[1] {
+            5 => group.get(2).map(|&i| Color::Indexed(i as u8)),
+            2 => {
+                // 带色彩空间 ID 时是 6 个值，不带是 5 个
+                let rgb = match group.len() {
+                    5 => &group[2..5],
+                    n if n >= 6 => &group[3..6],
+                    _ => return None,
+                };
+                Some(Color::Rgb(rgb[0] as u8, rgb[1] as u8, rgb[2] as u8))
+            }
+            _ => None,
+        };
+    }
+    match rest.next()?[0] {
+        5 => Some(Color::Indexed(rest.next()?[0] as u8)),
+        2 => {
+            let r = rest.next()?[0] as u8;
+            let g = rest.next()?[0] as u8;
+            let b = rest.next()?[0] as u8;
+            Some(Color::Rgb(r, g, b))
+        }
+        _ => None,
+    }
+}
+
+fn default_tabs(cols: usize) -> Vec<bool> {
+    (0..cols).map(|c| c % 8 == 0).collect()
+}
+
+/// 设置环境变量 CONGMINAL_TRACE=1 后，把没实现的序列打印到 stderr，方便补功能
+fn trace(args: std::fmt::Arguments) {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    if *ENABLED.get_or_init(|| std::env::var_os("CONGMINAL_TRACE").is_some()) {
+        eprintln!("[trace] {args}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vt::Parser;
+
+    fn run(cols: usize, rows: usize, input: &str) -> Terminal {
+        let mut term = Terminal::new(cols, rows);
+        Parser::new().advance(&mut term, input.as_bytes());
+        term
+    }
+
+    fn screen(term: &Terminal) -> Vec<String> {
+        (0..term.rows())
+            .map(|r| {
+                let line: String = term.grid()[r].cells.iter().map(|c| c.c).collect();
+                line.trim_end().to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn print_and_newline() {
+        let t = run(10, 3, "hello\r\nworld");
+        assert_eq!(screen(&t), ["hello", "world", ""]);
+        assert_eq!(t.cursor_position(), (1, 5));
+    }
+
+    #[test]
+    fn pending_wrap() {
+        // 写满一行后光标停在最后一列，不立刻换行
+        let t = run(5, 3, "abcde");
+        assert_eq!(t.cursor_position(), (0, 4));
+        assert!(t.cursor.pending_wrap);
+        // 此时回车不会多出一个空行
+        let t = run(5, 3, "abcde\r\nx");
+        assert_eq!(screen(&t), ["abcde", "x", ""]);
+        // 下一个字符才触发换行
+        let t = run(5, 3, "abcdef");
+        assert_eq!(screen(&t), ["abcde", "f", ""]);
+        assert!(t.grid()[0].wrapped);
+    }
+
+    #[test]
+    fn scroll_at_bottom() {
+        let t = run(5, 3, "1\r\n2\r\n3\r\n4");
+        assert_eq!(screen(&t), ["2", "3", "4"]);
+    }
+
+    #[test]
+    fn cursor_movement() {
+        let t = run(10, 5, "\x1b[3;4Hx\x1b[Ay\x1b[2Dz\x1b[10;10H!");
+        assert_eq!(screen(&t), ["", "   zy", "   x", "", "         !"]);
+    }
+
+    #[test]
+    fn erase() {
+        let t = run(5, 3, "aaaaa\r\nbbbbb\r\nccccc\x1b[2;3H\x1b[K");
+        assert_eq!(screen(&t), ["aaaaa", "bb", "ccccc"]);
+        let t = run(5, 3, "aaaaa\r\nbbbbb\r\nccccc\x1b[2;3H\x1b[1J");
+        assert_eq!(screen(&t), ["", "   bb", "ccccc"]);
+        let t = run(5, 3, "aaaaa\r\nbbbbb\r\nccccc\x1b[2;3H\x1b[J");
+        assert_eq!(screen(&t), ["aaaaa", "bb", ""]);
+    }
+
+    #[test]
+    fn erase_uses_background_color() {
+        let t = run(5, 1, "\x1b[41m\x1b[2J");
+        assert_eq!(t.grid()[0][3].bg, Color::Indexed(1));
+    }
+
+    #[test]
+    fn insert_delete_chars() {
+        let t = run(6, 1, "abcdef\x1b[1;3H\x1b[2@");
+        assert_eq!(screen(&t), ["ab  cd"]);
+        let t = run(6, 1, "abcdef\x1b[1;3H\x1b[2P");
+        assert_eq!(screen(&t), ["abef"]);
+        let t = run(6, 1, "abcdef\x1b[1;3H\x1b[2X");
+        assert_eq!(screen(&t), ["ab  ef"]);
+    }
+
+    #[test]
+    fn scroll_region() {
+        // 区域是第 2-3 行，第 1、4 行不动
+        let t = run(5, 4, "1\r\n2\r\n3\r\n4\x1b[2;3r\x1b[3;1H\nx");
+        assert_eq!(screen(&t), ["1", "3", "x", "4"]);
+    }
+
+    #[test]
+    fn insert_delete_lines() {
+        let t = run(5, 4, "1\r\n2\r\n3\r\n4\x1b[2;1H\x1b[L");
+        assert_eq!(screen(&t), ["1", "", "2", "3"]);
+        let t = run(5, 4, "1\r\n2\r\n3\r\n4\x1b[2;1H\x1b[M");
+        assert_eq!(screen(&t), ["1", "3", "4", ""]);
+    }
+
+    #[test]
+    fn reverse_index_scrolls_down() {
+        let t = run(5, 3, "1\r\n2\r\n3\x1b[H\x1bM");
+        assert_eq!(screen(&t), ["", "1", "2"]);
+    }
+
+    #[test]
+    fn sgr_colors() {
+        let t = run(10, 1, "\x1b[1;31mA\x1b[38;5;200mB\x1b[38;2;1;2;3mC\x1b[48:2::4:5:6mD\x1b[0mE");
+        let row = &t.grid()[0];
+        assert_eq!(row[0].fg, Color::Indexed(1));
+        assert!(row[0].flags.contains(Flags::BOLD));
+        assert_eq!(row[1].fg, Color::Indexed(200));
+        assert_eq!(row[2].fg, Color::Rgb(1, 2, 3));
+        assert_eq!(row[3].bg, Color::Rgb(4, 5, 6));
+        assert_eq!(row[4], Cell { c: 'E', ..Cell::default() });
+    }
+
+    #[test]
+    fn alternate_screen() {
+        // 1049 不会移动光标，程序切换后会自己发 CUP
+        let mut t = run(5, 2, "main\x1b[?1049h\x1b[HALT");
+        assert_eq!(screen(&t), ["ALT", ""]);
+        Parser::new().advance(&mut t, b"\x1b[?1049l");
+        assert_eq!(screen(&t), ["main", ""]);
+        assert_eq!(t.cursor_position(), (0, 4));
+    }
+
+    #[test]
+    fn cursor_position_report() {
+        let mut t = run(10, 5, "\x1b[3;7H\x1b[6n");
+        assert_eq!(t.take_response(), b"\x1b[3;7R");
+    }
+
+    #[test]
+    fn tabs() {
+        let t = run(20, 1, "a\tb\tc");
+        assert_eq!(screen(&t), ["a       b       c"]);
+    }
+
+    #[test]
+    fn dec_line_drawing() {
+        let t = run(5, 1, "\x1b(0lqk\x1b(Bq");
+        assert_eq!(screen(&t), ["┌─┐q"]);
+    }
+
+    #[test]
+    fn title() {
+        let mut t = run(5, 1, "\x1b]0;hello;world\x07");
+        assert_eq!(t.take_title().as_deref(), Some("hello;world"));
+    }
+
+    #[test]
+    fn resize_keeps_cursor_visible() {
+        let mut t = run(5, 4, "1\r\n2\r\n3\r\n4");
+        t.resize(5, 2);
+        assert_eq!(screen(&t), ["3", "4"]);
+        assert_eq!(t.cursor_position(), (1, 1));
+    }
+}

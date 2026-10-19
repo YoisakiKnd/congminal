@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+          - name: windows-x86_64
+            os: windows-latest
+          # Apple 芯片的运行机，同时交叉编译 Intel 版，合成通用二进制
+          - name: macos-universal
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+
+      - name: 安装 X11 开发库和测试工具
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libx11-dev xvfb imagemagick
+
+      - name: 添加 macOS 编译目标
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: 格式检查
+        if: runner.os == 'Linux'
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 单元测试
+        run: cargo test
+
+      - name: 编译 release
+        if: runner.os != 'macOS'
+        run: cargo build --release
+
+      - name: 编译 release（通用二进制）
+        if: runner.os == 'macOS'
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          mkdir -p target/release
+          lipo -create -output target/release/congminal \
+            target/aarch64-apple-darwin/release/congminal \
+            target/x86_64-apple-darwin/release/congminal
+          lipo -info target/release/congminal
+
+      - name: 冒烟测试
+        if: runner.os == 'Linux'
+        run: |
+          Xvfb :99 -screen 0 1024x768x24 &
+          sleep 1
+          DISPLAY=:99 ci/smoke.sh target/release/congminal smoke/${{ matrix.name }}.png
+
+      - name: 冒烟测试
+        if: runner.os == 'macOS'
+        run: ci/smoke.sh target/release/congminal smoke/${{ matrix.name }}.png
+
+      - name: 冒烟测试
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ci/smoke.ps1 -Bin target/release/congminal.exe -Shot smoke/${{ matrix.name }}.png
+
+      - name: 上传冒烟测试截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.name }}
+          path: smoke/
+          if-no-files-found: ignore
+
+      - name: 打包
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          dir="congminal-$version-${{ matrix.name }}"
+          mkdir -p "dist/$dir"
+          cp README.md assets/fonts/LICENSE-Terminus.txt "dist/$dir/"
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp target/release/congminal.exe "dist/$dir/"
+            (cd dist && 7z a "../$dir.zip" "$dir")
+          else
+            cp target/release/congminal "dist/$dir/"
+            tar -czf "$dir.tar.gz" -C dist "$dir"
+          fi
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: congminal-${{ matrix.name }}
+          path: |
+            congminal-*.zip
+            congminal-*.tar.gz
+
+  # 推送 v 开头的标签时（如 v0.1.0-alpha.1），把三个平台的包发布为预发布版本
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: congminal-*
+          merge-multiple: true
+
+      - name: 创建预发布版本
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" congminal-*.zip congminal-*.tar.gz \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "congminal $GITHUB_REF_NAME" \
+            --prerelease \
+            --generate-notes
