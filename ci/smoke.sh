@@ -19,8 +19,9 @@ pid=$!
 sleep 4
 if ! kill -0 "$pid" 2>/dev/null; then
     wait "$pid"
-    echo "::error::congminal 启动后退出了，退出码 $?"
-    cat "$log"
+    status=$?
+    # 把日志放进注解（换行要编码成 %0A），这样不登录 GitHub 也能在 API 里看到
+    echo "::error::congminal 启动后退出了，退出码 $status%0A$(sed 's/%/%25/g' "$log" | tail -20 | awk '{printf "%s%%0A", $0}')"
     exit 1
 fi
 

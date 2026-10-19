@@ -77,17 +77,20 @@ impl Pty {
         // 1. 打开主设备
         let fd = unsafe { posix_openpt(O_RDWR | O_NOCTTY) };
         if fd < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(os_error("posix_openpt"));
         }
         let master = unsafe { OwnedFd::from_raw_fd(fd) };
         // 避免以后启动的其他子进程继承这个 fd
         unsafe { fcntl(fd, F_SETFD, FD_CLOEXEC) };
-        if unsafe { grantpt(fd) } != 0 || unsafe { unlockpt(fd) } != 0 {
-            return Err(io::Error::last_os_error());
+        if unsafe { grantpt(fd) } != 0 {
+            return Err(os_error("grantpt"));
+        }
+        if unsafe { unlockpt(fd) } != 0 {
+            return Err(os_error("unlockpt"));
         }
         let name = unsafe { ptsname(fd) };
         if name.is_null() {
-            return Err(io::Error::last_os_error());
+            return Err(os_error("ptsname"));
         }
         let slave_path = unsafe { CStr::from_ptr(name) }.to_owned();
         set_winsize(fd, cols, rows)?;
@@ -104,7 +107,7 @@ impl Pty {
         // 3. fork
         let pid = unsafe { fork() };
         if pid < 0 {
-            return Err(io::Error::last_os_error());
+            return Err(os_error("fork"));
         }
         if pid == 0 {
             unsafe { exec_child(&slave_path, fd, &shell, argv.as_ptr(), envp.as_ptr()) }
@@ -182,9 +185,15 @@ unsafe fn exec_child(
 fn set_winsize(fd: c_int, cols: u16, rows: u16) -> io::Result<()> {
     let ws = Winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
     if unsafe { ioctl(fd, TIOCSWINSZ, &ws as *const Winsize) } != 0 {
-        return Err(io::Error::last_os_error());
+        return Err(os_error("ioctl(TIOCSWINSZ)"));
     }
     Ok(())
+}
+
+/// 带上失败步骤名的系统错误，方便定位是哪一个调用出了问题
+fn os_error(call: &str) -> io::Error {
+    let err = io::Error::last_os_error();
+    io::Error::new(err.kind(), format!("{call}: {err}"))
 }
 
 /// 优先用 CONGMINAL_SHELL，其次 SHELL，最后 /bin/sh。不是绝对路径时在 PATH 里找。
