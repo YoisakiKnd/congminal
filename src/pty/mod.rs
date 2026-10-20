@@ -4,11 +4,24 @@
 //! - Windows：ConPTY（`CreatePseudoConsole`，需要 Windows 10 1809 及以上）
 //!
 //! 两边对外的接口一致：
-//! - `Pty::spawn(cols, rows, sink)` 启动 shell，后台线程把读到的输出通过 `sink` 回调送出
+//! - `Pty::spawn(command, cols, rows, sink)` 启动 shell，后台线程把读到的输出通过 `sink` 回调送出
 //! - `Pty::write` 把键盘输入写给 shell
 //! - `Pty::resize` 通知 shell 窗口尺寸变了
 
+use std::path::PathBuf;
 use std::sync::Arc;
+
+/// 要在伪终端里启动的程序
+#[derive(Clone, Debug, Default)]
+pub struct Command {
+    /// None 表示用系统默认的 shell
+    pub program: Option<String>,
+    pub args: Vec<String>,
+    /// None 表示继承当前目录
+    pub working_directory: Option<PathBuf>,
+    /// 额外的环境变量，覆盖继承来的同名变量
+    pub env: Vec<(String, String)>,
+}
 
 pub enum PtyEvent {
     /// shell 的输出

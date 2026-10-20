@@ -11,6 +11,7 @@
 //! 视图的方法是 AppKit 回调的，拿不到 App，所以它们把事件放进线程局部的队列，事件循环再取出来交给 App。
 
 use super::{App, Event};
+use crate::config::OptionAsAlt;
 use crate::input::{Key, Mods};
 use crate::render::Framebuffer;
 use std::cell::RefCell;
@@ -189,6 +190,22 @@ const NS_EVENT_TYPE_APPLICATION_DEFINED: usize = 15;
 const NS_SHIFT: usize = 1 << 17;
 const NS_CONTROL: usize = 1 << 18;
 const NS_OPTION: usize = 1 << 19;
+/// modifierFlags 低位里区分左右 Option 的设备相关位（NX_DEVICELALTKEYMASK / NX_DEVICERALTKEYMASK）
+const NS_LEFT_OPTION: usize = 0x20;
+const NS_RIGHT_OPTION: usize = 0x40;
+
+/// 按下的 Option 是否按配置当作 Alt
+fn option_is_alt(flags: usize) -> bool {
+    if flags & NS_OPTION == 0 {
+        return false;
+    }
+    match super::option_as_alt() {
+        OptionAsAlt::None => false,
+        OptionAsAlt::Left => flags & NS_LEFT_OPTION != 0,
+        OptionAsAlt::Right => flags & NS_RIGHT_OPTION != 0,
+        OptionAsAlt::Both => true,
+    }
+}
 const NS_COMMAND: usize = 1 << 20;
 
 pub struct Window {
@@ -453,7 +470,7 @@ unsafe fn key_events(event: Id, flags: usize) -> Vec<Event> {
     let mods = Mods {
         shift: flags & NS_SHIFT != 0,
         ctrl: flags & NS_CONTROL != 0,
-        alt: flags & NS_OPTION != 0,
+        alt: option_is_alt(flags),
         logo: flags & NS_COMMAND != 0,
     };
     unsafe {
@@ -616,7 +633,7 @@ extern "C" fn key_down(this: Id, _: Sel, event: Id) {
         let code: u16 = msg![event, "keyCode"; u16];
         let composing = IME.with(|s| !s.borrow().marked.is_empty());
         // 没在输入拼音时，功能键、Ctrl/Option 组合键直接按终端规则处理，不经过输入法
-        if !composing && (named_key(code).is_some() || flags & (NS_CONTROL | NS_OPTION) != 0) {
+        if !composing && (named_key(code).is_some() || flags & NS_CONTROL != 0 || option_is_alt(flags)) {
             key_events(event, flags).into_iter().for_each(push_event);
             return;
         }

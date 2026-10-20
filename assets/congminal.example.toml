@@ -1,0 +1,62 @@
+# congminal 配置文件
+#
+# 位置：
+#   macOS / Linux：~/.config/congminal/congminal.toml（设置了 XDG_CONFIG_HOME 时在它下面）
+#   Windows：%APPDATA%\congminal\congminal.toml
+#   也可以用 --config <路径> 或环境变量 CONGMINAL_CONFIG 指定。
+#
+# 这份文件里写的都是默认值，只需要保留你想改的部分。
+# 保存后自动生效（字体、颜色、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
+# 用 congminal --print-config 可以重新打印这份文件。
+
+[font]
+# 依次尝试，用第一个找得到的；其余的在缺字时作为后备。
+# 都找不到时用系统等宽字体（Menlo / Consolas / DejaVu Sans Mono），最后是内置的点阵字体。
+# 也可以写字体文件的路径。
+family = ["Maple Mono NF CN", "Maple Mono NF", "Maple Mono CN", "Maple Mono"]
+# 字号（逻辑像素，高分屏上会自动放大）
+size = 15
+# 行高倍数，1.0 是字体自己的行高
+line-height = 1.0
+
+[window]
+# 启动时的列数和行数
+columns = 80
+rows = 24
+# 文字和窗口边缘之间的空白（逻辑像素）
+padding = 4
+
+[colors]
+foreground = "#d8d8d8"
+background = "#1e1e1e"
+cursor = "#e0e0e0"
+# 方块光标下面那个字的颜色
+cursor-text = "#1e1e1e"
+# 粗体的基本色（0-7）显示成对应的亮色（8-15）
+bold-is-bright = true
+# 16 色调色板：黑 红 绿 黄 蓝 品红 青 白，然后是它们的亮色版本。
+# 可以写到 256 个，没写的用 xterm 的默认值。
+palette = [
+    "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5",
+    "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff",
+]
+
+[cursor]
+# block（方块）、underline（下划线）或 bar（竖线）。程序可以临时改变它。
+shape = "block"
+
+[shell]
+# 不写 program 时：macOS / Linux 用 $SHELL，Windows 用 %COMSPEC%
+# program = "/bin/zsh"
+# args = ["-l"]
+# 不写时继承启动 congminal 的目录。~ 表示用户主目录。
+# working-directory = "~"
+
+[env]
+# 额外的环境变量。TERM 默认是 xterm-256color。
+# LANG = "zh_CN.UTF-8"
+
+[macos]
+# 把 Option 键当作 Alt 用（发送 ESC 前缀，方便 shell 和 vim 的快捷键）。
+# true / false，或者 "left" / "right" 只让一边的 Option 当 Alt，另一边照常输入特殊字符。
+option-as-alt = true

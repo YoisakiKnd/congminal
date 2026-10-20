@@ -7,7 +7,7 @@
 //!    → 接到 stdin/stdout/stderr → `execve` 启动 shell。父进程关掉自己手里的从设备
 //! 4. 父进程读写主设备，就等于在和 shell 的终端交互
 
-use super::{EventSink, PtyEvent};
+use super::{Command, EventSink, PtyEvent};
 use std::ffi::{CStr, CString, c_char, c_int, c_ulong, c_ushort};
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -62,6 +62,7 @@ unsafe extern "C" {
     fn fcntl(fd: c_int, cmd: c_int, ...) -> c_int;
     fn dup2(from: c_int, to: c_int) -> c_int;
     fn close(fd: c_int) -> c_int;
+    fn chdir(path: *const c_char) -> c_int;
     fn execve(path: *const c_char, argv: *const *const c_char, envp: *const *const c_char) -> c_int;
     fn _exit(status: c_int) -> !;
     fn waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int;
@@ -75,7 +76,7 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub fn spawn(cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+    pub fn spawn(command: &Command, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
         // 1. 打开主设备
         let fd = unsafe { posix_openpt(O_RDWR | O_NOCTTY) };
         if fd < 0 {
@@ -105,12 +106,16 @@ impl Pty {
 
         // 2. 在 fork 之前准备好子进程要用的所有数据。
         //    fork 之后的子进程里只能调用 async-signal-safe 的函数，不能分配内存。
-        let shell = find_shell();
-        let shell = CString::new(shell.as_os_str().as_bytes()).map_err(io::Error::other)?;
-        let argv = [shell.as_ptr(), std::ptr::null()];
-        let env = build_env();
+        let to_c = |s: &[u8]| CString::new(s).map_err(|_| io::Error::other("参数里不能有 NUL 字符"));
+        let shell = to_c(find_shell(command.program.as_deref()).as_os_str().as_bytes())?;
+        let args: Vec<CString> = command.args.iter().map(|a| to_c(a.as_bytes())).collect::<io::Result<_>>()?;
+        let mut argv: Vec<*const c_char> = vec![shell.as_ptr()];
+        argv.extend(args.iter().map(|a| a.as_ptr()));
+        argv.push(std::ptr::null());
+        let env = build_env(&command.env);
         let mut envp: Vec<*const c_char> = env.iter().map(|s| s.as_ptr()).collect();
         envp.push(std::ptr::null());
+        let cwd = command.working_directory.as_ref().map(|dir| to_c(dir.as_os_str().as_bytes())).transpose()?;
 
         // 3. fork
         let pid = unsafe { fork() };
@@ -118,7 +123,7 @@ impl Pty {
             return Err(os_error("fork"));
         }
         if pid == 0 {
-            unsafe { exec_child(slave_fd, fd, &shell, argv.as_ptr(), envp.as_ptr()) }
+            unsafe { exec_child(slave_fd, fd, cwd.as_deref(), &shell, argv.as_ptr(), envp.as_ptr()) }
         }
         // 父进程不需要从设备。必须关掉，否则 shell 退出后读主设备永远等不到 EOF。
         drop(slave);
@@ -165,6 +170,7 @@ impl Drop for Pty {
 unsafe fn exec_child(
     slave: c_int,
     master_fd: c_int,
+    cwd: Option<&CStr>,
     shell: &CStr,
     argv: *const *const c_char,
     envp: *const *const c_char,
@@ -181,6 +187,10 @@ unsafe fn exec_child(
             close(slave);
         }
         close(master_fd);
+        // 切换目录失败就留在原来的目录，不影响启动
+        if let Some(dir) = cwd {
+            chdir(dir.as_ptr());
+        }
         // 被忽略的信号会经过 exec 继承下去：Rust 运行时忽略了 SIGPIPE，
         // 从脚本后台启动时 SIGINT 也可能被忽略（那样 Ctrl+C 就失效了）。全部恢复默认。
         for sig in 1..NSIG {
@@ -205,9 +215,10 @@ fn os_error(call: &str) -> io::Error {
     io::Error::new(err.kind(), format!("{call}: {err}"))
 }
 
-/// 优先用 CONGMINAL_SHELL，其次 SHELL，最后 /bin/sh。不是绝对路径时在 PATH 里找。
-fn find_shell() -> PathBuf {
-    let name = std::env::var_os("CONGMINAL_SHELL")
+/// 配置里指定的程序，否则用 $SHELL，最后是 /bin/sh。不是绝对路径时在 PATH 里找。
+fn find_shell(program: Option<&str>) -> PathBuf {
+    let name = program
+        .map(Into::into)
         .or_else(|| std::env::var_os("SHELL"))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "/bin/sh".into());
@@ -220,8 +231,12 @@ fn find_shell() -> PathBuf {
         .unwrap_or_else(|| Path::new("/bin/sh").to_path_buf())
 }
 
-fn build_env() -> Vec<CString> {
-    let overrides = [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "congminal")];
+/// 继承当前的环境变量，加上终端相关的几个，最后是配置里的（配置优先）
+fn build_env(extra: &[(String, String)]) -> Vec<CString> {
+    let mut overrides: Vec<(&str, &str)> =
+        vec![("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "congminal")];
+    overrides.retain(|(key, _)| !extra.iter().any(|(k, _)| k == key));
+    overrides.extend(extra.iter().map(|(k, v)| (k.as_str(), v.as_str())));
     let mut env: Vec<CString> = std::env::vars_os()
         .filter(|(key, _)| !overrides.iter().any(|(k, _)| key == k))
         .filter_map(|(key, value)| {
@@ -231,8 +246,6 @@ fn build_env() -> Vec<CString> {
             CString::new(entry).ok()
         })
         .collect();
-    for (key, value) in overrides {
-        env.push(CString::new(format!("{key}={value}")).unwrap());
-    }
+    env.extend(overrides.iter().filter_map(|(key, value)| CString::new(format!("{key}={value}")).ok()));
     env
 }

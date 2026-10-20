@@ -1,5 +1,6 @@
 //! 软件渲染：把终端网格画进一块像素缓冲区，再交给平台层贴到窗口上。
 
+use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph};
 use crate::term::{Cell, Color, CursorShape, Flags, Terminal, char_width};
 
@@ -34,25 +35,31 @@ impl Framebuffer {
     }
 }
 
-const DEFAULT_FG: u32 = 0xD8D8D8;
-const DEFAULT_BG: u32 = 0x1E1E1E;
-const CURSOR: u32 = 0xE0E0E0;
 /// 输入法正在输入（还没上屏）的文字的背景色
 const PREEDIT_BG: u32 = 0x3A3D41;
 
 pub struct Renderer {
     fonts: Fonts,
     padding: usize,
-    palette: [u32; 256],
+    colors: Colors,
 }
 
 impl Renderer {
     /// `scale` 是屏幕缩放比例
-    pub fn new(scale: f64) -> Renderer {
+    pub fn new(config: &Config, scale: f64) -> Renderer {
         let started = std::time::Instant::now();
-        let fonts = Fonts::load(scale);
+        let fonts = Fonts::load(&config.font, scale, config.font_is_customized());
         crate::term::trace(format_args!("字体：{}，加载用时 {:?}", fonts.description, started.elapsed()));
-        Renderer { fonts, padding: (4.0 * scale).round() as usize, palette: build_palette() }
+        Renderer {
+            fonts,
+            padding: (config.window.padding * scale as f32).round() as usize,
+            colors: config.colors.clone(),
+        }
+    }
+
+    /// 加载字体时遇到的问题
+    pub fn warnings(&self) -> &[String] {
+        &self.fonts.warnings
     }
 
     /// 给定窗口像素尺寸，能放下多少列、多少行
@@ -79,8 +86,11 @@ impl Renderer {
 
     /// `preedit` 是输入法正在输入、还没上屏的文字（比如拼音），画在光标处
     pub fn draw(&mut self, term: &Terminal, preedit: &str, fb: &mut Framebuffer) {
-        let (default_fg, default_bg) =
-            if term.modes().reverse_video { (DEFAULT_BG, DEFAULT_FG) } else { (DEFAULT_FG, DEFAULT_BG) };
+        let (default_fg, default_bg) = if term.modes().reverse_video {
+            (self.colors.background, self.colors.foreground)
+        } else {
+            (self.colors.foreground, self.colors.background)
+        };
         fb.pixels.fill(default_bg);
 
         let grid = term.grid();
@@ -132,10 +142,14 @@ impl Renderer {
             let thickness = (self.fonts.cell_height / 10).max(1);
             match term.cursor_shape() {
                 CursorShape::Block => {} // 已经在上面反色画好了
-                CursorShape::Underline => {
-                    fb.fill_rect(x, y + self.fonts.cell_height - thickness, self.fonts.cell_width, thickness, CURSOR)
-                }
-                CursorShape::Bar => fb.fill_rect(x, y, thickness, self.fonts.cell_height, CURSOR),
+                CursorShape::Underline => fb.fill_rect(
+                    x,
+                    y + self.fonts.cell_height - thickness,
+                    self.fonts.cell_width,
+                    thickness,
+                    self.colors.cursor,
+                ),
+                CursorShape::Bar => fb.fill_rect(x, y, thickness, self.fonts.cell_height, self.colors.cursor),
             }
         }
     }
@@ -152,12 +166,12 @@ impl Renderer {
             let (x, _) = self.cell_origin(row, col);
             let span = width * self.fonts.cell_width;
             fb.fill_rect(x, y, span, self.fonts.cell_height, PREEDIT_BG);
-            self.draw_char(fb, x, y, c, false, DEFAULT_FG);
-            self.draw_decorations(fb, x, y, span, Flags::UNDERLINE, DEFAULT_FG);
+            self.draw_char(fb, x, y, c, false, self.colors.foreground);
+            self.draw_decorations(fb, x, y, span, Flags::UNDERLINE, self.colors.foreground);
             col += width;
         }
         let (x, _) = self.cell_origin(row, col);
-        fb.fill_rect(x, y, (self.fonts.cell_height / 10).max(1), self.fonts.cell_height, CURSOR);
+        fb.fill_rect(x, y, (self.fonts.cell_height / 10).max(1), self.fonts.cell_height, self.colors.cursor);
     }
 
     fn draw_char(&mut self, fb: &mut Framebuffer, x: usize, y: usize, c: char, bold: bool, color: u32) {
@@ -197,15 +211,15 @@ impl Renderer {
         if cell.flags.contains(Flags::DIM) {
             fg = average(fg, bg);
         }
-        if is_cursor { (bg, CURSOR) } else { (fg, bg) }
+        if is_cursor { (self.colors.cursor_text, self.colors.cursor) } else { (fg, bg) }
     }
 
     fn resolve(&self, color: Color, default: u32, bold: bool) -> u32 {
         match color {
             Color::Default => default,
             // 传统做法：粗体的基本色显示为对应的亮色
-            Color::Indexed(i) if bold && i < 8 => self.palette[i as usize + 8],
-            Color::Indexed(i) => self.palette[i as usize],
+            Color::Indexed(i) if bold && i < 8 && self.colors.bold_is_bright => self.colors.palette[i as usize + 8],
+            Color::Indexed(i) => self.colors.palette[i as usize],
             Color::Rgb(r, g, b) => rgb(r, g, b),
         }
     }
@@ -247,23 +261,4 @@ fn rgb(r: u8, g: u8, b: u8) -> u32 {
 
 fn average(a: u32, b: u32) -> u32 {
     ((a >> 1) & 0x7F7F7F) + ((b >> 1) & 0x7F7F7F)
-}
-
-/// xterm 的 256 色调色板：16 个基本色 + 6×6×6 色立方 + 24 级灰度
-fn build_palette() -> [u32; 256] {
-    let mut palette = [0; 256];
-    let base = [
-        0x000000, 0xCD3131, 0x0DBC79, 0xE5E510, 0x2472C8, 0xBC3FBC, 0x11A8CD, 0xE5E5E5, //
-        0x666666, 0xF14C4C, 0x23D18B, 0xF5F543, 0x3B8EEA, 0xD670D6, 0x29B8DB, 0xFFFFFF,
-    ];
-    palette[..16].copy_from_slice(&base);
-    let level = |v: usize| if v == 0 { 0 } else { (55 + v * 40) as u8 };
-    for i in 0..216 {
-        palette[16 + i] = rgb(level(i / 36), level(i / 6 % 6), level(i % 6));
-    }
-    for i in 0..24 {
-        let v = (8 + i * 10) as u8;
-        palette[232 + i] = rgb(v, v, v);
-    }
-    palette
 }

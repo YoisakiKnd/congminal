@@ -7,7 +7,17 @@ param(
 $ErrorActionPreference = 'Stop'
 
 New-Item -ItemType Directory -Force -Path (Split-Path $Shot) | Out-Null
-$env:CONGMINAL_SHELL = "pwsh -NoProfile -ExecutionPolicy Bypass -File `"$PSScriptRoot\demo.ps1`""
+# 通过配置文件指定 shell，顺便验证配置功能（TOML 的单引号字符串不处理反斜杠，适合写 Windows 路径）
+$config = Join-Path (Split-Path $Shot) 'smoke-config.toml'
+@"
+[shell]
+program = 'pwsh'
+args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', '$PSScriptRoot\demo.ps1']
+
+[colors]
+background = "#1a1b2c"
+"@ | Set-Content -Encoding utf8 $config
+$env:CONGMINAL_CONFIG = (Resolve-Path $config).Path
 
 $process = Start-Process -FilePath $Bin -PassThru
 Start-Sleep -Seconds 5

@@ -11,17 +11,40 @@ cargo run --release
 cargo test
 ```
 
+## 配置
+
+配置文件是 TOML 格式，位置：
+
+- macOS / Linux：`~/.config/congminal/congminal.toml`（设置了 `XDG_CONFIG_HOME` 时在它下面）
+- Windows：`%APPDATA%\congminal\congminal.toml`
+
+先生成一份带注释的默认配置，再按需修改：
+
+```sh
+mkdir -p ~/.config/congminal
+congminal --print-config > ~/.config/congminal/congminal.toml
+```
+
+可以配置字体（多个字体、字号、行高）、窗口初始大小和内边距、颜色和调色板、光标形状、
+shell 程序和参数、工作目录、环境变量，以及 macOS 上 Option 键是否当 Alt 用。
+完整说明见 [`assets/congminal.example.toml`](assets/congminal.example.toml)。
+
+保存后自动生效（字体、颜色、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
+写错的地方会用黄色文字显示在终端里，那一项保持默认值，不影响其他设置。
+
 | 环境变量 | 作用 |
 |---|---|
-| `CONGMINAL_SHELL` | 指定要启动的 shell（默认 Unix 用 `$SHELL`，Windows 用 `%COMSPEC%`） |
-| `CONGMINAL_FONT` | 字体名或字体文件路径，逗号分隔多个：第一个找得到的作主字体，其余作缺字时的后备 |
-| `CONGMINAL_FONT_SIZE` | 字号（逻辑像素），默认 15 |
+| `CONGMINAL_CONFIG` | 配置文件路径（也可以用 `--config <路径>`） |
+| `CONGMINAL_SHELL` | 临时指定 shell 程序，优先于配置文件 |
+| `CONGMINAL_FONT` | 临时指定字体（逗号分隔多个），优先于配置文件 |
+| `CONGMINAL_FONT_SIZE` | 临时指定字号，优先于配置文件 |
 | `CONGMINAL_SCALE` | 缩放比例（Linux 上没有自动检测，高分屏可以设成 2） |
-| `CONGMINAL_TRACE` | 设为任意值后，把实际使用的字体和还没实现的转义序列打印到 stderr |
+| `CONGMINAL_TRACE` | 设为任意值后，把实际使用的字体、输入法回调和还没实现的转义序列打印到 stderr |
 
 ## 字体
 
 默认依次寻找 **Maple Mono NF CN** → Maple Mono NF → Maple Mono CN → Maple Mono → 系统等宽字体（Menlo / Consolas / DejaVu Sans Mono）→ 内置的 Terminus 点阵字体。
+可以在配置文件的 `[font]` 里改。
 推荐安装 Maple Mono NF CN，它同时包含中文和 Nerd Font 图标（starship 等提示符要用）：
 
 ```sh
@@ -69,6 +92,7 @@ git push origin v0.1.0-alpha.1
 | `src/vt.rs` | 转义序列解析器（Paul Williams 状态机）+ UTF-8 解码 | 否 |
 | `src/term/` | 终端状态机：光标、滚动区域、备用屏幕、SGR 属性、宽字符…… | 否 |
 | `src/input.rs` | 按键编码成字节序列 | 否 |
+| `src/config/` | 配置文件：手写的 TOML 子集解析器、选项校验 | 否 |
 | `src/font/` | 字体：TrueType 解析和光栅化、系统字体查找、PSF 点阵字体 | 否 |
 | `src/render.rs` | 软件渲染到像素缓冲区 | 否 |
 | `src/platform/` | 窗口和事件循环：X11 / Win32 / Cocoa | 是 |

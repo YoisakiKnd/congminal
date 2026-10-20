@@ -1,24 +1,17 @@
 //! 字体：把字符变成可以贴到屏幕上的灰度点阵。
 //!
-//! 优先使用系统里安装的 TrueType 字体（默认找 Maple Mono），找不到时退回内置的 Terminus 点阵字体。
-//!
-//! 环境变量：
-//! - `CONGMINAL_FONT`：字体名或字体文件路径，可以用逗号分隔多个，第一个找得到的作为主字体，其余作为缺字时的后备
-//! - `CONGMINAL_FONT_SIZE`：字号（逻辑像素），默认 15
+//! 按配置 [font] 里的顺序找系统里安装的 TrueType 字体（默认是 Maple Mono），
+//! 都找不到时用系统等宽字体，最后退回内置的 Terminus 点阵字体。
 
 mod discover;
 mod psf;
 mod raster;
 mod ttf;
 
+use crate::config::FontConfig;
 use crate::term::char_width;
 use discover::FaceInfo;
 use std::collections::HashMap;
-
-const DEFAULT_SIZE: f32 = 15.0;
-
-/// 默认主字体，依次尝试
-const PREFERRED: &[&str] = &["Maple Mono NF CN", "Maple Mono NF", "Maple Mono CN", "Maple Mono"];
 
 #[cfg(target_os = "macos")]
 const PLATFORM_MONO: &[&str] = &["Menlo", "Monaco"];
@@ -54,12 +47,19 @@ pub struct Fonts {
     pub cell_height: usize,
     /// 实际用上的字体，给日志用
     pub description: String,
+    /// 需要告诉用户的问题（比如指定的字体找不到）
+    pub warnings: Vec<String>,
     source: Source,
     cache: HashMap<(char, bool), Option<Glyph>>,
 }
 
 enum Source {
-    Bitmap { regular: psf::Font, bold: psf::Font },
+    /// `top`：行高调大时，点阵字形在格子里往下挪的距离
+    Bitmap {
+        regular: psf::Font,
+        bold: psf::Font,
+        top: i32,
+    },
     Outline(Box<Outline>),
 }
 
@@ -79,37 +79,32 @@ enum Fallback {
 }
 
 impl Fonts {
-    /// `scale` 是屏幕缩放比例
-    pub fn load(scale: f64) -> Fonts {
-        let size = std::env::var("CONGMINAL_FONT_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or(DEFAULT_SIZE);
-        let pixel_size = (size * scale as f32).max(4.0);
-        let requested: Vec<String> = std::env::var("CONGMINAL_FONT")
-            .unwrap_or_default()
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
+    /// `scale` 是屏幕缩放比例。`warn_missing`：用户自己指定了字体时，找不到要提示
+    pub fn load(config: &FontConfig, scale: f64, warn_missing: bool) -> Fonts {
+        let pixel_size = (config.size * scale as f32).max(4.0);
+        let line_height = config.line_height;
+        let requested = &config.families;
+        let mut warnings = Vec::new();
 
         let mut library = Library::default();
-        let candidates =
-            requested.iter().map(String::as_str).chain(PREFERRED.iter().copied()).chain(PLATFORM_MONO.iter().copied());
+        let candidates = requested.iter().map(String::as_str).chain(PLATFORM_MONO.iter().copied());
         for (position, name) in candidates.enumerate() {
             let faces = library.find(name);
             let Some((regular_info, bold_info)) = discover::pick_regular_and_bold(&faces) else {
-                if position < requested.len() {
-                    eprintln!("congminal: 没有找到字体“{name}”");
-                }
                 continue;
             };
             let regular = match load_face(&regular_info) {
                 Ok(face) => face,
                 Err(e) => {
-                    eprintln!("congminal: 无法使用字体 {}：{e}", regular_info.path.display());
+                    warnings.push(format!("无法使用字体 {}：{e}", regular_info.path.display()));
                     continue;
                 }
             };
+            if position >= requested.len() && warn_missing {
+                warnings.push(format!("没有找到 [font] family 里的字体，改用 {name}"));
+            }
             let bold = bold_info.and_then(|info| load_face(&info).ok());
-            // 用户指定的其余字体 + 系统默认的后备字体
+            // 配置里排在后面的字体 + 系统默认的后备字体
             let fallback_names =
                 requested.iter().skip(position + 1).map(String::as_str).chain(FALLBACK.iter().copied());
             let fallbacks = fallback_names
@@ -117,18 +112,25 @@ impl Fonts {
                 .map(|(info, _)| Fallback::Pending(info))
                 .collect();
             let description = format!("{}（{}，{pixel_size}px）", name, regular_info.path.display());
-            return Fonts::outline(regular, bold, fallbacks, pixel_size, description);
+            let mut fonts = Fonts::outline(regular, bold, fallbacks, pixel_size, line_height, description);
+            fonts.warnings = warnings;
+            return fonts;
         }
 
+        if warn_missing {
+            warnings.push("没有找到可用的字体，改用内置的点阵字体".into());
+        }
         let large = scale >= 1.5;
         let (regular, bold) = if large { (TERMINUS_32, TERMINUS_BOLD_32) } else { (TERMINUS_16, TERMINUS_BOLD_16) };
         let regular = psf::Font::parse(regular).expect("内置字体损坏");
         let bold = psf::Font::parse(bold).expect("内置字体损坏");
+        let cell_height = ((regular.height as f32 * line_height).round() as usize).max(1);
         Fonts {
             cell_width: regular.width,
-            cell_height: regular.height,
+            cell_height,
             description: "内置 Terminus 点阵字体".into(),
-            source: Source::Bitmap { regular, bold },
+            warnings,
+            source: Source::Bitmap { top: (cell_height as i32 - regular.height as i32) / 2, regular, bold },
             cache: HashMap::new(),
         }
     }
@@ -138,6 +140,7 @@ impl Fonts {
         bold: Option<ttf::Face>,
         fallbacks: Vec<Fallback>,
         pixel_size: f32,
+        line_height: f32,
         description: String,
     ) -> Fonts {
         let scale = pixel_size / regular.units_per_em as f32;
@@ -150,17 +153,19 @@ impl Fonts {
         let ascent = regular.ascender as f32 * scale;
         let descent = -(regular.descender as f32) * scale;
         let gap = regular.line_gap.max(0) as f32 * scale;
+        let cell_height = ((ascent + descent + gap) * line_height).round().max(1.0);
         Fonts {
             cell_width: (advance as f32 * scale).round().max(1.0) as usize,
-            cell_height: (ascent + descent + gap).round().max(1.0) as usize,
+            cell_height: cell_height as usize,
             description,
+            warnings: Vec::new(),
             source: Source::Outline(Box::new(Outline {
                 regular,
                 bold,
                 fallbacks,
                 pixel_size,
-                // 行距平分到上下两边
-                baseline: (gap / 2.0 + ascent).round() as i32,
+                // 多出来的行距平分到上下两边
+                baseline: ((cell_height - ascent - descent) / 2.0 + ascent).round() as i32,
             })),
             cache: HashMap::new(),
         }
@@ -169,7 +174,9 @@ impl Fonts {
     pub fn glyph(&mut self, c: char, bold: bool) -> Option<&Glyph> {
         if !self.cache.contains_key(&(c, bold)) {
             let glyph = match &mut self.source {
-                Source::Bitmap { regular, bold: bold_font } => bitmap_glyph(if bold { bold_font } else { regular }, c),
+                Source::Bitmap { regular, bold: bold_font, top } => {
+                    bitmap_glyph(if bold { bold_font } else { regular }, c, *top)
+                }
                 Source::Outline(outline) => outline.glyph(c, bold, self.cell_width),
             };
             self.cache.insert((c, bold), glyph);
@@ -250,7 +257,7 @@ fn embolden(bitmap: &mut raster::Bitmap) {
     bitmap.alpha = alpha;
 }
 
-fn bitmap_glyph(font: &psf::Font, c: char) -> Option<Glyph> {
+fn bitmap_glyph(font: &psf::Font, c: char, top: i32) -> Option<Glyph> {
     let bits = font.glyph(c);
     let alpha = (0..font.height)
         .flat_map(|y| {
@@ -258,7 +265,7 @@ fn bitmap_glyph(font: &psf::Font, c: char) -> Option<Glyph> {
                 .map(move |x| if bits[y * font.bytes_per_row + x / 8] & (0x80 >> (x % 8)) != 0 { 255 } else { 0 })
         })
         .collect();
-    Some(Glyph { left: 0, top: 0, width: font.width, height: font.height, alpha })
+    Some(Glyph { left: 0, top, width: font.width, height: font.height, alpha })
 }
 
 /// 读入整个字体文件。字体在程序运行期间一直要用，所以直接泄漏成 'static。

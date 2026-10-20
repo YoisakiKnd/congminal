@@ -120,7 +120,9 @@ pub struct Terminal {
     active_charset: usize,
     /// REP（重复上一个字符）要用
     last_char: char,
-    cursor_shape: CursorShape,
+    /// 程序用 DECSCUSR 设置的光标形状，None 表示用配置里的默认形状
+    cursor_shape: Option<CursorShape>,
+    default_cursor_shape: CursorShape,
     title: Option<String>,
     /// 需要回写给 PTY 的应答（比如光标位置报告）
     response: Vec<u8>,
@@ -143,7 +145,8 @@ impl Terminal {
             charsets: [Charset::Ascii; 2],
             active_charset: 0,
             last_char: ' ',
-            cursor_shape: CursorShape::Block,
+            cursor_shape: None,
+            default_cursor_shape: CursorShape::Block,
             title: None,
             response: Vec::new(),
         }
@@ -167,7 +170,11 @@ impl Terminal {
     }
 
     pub fn cursor_shape(&self) -> CursorShape {
-        self.cursor_shape
+        self.cursor_shape.unwrap_or(self.default_cursor_shape)
+    }
+
+    pub fn set_default_cursor_shape(&mut self, shape: CursorShape) {
+        self.default_cursor_shape = shape;
     }
 
     pub fn modes(&self) -> &Modes {
@@ -678,7 +685,9 @@ impl Terminal {
 
     fn reset(&mut self) {
         let (cols, rows) = (self.cols(), self.rows());
+        let default_cursor_shape = self.default_cursor_shape;
         *self = Terminal::new(cols, rows);
+        self.default_cursor_shape = default_cursor_shape;
     }
 
     /// DECSTR：软复位，不清屏
@@ -790,10 +799,12 @@ impl Perform for Terminal {
             ([], b's') => self.save_cursor(),
             ([], b'u') => self.restore_cursor(),
             ([b' '], b'q') => {
+                // 0 = 恢复默认，1/2 = 方块，3/4 = 下划线，5/6 = 竖线（奇数是闪烁，暂不支持闪烁）
                 self.cursor_shape = match arg(params, 0, 0) {
-                    3 | 4 => CursorShape::Underline,
-                    5 | 6 => CursorShape::Bar,
-                    _ => CursorShape::Block,
+                    1 | 2 => Some(CursorShape::Block),
+                    3 | 4 => Some(CursorShape::Underline),
+                    5 | 6 => Some(CursorShape::Bar),
+                    _ => None,
                 }
             }
             ([b'!'], b'p') => self.soft_reset(),
@@ -1093,6 +1104,18 @@ mod tests {
     fn combining_chars_are_dropped() {
         let t = run(4, 1, "e\u{301}x");
         assert_eq!(screen(&t), ["ex"]);
+    }
+
+    #[test]
+    fn cursor_shape_defaults_to_config() {
+        let mut t = run(5, 1, "");
+        t.set_default_cursor_shape(CursorShape::Bar);
+        assert_eq!(t.cursor_shape(), CursorShape::Bar);
+        Parser::new().advance(&mut t, b"\x1b[4 q");
+        assert_eq!(t.cursor_shape(), CursorShape::Underline);
+        // vim 退出时会发 CSI 0 q，要回到用户配置的形状
+        Parser::new().advance(&mut t, b"\x1b[0 q");
+        assert_eq!(t.cursor_shape(), CursorShape::Bar);
     }
 
     #[test]

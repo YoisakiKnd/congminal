@@ -8,8 +8,10 @@
 //!
 //! 平台层只认识像素和按键，完全不知道终端的存在。
 
+use crate::config::OptionAsAlt;
 use crate::input::{Key, Mods};
 use crate::render::Framebuffer;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 pub enum Event {
     Key {
@@ -45,6 +47,23 @@ pub trait App {
     /// 光标的像素区域 (x, y, 宽, 高)，原点在窗口内容区左上角。输入法用它摆放候选词窗口。
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     fn ime_cursor_area(&self) -> (u32, u32, u32, u32);
+}
+
+/// macOS 上 Option 键是否当作 Alt（其他平台没有这个问题，忽略）
+static OPTION_AS_ALT: AtomicU8 = AtomicU8::new(OptionAsAlt::Both as u8);
+
+pub fn set_option_as_alt(setting: OptionAsAlt) {
+    OPTION_AS_ALT.store(setting as u8, Ordering::Relaxed);
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn option_as_alt() -> OptionAsAlt {
+    match OPTION_AS_ALT.load(Ordering::Relaxed) {
+        x if x == OptionAsAlt::None as u8 => OptionAsAlt::None,
+        x if x == OptionAsAlt::Left as u8 => OptionAsAlt::Left,
+        x if x == OptionAsAlt::Right as u8 => OptionAsAlt::Right,
+        _ => OptionAsAlt::Both,
+    }
 }
 
 #[cfg(target_os = "linux")]

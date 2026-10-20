@@ -13,7 +13,16 @@ here=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$(dirname "$shot")"
 log="${shot%.png}-trace.log"
 
-CONGMINAL_SHELL="$here/demo.sh" CONGMINAL_TRACE=1 "$bin" 2>"$log" &
+# 通过配置文件指定 shell 和一个特殊的背景色，顺便验证配置功能
+config="$(dirname "$shot")/smoke-config.toml"
+cat > "$config" <<EOF
+[shell]
+program = "$here/demo.sh"
+
+[colors]
+background = "#1a1b2c"
+EOF
+CONGMINAL_CONFIG="$config" CONGMINAL_TRACE=1 "$bin" 2>"$log" &
 pid=$!
 
 sleep 4
@@ -26,7 +35,16 @@ if ! kill -0 "$pid" 2>/dev/null; then
 fi
 
 case "$(uname -s)" in
-    Linux) import -window root "$shot" ;;
+    Linux)
+        import -window root "$shot"
+        # 没有窗口管理器时窗口在左上角，(1,1) 是内边距，应该是配置里的背景色
+        pixel=$(convert "$shot" -format '%[hex:p{1,1}]' info: | cut -c1-6)
+        if [ "$pixel" != "1A1B2C" ]; then
+            kill "$pid"
+            echo "::error::配置的背景色没有生效：(1,1) 是 #$pixel，应该是 #1A1B2C"
+            exit 1
+        fi
+        ;;
     # 运行机可能没有录屏权限，截不到图不算失败
     Darwin) screencapture -x "$shot" || echo "::warning::截图失败" ;;
 esac

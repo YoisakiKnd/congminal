@@ -103,7 +103,7 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           dir="congminal-$version-${{ matrix.name }}"
           mkdir -p "dist/$dir"
-          cp README.md assets/fonts/LICENSE-Terminus.txt "dist/$dir/"
+          cp README.md assets/fonts/LICENSE-Terminus.txt assets/congminal.example.toml "dist/$dir/"
           if [ "$RUNNER_OS" = Windows ]; then
             cp target/release/congminal.exe "dist/$dir/"
             (cd dist && 7z a "../$dir.zip" "$dir")

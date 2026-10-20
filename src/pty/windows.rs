@@ -7,10 +7,11 @@
 //!
 //! ConPTY 会把 Windows 控制台 API 的调用翻译成 VT 序列，所以我们的解析器可以原样复用。
 
-use super::{EventSink, PtyEvent};
+use super::{Command, EventSink, PtyEvent};
 use std::ffi::c_void;
 use std::fs::File;
 use std::io::{self, Read, Write};
+use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::FromRawHandle;
 use std::ptr::{null, null_mut};
 
@@ -62,6 +63,7 @@ struct ProcessInformation {
 const PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x0002_0016;
 const EXTENDED_STARTUPINFO_PRESENT: u32 = 0x0008_0000;
 const STARTF_USESTDHANDLES: u32 = 0x0000_0100;
+const CREATE_UNICODE_ENVIRONMENT: u32 = 0x0000_0400;
 const INFINITE: u32 = 0xFFFF_FFFF;
 
 #[link(name = "kernel32")]
@@ -107,7 +109,7 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub fn spawn(cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+    pub fn spawn(command: &Command, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
         unsafe {
             // 1. 两根管道
             let (mut input_read, mut input_write) = (null_mut(), null_mut());
@@ -164,17 +166,21 @@ impl Pty {
             startup.startup_info.flags = STARTF_USESTDHANDLES;
             startup.attribute_list = list_ptr;
 
-            let mut command: Vec<u16> = find_shell().encode_utf16().chain(Some(0)).collect();
+            let mut command_line: Vec<u16> = command_line(command).encode_utf16().chain(Some(0)).collect();
+            // 有额外的环境变量时自己拼一个环境块，否则继承当前进程的
+            let environment = (!command.env.is_empty()).then(|| environment_block(&command.env));
+            let directory: Option<Vec<u16>> =
+                command.working_directory.as_ref().map(|dir| dir.as_os_str().encode_wide().chain(Some(0)).collect());
             let mut info: ProcessInformation = std::mem::zeroed();
             let ok = CreateProcessW(
                 null(),
-                command.as_mut_ptr(),
+                command_line.as_mut_ptr(),
                 null(),
                 null(),
                 0,
-                EXTENDED_STARTUPINFO_PRESENT,
-                null(),
-                null(),
+                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                environment.as_ref().map_or(null(), |block| block.as_ptr().cast()),
+                directory.as_ref().map_or(null(), |dir| dir.as_ptr()),
                 &startup.startup_info,
                 &mut info,
             );
@@ -231,7 +237,86 @@ fn coord(cols: u16, rows: u16) -> Coord {
     Coord { x: cols as i16, y: rows as i16 }
 }
 
-/// 优先用 CONGMINAL_SHELL，其次 COMSPEC（通常是 cmd.exe）
-fn find_shell() -> String {
-    std::env::var("CONGMINAL_SHELL").or_else(|_| std::env::var("COMSPEC")).unwrap_or_else(|_| "cmd.exe".into())
+/// 拼出完整的命令行。没指定程序时用 COMSPEC（通常是 cmd.exe）。
+///
+/// Windows 把整条命令行作为一个字符串交给新进程，由它自己切分参数，
+/// 所以含空格或引号的参数要按 C 运行库（CommandLineToArgvW）的规则加引号和转义。
+fn command_line(command: &Command) -> String {
+    let program = command.program.clone().or_else(|| std::env::var("COMSPEC").ok()).unwrap_or_else(|| "cmd.exe".into());
+    let mut line = String::new();
+    for (i, arg) in std::iter::once(&program).chain(&command.args).enumerate() {
+        if i > 0 {
+            line.push(' ');
+        }
+        quote_arg(arg, &mut line);
+    }
+    line
+}
+
+fn quote_arg(arg: &str, out: &mut String) {
+    if !arg.is_empty() && !arg.contains([' ', '\t', '\n', '\u{b}', '"']) {
+        out.push_str(arg);
+        return;
+    }
+    out.push('"');
+    let mut backslashes = 0;
+    for c in arg.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            // 引号前面的反斜杠要加倍，引号本身再加一个反斜杠
+            '"' => {
+                out.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
+                out.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                out.extend(std::iter::repeat_n('\\', backslashes));
+                out.push(c);
+                backslashes = 0;
+            }
+        }
+    }
+    // 结尾的反斜杠后面紧跟着收尾的引号，也要加倍
+    out.extend(std::iter::repeat_n('\\', backslashes * 2));
+    out.push('"');
+}
+
+/// 环境块：一串 "名字=值\0"，最后再加一个 \0，按名字排序（不区分大小写）
+fn environment_block(extra: &[(String, String)]) -> Vec<u16> {
+    let mut vars: Vec<(String, String)> = std::env::vars_os()
+        .map(|(k, v)| (k.to_string_lossy().into_owned(), v.to_string_lossy().into_owned()))
+        .filter(|(k, _)| !extra.iter().any(|(e, _)| e.eq_ignore_ascii_case(k)))
+        .collect();
+    vars.extend(extra.iter().cloned());
+    vars.sort_by_key(|(k, _)| k.to_uppercase());
+    let mut block = Vec::new();
+    for (key, value) in vars {
+        block.extend(format!("{key}={value}").encode_utf16());
+        block.push(0);
+    }
+    block.push(0);
+    block
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(program: &str, args: &[&str]) -> String {
+        command_line(&Command {
+            program: Some(program.into()),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            ..Command::default()
+        })
+    }
+
+    #[test]
+    fn quoting() {
+        assert_eq!(line("pwsh", &["-NoProfile"]), "pwsh -NoProfile");
+        assert_eq!(line(r"C:\Program Files\pwsh.exe", &[]), r#""C:\Program Files\pwsh.exe""#);
+        assert_eq!(line("cmd", &[r#"say "hi""#]), r#"cmd "say \"hi\"""#);
+        assert_eq!(line("x", &[r"C:\dir with space\"]), r#"x "C:\dir with space\\""#);
+        assert_eq!(line("x", &[r"C:\no\space"]), r"x C:\no\space");
+        assert_eq!(line("x", &[""]), r#"x """#);
+    }
 }
