@@ -58,6 +58,8 @@ pub struct Modes {
     pub mouse_encoding: MouseEncoding,
     /// 1004：窗口获得 / 失去焦点时告诉程序
     pub focus_events: bool,
+    /// 2026：同步输出。程序在画一帧，先别显示，等它画完（关掉这个模式）再一起显示，避免闪烁
+    pub synchronized: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -101,6 +103,7 @@ impl Default for Modes {
             mouse: MouseMode::Off,
             mouse_encoding: MouseEncoding::Default,
             focus_events: false,
+            synchronized: false,
         }
     }
 }
@@ -801,10 +804,32 @@ impl Terminal {
             1004 => self.modes.focus_events = on,
             1005 => self.set_mouse_encoding(MouseEncoding::Utf8, on),
             1006 => self.set_mouse_encoding(MouseEncoding::Sgr, on),
-            // 同步输出：以后实现
-            2026 => {}
+            2026 => self.modes.synchronized = on,
             _ => trace(format_args!("未处理的私有模式 ?{mode} {}", if on { 'h' } else { 'l' })),
         }
+    }
+
+    /// 私有模式现在的状态，不认识的模式返回 None
+    fn private_mode(&self, mode: u16) -> Option<bool> {
+        let m = &self.modes;
+        Some(match mode {
+            1 => m.app_cursor,
+            5 => m.reverse_video,
+            6 => m.origin,
+            7 => m.autowrap,
+            25 => m.cursor_visible,
+            47 | 1047 | 1049 => self.alt_active,
+            9 => m.mouse == MouseMode::Press,
+            1000 => m.mouse == MouseMode::Click,
+            1002 => m.mouse == MouseMode::Drag,
+            1003 => m.mouse == MouseMode::Motion,
+            1004 => m.focus_events,
+            1005 => m.mouse_encoding == MouseEncoding::Utf8,
+            1006 => m.mouse_encoding == MouseEncoding::Sgr,
+            2004 => m.bracketed_paste,
+            2026 => m.synchronized,
+            _ => return None,
+        })
     }
 
     /// 关掉某个鼠标模式时，只有它正是当前模式才关（程序关的是自己开的那个）
@@ -1015,6 +1040,25 @@ impl Perform for Terminal {
                 }
             }
             ([b'!'], b'p') => self.soft_reset(),
+            // DECRQM：程序问某个模式开着没有（比如先确认支持同步输出再用）。回答 1 开着、2 关着、0 不认识
+            ([b'?', b'$'], b'p') => {
+                let mode = arg(params, 0, 0) as u16;
+                let state = match self.private_mode(mode) {
+                    Some(true) => 1,
+                    Some(false) => 2,
+                    None => 0,
+                };
+                self.respond(format!("\x1b[?{mode};{state}$y").as_bytes());
+            }
+            ([b'$'], b'p') => {
+                let mode = arg(params, 0, 0) as u16;
+                let state = match mode {
+                    4 => 2 - self.modes.insert as u8,
+                    20 => 2 - self.modes.linefeed_newline as u8,
+                    _ => 0,
+                };
+                self.respond(format!("\x1b[{mode};{state}$y").as_bytes());
+            }
             _ => trace(format_args!("未处理的 CSI {:?} {}", String::from_utf8_lossy(intermediates), action as char)),
         }
     }
@@ -1319,6 +1363,15 @@ mod tests {
         let t = run(5, 1, "\x1b[?1002h\x1b[?1002l\x1b[?1006h\x1b[?1006l");
         assert_eq!(t.modes().mouse, MouseMode::Off);
         assert_eq!(t.modes().mouse_encoding, MouseEncoding::Default);
+    }
+
+    #[test]
+    fn synchronized_output_and_mode_query() {
+        let mut t = run(5, 1, "\x1b[?2026h");
+        assert!(t.modes().synchronized);
+        Parser::new().advance(&mut t, b"\x1b[?2026$p\x1b[?2026l\x1b[?2026$p\x1b[?9999$p\x1b[4$p");
+        assert!(!t.modes().synchronized);
+        assert_eq!(t.take_response(), b"\x1b[?2026;1$y\x1b[?2026;2$y\x1b[?9999;0$y\x1b[4;2$y");
     }
 
     #[test]

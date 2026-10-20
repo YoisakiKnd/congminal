@@ -12,6 +12,14 @@ use crate::config::OptionAsAlt;
 use crate::input::{Key, Mods};
 use crate::render::{Damage, Framebuffer};
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::time::Instant;
+
+/// 离截止时间还有多少毫秒（向上取整，免得提前醒来白转一圈）。没有截止时间返回 None。
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn timeout_ms(deadline: Option<Instant>) -> Option<u32> {
+    let remaining = deadline?.saturating_duration_since(Instant::now());
+    Some(remaining.as_micros().div_ceil(1000).min(u32::MAX as u128) as u32)
+}
 
 pub enum Event {
     Key {
@@ -104,6 +112,8 @@ pub trait App {
     fn draw(&mut self) -> Option<(&Framebuffer, Damage)>;
     /// 如果窗口标题需要改，返回新标题
     fn take_title(&mut self) -> Option<String>;
+    /// 最晚什么时候要被叫醒（比如推迟到下一帧的重画）。None 表示没事就一直等到有事件。
+    fn deadline(&self) -> Option<Instant>;
     /// 需要读写剪贴板时返回请求，平台层处理
     fn take_clipboard_request(&mut self) -> Option<ClipboardRequest>;
     /// 光标的像素区域 (x, y, 宽, 高)，原点在窗口内容区左上角。输入法用它摆放候选词窗口。

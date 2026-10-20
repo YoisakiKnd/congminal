@@ -549,7 +549,8 @@ impl Window {
 
             // 4. 没事做就睡觉，直到 X 服务器或唤醒 socket 有数据
             if unsafe { XPending(self.display) } == 0 {
-                unsafe { poll(fds.as_mut_ptr(), fds.len() as c_ulong, -1) };
+                let timeout = super::timeout_ms(app.deadline()).map_or(-1, |ms| ms.min(i32::MAX as u32) as c_int);
+                unsafe { poll(fds.as_mut_ptr(), fds.len() as c_ulong, timeout) };
             }
         }
     }

@@ -40,6 +40,11 @@ use std::time::{Duration, Instant};
 use term::{MouseMode, Terminal};
 use vt::Parser;
 
+/// 两帧之间至少隔这么久（最多每秒 120 帧）。输出很快时，多出来的数据攒到下一帧一起画。
+const FRAME_INTERVAL: Duration = Duration::from_millis(8);
+/// 程序开着同步输出（2026）最多等这么久就照常显示，免得程序出错时屏幕一直不更新
+const SYNC_TIMEOUT: Duration = Duration::from_millis(150);
+
 /// 两次点击间隔小于这个时间、并且在同一个格子上，算作双击（三击）
 const MULTI_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
@@ -81,6 +86,10 @@ struct Congminal {
     last_report_cell: Option<(usize, usize)>,
     /// 窗口是否有键盘焦点（没有时方块光标画成空心）
     focused: bool,
+    /// 上一帧画的时间
+    last_draw: Instant,
+    /// 程序从什么时候开始同步输出（2026），还没结束
+    sync_since: Option<Instant>,
     dirty: bool,
 }
 
@@ -157,6 +166,15 @@ impl Congminal {
         }
         self.dirty = true;
         true
+    }
+
+    /// 最早什么时候可以画下一帧：离上一帧至少隔 FRAME_INTERVAL；程序在同步输出时等它结束（或者超时）
+    fn next_draw_time(&self) -> Instant {
+        let paced = self.last_draw + FRAME_INTERVAL;
+        match self.sync_since {
+            Some(since) => paced.max(since + SYNC_TIMEOUT),
+            None => paced,
+        }
     }
 
     fn copy(&mut self) {
@@ -303,6 +321,11 @@ impl App for Congminal {
                     if !response.is_empty() {
                         self.write_to_pty(&response);
                     }
+                    // 程序开始同步输出时记下时间；结束时立刻可以画
+                    self.sync_since = match self.term.modes().synchronized {
+                        true => Some(self.sync_since.unwrap_or_else(Instant::now)),
+                        false => None,
+                    };
                     if self.term.is_alt_screen() != self.was_alt_screen {
                         self.was_alt_screen = self.term.is_alt_screen();
                         self.selection = None;
@@ -385,11 +408,16 @@ impl App for Congminal {
     }
 
     fn needs_redraw(&self) -> bool {
-        self.dirty
+        self.dirty && Instant::now() >= self.next_draw_time()
+    }
+
+    fn deadline(&self) -> Option<Instant> {
+        self.dirty.then(|| self.next_draw_time())
     }
 
     fn draw(&mut self) -> Option<(&Framebuffer, Damage)> {
         self.dirty = false;
+        self.last_draw = Instant::now();
         let selection = self.selection.as_ref().and_then(|s| s.range(&self.term));
         let damage = self.renderer.draw(&self.term, &self.preedit, selection, self.focused, &mut self.framebuffer)?;
         Some((&self.framebuffer, damage))
@@ -523,6 +551,8 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         reported_button: None,
         last_report_cell: None,
         focused: true,
+        last_draw: Instant::now(),
+        sync_since: None,
         dirty: true,
     };
     let mut warnings: Vec<String> = config_warnings.iter().map(|w| format!("配置文件：{w}")).collect();

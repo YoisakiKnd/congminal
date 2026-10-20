@@ -379,7 +379,14 @@ impl Window {
     /// 等到至少一个事件，把排队的事件处理完，然后检查尺寸、重画
     unsafe fn pump(&mut self, app: &mut dyn App, distant_future: Id, distant_past: Id) -> bool {
         unsafe {
-            let mut until = distant_future;
+            // 没有截止时间就一直等到有事件
+            let mut until = match app.deadline() {
+                Some(deadline) => {
+                    let seconds = deadline.saturating_duration_since(std::time::Instant::now()).as_secs_f64();
+                    msg![class(c"NSDate"), "dateWithTimeIntervalSinceNow:", seconds => f64; Id]
+                }
+                None => distant_future,
+            };
             loop {
                 let event: Id = msg![self.app, "nextEventMatchingMask:untilDate:inMode:dequeue:",
                     u64::MAX => u64, until => Id, NSDefaultRunLoopMode => Id, 1i8 => i8; Id];

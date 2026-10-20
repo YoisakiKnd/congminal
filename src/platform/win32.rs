@@ -113,6 +113,9 @@ const WS_OVERLAPPEDWINDOW: u32 = 0x00CF_0000;
 const CW_USEDEFAULT: i32 = 0x8000_0000_u32 as i32;
 const SW_SHOW: i32 = 5;
 const PM_REMOVE: u32 = 1;
+/// MsgWaitForMultipleObjects：任何输入或消息到来都醒
+const QS_ALLINPUT: u32 = 0x04FF;
+const INFINITE: u32 = 0xFFFF_FFFF;
 /// 文本输入用的 I 形鼠标指针
 const IDC_IBEAM: usize = 32513;
 const LOGPIXELSX: i32 = 88;
@@ -144,7 +147,6 @@ unsafe extern "system" {
     ) -> Hwnd;
     fn DestroyWindow(hwnd: Hwnd) -> i32;
     fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize;
-    fn GetMessageW(msg: *mut Msg, hwnd: Hwnd, min: u32, max: u32) -> i32;
     fn PeekMessageW(msg: *mut Msg, hwnd: Hwnd, min: u32, max: u32, remove: u32) -> i32;
     fn TranslateMessage(msg: *const Msg) -> i32;
     fn DispatchMessageW(msg: *const Msg) -> isize;
@@ -161,6 +163,13 @@ unsafe extern "system" {
     fn SetWindowTextW(hwnd: Hwnd, text: *const u16) -> i32;
     fn SetProcessDPIAware() -> i32;
     fn SetCapture(hwnd: Hwnd) -> Hwnd;
+    fn MsgWaitForMultipleObjects(
+        count: u32,
+        handles: *const isize,
+        wait_all: i32,
+        milliseconds: u32,
+        wake_mask: u32,
+    ) -> u32;
     fn ScreenToClient(hwnd: Hwnd, point: *mut Point) -> i32;
     fn ReleaseCapture() -> i32;
     fn OpenClipboard(hwnd: Hwnd) -> i32;
@@ -359,20 +368,16 @@ impl Window {
             }
             self.update_ime_position(app.ime_cursor_area());
 
-            // 阻塞等待下一条消息，然后把已经排队的消息一起处理掉
-            if unsafe { GetMessageW(&mut msg, 0, 0, 0) } <= 0 {
-                return;
-            }
-            loop {
+            // 等到有消息或者到了截止时间，然后把已经排队的消息一起处理掉
+            let timeout = super::timeout_ms(app.deadline()).unwrap_or(INFINITE);
+            unsafe { MsgWaitForMultipleObjects(0, null(), 0, timeout, QS_ALLINPUT) };
+            while unsafe { PeekMessageW(&mut msg, 0, 0, 0, PM_REMOVE) } != 0 {
+                if msg.message == WM_QUIT {
+                    return;
+                }
                 unsafe {
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
-                }
-                if unsafe { PeekMessageW(&mut msg, 0, 0, 0, PM_REMOVE) } == 0 {
-                    break;
-                }
-                if msg.message == WM_QUIT {
-                    return;
                 }
             }
         }

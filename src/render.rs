@@ -481,29 +481,43 @@ impl Renderer {
 /// 把字形贴到屏幕上。普通字形按覆盖率混合文字颜色（抗锯齿的边缘是半透明的）；
 /// 彩色字形（emoji）用自己的颜色，按透明度盖在背景上。只画 `clip` 范围内的像素行。
 fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32, clip: (usize, usize)) {
-    for gy in 0..glyph.height {
-        let py = y + gy as i32;
-        if py < clip.0 as i32 || py >= clip.1.min(fb.height) as i32 {
-            continue;
-        }
-        let line = &mut fb.pixels[py as usize * fb.width..(py as usize + 1) * fb.width];
-        for gx in 0..glyph.width {
-            let px = x + gx as i32;
-            if px < 0 || px as usize >= line.len() {
-                continue;
+    // 先算出字形和画面（以及裁剪范围）重叠的矩形，循环里就不用逐个像素判断越界了
+    let x0 = x.max(0);
+    let x1 = (x + glyph.width as i32).min(fb.width as i32);
+    let y0 = y.max(clip.0 as i32);
+    let y1 = (y + glyph.height as i32).min(clip.1.min(fb.height) as i32);
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+    let width = (x1 - x0) as usize;
+    for py in y0..y1 {
+        let src = (py - y) as usize * glyph.width + (x0 - x) as usize;
+        let dst = py as usize * fb.width + x0 as usize;
+        let dst = &mut fb.pixels[dst..dst + width];
+        // 每一行判断一次字形种类，内层循环只做混合
+        match &glyph.pixels {
+            Pixels::Alpha(alpha) => {
+                for (pixel, &a) in dst.iter_mut().zip(&alpha[src..src + width]) {
+                    match a {
+                        0 => {}
+                        255 => *pixel = color,
+                        a => *pixel = mix(color, *pixel, a as u32),
+                    }
+                }
             }
-            let pixel = &mut line[px as usize];
-            let i = gy * glyph.width + gx;
-            match &glyph.pixels {
-                Pixels::Alpha(alpha) => match alpha[i] {
-                    0 => {}
-                    255 => *pixel = color,
-                    a => *pixel = mix(color, *pixel, a as u32),
-                },
-                Pixels::Color(colors) => *pixel = over(colors[i], *pixel),
+            Pixels::Color(colors) => {
+                for (pixel, &c) in dst.iter_mut().zip(&colors[src..src + width]) {
+                    *pixel = over(c, *pixel);
+                }
             }
         }
     }
+}
+
+/// v / 255 四舍五入，用移位代替除法（v 在 0..=255×255 范围内结果和真正的除法完全一样）
+fn div255(v: u32) -> u32 {
+    let v = v + 128;
+    (v + (v >> 8)) >> 8
 }
 
 /// 预乘透明度的颜色盖在背景上：结果 = 源 + 背景 × (1 - 源的不透明度)
@@ -516,7 +530,7 @@ fn over(src: u32, dst: u32) -> u32 {
             let channel = |shift: u32| {
                 let s = (src >> shift) & 0xFF;
                 let d = (dst >> shift) & 0xFF;
-                ((s + (d * (255 - a) + 127) / 255).min(255)) << shift
+                (s + div255(d * (255 - a))).min(255) << shift
             };
             channel(16) | channel(8) | channel(0)
         }
@@ -528,7 +542,7 @@ fn mix(src: u32, dst: u32, a: u32) -> u32 {
     let channel = |shift: u32| {
         let s = (src >> shift) & 0xFF;
         let d = (dst >> shift) & 0xFF;
-        ((s * a + d * (255 - a) + 127) / 255) << shift
+        div255(s * a + d * (255 - a)) << shift
     };
     channel(16) | channel(8) | channel(0)
 }
@@ -581,6 +595,15 @@ mod bench {
         let per_frame = started.elapsed() / frames;
         eprintln!("{}×{} 像素、{cols}×{rows} 字符：整屏重画每帧 {per_frame:?}", width, height);
 
+        // 对照：同样大小但全是空格，看清屏和背景占多少
+        let blank = Terminal::new(cols, rows);
+        let started = Instant::now();
+        for _ in 0..frames {
+            renderer.invalidate();
+            renderer.draw(&blank, "", None, true, &mut fb);
+        }
+        eprintln!("全是空格：每帧 {:?}", started.elapsed() / frames);
+
         // 打字时的情况：每帧只改一行
         let started = Instant::now();
         for i in 0..frames {
@@ -595,6 +618,13 @@ mod bench {
 mod tests {
     use super::*;
     use crate::vt::Parser;
+
+    #[test]
+    fn div255_is_exact() {
+        for v in 0..=255 * 255 {
+            assert_eq!(div255(v), (v as f64 / 255.0).round() as u32, "v = {v}");
+        }
+    }
 
     /// 只重画变化的行，结果必须和整屏重画一模一样（包括伸出格子的笔画、光标、选区）
     #[test]
