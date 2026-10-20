@@ -119,7 +119,7 @@ git push origin v0.1.0-alpha.1
 ## 已知限制
 
 - 彩色 emoji：macOS 的 sbix、Linux 的 CBDT、Windows 的 COLR 都是自己解析的。
-  👨‍👩‍👧、🇨🇳、👍🏽、1️⃣ 这类组合序列在 Linux 和 Windows 上会合成一个字形（字体的 GSUB 规则），macOS 上暂时还会拆开显示。
+  👨‍👩‍👧、🇨🇳、👍🏽、1️⃣ 这类组合序列会合成一个字形（Linux、Windows 用字体的 GSUB 规则，macOS 用 Apple 的 morx 状态机，也是自己解析的）。
   为了和 shell 算的宽度一致，组合序列仍然按单个字符占格子（👨‍👩‍👧 占 6 格），合成的字形画在开头两格。
   程序可以用模式 2027（`ESC [ ? 2027 h`）声明自己按字素簇算宽度，这时整个组合只占 2 格
 - 只支持 TrueType 轮廓的字体；OTF/CFF 字体（比如思源黑体的 .otf/.ttc）会被跳过
