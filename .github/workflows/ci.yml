@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  # 发布输入法测试报告（check run）
+  checks: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -89,6 +91,28 @@ jobs:
       - name: 输入法测试
         if: runner.os == 'macOS'
         run: ci/ime_test_macos.sh target/release/congminal smoke/ime
+
+      # 把报告发布成一个 check run：日志和 artifact 要登录才能看，check run 的内容可以通过公开 API 读取
+      - name: 发布输入法测试报告
+        if: always() && runner.os == 'macOS' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f smoke/ime/report.md ] || echo "没有生成报告" > smoke/ime/report.md
+          python3 - <<'PY' > check-run.json
+          import json, os
+          summary = open("smoke/ime/report.md", encoding="utf-8", errors="replace").read()[-60000:]
+          print(json.dumps({
+              "name": "macOS 输入法测试报告",
+              "head_sha": os.environ["GITHUB_SHA"],
+              "status": "completed",
+              "conclusion": "neutral",
+              "output": {"title": "macOS 输入法测试报告", "summary": summary},
+          }))
+          PY
+          curl -sS -o /dev/null -w "%{http_code}\n" -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/check-runs" --data @check-run.json
 
       - name: 冒烟测试
         if: runner.os == 'Windows'

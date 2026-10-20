@@ -4,8 +4,7 @@
 # 切换到简体拼音，用 System Events 模拟键盘输入 "nihao"、空格（选第一个候选词）、回车，
 # 检查 shell 收到的是不是"你好"。输入过程中截图。
 #
-# 结果写进注解（不登录 GitHub 也能通过 API 看到）。注解命令必须在行首，所以每条前面先输出一个换行；
-# 每一步做完立刻报告，脚本中途退出也能知道走到了哪里。
+# 每一步做完立刻写进报告（<输出目录>/report.md），脚本中途退出也能知道走到了哪里。
 # 注意：macOS 自带的是 bash 3.2。
 set -uo pipefail
 
@@ -18,11 +17,15 @@ result="$out/ime-result.txt"
 log="$out/ime-trace.log"
 rm -f "$result"
 
+report="$out/report.md"
+: > "$report"
+
+# 每一步的结果追加到报告里（CI 的下一步会把它发布成一个 check run，不登录也能通过 API 读到）
 note() {
-    printf '\n::notice::%s\n' "$(printf '%s' "$1" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+    printf '%s\n\n' "$1" | tee -a "$report"
 }
 
-trap 'status=$?; printf "\n::warning::输入法测试脚本在退出（退出码 %s）\n" "$status"' EXIT
+trap 'status=$?; note "脚本退出，退出码 $status"' EXIT
 
 CONGMINAL_SHELL="$here/macos/read_line.sh" CONGMINAL_IME_RESULT="$result" CONGMINAL_TRACE=1 "$bin" 2>"$log" &
 pid=$!
@@ -48,8 +51,11 @@ screencapture -x "$out/ime-done.png" >/dev/null 2>&1
 kill "$pid" 2>/dev/null
 
 got=$(cat "$result" 2>/dev/null || echo "（没有收到）")
-note "5. trace 日志（最后 30 行）：
-$(grep -v '字体' "$log" 2>/dev/null | tail -30)"
+note "5. shell 收到：$got"
+note "6. trace 日志（最后 40 行）：
+\`\`\`
+$(grep -v '字体' "$log" 2>/dev/null | tail -40)
+\`\`\`"
 
 if [ "$got" = "你好" ]; then
     printf '\n::notice::输入法测试通过：shell 收到 %s\n' "$got"
