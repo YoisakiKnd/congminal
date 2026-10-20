@@ -1,6 +1,6 @@
 [package]
 name = "congminal"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 edition = "2024"
 rust-version = "1.88"
 description = "一个从零手写的跨平台终端模拟器（学习项目）"
