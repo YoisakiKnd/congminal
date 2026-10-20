@@ -26,6 +26,9 @@ pub const DEFAULT_SCROLLBACK: usize = 10_000;
 
 /// 组合字符表最多存多少种不同的组合
 const MAX_MARKS: usize = 1 << 16;
+/// 一个字上附加的组合字符最多多少字节（最长的 emoji 序列 👩🏻‍❤️‍💋‍👨🏼 去掉第一个字是 31 字节，
+/// 四口之家加肤色更长），防止一个字上叠几百个符号（"乱码文字"）把内存撑爆
+const MAX_MARKS_LEN: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CursorShape {
@@ -69,6 +72,9 @@ pub struct Modes {
     pub focus_events: bool,
     /// 2026：同步输出。程序在画一帧，先别显示，等它画完（关掉这个模式）再一起显示，避免闪烁
     pub synchronized: bool,
+    /// 2027：按整个字素簇（👨‍👩‍👧、🇨🇳 这样的组合）算宽度，而不是一个个字符分别算。
+    /// 默认关闭，因为 shell 是按单个字符算的；程序自己开启说明它也按字素簇算
+    pub grapheme_clusters: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -113,6 +119,7 @@ impl Default for Modes {
             mouse_encoding: MouseEncoding::Default,
             focus_events: false,
             synchronized: false,
+            grapheme_clusters: false,
         }
     }
 }
@@ -408,33 +415,42 @@ impl Terminal {
     fn print_char(&mut self, c: char) {
         let c = self.translate_charset(c);
         let width = char_width(c);
-        // 组合字符（比如单独的重音符号）：暂时丢弃，以后可以叠加到前一个字上。
-        // 变体选择符例外：U+FE0F 要求前一个字用彩色 emoji 样式，U+FE0E 要求文字样式。宽度不变，和 shell 的计算一致。
+        // 2027 模式：能接在前一个字后面组成同一个 emoji 的（U+200D 后面的 emoji、肤色、第二个国旗字母），
+        // 附加到前一个字上，整个组合占 2 格
+        if self.modes.grapheme_clusters
+            && width > 0
+            && let Some((row, col)) = self.last_glyph
+            && self.cursor_follows(row, col)
+        {
+            let cell = &self.grid[row][col];
+            let mut sequence = String::from(cell.c);
+            sequence.push_str(self.marks(cell.marks));
+            if emoji::extends(&sequence, c) {
+                self.attach_mark(row, col, c);
+                self.widen_last_glyph();
+                return;
+            }
+        }
+        // 零宽字符附加到前一个字上：重音符号、U+200D、标签字符……
+        // 变体选择符：U+FE0F 要求前一个字用彩色 emoji 样式，U+FE0E 要求文字样式。宽度不变，和 shell 的计算一致
+        // （2027 模式下 U+FE0F 让它变成 2 格）。
         if width == 0 {
-            if let Some((row, col)) = self.last_glyph
-                && matches!(c, '\u{FE0F}' | '\u{FE0E}')
-                && row < self.rows()
-                && col < self.cols()
-            {
+            let Some((row, col)) = self.last_glyph.filter(|&(row, col)| row < self.rows() && col < self.cols()) else {
+                return;
+            };
+            // 前一个字已经带着组合字符（在 emoji 序列中间）时，变体选择符也原样记下，保持序列的顺序
+            if matches!(c, '\u{FE0F}' | '\u{FE0E}') && self.grid[row][col].marks == 0 {
                 let flags = &mut self.grid[row][col].flags;
                 if c == '\u{FE0F}' {
                     flags.insert(Flags::EMOJI);
+                    if self.modes.grapheme_clusters && self.cursor_follows(row, col) {
+                        self.widen_last_glyph();
+                    }
                 } else {
                     flags.remove(Flags::EMOJI);
                 }
-            } else if let Some((row, col)) = self.last_glyph
-                && row < self.rows()
-                && col < self.cols()
-            {
-                // 其他零宽字符（重音符号、韩文的中声终声……）附加到前一个字上
-                let mut marks = self.marks(self.grid[row][col].marks).to_string();
-                marks.push(c);
-                // 防止一个字上叠几百个符号（"乱码文字"）把内存撑爆
-                if marks.len() <= 32
-                    && let Some(id) = self.intern_marks(marks)
-                {
-                    self.grid[row][col].marks = id;
-                }
+            } else {
+                self.attach_mark(row, col, c);
             }
             return;
         }
@@ -483,6 +499,48 @@ impl Terminal {
         }
         self.last_char = c;
         self.last_glyph = Some((row, col));
+    }
+
+    /// 把零宽字符附加到 (row, col) 的字上
+    fn attach_mark(&mut self, row: usize, col: usize, c: char) {
+        let mut marks = self.marks(self.grid[row][col].marks).to_string();
+        marks.push(c);
+        if marks.len() <= MAX_MARKS_LEN
+            && let Some(id) = self.intern_marks(marks)
+        {
+            self.grid[row][col].marks = id;
+        }
+    }
+
+    /// 光标紧跟在 (row, col) 的字后面（中间没有移动过光标）
+    fn cursor_follows(&self, row: usize, col: usize) -> bool {
+        let cols = self.cols();
+        if row >= self.rows() || col >= cols || self.cursor.row != row {
+            return false;
+        }
+        let width = if self.grid[row][col].flags.contains(Flags::WIDE) { 2 } else { 1 };
+        if self.cursor.pending_wrap { col + width == cols } else { self.cursor.col == col + width }
+    }
+
+    /// 2027 模式：1 格的字变成了 emoji（❤️、第一个国旗字母配上了第二个），改成占 2 格。
+    /// 已经在最后一列放不下时保持 1 格。
+    fn widen_last_glyph(&mut self) {
+        let Some((row, col)) = self.last_glyph else { return };
+        let cols = self.cols();
+        if self.grid[row][col].flags.contains(Flags::WIDE) || col + 1 >= cols || self.cursor.pending_wrap {
+            return;
+        }
+        self.clear_wide_fragment(row, col + 1);
+        let mut spacer = self.blank();
+        spacer.flags = Flags::WIDE_SPACER;
+        self.grid[row][col + 1] = spacer;
+        self.grid[row][col].flags.insert(Flags::WIDE);
+        if col + 2 < cols {
+            self.cursor.col = col + 2;
+        } else {
+            self.cursor.col = col + 1;
+            self.cursor.pending_wrap = self.modes.autowrap;
+        }
     }
 
     fn wrap_line(&mut self) {
@@ -832,6 +890,7 @@ impl Terminal {
             1005 => self.set_mouse_encoding(MouseEncoding::Utf8, on),
             1006 => self.set_mouse_encoding(MouseEncoding::Sgr, on),
             2026 => self.modes.synchronized = on,
+            2027 => self.modes.grapheme_clusters = on,
             _ => trace(format_args!("未处理的私有模式 ?{mode} {}", if on { 'h' } else { 'l' })),
         }
     }
@@ -877,6 +936,7 @@ impl Terminal {
             1006 => m.mouse_encoding == MouseEncoding::Sgr,
             2004 => m.bracketed_paste,
             2026 => m.synchronized,
+            2027 => m.grapheme_clusters,
             _ => return None,
         })
     }
@@ -1421,6 +1481,43 @@ mod tests {
         Parser::new().advance(&mut t, b"\x1b[?2026$p\x1b[?2026l\x1b[?2026$p\x1b[?9999$p\x1b[4$p");
         assert!(!t.modes().synchronized);
         assert_eq!(t.take_response(), b"\x1b[?2026;1$y\x1b[?2026;2$y\x1b[?9999;0$y\x1b[4;2$y");
+    }
+
+    #[test]
+    fn grapheme_cluster_mode() {
+        // 默认按单个字符算：国旗字母各 1 格，家庭 3 个 emoji 各 2 格
+        let t = run(12, 1, "🇨🇳x");
+        assert_eq!(t.cursor_position(), (0, 3));
+        let t = run(12, 1, "👨\u{200D}👩\u{200D}👧x");
+        assert_eq!(t.cursor_position(), (0, 7));
+
+        // 2027：整个组合 2 格，附加在第一个字上
+        let on = "\x1b[?2027h";
+        let t = run(12, 1, &format!("{on}🇨🇳x"));
+        assert_eq!(t.cursor_position(), (0, 3));
+        assert!(t.grid()[0][0].flags.contains(Flags::WIDE));
+        assert_eq!(t.marks(t.grid()[0][0].marks), "🇳");
+        assert_eq!(t.grid()[0][2].c, 'x');
+        let family = "👨\u{200D}👩\u{200D}👧";
+        let t = run(12, 1, &format!("{on}{family}x"));
+        assert_eq!(t.cursor_position(), (0, 3));
+        assert_eq!(t.marks(t.grid()[0][0].marks), &family['👨'.len_utf8()..]);
+        let t = run(12, 1, &format!("{on}👍🏽x❤\u{FE0F}y"));
+        assert_eq!(screen(&t), ["👍x❤y"]);
+        assert_eq!(t.cursor_position(), (0, 6));
+        // 国旗字母两两配对，第三个单独
+        let t = run(12, 1, &format!("{on}🇨🇳🇯"));
+        assert_eq!(t.cursor_position(), (0, 3));
+        // 光标移动过就不再接上
+        let t = run(12, 1, &format!("{on}🇨\x1b[5G🇳"));
+        assert_eq!(t.grid()[0][4].c, '🇳');
+        // 最后一列放不下第二格时保持 1 格
+        let t = run(3, 1, &format!("{on}ab❤\u{FE0F}"));
+        assert!(!t.grid()[0][2].flags.contains(Flags::WIDE));
+
+        let mut t = run(5, 1, "");
+        Parser::new().advance(&mut t, b"\x1b[?2027$p\x1b[?2027h\x1b[?2027$p");
+        assert_eq!(t.take_response(), b"\x1b[?2027;2$y\x1b[?2027;1$y");
     }
 
     #[test]

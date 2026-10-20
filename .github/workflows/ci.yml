@@ -77,7 +77,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           Xvfb :99 -screen 0 1024x768x24 &
-          sleep 1
+          # 等 Xvfb 准备好（固定 sleep 1 偶尔不够）
+          for i in $(seq 50); do [ -S /tmp/.X11-unix/X99 ] && break; sleep 0.2; done
           DISPLAY=:99 ci/smoke.sh target/release/congminal smoke/${{ matrix.name }}.png
 
       - name: 冒烟测试
