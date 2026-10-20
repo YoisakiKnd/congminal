@@ -5,6 +5,7 @@
 //! - <https://vt100.net/docs/vt510-rm/contents.html>
 
 mod grid;
+mod reflow;
 mod width;
 mod width_table;
 
@@ -314,6 +315,11 @@ impl Terminal {
         }
 
         let old_rows = self.rows();
+        let mut pending_wrap = false;
+        // 宽度变了：主屏幕连同回滚历史一起重新折行（备用屏幕上的程序会自己重画，不用管）
+        if cols != self.cols() && !self.alt_active {
+            pending_wrap = self.reflow(cols);
+        }
         // 变矮时把光标上方的内容往上推，保证光标所在的行仍然可见；推出去的行进入回滚历史
         if self.cursor.row >= rows {
             let shift = self.cursor.row + 1 - rows;
@@ -346,7 +352,38 @@ impl Terminal {
         self.scroll_bottom = rows - 1;
         self.cursor.row = self.cursor.row.min(rows - 1);
         self.cursor.col = self.cursor.col.min(cols - 1);
-        self.cursor.pending_wrap = false;
+        self.cursor.pending_wrap = pending_wrap;
+    }
+
+    /// 按新宽度重新折行，行数不变。返回光标是否处于"写满一行、等下一个字再换行"的状态。
+    fn reflow(&mut self, cols: usize) -> bool {
+        let rows = self.rows();
+        let screen_start = self.history.len();
+        let mut all = self.history.take_rows();
+        all.extend(self.grid.take_rows());
+        let cursor = reflow::CursorPos {
+            row: screen_start + self.cursor.row,
+            col: self.cursor.col,
+            pending_wrap: self.cursor.pending_wrap,
+        };
+        let result = reflow::reflow(all, screen_start, cursor, cols);
+
+        // 屏幕从原来屏幕第一行的内容开始；光标被挤到屏幕外面时，把上面的行推进历史
+        let (cursor_row, cursor_col) = result.cursor;
+        let mut top = result.screen_top;
+        if cursor_row >= top + rows {
+            top = cursor_row + 1 - rows;
+        }
+        let mut new_rows = result.rows;
+        let mut screen: Vec<Row> = new_rows.drain(top..).take(rows).collect();
+        screen.resize_with(rows, || Row::new(cols));
+        for row in new_rows {
+            self.history.push(row);
+        }
+        self.grid.set_rows(screen, cols);
+        self.cursor.row = cursor_row - top;
+        self.cursor.col = cursor_col;
+        result.pending_wrap
     }
 
     // ---- 写字符 ----
@@ -1386,6 +1423,81 @@ mod tests {
         assert_eq!(screen(&t), ["1", "2", "3", "4"]);
         assert_eq!(t.history().len(), 0);
         assert_eq!(t.cursor_position(), (3, 1));
+    }
+
+    fn history_text(t: &Terminal) -> Vec<String> {
+        (0..t.history().len())
+            .map(|i| {
+                let row = t.history().get(i);
+                let line: String =
+                    row.cells.iter().filter(|c| !c.flags.contains(Flags::WIDE_SPACER)).map(|c| c.c).collect();
+                line.trim_end().to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reflow_joins_wrapped_lines_when_wider() {
+        let mut t = run(5, 3, "abcdefgh");
+        assert_eq!(screen(&t), ["abcde", "fgh", ""]);
+        t.resize(10, 3);
+        assert_eq!(screen(&t), ["abcdefgh", "", ""]);
+        assert_eq!(t.cursor_position(), (0, 8));
+    }
+
+    #[test]
+    fn reflow_splits_long_lines_when_narrower() {
+        let mut t = run(10, 3, "abcdefgh\r\n$ ");
+        t.resize(4, 3);
+        assert_eq!(screen(&t), ["abcd", "efgh", "$"]);
+        // 光标还在提示符 "$ " 后面
+        assert_eq!(t.cursor_position(), (2, 2));
+        assert!(t.grid()[0].wrapped);
+        assert!(!t.grid()[1].wrapped);
+    }
+
+    #[test]
+    fn reflow_pushes_overflow_into_history() {
+        let mut t = run(10, 2, "abcdefghij\r\nxy");
+        t.resize(5, 2);
+        assert_eq!(screen(&t), ["fghij", "xy"]);
+        assert_eq!(history_text(&t), ["abcde"]);
+        assert_eq!(t.cursor_position(), (1, 2));
+    }
+
+    #[test]
+    fn reflow_wide_chars() {
+        let mut t = run(6, 2, "ab中文");
+        t.resize(3, 2);
+        // 放不下的汉字整个挪到下一行
+        assert_eq!(screen(&t), ["中", "文"]);
+        assert_eq!(history_text(&t), ["ab"]);
+        // 再变宽：接回去，不能多出占位空格
+        t.resize(6, 2);
+        assert_eq!(screen(&t), ["ab中文", ""]);
+        assert_eq!(t.history().len(), 0);
+        // 行正好写满：光标停在最后一列，等下一个字再换行
+        assert_eq!(t.cursor_position(), (0, 5));
+        Parser::new().advance(&mut t, b"x");
+        assert_eq!(screen(&t), ["ab中文", "x"]);
+    }
+
+    #[test]
+    fn reflow_includes_history() {
+        let mut t = run(5, 2, "abcdefgh\r\nx\r\ny");
+        assert_eq!(history_text(&t), ["abcde", "fgh"]);
+        t.resize(10, 2);
+        assert_eq!(history_text(&t), ["abcdefgh"]);
+        assert_eq!(screen(&t), ["x", "y"]);
+    }
+
+    #[test]
+    fn reflow_after_clear_keeps_screen_top() {
+        // clear 之后缩放窗口，不能把已经清掉的内容又翻到屏幕上
+        let mut t = run(10, 3, "1\r\n2\r\n3\r\n4\x1b[2J\x1b[H$ ");
+        t.resize(5, 3);
+        assert_eq!(screen(&t), ["$", "", ""]);
+        assert_eq!(t.cursor_position(), (0, 2));
     }
 
     #[test]

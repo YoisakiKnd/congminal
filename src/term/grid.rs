@@ -82,7 +82,7 @@ pub struct Row {
 }
 
 impl Row {
-    fn new(cols: usize) -> Row {
+    pub fn new(cols: usize) -> Row {
         Row { cells: vec![Cell::default(); cols], wrapped: false }
     }
 
@@ -167,6 +167,17 @@ impl Grid {
         for row in &mut self.rows[top..top + n] {
             row.reset(blank);
         }
+    }
+
+    /// 取走所有行（重排用）
+    pub fn take_rows(&mut self) -> Vec<Row> {
+        std::mem::take(&mut self.rows)
+    }
+
+    /// 换成一组新的行（重排之后放回来）
+    pub fn set_rows(&mut self, rows: Vec<Row>, cols: usize) {
+        self.rows = rows;
+        self.cols = cols;
     }
 
     /// 取走最上面的 n 行（窗口变矮时用）
@@ -257,6 +268,11 @@ impl History {
             self.dropped += 1;
         }
         self.rows.push_back(row);
+    }
+
+    /// 取走所有行，从旧到新（重排用）
+    pub fn take_rows(&mut self) -> Vec<Row> {
+        self.rows.drain(..).collect()
     }
 
     /// 取出最新的一行（窗口变高时拉回屏幕）
