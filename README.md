@@ -81,7 +81,7 @@ git push origin v0.1.0-alpha.1
 - 组合字符（单独的重音符号等）会被丢弃
 - 没有回滚缓冲区、文本选择、复制粘贴、鼠标上报
 - 窗口缩放时不重排文本
-- 输入法：macOS 实现了 `NSTextInputClient`（预编辑文字显示在光标处，尚未在真机验证）；Windows 用系统自己的输入框；Linux 只有基本的 XIM 支持
+- 输入法：macOS 实现了 `NSTextInputClient`，预编辑文字显示在光标处、候选词窗口跟随光标（已在真机验证）；Windows 用系统自己的输入框（尚未在真机验证）；Linux 只有基本的 XIM 支持
 
 ## 授权
 
