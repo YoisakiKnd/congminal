@@ -3,15 +3,21 @@
 //! Cocoa 是 Objective-C 写的，"调用方法"其实就是调用 C 函数 `objc_msgSend(对象, 方法名, 参数...)`。
 //! 我们把它强转成具体的函数指针类型来调用，这就是 [`msg!`] 宏做的事。
 //!
-//! 为了少写 Objective-C 类，这里没有子类化 NSView，而是：
-//! - 自己写事件循环（`nextEventMatchingMask:`），直接从事件里取按键
+//! 结构：
+//! - 自己写事件循环（`nextEventMatchingMask:`），每个事件交给 AppKit 分发
+//! - 在运行时注册一个 NSView 子类 `CongminalView`，实现 `NSTextInputClient` 协议，这样系统输入法（拼音等）才能工作
 //! - 把画好的像素做成 CGImage，设置为视图图层（CALayer）的内容
+//!
+//! 视图的方法是 AppKit 回调的，拿不到 App，所以它们把事件放进线程局部的队列，事件循环再取出来交给 App。
 
 use super::{App, Event};
 use crate::input::{Key, Mods};
 use crate::render::Framebuffer;
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null_mut;
+use std::sync::OnceLock;
 
 type Id = *mut c_void;
 type Sel = *const c_void;
@@ -38,10 +44,25 @@ struct NSRect {
     size: NSSize,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NSRange {
+    location: usize,
+    length: usize,
+}
+
+/// NSNotFound（NSIntegerMax）
+const NOT_FOUND: usize = isize::MAX as usize;
+
 #[link(name = "objc")]
 unsafe extern "C" {
     fn objc_getClass(name: *const c_char) -> Id;
     fn sel_registerName(name: *const c_char) -> Sel;
+    fn objc_allocateClassPair(superclass: Id, name: *const c_char, extra_bytes: usize) -> Id;
+    fn objc_registerClassPair(class: Id);
+    fn class_addMethod(class: Id, name: Sel, imp: *const c_void, types: *const c_char) -> i8;
+    fn class_addProtocol(class: Id, protocol: Id) -> i8;
+    fn objc_getProtocol(name: *const c_char) -> Id;
     fn objc_msgSend();
     #[cfg(target_arch = "x86_64")]
     fn objc_msgSend_stret();
@@ -129,7 +150,40 @@ unsafe fn view_frame(view: Id) -> NSRect {
     }
 }
 
-const NS_EVENT_TYPE_KEY_DOWN: usize = 10;
+/// 把矩形从窗口坐标换算成屏幕坐标。返回结构体，x86_64 上同样要用 objc_msgSend_stret。
+unsafe fn rect_to_screen(window: Id, rect: NSRect) -> NSRect {
+    unsafe {
+        let sel = sel_registerName(c"convertRectToScreen:".as_ptr());
+        #[cfg(target_arch = "x86_64")]
+        {
+            let f: unsafe extern "C" fn(*mut NSRect, Id, Sel, NSRect) =
+                std::mem::transmute(objc_msgSend_stret as unsafe extern "C" fn());
+            let mut out = std::mem::zeroed();
+            f(&mut out, window, sel, rect);
+            out
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            let f: unsafe extern "C" fn(Id, Sel, NSRect) -> NSRect =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            f(window, sel, rect)
+        }
+    }
+}
+
+/// NSString（或 NSAttributedString）转成 Rust 字符串
+unsafe fn string_from(obj: Id) -> String {
+    unsafe {
+        if obj.is_null() {
+            return String::new();
+        }
+        let attributed: i8 = msg![obj, "isKindOfClass:", class(c"NSAttributedString") => Id; i8];
+        let string: Id = if attributed != 0 { msg![obj, "string"; Id] } else { obj };
+        let utf8: *const c_char = msg![string, "UTF8String"; *const c_char];
+        if utf8.is_null() { String::new() } else { CStr::from_ptr(utf8).to_string_lossy().into_owned() }
+    }
+}
+
 const NS_EVENT_TYPE_APPLICATION_DEFINED: usize = 15;
 const NS_SHIFT: usize = 1 << 17;
 const NS_CONTROL: usize = 1 << 18;
@@ -205,9 +259,13 @@ impl Window {
             msg![window, "setTitle:", nsstring(title) => Id; ()];
             msg![window, "center"; ()];
 
-            // 让视图由 CALayer 支撑，之后直接设置图层内容
-            let view: Id = msg![window, "contentView"; Id];
+            // 换成我们自己的视图（能接收输入法），并让它由 CALayer 支撑，之后直接设置图层内容
+            let view: Id = msg![view_class(), "alloc"; Id];
+            let view: Id = msg![view, "initWithFrame:", rect => NSRect; Id];
+            msg![window, "setContentView:", view => Id; ()];
+            msg![view, "release"; ()];
             msg![view, "setWantsLayer:", 1i8 => i8; ()];
+            msg![window, "makeFirstResponder:", view => Id; i8];
 
             msg![window, "makeKeyAndOrderFront:", NIL => Id; ()];
             msg![app, "finishLaunching"; ()];
@@ -277,20 +335,18 @@ impl Window {
                 until = distant_past;
 
                 let kind: usize = msg![event, "type"; usize];
-                let flags: usize = msg![event, "modifierFlags"; usize];
                 if kind == NS_EVENT_TYPE_APPLICATION_DEFINED {
                     if !app.event(Event::Wake) {
                         return false;
                     }
-                } else if kind == NS_EVENT_TYPE_KEY_DOWN && flags & NS_COMMAND == 0 {
-                    // 按键自己处理，不交给 AppKit（否则会发出"嘟"的一声）
-                    for e in key_events(event, flags) {
-                        if !app.event(e) {
-                            return false;
-                        }
-                    }
                 } else {
+                    // 按键也交给 AppKit：它先检查菜单快捷键（Cmd+Q），再交给视图的 keyDown:
                     msg![self.app, "sendEvent:", event => Id; ()];
+                }
+                while let Some(e) = IME.with(|s| s.borrow_mut().events.pop_front()) {
+                    if !app.event(e) {
+                        return false;
+                    }
                 }
             }
             msg![self.app, "updateWindows"; ()];
@@ -320,7 +376,23 @@ impl Window {
             if app.needs_redraw() {
                 self.present(app.draw());
             }
+            self.update_ime_position(app.ime_cursor_area());
             true
+        }
+    }
+
+    /// 告诉输入法光标在屏幕上的位置（它会把候选词窗口放在下面）
+    unsafe fn update_ime_position(&self, (x, y, w, h): (u32, u32, u32, u32)) {
+        unsafe {
+            let scale = self.scale_factor();
+            let view_height = view_frame(self.view).size.height;
+            // 视图坐标原点在左下角，y 轴向上
+            let rect = NSRect {
+                origin: NSPoint { x: x as f64 / scale, y: view_height - (y + h) as f64 / scale },
+                size: NSSize { width: w as f64 / scale, height: h as f64 / scale },
+            };
+            let screen = rect_to_screen(self.window, rect);
+            IME.with(|s| s.borrow_mut().cursor_rect = screen);
         }
     }
 
@@ -425,3 +497,206 @@ fn named_key(code: u16) -> Option<Key> {
         _ => return None,
     })
 }
+
+// ---- 输入法（NSTextInputClient） ----
+
+struct ImeState {
+    /// 交给 App 的事件
+    events: VecDeque<Event>,
+    /// 正在输入、还没上屏的文字
+    marked: String,
+    /// 正在 keyDown: 里调用 interpretKeyEvents:
+    in_key_down: bool,
+    /// 这次按键开始时输入法是否已经在输入中
+    composing_at_start: bool,
+    /// 这次按键被输入法用掉了
+    consumed: bool,
+    /// 不在输入中时 insertText: 给出的文字，等 keyDown: 决定怎么发
+    pending_text: Option<String>,
+    /// 光标的屏幕坐标
+    cursor_rect: NSRect,
+}
+
+thread_local! {
+    static IME: RefCell<ImeState> = const { RefCell::new(ImeState {
+        events: VecDeque::new(),
+        marked: String::new(),
+        in_key_down: false,
+        composing_at_start: false,
+        consumed: false,
+        pending_text: None,
+        cursor_rect: NSRect { origin: NSPoint { x: 0.0, y: 0.0 }, size: NSSize { width: 0.0, height: 0.0 } },
+    }) };
+}
+
+/// 在运行时注册 CongminalView（NSView 的子类），只注册一次
+fn view_class() -> Id {
+    static CLASS: OnceLock<usize> = OnceLock::new();
+    *CLASS.get_or_init(|| unsafe { register_view_class() as usize }) as Id
+}
+
+unsafe fn register_view_class() -> Id {
+    unsafe {
+        let cls = objc_allocateClassPair(class(c"NSView"), c"CongminalView".as_ptr(), 0);
+        // 类型编码字符串描述参数类型：v=void c=BOOL @=对象 :=SEL Q=无符号整数 {...}=结构体 ^=指针
+        let methods: [(&CStr, *const c_void, &CStr); 13] = [
+            (c"acceptsFirstResponder", accepts_first_responder as *const c_void, c"c@:"),
+            (c"keyDown:", key_down as *const c_void, c"v@:@"),
+            (c"insertText:replacementRange:", insert_text as *const c_void, c"v@:@{_NSRange=QQ}"),
+            (
+                c"setMarkedText:selectedRange:replacementRange:",
+                set_marked_text as *const c_void,
+                c"v@:@{_NSRange=QQ}{_NSRange=QQ}",
+            ),
+            (c"unmarkText", unmark_text as *const c_void, c"v@:"),
+            (c"hasMarkedText", has_marked_text as *const c_void, c"c@:"),
+            (c"markedRange", marked_range as *const c_void, c"{_NSRange=QQ}@:"),
+            (c"selectedRange", selected_range as *const c_void, c"{_NSRange=QQ}@:"),
+            (c"validAttributesForMarkedText", valid_attributes as *const c_void, c"@@:"),
+            (
+                c"attributedSubstringForProposedRange:actualRange:",
+                attributed_substring as *const c_void,
+                c"@@:{_NSRange=QQ}^{_NSRange=QQ}",
+            ),
+            (c"characterIndexForPoint:", character_index as *const c_void, c"Q@:{CGPoint=dd}"),
+            (
+                c"firstRectForCharacterRange:actualRange:",
+                first_rect as *const c_void,
+                c"{CGRect={CGPoint=dd}{CGSize=dd}}@:{_NSRange=QQ}^{_NSRange=QQ}",
+            ),
+            (c"doCommandBySelector:", do_command as *const c_void, c"v@::"),
+        ];
+        for (name, imp, types) in methods {
+            class_addMethod(cls, sel_registerName(name.as_ptr()), imp, types.as_ptr());
+        }
+        let protocol = objc_getProtocol(c"NSTextInputClient".as_ptr());
+        if !protocol.is_null() {
+            class_addProtocol(cls, protocol);
+        }
+        objc_registerClassPair(cls);
+        cls
+    }
+}
+
+fn push_event(event: Event) {
+    IME.with(|s| s.borrow_mut().events.push_back(event));
+}
+
+extern "C" fn accepts_first_responder(_: Id, _: Sel) -> i8 {
+    1
+}
+
+extern "C" fn key_down(this: Id, _: Sel, event: Id) {
+    unsafe {
+        let flags: usize = msg![event, "modifierFlags"; usize];
+        // Cmd 组合键是给菜单用的，菜单没处理的就忽略
+        if flags & NS_COMMAND != 0 {
+            return;
+        }
+        IME.with(|s| {
+            let mut s = s.borrow_mut();
+            s.in_key_down = true;
+            s.composing_at_start = !s.marked.is_empty();
+            s.consumed = false;
+            s.pending_text = None;
+        });
+        // 先给输入法：它会回调 insertText / setMarkedText / doCommandBySelector
+        let events: Id = msg![class(c"NSArray"), "arrayWithObject:", event => Id; Id];
+        msg![this, "interpretKeyEvents:", events => Id; ()];
+        let (consumed, pending) = IME.with(|s| {
+            let mut s = s.borrow_mut();
+            s.in_key_down = false;
+            (s.consumed || s.composing_at_start, s.pending_text.take())
+        });
+        if consumed {
+            return;
+        }
+        let ctrl_or_alt = flags & (NS_CONTROL | NS_OPTION) != 0;
+        match pending {
+            // 普通文字（包括中文输入法直接给出的全角标点）
+            Some(text) if !ctrl_or_alt => push_event(Event::Text(text)),
+            // 功能键、Ctrl 组合键、Option 当 Alt 用：按终端的规则编码
+            _ => key_events(event, flags).into_iter().for_each(push_event),
+        }
+    }
+}
+
+extern "C" fn insert_text(_: Id, _: Sel, text: Id, _: NSRange) {
+    let text = unsafe { string_from(text) };
+    IME.with(|s| {
+        let mut s = s.borrow_mut();
+        if !s.marked.is_empty() {
+            s.marked.clear();
+            s.events.push_back(Event::Preedit(String::new()));
+        }
+        if s.in_key_down && !s.composing_at_start {
+            s.pending_text = Some(text);
+        } else {
+            // 输入法选好了字（上屏）
+            s.consumed = true;
+            s.events.push_back(Event::Text(text));
+        }
+    });
+}
+
+extern "C" fn set_marked_text(_: Id, _: Sel, text: Id, _: NSRange, _: NSRange) {
+    let text = unsafe { string_from(text) };
+    IME.with(|s| {
+        let mut s = s.borrow_mut();
+        s.consumed = true;
+        s.marked = text.clone();
+        s.events.push_back(Event::Preedit(text));
+    });
+}
+
+extern "C" fn unmark_text(_: Id, _: Sel) {
+    IME.with(|s| {
+        let mut s = s.borrow_mut();
+        if !s.marked.is_empty() {
+            s.marked.clear();
+            s.events.push_back(Event::Preedit(String::new()));
+        }
+    });
+}
+
+extern "C" fn has_marked_text(_: Id, _: Sel) -> i8 {
+    IME.with(|s| !s.borrow().marked.is_empty()) as i8
+}
+
+extern "C" fn marked_range(_: Id, _: Sel) -> NSRange {
+    IME.with(|s| {
+        let s = s.borrow();
+        if s.marked.is_empty() {
+            NSRange { location: NOT_FOUND, length: 0 }
+        } else {
+            NSRange { location: 0, length: s.marked.encode_utf16().count() }
+        }
+    })
+}
+
+extern "C" fn selected_range(_: Id, _: Sel) -> NSRange {
+    NSRange { location: NOT_FOUND, length: 0 }
+}
+
+extern "C" fn valid_attributes(_: Id, _: Sel) -> Id {
+    unsafe { msg![class(c"NSArray"), "array"; Id] }
+}
+
+extern "C" fn attributed_substring(_: Id, _: Sel, _: NSRange, _: *mut NSRange) -> Id {
+    NIL
+}
+
+extern "C" fn character_index(_: Id, _: Sel, _: NSPoint) -> usize {
+    NOT_FOUND
+}
+
+/// 输入法问"文字在屏幕上的哪里"，用来摆放候选词窗口
+extern "C" fn first_rect(_: Id, _: Sel, _: NSRange, actual: *mut NSRange) -> NSRect {
+    if !actual.is_null() {
+        unsafe { *actual = NSRange { location: NOT_FOUND, length: 0 } };
+    }
+    IME.with(|s| s.borrow().cursor_rect)
+}
+
+/// 输入法没用掉的按键会变成编辑命令（insertNewline: 之类），由 keyDown: 按终端规则处理，这里什么都不做
+extern "C" fn do_command(_: Id, _: Sel, _: Sel) {}

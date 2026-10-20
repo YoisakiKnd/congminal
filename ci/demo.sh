@@ -13,4 +13,6 @@ done
 printf '\033[0m\n'
 # DEC 画线字符集只包住边框，否则中间的字母也会被翻译成符号
 printf '\033(0lqqqqqqk\033(B\n\033(0x\033(B box  \033(0x\033(B\n\033(0mqqqqqqj\033(B\n'
+printf '中文：你好，世界  宽字符占两格|\n'
+printf 'starship: \033[1;32m\342\235\257\033[0m  nerd font: \356\202\240 \356\202\260  emoji: \360\237\246\200\n'
 sleep 8

@@ -171,6 +171,38 @@ unsafe extern "system" {
     fn GetModuleHandleW(name: *const u16) -> Hinstance;
 }
 
+#[repr(C)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+#[repr(C)]
+struct CompositionForm {
+    style: u32,
+    position: Point,
+    area: Rect,
+}
+
+#[repr(C)]
+struct CandidateForm {
+    index: u32,
+    style: u32,
+    position: Point,
+    area: Rect,
+}
+
+const CFS_POINT: u32 = 0x0002;
+const CFS_EXCLUDE: u32 = 0x0080;
+
+#[link(name = "imm32")]
+unsafe extern "system" {
+    fn ImmGetContext(hwnd: Hwnd) -> isize;
+    fn ImmReleaseContext(hwnd: Hwnd, context: isize) -> i32;
+    fn ImmSetCompositionWindow(context: isize, form: *const CompositionForm) -> i32;
+    fn ImmSetCandidateWindow(context: isize, form: *const CandidateForm) -> i32;
+}
+
 thread_local! {
     /// WndProc 产生的事件，等主循环来取
     static QUEUE: RefCell<VecDeque<Event>> = const { RefCell::new(VecDeque::new()) };
@@ -187,6 +219,8 @@ fn push(event: Event) {
 pub struct Window {
     hwnd: Hwnd,
     scale: f64,
+    /// 上次告诉输入法的光标位置
+    ime_area: Option<(u32, u32, u32, u32)>,
 }
 
 /// 跨线程唤醒：PostMessageW 是线程安全的
@@ -252,7 +286,7 @@ impl Window {
                 return Err("CreateWindowExW 失败".into());
             }
             ShowWindow(hwnd, SW_SHOW);
-            Ok(Window { hwnd, scale })
+            Ok(Window { hwnd, scale, ime_area: None })
         }
     }
 
@@ -264,7 +298,7 @@ impl Window {
         Waker(self.hwnd)
     }
 
-    pub fn run(self, app: &mut dyn App) {
+    pub fn run(mut self, app: &mut dyn App) {
         let mut rect = Rect::default();
         unsafe { GetClientRect(self.hwnd, &mut rect) };
         push(Event::Resize { width: rect.right as u32, height: rect.bottom as u32 });
@@ -282,6 +316,7 @@ impl Window {
             if app.needs_redraw() {
                 self.present(app.draw());
             }
+            self.update_ime_position(app.ime_cursor_area());
 
             // 阻塞等待下一条消息，然后把已经排队的消息一起处理掉
             if unsafe { GetMessageW(&mut msg, 0, 0, 0) } <= 0 {
@@ -299,6 +334,28 @@ impl Window {
                     return;
                 }
             }
+        }
+    }
+
+    /// 告诉输入法光标在哪：拼音输入框跟着光标走，候选词窗口避开光标所在的行
+    fn update_ime_position(&mut self, area: (u32, u32, u32, u32)) {
+        if self.ime_area == Some(area) {
+            return;
+        }
+        self.ime_area = Some(area);
+        let (x, y, w, h) = (area.0 as i32, area.1 as i32, area.2 as i32, area.3 as i32);
+        let cursor = Rect { left: x, top: y, right: x + w, bottom: y + h };
+        unsafe {
+            let context = ImmGetContext(self.hwnd);
+            if context == 0 {
+                return;
+            }
+            let composition = CompositionForm { style: CFS_POINT, position: Point { x, y }, area: Rect::default() };
+            ImmSetCompositionWindow(context, &composition);
+            let candidate =
+                CandidateForm { index: 0, style: CFS_EXCLUDE, position: Point { x, y: y + h }, area: cursor };
+            ImmSetCandidateWindow(context, &candidate);
+            ImmReleaseContext(self.hwnd, context);
         }
     }
 

@@ -24,6 +24,10 @@ impl Flags {
     pub const INVERSE: Flags = Flags(1 << 5);
     pub const HIDDEN: Flags = Flags(1 << 6);
     pub const STRIKE: Flags = Flags(1 << 7);
+    /// 宽字符（汉字、emoji）本体，占这一格和右边一格
+    pub const WIDE: Flags = Flags(1 << 8);
+    /// 宽字符右半边的占位格，本身不画字
+    pub const WIDE_SPACER: Flags = Flags(1 << 9);
 
     pub fn contains(self, other: Flags) -> bool {
         self.0 & other.0 == other.0

@@ -16,6 +16,12 @@ pub enum Event {
         key: Key,
         mods: Mods,
     },
+    /// 输入法确认上屏的文字
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    Text(String),
+    /// 输入法正在输入、还没上屏的文字（比如拼音）。空字符串表示输入结束。
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    Preedit(String),
     /// 窗口内容区域的新尺寸（物理像素）
     Resize {
         width: u32,
@@ -36,6 +42,9 @@ pub trait App {
     fn draw(&mut self) -> &Framebuffer;
     /// 如果窗口标题需要改，返回新标题
     fn take_title(&mut self) -> Option<String>;
+    /// 光标的像素区域 (x, y, 宽, 高)，原点在窗口内容区左上角。输入法用它摆放候选词窗口。
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
+    fn ime_cursor_area(&self) -> (u32, u32, u32, u32);
 }
 
 #[cfg(target_os = "linux")]

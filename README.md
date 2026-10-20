@@ -14,8 +14,26 @@ cargo test
 | 环境变量 | 作用 |
 |---|---|
 | `CONGMINAL_SHELL` | 指定要启动的 shell（默认 Unix 用 `$SHELL`，Windows 用 `%COMSPEC%`） |
-| `CONGMINAL_SCALE` | 缩放比例，≥1.5 时使用 16×32 的大字体（Linux 上没有自动检测） |
-| `CONGMINAL_TRACE` | 设为任意值后，把还没实现的转义序列打印到 stderr |
+| `CONGMINAL_FONT` | 字体名或字体文件路径，逗号分隔多个：第一个找得到的作主字体，其余作缺字时的后备 |
+| `CONGMINAL_FONT_SIZE` | 字号（逻辑像素），默认 15 |
+| `CONGMINAL_SCALE` | 缩放比例（Linux 上没有自动检测，高分屏可以设成 2） |
+| `CONGMINAL_TRACE` | 设为任意值后，把实际使用的字体和还没实现的转义序列打印到 stderr |
+
+## 字体
+
+默认依次寻找 **Maple Mono NF CN** → Maple Mono NF → Maple Mono CN → Maple Mono → 系统等宽字体（Menlo / Consolas / DejaVu Sans Mono）→ 内置的 Terminus 点阵字体。
+推荐安装 Maple Mono NF CN，它同时包含中文和 Nerd Font 图标（starship 等提示符要用）：
+
+```sh
+brew install --cask font-maple-mono-nf-cn     # macOS
+```
+
+Windows 和 Linux 可以从 [Maple Mono 的发布页](https://github.com/subframe7536/maple-font/releases) 下载 `MapleMono-NF-CN.zip`，
+安装到系统字体目录即可。
+
+主字体缺字时会去系统的中文字体里找（macOS：苹方、冬青黑体、华文黑体；Windows：微软雅黑、宋体；Linux：思源黑体、文泉驿）。
+
+字体引擎是自己写的（`src/font/`）：TrueType 解析、二次贝塞尔轮廓、抗锯齿光栅化、按名字查找系统字体。
 
 ## CI 与测试版
 
@@ -49,20 +67,23 @@ git push origin v0.1.0-alpha.1
 |---|---|---|
 | `src/pty/` | 启动 shell 并与之通信：Unix 用 `posix_openpt` + `fork`，Windows 用 ConPTY | 是 |
 | `src/vt.rs` | 转义序列解析器（Paul Williams 状态机）+ UTF-8 解码 | 否 |
-| `src/term/` | 终端状态机：光标、滚动区域、备用屏幕、SGR 属性…… | 否 |
+| `src/term/` | 终端状态机：光标、滚动区域、备用屏幕、SGR 属性、宽字符…… | 否 |
 | `src/input.rs` | 按键编码成字节序列 | 否 |
-| `src/font.rs` | PSF 点阵字体解析 | 否 |
+| `src/font/` | 字体：TrueType 解析和光栅化、系统字体查找、PSF 点阵字体 | 否 |
 | `src/render.rs` | 软件渲染到像素缓冲区 | 否 |
 | `src/platform/` | 窗口和事件循环：X11 / Win32 / Cocoa | 是 |
 
 ## 已知限制
 
-- 中日韩等宽字符按 1 格处理，字体里也没有这些字形（显示为 `◆`）
+- 彩色 emoji 不支持（macOS、Linux 上显示为方框；Windows 上会用 Segoe UI Emoji 显示单色版本，尚未在真机验证）
+- 只支持 TrueType 轮廓的字体；OTF/CFF 字体（比如思源黑体的 .otf/.ttc）会被跳过
+- 没有连字（ligature）、没有斜体字体（斜体属性按正常字体显示）
+- 组合字符（单独的重音符号等）会被丢弃
 - 没有回滚缓冲区、文本选择、复制粘贴、鼠标上报
 - 窗口缩放时不重排文本
-- macOS 上没有接输入法（按键直接取自 `NSEvent`）
-- Windows 和 macOS 版目前只在 CI 上做过冒烟测试，还没有人在真机上用过
+- 输入法：macOS 实现了 `NSTextInputClient`（预编辑文字显示在光标处，尚未在真机验证）；Windows 用系统自己的输入框；Linux 只有基本的 XIM 支持
 
-## 字体
+## 授权
 
 `assets/fonts/` 里是 Terminus Font，使用 SIL Open Font License 1.1 授权，见 `assets/fonts/LICENSE-Terminus.txt`。
+Maple Mono 不随程序分发，需要另外安装。

@@ -45,6 +45,8 @@ status=$?
 
 echo "--- trace log ---"
 cat "$log"
+# 实际用上的字体写进注解，不登录 GitHub 也能看到
+grep '字体' "$log" | head -3 | while read -r line; do echo "::notice::$line"; done
 if [ "$status" -ne 0 ]; then
     echo "::error::congminal 退出码 $status"
     exit 1

@@ -48,6 +48,8 @@ struct Congminal {
     inbox: Arc<Mutex<Inbox>>,
     /// 已经发出唤醒但主线程还没处理。用来合并唤醒，避免 shell 狂刷输出时塞爆事件队列。
     wake_pending: Arc<AtomicBool>,
+    /// 输入法正在输入、还没上屏的文字
+    preedit: String,
     dirty: bool,
 }
 
@@ -87,6 +89,15 @@ impl App for Congminal {
                     self.write_to_pty(&bytes);
                 }
             }
+            Event::Text(text) => {
+                self.preedit.clear();
+                self.dirty = true;
+                self.write_to_pty(text.as_bytes());
+            }
+            Event::Preedit(text) => {
+                self.preedit = text;
+                self.dirty = true;
+            }
             Event::Resize { width, height } => {
                 self.framebuffer.resize(width as usize, height as usize);
                 let (cols, rows) = self.renderer.grid_size(width as usize, height as usize);
@@ -109,13 +120,17 @@ impl App for Congminal {
     }
 
     fn draw(&mut self) -> &Framebuffer {
-        self.renderer.draw(&self.term, &mut self.framebuffer);
+        self.renderer.draw(&self.term, &self.preedit, &mut self.framebuffer);
         self.dirty = false;
         &self.framebuffer
     }
 
     fn take_title(&mut self) -> Option<String> {
         self.term.take_title()
+    }
+
+    fn ime_cursor_area(&self) -> (u32, u32, u32, u32) {
+        self.renderer.cursor_rect(&self.term)
     }
 }
 
@@ -125,11 +140,20 @@ fn scale_override() -> Option<f64> {
 }
 
 fn run() -> Result<(), String> {
+    // 加载字体要扫描系统字体目录，只做一次；除非窗口实际所在屏幕的缩放比例和预估的不一样
+    let mut initial: Option<(f64, Renderer)> = None;
     let window = Window::new("congminal", |scale| {
-        let renderer = Renderer::new(scale_override().unwrap_or(scale));
-        renderer.pixel_size(INITIAL_COLS, INITIAL_ROWS)
+        let scale = scale_override().unwrap_or(scale);
+        let renderer = Renderer::new(scale);
+        let size = renderer.pixel_size(INITIAL_COLS, INITIAL_ROWS);
+        initial = Some((scale, renderer));
+        size
     })?;
-    let renderer = Renderer::new(scale_override().unwrap_or(window.scale_factor()));
+    let scale = scale_override().unwrap_or(window.scale_factor());
+    let renderer = match initial {
+        Some((initial_scale, renderer)) if initial_scale == scale => renderer,
+        _ => Renderer::new(scale),
+    };
 
     let inbox = Arc::new(Mutex::new(Inbox::default()));
     let wake_pending = Arc::new(AtomicBool::new(false));
@@ -161,6 +185,7 @@ fn run() -> Result<(), String> {
         framebuffer: Framebuffer::new(0, 0),
         inbox,
         wake_pending,
+        preedit: String::new(),
         dirty: true,
     };
     window.run(&mut app);

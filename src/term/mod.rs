@@ -5,8 +5,11 @@
 //! - <https://vt100.net/docs/vt510-rm/contents.html>
 
 mod grid;
+mod width;
+mod width_table;
 
 pub use grid::{Cell, Color, Flags, Grid};
+pub use width::char_width;
 
 use crate::vt::{Params, Perform};
 use std::sync::OnceLock;
@@ -214,26 +217,77 @@ impl Terminal {
 
     fn print_char(&mut self, c: char) {
         let c = self.translate_charset(c);
+        let width = char_width(c);
+        // 组合字符（比如单独的重音符号）：暂时丢弃，以后可以叠加到前一个字上
+        if width == 0 {
+            return;
+        }
         let cols = self.cols();
+        if width > cols {
+            return;
+        }
 
         if self.cursor.pending_wrap && self.modes.autowrap {
-            self.grid[self.cursor.row].wrapped = true;
-            self.cursor.col = 0;
-            self.index();
+            self.wrap_line();
+        }
+        // 宽字符在最后一列放不下：这一格留空，整个字换到下一行（和 xterm 一样）
+        if width == 2 && self.cursor.col + 1 == cols {
+            if !self.modes.autowrap {
+                return;
+            }
+            let (row, col) = (self.cursor.row, self.cursor.col);
+            self.clear_wide_fragment(row, col);
+            self.grid[row][col] = self.blank();
+            self.wrap_line();
         }
         if self.modes.insert {
-            self.insert_blanks(1);
+            self.insert_blanks(width);
         }
 
+        let (row, col) = (self.cursor.row, self.cursor.col);
+        self.clear_wide_fragment(row, col);
         let template = self.cursor.template;
-        self.grid[self.cursor.row][self.cursor.col] = Cell { c, ..template };
+        if width == 2 {
+            self.clear_wide_fragment(row, col + 1);
+            let mut cell = Cell { c, ..template };
+            cell.flags.insert(Flags::WIDE);
+            self.grid[row][col] = cell;
+            // 占位格带上背景色，这样整个宽字符的背景是连续的
+            let mut spacer = Cell::blank(&template);
+            spacer.flags = Flags::WIDE_SPACER;
+            self.grid[row][col + 1] = spacer;
+        } else {
+            self.grid[row][col] = Cell { c, ..template };
+        }
 
-        if self.cursor.col + 1 < cols {
-            self.cursor.col += 1;
+        if col + width < cols {
+            self.cursor.col += width;
         } else {
             self.cursor.pending_wrap = self.modes.autowrap;
         }
         self.last_char = c;
+    }
+
+    fn wrap_line(&mut self) {
+        self.grid[self.cursor.row].wrapped = true;
+        self.cursor.col = 0;
+        self.index();
+    }
+
+    /// 要覆盖 (row, col) 之前调用：如果它是宽字符的一半，把另一半也擦掉，避免屏幕上留下半个字
+    fn clear_wide_fragment(&mut self, row: usize, col: usize) {
+        let flags = self.grid[row][col].flags;
+        let neighbor = if flags.contains(Flags::WIDE) {
+            col + 1
+        } else if flags.contains(Flags::WIDE_SPACER) && col > 0 {
+            col - 1
+        } else {
+            return;
+        };
+        if neighbor < self.cols() {
+            let cell = &mut self.grid[row][neighbor];
+            *cell = Cell::blank(cell);
+        }
     }
 
     fn translate_charset(&self, c: char) -> char {
@@ -839,7 +893,7 @@ fn default_tabs(cols: usize) -> Vec<bool> {
 }
 
 /// 设置环境变量 CONGMINAL_TRACE=1 后，把没实现的序列打印到 stderr，方便补功能
-fn trace(args: std::fmt::Arguments) {
+pub fn trace(args: std::fmt::Arguments) {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     if *ENABLED.get_or_init(|| std::env::var_os("CONGMINAL_TRACE").is_some()) {
         eprintln!("[trace] {args}");
@@ -860,7 +914,12 @@ mod tests {
     fn screen(term: &Terminal) -> Vec<String> {
         (0..term.rows())
             .map(|r| {
-                let line: String = term.grid()[r].cells.iter().map(|c| c.c).collect();
+                let line: String = term.grid()[r]
+                    .cells
+                    .iter()
+                    .filter(|c| !c.flags.contains(Flags::WIDE_SPACER))
+                    .map(|c| c.c)
+                    .collect();
                 line.trim_end().to_string()
             })
             .collect()
@@ -991,6 +1050,49 @@ mod tests {
     fn title() {
         let mut t = run(5, 1, "\x1b]0;hello;world\x07");
         assert_eq!(t.take_title().as_deref(), Some("hello;world"));
+    }
+
+    #[test]
+    fn wide_chars() {
+        let t = run(6, 2, "中文a");
+        assert_eq!(screen(&t), ["中文a", ""]);
+        assert_eq!(t.cursor_position(), (0, 5));
+        assert!(t.grid()[0][0].flags.contains(Flags::WIDE));
+        assert!(t.grid()[0][1].flags.contains(Flags::WIDE_SPACER));
+    }
+
+    #[test]
+    fn wide_char_at_last_column_wraps() {
+        // 最后一列只剩一格，放不下汉字，留空后换行
+        let t = run(5, 2, "abcd中");
+        assert_eq!(screen(&t), ["abcd", "中"]);
+        assert_eq!(t.cursor_position(), (1, 2));
+    }
+
+    #[test]
+    fn wide_char_fills_line_exactly() {
+        let t = run(4, 2, "ab中");
+        assert_eq!(screen(&t), ["ab中", ""]);
+        assert!(t.cursor.pending_wrap);
+        let t = run(4, 2, "ab中x");
+        assert_eq!(screen(&t), ["ab中", "x"]);
+    }
+
+    #[test]
+    fn overwriting_half_of_wide_char() {
+        // 覆盖左半边：右半边的占位格也被清掉
+        let t = run(4, 1, "中\ra");
+        assert_eq!(screen(&t), ["a"]);
+        assert!(!t.grid()[0][1].flags.contains(Flags::WIDE_SPACER));
+        // 覆盖右半边：左半边也被清掉
+        let t = run(4, 1, "中\x1b[1;2Hb");
+        assert_eq!(screen(&t), [" b"]);
+    }
+
+    #[test]
+    fn combining_chars_are_dropped() {
+        let t = run(4, 1, "e\u{301}x");
+        assert_eq!(screen(&t), ["ex"]);
     }
 
     #[test]

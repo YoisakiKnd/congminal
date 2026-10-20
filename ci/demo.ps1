@@ -12,4 +12,6 @@ Write-Host "$e[0m"
 Write-Host "$e(0lqqqqqqk$e(B"
 Write-Host "$e(0x$e(B box  $e(0x$e(B"
 Write-Host "$e(0mqqqqqqj$e(B"
+Write-Host '中文：你好，世界  宽字符占两格|'
+Write-Host "starship: $e[1;32m$([char]0x276F)$e[0m  nerd font: $([char]0xE0A0) $([char]0xE0B0)  emoji: $([char]::ConvertFromUtf32(0x1F980))"
 Start-Sleep -Seconds 8
