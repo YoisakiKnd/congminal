@@ -31,6 +31,11 @@ impl Font {
         &self.glyphs[index * self.glyph_size..(index + 1) * self.glyph_size]
     }
 
+    /// 字体里有没有这个字（没有时 `glyph` 会返回替代字形）
+    pub fn has(&self, c: char) -> bool {
+        self.lookup(c).is_some()
+    }
+
     fn lookup(&self, c: char) -> Option<usize> {
         match self.map.get(c as usize) {
             Some(&i) if i != 0 => Some(i as usize - 1),

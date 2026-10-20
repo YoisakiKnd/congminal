@@ -59,11 +59,13 @@ pub struct Cell {
     pub fg: Color,
     pub bg: Color,
     pub flags: Flags,
+    /// 附加在这个字上的组合字符（重音符号等）在 Terminal 组合字符表里的编号，0 表示没有
+    pub marks: u32,
 }
 
 impl Default for Cell {
     fn default() -> Cell {
-        Cell { c: ' ', fg: Color::Default, bg: Color::Default, flags: Flags::default() }
+        Cell { c: ' ', fg: Color::Default, bg: Color::Default, flags: Flags::default(), marks: 0 }
     }
 }
 

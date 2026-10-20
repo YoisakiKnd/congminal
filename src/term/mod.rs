@@ -4,19 +4,26 @@
 //! - <https://invisible-island.net/xterm/ctlseqs/ctlseqs.html>
 //! - <https://vt100.net/docs/vt510-rm/contents.html>
 
+mod compose;
+mod compose_table;
 mod grid;
 mod reflow;
 mod width;
 mod width_table;
 
+pub use compose::compose_all;
 pub use grid::{Cell, Color, Flags, Grid, History, Row};
 pub use width::char_width;
 
+use crate::hash::FnvHashMap;
 use crate::vt::{Params, Perform};
 use std::sync::OnceLock;
 
 /// 默认保留的回滚行数（配置文件可以改）
 pub const DEFAULT_SCROLLBACK: usize = 10_000;
+
+/// 组合字符表最多存多少种不同的组合
+const MAX_MARKS: usize = 1 << 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CursorShape {
@@ -166,8 +173,11 @@ pub struct Terminal {
     active_charset: usize,
     /// REP（重复上一个字符）要用
     last_char: char,
-    /// 最近写入字符的格子，变体选择符要修改它的显示样式
+    /// 最近写入字符的格子，变体选择符、组合字符要附加到它上面
     last_glyph: Option<(usize, usize)>,
+    /// 组合字符表：格子里只存编号，相同的组合只存一份
+    marks: Vec<String>,
+    mark_ids: FnvHashMap<String, u32>,
     /// 程序用 DECSCUSR 设置的光标形状，None 表示用配置里的默认形状
     cursor_shape: Option<CursorShape>,
     default_cursor_shape: CursorShape,
@@ -196,6 +206,8 @@ impl Terminal {
             active_charset: 0,
             last_char: ' ',
             last_glyph: None,
+            marks: Vec::new(),
+            mark_ids: FnvHashMap::default(),
             cursor_shape: None,
             default_cursor_shape: CursorShape::Block,
             title: None,
@@ -407,6 +419,19 @@ impl Terminal {
                     flags.insert(Flags::EMOJI);
                 } else {
                     flags.remove(Flags::EMOJI);
+                }
+            } else if let Some((row, col)) = self.last_glyph
+                && row < self.rows()
+                && col < self.cols()
+            {
+                // 其他零宽字符（重音符号、韩文的中声终声……）附加到前一个字上
+                let mut marks = self.marks(self.grid[row][col].marks).to_string();
+                marks.push(c);
+                // 防止一个字上叠几百个符号（"乱码文字"）把内存撑爆
+                if marks.len() <= 32
+                    && let Some(id) = self.intern_marks(marks)
+                {
+                    self.grid[row][col].marks = id;
                 }
             }
             return;
@@ -807,6 +832,28 @@ impl Terminal {
             2026 => self.modes.synchronized = on,
             _ => trace(format_args!("未处理的私有模式 ?{mode} {}", if on { 'h' } else { 'l' })),
         }
+    }
+
+    /// 组合字符编号对应的字符串
+    pub fn marks(&self, id: u32) -> &str {
+        match id {
+            0 => "",
+            id => &self.marks[id as usize - 1],
+        }
+    }
+
+    /// 表满了返回 None（不会清理，免得一直输出随机组合的程序让它无限增长）
+    fn intern_marks(&mut self, marks: String) -> Option<u32> {
+        if let Some(&id) = self.mark_ids.get(&marks) {
+            return Some(id);
+        }
+        if self.marks.len() >= MAX_MARKS {
+            return None;
+        }
+        self.marks.push(marks.clone());
+        let id = self.marks.len() as u32;
+        self.mark_ids.insert(marks, id);
+        Some(id)
     }
 
     /// 私有模式现在的状态，不认识的模式返回 None
@@ -1388,9 +1435,20 @@ mod tests {
     }
 
     #[test]
-    fn combining_chars_are_dropped() {
+    fn combining_chars_attach_to_previous() {
         let t = run(4, 1, "e\u{301}x");
         assert_eq!(screen(&t), ["ex"]);
+        assert_eq!(t.marks(t.grid()[0][0].marks), "\u{301}");
+        assert_eq!(t.grid()[0][1].marks, 0);
+        // 相同的组合只存一份
+        let t = run(4, 1, "e\u{301}a\u{301}");
+        assert_eq!(t.grid()[0][0].marks, t.grid()[0][1].marks);
+        // 韩文分解形式：中声、终声附加在初声上
+        let t = run(4, 1, "\u{1112}\u{1161}\u{11AB}");
+        assert_eq!(t.marks(t.grid()[0][0].marks), "\u{1161}\u{11AB}");
+        // 覆盖之后组合字符也跟着消失
+        let t = run(4, 1, "e\u{301}\rx");
+        assert_eq!(t.grid()[0][0].marks, 0);
     }
 
     #[test]

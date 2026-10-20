@@ -4,7 +4,7 @@ use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph, Pixels};
 use crate::hash::Fnv;
 use crate::selection::Point;
-use crate::term::{Cell, Color, CursorShape, Flags, Terminal, char_width};
+use crate::term::{Cell, Color, CursorShape, Flags, Terminal, char_width, compose_all};
 use std::hash::{Hash, Hasher};
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
@@ -98,6 +98,17 @@ fn selected(selection: Option<(Point, Point)>, line: u64, col: usize) -> bool {
         let p = Point { line, col };
         start <= p && p <= end
     })
+}
+
+/// 不画出来的零宽字符：零宽空格和连接符、方向控制符、变体选择符等
+fn invisible(c: char) -> bool {
+    matches!(c,
+        '\u{200B}'..='\u{200F}'
+            | '\u{2028}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{FEFF}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{E0100}'..='\u{E01EF}')
 }
 
 fn hash<T: Hash>(value: &T) -> u64 {
@@ -198,7 +209,10 @@ impl Renderer {
             hash(&(fb.width, fb.height, rows, cols, term.display_offset(), term.history().len(), default_bg));
         let keys: Vec<u64> = (0..rows).map(|row| self.row_key(term, row, &cursor, selection)).collect();
         let full = frame_key != self.last_frame || self.last_rows.len() != rows;
-        let dirty: Vec<bool> = (0..rows).map(|row| full || keys[row] != self.last_rows[row]).collect();
+        let changed: Vec<bool> = (0..rows).map(|row| full || keys[row] != self.last_rows[row]).collect();
+        // 伸出格子的笔画会画到上下相邻的行里（也要擦掉旧的），所以相邻的行也重画
+        let dirty: Vec<bool> =
+            (0..rows).map(|row| changed[row.saturating_sub(1)..(row + 2).min(rows)].contains(&true)).collect();
         self.last_frame = frame_key;
         self.last_rows = keys;
 
@@ -326,10 +340,19 @@ impl Renderer {
                             && !(cursor.visible && row == cursor.row && col + 1 == cursor.col)
                     });
                 let cells = if cell.flags.contains(Flags::WIDE) || roomy { 2 } else { 1 };
-                if let Some(glyph) =
-                    self.fonts.glyph(cell.c, cell.flags.contains(Flags::BOLD), cell.flags.contains(Flags::EMOJI), cells)
-                {
+                let bold = cell.flags.contains(Flags::BOLD);
+                // 带组合字符的先合成（e + ◌́ → é），合不进去的符号叠画在上面
+                let (c, rest) = match cell.marks {
+                    0 => (cell.c, String::new()),
+                    id => compose_all(cell.c, term.marks(id)),
+                };
+                if let Some(glyph) = self.fonts.glyph(c, bold, cell.flags.contains(Flags::EMOJI), cells) {
                     blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, fg, clip);
+                }
+                for mark in rest.chars().filter(|&m| !invisible(m)) {
+                    if let Some(glyph) = self.fonts.mark_glyph(mark, bold, cells) {
+                        blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, fg, clip);
+                    }
                 }
             }
             if decorations {
@@ -647,6 +670,10 @@ mod tests {
             "\x1b[1;1H\x1b[2K",
             "\x1b[7;5H🦀 ❤\u{fe0f} ok",
             "\x1b[3 q",
+            "\x1b[4;10Hcafe\u{301} q\u{301}\u{308}",
+            // 只改一行：伸到相邻行的笔画（下伸部分、叠在上面的符号）也要画对
+            "\x1b[4;16Hgy\u{302}",
+            "\x1b[5;1Hjp",
         ];
         let selections = [None, Some((Point { line: 1, col: 2 }, Point { line: 2, col: 4 }))];
         for (i, step) in steps.iter().enumerate() {
@@ -660,5 +687,23 @@ mod tests {
                 panic!("第 {i} 步之后，像素 ({}, {}) 不一样", p % fb.width, p / fb.width);
             }
         }
+    }
+
+    /// 分解形式（e + U+0301）和合成好的 é 画出来一样
+    #[test]
+    fn combining_marks_are_composed() {
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let (width, height) = renderer.pixel_size(4, 1);
+        let mut draw = |text: &str| {
+            let mut term = Terminal::new(4, 1);
+            Parser::new().advance(&mut term, text.as_bytes());
+            let mut fb = Framebuffer::new(width as usize, height as usize);
+            renderer.invalidate();
+            renderer.draw(&term, "", None, true, &mut fb);
+            fb.pixels
+        };
+        assert_eq!(draw("e\u{301}\x1b[?25l"), draw("é\x1b[?25l"));
+        assert_eq!(draw("\u{1112}\u{1161}\u{11AB}\x1b[?25l"), draw("한\x1b[?25l"));
     }
 }

@@ -72,6 +72,8 @@ pub struct Fonts {
     source: Source,
     /// 键：(字符, 粗体, emoji 样式, 可以占几格)
     cache: FnvHashMap<(char, bool, bool, u8), Option<Glyph>>,
+    /// 组合字符（重音符号等）的字形，键：(字符, 粗体, 基础字符占几格)
+    marks: FnvHashMap<(char, bool, u8), Option<Glyph>>,
 }
 
 enum Source {
@@ -160,6 +162,7 @@ impl Fonts {
             warnings,
             source: Source::Bitmap { top: (cell_height as i32 - regular.height as i32) / 2, regular, bold },
             cache: FnvHashMap::default(),
+            marks: FnvHashMap::default(),
         }
     }
 
@@ -199,6 +202,7 @@ impl Fonts {
                 baseline: ((cell_height - ascent - descent) / 2.0 + ascent).round() as i32,
             })),
             cache: FnvHashMap::default(),
+            marks: FnvHashMap::default(),
         }
     }
 
@@ -216,6 +220,23 @@ impl Fonts {
             self.cache.insert(key, glyph);
         }
         self.cache.get(&key).and_then(Option::as_ref)
+    }
+
+    /// 叠在基础字符上的组合字符（比如 U+0301 重音符号）。`cells`：基础字符占几格。
+    /// 和 `glyph` 不同，所有字体里都没有这个字时返回 None，不画"缺字"方框。
+    pub fn mark_glyph(&mut self, c: char, bold: bool, cells: usize) -> Option<&Glyph> {
+        let key = (c, bold, cells as u8);
+        if !self.marks.contains_key(&key) {
+            let glyph = match &mut self.source {
+                Source::Bitmap { regular, bold: bold_font, top } => {
+                    let font = if bold { bold_font } else { regular };
+                    if font.has(c) { bitmap_glyph(font, c, *top) } else { None }
+                }
+                Source::Outline(outline) => outline.mark_glyph(c, bold, cells * self.cell_width, self.cell_width),
+            };
+            self.marks.insert(key, glyph);
+        }
+        self.marks.get(&key).and_then(Option::as_ref)
     }
 }
 
@@ -279,6 +300,52 @@ impl Outline {
         let span = span as f32;
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span - advance) / 2.0).round() as i32;
+        Some(Glyph {
+            left: bitmap.left + shift,
+            top: self.baseline + bitmap.top,
+            width: bitmap.width,
+            height: bitmap.height,
+            pixels: Pixels::Alpha(bitmap.alpha),
+        })
+    }
+
+    /// 组合字符。`span`：基础字符占的像素宽度，`cell_width`：一格的宽度
+    fn mark_glyph(&mut self, c: char, bold: bool, span: usize, cell_width: usize) -> Option<Glyph> {
+        let synthetic_bold = bold && self.bold.is_none();
+        let primary = match &self.bold {
+            Some(face) if bold => face,
+            _ => &self.regular,
+        };
+        let face = if primary.glyph_index(c) != 0 {
+            primary
+        } else {
+            for i in 0..self.fallbacks.len() {
+                load_pending(&mut self.fallbacks, i, "后备字体");
+                if let Fallback::Loaded(face) = &self.fallbacks[i]
+                    && face.glyph_index(c) != 0
+                {
+                    break;
+                }
+            }
+            self.fallbacks.iter().find_map(|f| match f {
+                Fallback::Loaded(face) if face.glyph_index(c) != 0 => Some(face),
+                _ => None,
+            })?
+        };
+        let index = face.glyph_index(c);
+        let scale = self.pixel_size / face.units_per_em as f32;
+        let mut bitmap = raster::rasterize(&face.outline(index), scale)?;
+        if synthetic_bold {
+            embolden(&mut bitmap);
+        }
+        let advance = face.advance(index) as f32 * scale;
+        let shift = if advance < 1.0 {
+            // 不占宽度的组合字形画在原点左边，按"紧跟在一格宽的字后面"设计：
+            // 把原点放在基础字符中间往右半格的位置，宽字符上也能居中
+            ((span + cell_width) as f32 / 2.0).round() as i32
+        } else {
+            ((span as f32 - advance) / 2.0).round() as i32
+        };
         Some(Glyph {
             left: bitmap.left + shift,
             top: self.baseline + bitmap.top,

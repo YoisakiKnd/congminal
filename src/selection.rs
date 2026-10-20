@@ -88,14 +88,13 @@ impl Selection {
             }
             let from = if line == start.line { start.col } else { 0 };
             let to = if line == end.line { end.col.min(row.cells.len() - 1) } else { row.cells.len() - 1 };
-            let mut text: String = row
-                .cells
-                .get(from..=to)
-                .unwrap_or_default()
-                .iter()
-                .filter(|cell| !cell.flags.contains(Flags::WIDE_SPACER))
-                .map(|cell| cell.c)
-                .collect();
+            let mut text = String::new();
+            let cells = row.cells.get(from..=to).unwrap_or_default();
+            for cell in cells.iter().filter(|cell| !cell.flags.contains(Flags::WIDE_SPACER)) {
+                // 组合字符原样跟在后面，复制出来的和程序输出的一样
+                text.push(cell.c);
+                text.push_str(term.marks(cell.marks));
+            }
             let continues = row.wrapped && line != end.line;
             if !continues {
                 text.truncate(text.trim_end_matches(' ').len());
@@ -235,6 +234,14 @@ mod tests {
         // 从汉字中间开始拖：整个字都选上
         assert_eq!(select(&t, Kind::Simple, (0, 3), (0, 5)), "好世");
         assert_eq!(select(&t, Kind::Word, (0, 3), (0, 3)), "你好世界");
+    }
+
+    #[test]
+    fn combining_marks_are_copied() {
+        // 屏幕上合成显示，复制出来还是原来的分解形式
+        let t = term(10, 1, "cafe\u{301} ok");
+        assert_eq!(select(&t, Kind::Simple, (0, 0), (0, 4)), "cafe\u{301}");
+        assert_eq!(select(&t, Kind::Word, (0, 1), (0, 1)), "cafe\u{301}");
     }
 
     #[test]
