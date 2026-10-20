@@ -71,6 +71,9 @@ Windows 和 Linux 可以从 [Maple Mono 的发布页](https://github.com/subfram
 
 字体引擎是自己写的（`src/font/`）：TrueType 解析、二次贝塞尔轮廓、抗锯齿光栅化、按名字查找系统字体。
 
+支持编程连字：`->` `=>` `!=` `===` `<=` 这类符号会显示成连起来的样子（字体的 `calt` 功能，Maple Mono、Fira Code、JetBrains Mono 等都有）。
+不喜欢的话在配置文件里写 `ligatures = false`。光标所在的字不参与连字，方便看清楚正在编辑的是哪个符号。
+
 ## CI 与测试版
 
 `.github/workflows/ci.yml` 在 Linux、Windows、macOS 上各自执行：格式检查、clippy、单元测试、release 编译，
@@ -108,7 +111,7 @@ git push origin v0.1.0-alpha.1
 | `src/mouse.rs` | 鼠标上报：把点击、拖动、滚轮编码成 xterm 鼠标协议的转义序列 | 否 |
 | `src/input.rs` | 按键编码成字节序列 | 否 |
 | `src/config/` | 配置文件：手写的 TOML 子集解析器、选项校验 | 否 |
-| `src/font/` | 字体：TrueType 解析和光栅化、彩色 emoji 表、系统字体查找、mmap、PSF 点阵字体 | 否 |
+| `src/font/` | 字体：TrueType 解析和光栅化、编程连字（GSUB）、彩色 emoji 表、系统字体查找、mmap、PSF 点阵字体 | 否 |
 | `src/image/` | zlib 解压、PNG 解码、图像缩放（emoji 用） | 否 |
 | `src/render.rs` | 软件渲染到像素缓冲区 | 否 |
 | `src/platform/` | 窗口和事件循环：X11 / Win32 / Cocoa | 是 |
@@ -118,7 +121,7 @@ git push origin v0.1.0-alpha.1
 - 彩色 emoji：单个 emoji 可以显示（macOS 的 sbix、Linux 的 CBDT、Windows 的 COLR 都是自己解析的），
   但需要连字规则才能合成的组合还不支持：国旗显示成两个字母，👨‍👩‍👧 这类家庭组合、肤色会拆开显示
 - 只支持 TrueType 轮廓的字体；OTF/CFF 字体（比如思源黑体的 .otf/.ttc）会被跳过
-- 没有连字（ligature）、没有斜体字体（斜体属性按正常字体显示）
+- 连字只支持"一个字换一个字"的方式（编程字体都是这样），把多个字合成一个字形的不支持；没有斜体字体（斜体属性按正常字体显示）
 - 组合字符：能合成的（e + ◌́ → é、韩文字母 → 音节）画合成后的字；合不进去的符号直接叠在字上，没有按字形精确定位，多个符号会重叠
 - 程序正在使用备用屏幕（vim、less 等）时缩放窗口，主屏幕的内容不重排，只截断
 - 输入法：macOS 实现了 `NSTextInputClient`，预编辑文字显示在光标处、候选词窗口跟随光标（已在真机验证）；Windows 用系统自己的输入框（尚未在真机验证）；Linux 只有基本的 XIM 支持

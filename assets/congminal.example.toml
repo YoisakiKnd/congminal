@@ -18,6 +18,8 @@ family = ["Maple Mono NF CN", "Maple Mono NF", "Maple Mono CN", "Maple Mono"]
 size = 15
 # 行高倍数，1.0 是字体自己的行高
 line-height = 1.0
+# 编程连字：-> => != 这类符号显示成连起来的样子（Maple Mono、Fira Code、JetBrains Mono 等字体支持）
+ligatures = true
 
 [window]
 # 启动时的列数和行数

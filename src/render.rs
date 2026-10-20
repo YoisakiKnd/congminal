@@ -4,7 +4,7 @@ use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph, Pixels};
 use crate::hash::Fnv;
 use crate::selection::Point;
-use crate::term::{Cell, Color, CursorShape, Flags, Terminal, char_width, compose_all};
+use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, compose_all};
 use std::hash::{Hash, Hasher};
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
@@ -321,6 +321,7 @@ impl Renderer {
         let line = term.visible_row(row);
         let id = term.line_id(row);
         let cols = term.cols();
+        let ligatures = self.ligatures(line, row, cols, cursor);
         for col in 0..cols.min(line.cells.len()) {
             let cell = &line[col];
             if cell.flags.contains(Flags::WIDE_SPACER) || cell.flags.contains(Flags::HIDDEN) {
@@ -346,7 +347,11 @@ impl Renderer {
                     0 => (cell.c, String::new()),
                     id => compose_all(cell.c, term.marks(id)),
                 };
-                if let Some(glyph) = self.fonts.glyph(c, bold, cell.flags.contains(Flags::EMOJI), cells) {
+                let glyph = match ligatures.get(col) {
+                    Some(&Some(index)) => self.fonts.indexed_glyph(index, bold),
+                    _ => self.fonts.glyph(c, bold, cell.flags.contains(Flags::EMOJI), cells),
+                };
+                if let Some(glyph) = glyph {
                     blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, fg, clip);
                 }
                 for mark in rest.chars().filter(|&m| !invisible(m)) {
@@ -359,6 +364,42 @@ impl Renderer {
                 self.draw_decorations(fb, x, y, self.cell_span(cell), cell.flags, fg);
             }
         }
+    }
+
+    /// 这一行里要按连字画的格子：第几列换成哪个字形。
+    /// 按"连续的 ASCII 符号和字母"分段（空格、粗细变化、光标处断开），每段交给字体做替换。
+    fn ligatures(&mut self, line: &Row, row: usize, cols: usize, cursor: &Cursor) -> Vec<Option<u16>> {
+        let mut result = Vec::new();
+        let mut word = String::new();
+        let mut start = 0;
+        let mut bold = false;
+        for col in 0..=cols.min(line.cells.len()) {
+            let cell = line.cells.get(col).filter(|_| col < cols);
+            let eligible = cell.filter(|cell| {
+                cell.c.is_ascii_graphic()
+                    && cell.marks == 0
+                    && !cell.flags.intersects(Flags::WIDE | Flags::EMOJI | Flags::HIDDEN)
+                    && !(cursor.visible && row == cursor.row && col == cursor.col)
+            });
+            let same_word = eligible.is_some_and(|cell| word.is_empty() || cell.flags.contains(Flags::BOLD) == bold);
+            if !same_word && word.len() >= 2 {
+                for (i, index) in self.fonts.ligatures(&word, bold) {
+                    result.resize(result.len().max(start + i + 1), None);
+                    result[start + i] = Some(index);
+                }
+            }
+            if !same_word {
+                word.clear();
+            }
+            if let Some(cell) = eligible {
+                if word.is_empty() {
+                    start = col;
+                    bold = cell.flags.contains(Flags::BOLD);
+                }
+                word.push(cell.c);
+            }
+        }
+        result
     }
 
     fn draw_cursor(&mut self, fb: &mut Framebuffer, term: &Terminal, cursor: &Cursor) {

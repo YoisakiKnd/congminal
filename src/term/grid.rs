@@ -36,6 +36,11 @@ impl Flags {
         self.0 & other.0 == other.0
     }
 
+    /// 有没有 `other` 里的任意一个
+    pub fn intersects(self, other: Flags) -> bool {
+        self.0 & other.0 != 0
+    }
+
     pub fn insert(&mut self, other: Flags) {
         self.0 |= other.0;
     }

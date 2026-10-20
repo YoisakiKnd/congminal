@@ -33,6 +33,8 @@ pub struct FontConfig {
     pub families: Vec<String>,
     pub size: f32,
     pub line_height: f32,
+    /// 编程连字（`->` `=>` `!=` 这类显示成连起来的样子），要字体支持
+    pub ligatures: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -76,6 +78,7 @@ impl Default for Config {
                 families: DEFAULT_FONT_FAMILIES.iter().map(|s| s.to_string()).collect(),
                 size: 15.0,
                 line_height: 1.0,
+                ligatures: true,
             },
             window: WindowConfig { columns: 80, rows: 24, padding: 4.0 },
             colors: Colors {
@@ -98,7 +101,7 @@ impl Default for Config {
 
 /// 允许出现的分组和键。[env] 里可以写任意环境变量。
 const SCHEMA: &[(&str, &[&str])] = &[
-    ("font", &["family", "size", "line-height"]),
+    ("font", &["family", "size", "line-height", "ligatures"]),
     ("window", &["columns", "rows", "padding"]),
     (
         "colors",
@@ -158,6 +161,9 @@ impl Config {
         }
         if let Some(line_height) = r.number("font", "line-height", 0.5, 3.0) {
             config.font.line_height = line_height as f32;
+        }
+        if let Some(ligatures) = r.boolean("font", "ligatures") {
+            config.font.ligatures = ligatures;
         }
 
         if let Some(columns) = r.number("window", "columns", 2.0, 1000.0) {

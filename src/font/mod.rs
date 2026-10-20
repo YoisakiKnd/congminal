@@ -5,6 +5,7 @@
 
 mod color;
 mod discover;
+mod gsub;
 mod mmap;
 mod psf;
 mod raster;
@@ -74,6 +75,10 @@ pub struct Fonts {
     cache: FnvHashMap<(char, bool, bool, u8), Option<Glyph>>,
     /// 组合字符（重音符号等）的字形，键：(字符, 粗体, 基础字符占几格)
     marks: FnvHashMap<(char, bool, u8), Option<Glyph>>,
+    /// 连字替换的结果（[常规, 粗体]），键：一段文字，值：(第几个字, 换成的字形编号)
+    shapes: [FnvHashMap<String, Vec<(usize, u16)>>; 2],
+    /// 按字形编号取的主字体字形（连字替换出来的），键：(字形编号, 粗体)
+    indexed: FnvHashMap<(u16, bool), Option<Glyph>>,
 }
 
 enum Source {
@@ -89,6 +94,9 @@ enum Source {
 struct Outline {
     regular: ttf::Face,
     bold: Option<ttf::Face>,
+    /// 编程连字（关掉连字时是 None）
+    gsub: Option<gsub::Gsub>,
+    gsub_bold: Option<gsub::Gsub>,
     fallbacks: Vec<Fallback>,
     emoji: Vec<Fallback>,
     pixel_size: f32,
@@ -144,6 +152,12 @@ impl Fonts {
             let description = format!("{}（{}，{pixel_size}px）", name, regular_info.path.display());
             let mut fonts = Fonts::outline(regular, bold, fallbacks, emoji, pixel_size, line_height, description);
             fonts.warnings = warnings;
+            if let Source::Outline(outline) = &mut fonts.source
+                && !config.ligatures
+            {
+                outline.gsub = None;
+                outline.gsub_bold = None;
+            }
             return fonts;
         }
 
@@ -163,6 +177,8 @@ impl Fonts {
             source: Source::Bitmap { top: (cell_height as i32 - regular.height as i32) / 2, regular, bold },
             cache: FnvHashMap::default(),
             marks: FnvHashMap::default(),
+            shapes: Default::default(),
+            indexed: FnvHashMap::default(),
         }
     }
 
@@ -192,6 +208,8 @@ impl Fonts {
             description,
             warnings: Vec::new(),
             source: Source::Outline(Box::new(Outline {
+                gsub: gsub::Gsub::new(&regular),
+                gsub_bold: bold.as_ref().and_then(gsub::Gsub::new),
                 regular,
                 bold,
                 fallbacks,
@@ -203,6 +221,8 @@ impl Fonts {
             })),
             cache: FnvHashMap::default(),
             marks: FnvHashMap::default(),
+            shapes: Default::default(),
+            indexed: FnvHashMap::default(),
         }
     }
 
@@ -220,6 +240,51 @@ impl Fonts {
             self.cache.insert(key, glyph);
         }
         self.cache.get(&key).and_then(Option::as_ref)
+    }
+
+    /// 编程连字：一段连续的 ASCII 字（不含空格）里哪些要换成别的字形。
+    /// 返回 (第几个字, 字形编号)，没有要换的（或者字体没有连字、关掉了连字）时是空的。
+    pub fn ligatures(&mut self, text: &str, bold: bool) -> Vec<(usize, u16)> {
+        let Source::Outline(outline) = &self.source else { return Vec::new() };
+        let (face, gsub) = match (&outline.bold, &outline.gsub_bold) {
+            (Some(face), gsub) if bold => (face, gsub),
+            _ => (&outline.regular, &outline.gsub),
+        };
+        let Some(gsub) = gsub else { return Vec::new() };
+        let shapes = &mut self.shapes[bold as usize];
+        if let Some(found) = shapes.get(text) {
+            return found.clone();
+        }
+        let original: Vec<u16> = text.chars().map(|c| face.glyph_index(c)).collect();
+        let mut glyphs = original.clone();
+        gsub.apply(&mut glyphs);
+        let changed: Vec<(usize, u16)> =
+            glyphs.iter().zip(&original).enumerate().filter(|(_, (a, b))| a != b).map(|(i, (&a, _))| (i, a)).collect();
+        // 不同的文字太多时整个清掉重来，免得一直增长
+        if shapes.len() >= 4096 {
+            shapes.clear();
+        }
+        shapes.insert(text.to_string(), changed.clone());
+        changed
+    }
+
+    /// 按字形编号取主字体里的字形（连字替换出来的字形没有对应的字符）。占一格。
+    pub fn indexed_glyph(&mut self, index: u16, bold: bool) -> Option<&Glyph> {
+        let key = (index, bold);
+        if !self.indexed.contains_key(&key) {
+            let glyph = match &self.source {
+                Source::Outline(outline) => {
+                    let face = match &outline.bold {
+                        Some(face) if bold => face,
+                        _ => &outline.regular,
+                    };
+                    outline.render(face, index, bold && outline.bold.is_none(), self.cell_width)
+                }
+                Source::Bitmap { .. } => None,
+            };
+            self.indexed.insert(key, glyph);
+        }
+        self.indexed.get(&key).and_then(Option::as_ref)
     }
 
     /// 叠在基础字符上的组合字符（比如 U+0301 重音符号）。`cells`：基础字符占几格。
@@ -291,12 +356,16 @@ impl Outline {
             return Some(glyph);
         }
 
+        self.render(face, index, synthetic_bold, span)
+    }
+
+    /// 把一个轮廓字形画成点阵，放在 `span` 像素宽的范围里水平居中（后备字体的字宽和主字体不一样）
+    fn render(&self, face: &ttf::Face, index: u16, synthetic_bold: bool, span: usize) -> Option<Glyph> {
         let scale = self.pixel_size / face.units_per_em as f32;
         let mut bitmap = raster::rasterize(&face.outline(index), scale)?;
         if synthetic_bold {
             embolden(&mut bitmap);
         }
-        // 字形放在它占的格子里水平居中（后备字体的字宽和主字体不一样）
         let span = span as f32;
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span - advance) / 2.0).round() as i32;
@@ -514,6 +583,22 @@ mod tests {
         FaceInfo { path: path.into(), index: 0, families: vec![], weight: 400, italic: false }
     }
 
+    /// 只在本地运行：CONGMINAL_TEST_LIGATURE_FONT 指向一个有编程连字的字体（比如 Maple Mono）
+    #[test]
+    fn programming_ligatures() {
+        let Ok(path) = std::env::var("CONGMINAL_TEST_LIGATURE_FONT") else { return };
+        let regular = load_face(&face_info(&path)).unwrap();
+        let mut fonts = Fonts::outline(regular, None, vec![], vec![], 16.0, 1.0, String::new());
+        // -> 两个字都换成连起来的样子，字数不变
+        let arrow = fonts.ligatures("->", false);
+        assert_eq!(arrow.iter().map(|&(i, _)| i).collect::<Vec<_>>(), [0, 1]);
+        assert!(fonts.ligatures("a=>b", false).len() >= 2);
+        assert!(fonts.ligatures("abc", false).is_empty());
+        // 第二次从缓存里取，结果一样
+        assert_eq!(fonts.ligatures("->", false), arrow);
+        assert!(fonts.indexed_glyph(arrow[0].1, false).is_some());
+    }
+
     /// 只在本地运行：CONGMINAL_TEST_COLR_FONT 指向一个 COLR 字体（比如 Twemoji Mozilla）。
     /// 设置了 CONGMINAL_TEST_DUMP 时把画出来的 🦀 存成 PPM 图片，方便用眼睛检查。
     #[test]
@@ -524,6 +609,8 @@ mod tests {
         let outline = Outline {
             regular: load_face(&face_info(&path)).unwrap(),
             bold: None,
+            gsub: None,
+            gsub_bold: None,
             fallbacks: vec![],
             emoji: vec![],
             pixel_size: 48.0,
