@@ -93,6 +93,8 @@ const WM_KEYDOWN: u32 = 0x0100;
 const WM_CHAR: u32 = 0x0102;
 const WM_SYSKEYDOWN: u32 = 0x0104;
 const WM_SYSCHAR: u32 = 0x0106;
+const WM_SETFOCUS: u32 = 0x0007;
+const WM_KILLFOCUS: u32 = 0x0008;
 const WM_MOUSEMOVE: u32 = 0x0200;
 const WM_LBUTTONDOWN: u32 = 0x0201;
 const WM_LBUTTONUP: u32 = 0x0202;
@@ -102,8 +104,6 @@ const WM_MBUTTONDOWN: u32 = 0x0207;
 const WM_MBUTTONUP: u32 = 0x0208;
 const WM_MOUSEWHEEL: u32 = 0x020A;
 const WM_APP_WAKE: u32 = 0x8000 + 1;
-/// WM_MOUSEMOVE 的 wparam 里"左键按着"的标志
-const MK_LBUTTON: usize = 0x0001;
 /// 滚轮一格的 delta 值
 const WHEEL_DELTA: f64 = 120.0;
 const CF_UNICODETEXT: u32 = 13;
@@ -161,6 +161,7 @@ unsafe extern "system" {
     fn SetWindowTextW(hwnd: Hwnd, text: *const u16) -> i32;
     fn SetProcessDPIAware() -> i32;
     fn SetCapture(hwnd: Hwnd) -> Hwnd;
+    fn ScreenToClient(hwnd: Hwnd, point: *mut Point) -> i32;
     fn ReleaseCapture() -> i32;
     fn OpenClipboard(hwnd: Hwnd) -> i32;
     fn CloseClipboard() -> i32;
@@ -525,23 +526,37 @@ unsafe extern "system" fn wnd_proc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: 
             // 捕获鼠标：拖出窗口外也能继续收到移动和抬起的消息
             unsafe { SetCapture(hwnd) };
             let (x, y) = mouse_position(lparam);
-            push(Event::MouseDown { button: mouse_button(msg), x, y });
+            push(Event::MouseDown { button: mouse_button(msg), x, y, mods: current_mods() });
             0
         }
         WM_LBUTTONUP | WM_MBUTTONUP | WM_RBUTTONUP => {
             unsafe { ReleaseCapture() };
-            push(Event::MouseUp { button: mouse_button(msg) });
+            let (x, y) = mouse_position(lparam);
+            push(Event::MouseUp { button: mouse_button(msg), x, y, mods: current_mods() });
             0
         }
-        WM_MOUSEMOVE if wparam & MK_LBUTTON != 0 => {
+        WM_MOUSEMOVE => {
             let (x, y) = mouse_position(lparam);
-            push(Event::MouseMove { x, y });
+            push(Event::MouseMove { x, y, mods: current_mods() });
             0
         }
         WM_MOUSEWHEEL => {
             let delta = ((wparam >> 16) & 0xFFFF) as u16 as i16;
-            push(Event::Scroll(ScrollDelta::Lines(delta as f64 / WHEEL_DELTA)));
+            // 滚轮消息给的是屏幕坐标，要换算成窗口里的坐标
+            let (sx, sy) = mouse_position(lparam);
+            let mut point = Point { x: sx as i32, y: sy as i32 };
+            unsafe { ScreenToClient(hwnd, &mut point) };
+            push(Event::Scroll {
+                delta: ScrollDelta::Lines(delta as f64 / WHEEL_DELTA),
+                x: point.x as f64,
+                y: point.y as f64,
+                mods: current_mods(),
+            });
             0
+        }
+        WM_SETFOCUS | WM_KILLFOCUS => {
+            push(Event::Focus(msg == WM_SETFOCUS));
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
         }
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             let mods = current_mods();

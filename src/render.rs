@@ -98,7 +98,15 @@ impl Renderer {
 
     /// `preedit` 是输入法正在输入、还没上屏的文字（比如拼音），画在光标处。
     /// `selection` 是选中的范围（稳定行号表示的起点和终点，都包含在内）。
-    pub fn draw(&mut self, term: &Terminal, preedit: &str, selection: Option<(Point, Point)>, fb: &mut Framebuffer) {
+    /// `focused`：窗口有没有键盘焦点，没有时方块光标画成空心
+    pub fn draw(
+        &mut self,
+        term: &Terminal,
+        preedit: &str,
+        selection: Option<(Point, Point)>,
+        focused: bool,
+        fb: &mut Framebuffer,
+    ) {
         let (default_fg, default_bg) = if term.modes().reverse_video {
             (self.colors.background, self.colors.foreground)
         } else {
@@ -118,8 +126,11 @@ impl Renderer {
         {
             cursor_col -= 1;
         }
-        let block_cursor =
-            at_bottom && term.modes().cursor_visible && term.cursor_shape() == CursorShape::Block && preedit.is_empty();
+        let block_cursor = at_bottom
+            && focused
+            && term.modes().cursor_visible
+            && term.cursor_shape() == CursorShape::Block
+            && preedit.is_empty();
         let is_cursor = |row: usize, col: usize| block_cursor && row == cursor_row && col == cursor_col;
         let is_selected = |line: u64, col: usize| {
             selection.is_some_and(|(start, end)| {
@@ -180,7 +191,16 @@ impl Renderer {
             let (x, y) = self.cell_origin(cursor_row, cursor_col);
             let thickness = (self.fonts.cell_height / 10).max(1);
             match term.cursor_shape() {
-                CursorShape::Block => {} // 已经在上面反色画好了
+                // 有焦点时已经在上面反色画好了；没焦点时画一个空心框
+                CursorShape::Block if focused => {}
+                CursorShape::Block => {
+                    let (w, h) = (self.fonts.cell_width, self.fonts.cell_height);
+                    let t = thickness.div_ceil(2);
+                    fb.fill_rect(x, y, w, t, self.colors.cursor);
+                    fb.fill_rect(x, y + h - t, w, t, self.colors.cursor);
+                    fb.fill_rect(x, y, t, h, self.colors.cursor);
+                    fb.fill_rect(x + w - t, y, t, h, self.colors.cursor);
+                }
                 CursorShape::Underline => fb.fill_rect(
                     x,
                     y + self.fonts.cell_height - thickness,

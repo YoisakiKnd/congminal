@@ -51,6 +51,38 @@ pub struct Modes {
     pub linefeed_newline: bool,
     /// DECSCNM：整屏反色
     pub reverse_video: bool,
+    /// 程序要求上报哪些鼠标操作
+    pub mouse: MouseMode,
+    /// 鼠标上报用哪种格式
+    pub mouse_encoding: MouseEncoding,
+    /// 1004：窗口获得 / 失去焦点时告诉程序
+    pub focus_events: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseMode {
+    /// 不上报，鼠标归终端自己用（选文字）
+    #[default]
+    Off,
+    /// 9：只报按下（最早的 X10 协议）
+    Press,
+    /// 1000：按下和抬起
+    Click,
+    /// 1002：再加上按住按键时的拖动
+    Drag,
+    /// 1003：所有移动都报
+    Motion,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MouseEncoding {
+    /// 传统格式：坐标各占一个字节，超过 223 列就没法表示
+    #[default]
+    Default,
+    /// 1005：坐标用 UTF-8 编码
+    Utf8,
+    /// 1006：SGR 格式 `ESC [ < 按键 ; 列 ; 行 M`，现在的程序基本都用它
+    Sgr,
 }
 
 impl Default for Modes {
@@ -65,6 +97,9 @@ impl Default for Modes {
             bracketed_paste: false,
             linefeed_newline: false,
             reverse_video: false,
+            mouse: MouseMode::Off,
+            mouse_encoding: MouseEncoding::Default,
+            focus_events: false,
         }
     }
 }
@@ -722,9 +757,33 @@ impl Terminal {
                 }
             }
             2004 => self.modes.bracketed_paste = on,
-            // 鼠标上报、焦点事件、同步输出：以后实现
-            1000 | 1002 | 1003 | 1004 | 1005 | 1006 | 1015 | 2026 => {}
+            9 => self.set_mouse_mode(MouseMode::Press, on),
+            1000 => self.set_mouse_mode(MouseMode::Click, on),
+            1002 => self.set_mouse_mode(MouseMode::Drag, on),
+            1003 => self.set_mouse_mode(MouseMode::Motion, on),
+            1004 => self.modes.focus_events = on,
+            1005 => self.set_mouse_encoding(MouseEncoding::Utf8, on),
+            1006 => self.set_mouse_encoding(MouseEncoding::Sgr, on),
+            // 同步输出：以后实现
+            2026 => {}
             _ => trace(format_args!("未处理的私有模式 ?{mode} {}", if on { 'h' } else { 'l' })),
+        }
+    }
+
+    /// 关掉某个鼠标模式时，只有它正是当前模式才关（程序关的是自己开的那个）
+    fn set_mouse_mode(&mut self, mode: MouseMode, on: bool) {
+        if on {
+            self.modes.mouse = mode;
+        } else if self.modes.mouse == mode {
+            self.modes.mouse = MouseMode::Off;
+        }
+    }
+
+    fn set_mouse_encoding(&mut self, encoding: MouseEncoding, on: bool) {
+        if on {
+            self.modes.mouse_encoding = encoding;
+        } else if self.modes.mouse_encoding == encoding {
+            self.modes.mouse_encoding = MouseEncoding::Default;
         }
     }
 
@@ -1209,6 +1268,20 @@ mod tests {
         // 覆盖右半边：左半边也被清掉
         let t = run(4, 1, "中\x1b[1;2Hb");
         assert_eq!(screen(&t), [" b"]);
+    }
+
+    #[test]
+    fn mouse_modes() {
+        let t = run(5, 1, "\x1b[?1002h\x1b[?1006h\x1b[?1004h");
+        assert_eq!(t.modes().mouse, MouseMode::Drag);
+        assert_eq!(t.modes().mouse_encoding, MouseEncoding::Sgr);
+        assert!(t.modes().focus_events);
+        // 关掉的不是当前模式：不影响
+        let t = run(5, 1, "\x1b[?1002h\x1b[?1000l");
+        assert_eq!(t.modes().mouse, MouseMode::Drag);
+        let t = run(5, 1, "\x1b[?1002h\x1b[?1002l\x1b[?1006h\x1b[?1006l");
+        assert_eq!(t.modes().mouse, MouseMode::Off);
+        assert_eq!(t.modes().mouse_encoding, MouseEncoding::Default);
     }
 
     #[test]

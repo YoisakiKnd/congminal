@@ -197,7 +197,8 @@ const FOCUS_CHANGE_MASK: c_long = 1 << 21;
 const BUTTON_PRESS_MASK: c_long = 1 << 2;
 const BUTTON_RELEASE_MASK: c_long = 1 << 3;
 /// 只在按住鼠标键时报告移动
-const BUTTON_MOTION_MASK: c_long = 1 << 13;
+/// 所有鼠标移动（程序开了 1003 模式时要报告没按键时的移动）
+const POINTER_MOTION_MASK: c_long = 1 << 6;
 
 const XA_ATOM: Atom = 4;
 const XA_STRING: Atom = 31;
@@ -422,7 +423,7 @@ impl Window {
                     | FOCUS_CHANGE_MASK
                     | BUTTON_PRESS_MASK
                     | BUTTON_RELEASE_MASK
-                    | BUTTON_MOTION_MASK,
+                    | POINTER_MOTION_MASK,
             );
             XDefineCursor(display, window, XCreateFontCursor(display, XC_XTERM));
             let atom = |name: &CStr| XInternAtom(display, name.as_ptr(), 0);
@@ -578,30 +579,37 @@ impl Window {
                 }
                 EXPOSE if event.expose.count == 0 => vec![Event::Redraw],
                 CLIENT_MESSAGE if event.client.data[0] as Atom == self.wm_delete => vec![Event::CloseRequested],
-                FOCUS_IN if !self.ic.is_null() => {
-                    XSetICFocus(self.ic);
-                    vec![]
-                }
-                FOCUS_OUT if !self.ic.is_null() => {
-                    XUnsetICFocus(self.ic);
-                    vec![]
+                FOCUS_IN | FOCUS_OUT => {
+                    let focused = event.type_ == FOCUS_IN;
+                    if !self.ic.is_null() {
+                        if focused { XSetICFocus(self.ic) } else { XUnsetICFocus(self.ic) }
+                    }
+                    vec![Event::Focus(focused)]
                 }
                 BUTTON_PRESS | BUTTON_RELEASE => {
                     let b = event.button;
-                    let (x, y) = (b.x as f64, b.y as f64);
+                    let (x, y, mods) = (b.x as f64, b.y as f64, mods_from_state(b.state));
                     let pressed = event.type_ == BUTTON_PRESS;
+                    let scroll = |lines| vec![Event::Scroll { delta: ScrollDelta::Lines(lines), x, y, mods }];
                     let button = match b.button {
                         1 => MouseButton::Left,
                         2 => MouseButton::Middle,
                         3 => MouseButton::Right,
                         // 滚轮在 X11 里是 4（上）、5（下）号按键，按下一次算一格
-                        4 if pressed => return vec![Event::Scroll(ScrollDelta::Lines(1.0))],
-                        5 if pressed => return vec![Event::Scroll(ScrollDelta::Lines(-1.0))],
+                        4 if pressed => return scroll(1.0),
+                        5 if pressed => return scroll(-1.0),
                         _ => return vec![],
                     };
-                    if pressed { vec![Event::MouseDown { button, x, y }] } else { vec![Event::MouseUp { button }] }
+                    if pressed {
+                        vec![Event::MouseDown { button, x, y, mods }]
+                    } else {
+                        vec![Event::MouseUp { button, x, y, mods }]
+                    }
                 }
-                MOTION_NOTIFY => vec![Event::MouseMove { x: event.motion.x as f64, y: event.motion.y as f64 }],
+                MOTION_NOTIFY => {
+                    let m = event.motion;
+                    vec![Event::MouseMove { x: m.x as f64, y: m.y as f64, mods: mods_from_state(m.state) }]
+                }
                 SELECTION_REQUEST => {
                     self.answer_selection_request(&event.selection_request);
                     vec![]
@@ -745,13 +753,7 @@ impl Window {
             }
         };
 
-        let state = event.state;
-        let mods = Mods {
-            shift: state & SHIFT_MASK != 0,
-            ctrl: state & CONTROL_MASK != 0,
-            alt: state & MOD1_MASK != 0,
-            logo: state & MOD4_MASK != 0,
-        };
+        let mods = mods_from_state(event.state);
         if let Some(key) = named_key(keysym) {
             return vec![Event::Key { key, mods }];
         }
@@ -807,6 +809,16 @@ impl Drop for Window {
             }
             XCloseDisplay(self.display);
         }
+    }
+}
+
+/// X 事件里的修饰键状态
+fn mods_from_state(state: c_uint) -> Mods {
+    Mods {
+        shift: state & SHIFT_MASK != 0,
+        ctrl: state & CONTROL_MASK != 0,
+        alt: state & MOD1_MASK != 0,
+        logo: state & MOD4_MASK != 0,
     }
 }
 

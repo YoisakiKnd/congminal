@@ -224,6 +224,8 @@ pub struct Window {
     color_space: *mut c_void,
     width: u32,
     height: u32,
+    /// 上次看到的窗口是否是键盘焦点所在（变化时通知 App）
+    focused: bool,
 }
 
 /// 跨线程唤醒：往主线程的事件队列里塞一个自定义事件
@@ -293,6 +295,8 @@ impl Window {
             msg![view, "release"; ()];
             msg![view, "setWantsLayer:", 1i8 => i8; ()];
             msg![window, "makeFirstResponder:", view => Id; i8];
+            // 没按键时的鼠标移动默认不发，程序开了 1003 模式时要用
+            msg![window, "setAcceptsMouseMovedEvents:", 1i8 => i8; ()];
             let protocol = objc_getProtocol(c"NSTextInputClient".as_ptr());
             let conforms: i8 = msg![view, "conformsToProtocol:", protocol => Id; i8];
             let context: Id = msg![view, "inputContext"; Id];
@@ -308,7 +312,7 @@ impl Window {
             msg![app, "activateIgnoringOtherApps:", 1i8 => i8; ()];
             objc_autoreleasePoolPop(pool);
 
-            Ok(Window { app, window, view, color_space: CGColorSpaceCreateDeviceRGB(), width, height })
+            Ok(Window { app, window, view, color_space: CGColorSpaceCreateDeviceRGB(), width, height, focused: true })
         }
     }
 
@@ -407,6 +411,13 @@ impl Window {
             let minimized: i8 = msg![self.window, "isMiniaturized"; i8];
             if visible == 0 && minimized == 0 && !app.event(Event::CloseRequested) {
                 return false;
+            }
+            let focused = msg![self.window, "isKeyWindow"; i8] != 0;
+            if focused != self.focused {
+                self.focused = focused;
+                if !app.event(Event::Focus(focused)) {
+                    return false;
+                }
             }
 
             let frame = view_frame(self.view);
@@ -611,7 +622,10 @@ unsafe fn register_view_class() -> Id {
         let methods: &[(&CStr, *const c_void, &CStr)] = &[
             (c"acceptsFirstMouse:", accepts_first_mouse as *const c_void, c"c@:@"),
             (c"mouseDown:", mouse_down as *const c_void, c"v@:@"),
-            (c"mouseDragged:", mouse_dragged as *const c_void, c"v@:@"),
+            (c"mouseDragged:", mouse_moved as *const c_void, c"v@:@"),
+            (c"rightMouseDragged:", mouse_moved as *const c_void, c"v@:@"),
+            (c"otherMouseDragged:", mouse_moved as *const c_void, c"v@:@"),
+            (c"mouseMoved:", mouse_moved as *const c_void, c"v@:@"),
             (c"mouseUp:", mouse_up as *const c_void, c"v@:@"),
             (c"rightMouseDown:", right_mouse_down as *const c_void, c"v@:@"),
             (c"rightMouseUp:", right_mouse_up as *const c_void, c"v@:@"),
@@ -692,44 +706,60 @@ unsafe fn event_position(view: Id, event: Id) -> (f64, f64) {
     }
 }
 
-extern "C" fn mouse_down(this: Id, _: Sel, event: Id) {
-    let (x, y) = unsafe { event_position(this, event) };
-    push_event(Event::MouseDown { button: MouseButton::Left, x, y });
-}
-
-extern "C" fn mouse_dragged(this: Id, _: Sel, event: Id) {
-    let (x, y) = unsafe { event_position(this, event) };
-    push_event(Event::MouseMove { x, y });
-}
-
-extern "C" fn mouse_up(_: Id, _: Sel, _: Id) {
-    push_event(Event::MouseUp { button: MouseButton::Left });
-}
-
-extern "C" fn right_mouse_down(this: Id, _: Sel, event: Id) {
-    let (x, y) = unsafe { event_position(this, event) };
-    push_event(Event::MouseDown { button: MouseButton::Right, x, y });
-}
-
-extern "C" fn right_mouse_up(_: Id, _: Sel, _: Id) {
-    push_event(Event::MouseUp { button: MouseButton::Right });
-}
-
-/// 其他按键：2 号是中键
-extern "C" fn other_mouse_down(this: Id, _: Sel, event: Id) {
-    unsafe {
-        let number: isize = msg![event, "buttonNumber"; isize];
-        if number == 2 {
-            let (x, y) = event_position(this, event);
-            push_event(Event::MouseDown { button: MouseButton::Middle, x, y });
-        }
+/// 鼠标事件的修饰键（Option 按配置决定算不算 Alt）
+unsafe fn event_mods(event: Id) -> Mods {
+    let flags: usize = unsafe { msg![event, "modifierFlags"; usize] };
+    Mods {
+        shift: flags & NS_SHIFT != 0,
+        ctrl: flags & NS_CONTROL != 0,
+        alt: option_is_alt(flags),
+        logo: flags & NS_COMMAND != 0,
     }
 }
 
-extern "C" fn other_mouse_up(_: Id, _: Sel, event: Id) {
-    let number: isize = unsafe { msg![event, "buttonNumber"; isize] };
-    if number == 2 {
-        push_event(Event::MouseUp { button: MouseButton::Middle });
+/// 鼠标按下 / 抬起。`button` 为 None 时看事件的按键编号（2 号是中键，其他的不管）
+fn push_button(view: Id, event: Id, button: Option<MouseButton>, down: bool) {
+    unsafe {
+        let button = match button {
+            Some(button) => button,
+            None if msg![event, "buttonNumber"; isize] == 2 => MouseButton::Middle,
+            None => return,
+        };
+        let (x, y) = event_position(view, event);
+        let mods = event_mods(event);
+        push_event(if down { Event::MouseDown { button, x, y, mods } } else { Event::MouseUp { button, x, y, mods } });
+    }
+}
+
+extern "C" fn mouse_down(this: Id, _: Sel, event: Id) {
+    push_button(this, event, Some(MouseButton::Left), true);
+}
+
+extern "C" fn mouse_up(this: Id, _: Sel, event: Id) {
+    push_button(this, event, Some(MouseButton::Left), false);
+}
+
+extern "C" fn right_mouse_down(this: Id, _: Sel, event: Id) {
+    push_button(this, event, Some(MouseButton::Right), true);
+}
+
+extern "C" fn right_mouse_up(this: Id, _: Sel, event: Id) {
+    push_button(this, event, Some(MouseButton::Right), false);
+}
+
+extern "C" fn other_mouse_down(this: Id, _: Sel, event: Id) {
+    push_button(this, event, None, true);
+}
+
+extern "C" fn other_mouse_up(this: Id, _: Sel, event: Id) {
+    push_button(this, event, None, false);
+}
+
+/// 鼠标移动：按着键拖动（mouseDragged: 等）和没按键的移动（mouseMoved:）都走这里
+extern "C" fn mouse_moved(this: Id, _: Sel, event: Id) {
+    unsafe {
+        let (x, y) = event_position(this, event);
+        push_event(Event::MouseMove { x, y, mods: event_mods(event) });
     }
 }
 
@@ -745,7 +775,8 @@ extern "C" fn scroll_wheel(this: Id, _: Sel, event: Id) {
         } else {
             ScrollDelta::Lines(dy)
         };
-        push_event(Event::Scroll(delta));
+        let (x, y) = event_position(this, event);
+        push_event(Event::Scroll { delta, x, y, mods: event_mods(event) });
     }
 }
 

@@ -34,16 +34,29 @@ pub enum Event {
         button: MouseButton,
         x: f64,
         y: f64,
+        mods: Mods,
     },
     MouseUp {
         button: MouseButton,
+        x: f64,
+        y: f64,
+        mods: Mods,
     },
+    /// 鼠标移动（不管有没有按键）
     MouseMove {
         x: f64,
         y: f64,
+        mods: Mods,
     },
     /// 滚轮，正数表示往上（往回看历史）
-    Scroll(ScrollDelta),
+    Scroll {
+        delta: ScrollDelta,
+        x: f64,
+        y: f64,
+        mods: Mods,
+    },
+    /// 窗口获得（true）或失去（false）键盘焦点
+    Focus(bool),
     /// 用户要求复制（macOS 的 Cmd+C 菜单）
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Copy,

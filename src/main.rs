@@ -18,6 +18,7 @@ mod config;
 mod font;
 mod image;
 mod input;
+mod mouse;
 mod platform;
 mod pty;
 mod render;
@@ -35,7 +36,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use term::Terminal;
+use term::{MouseMode, Terminal};
 use vt::Parser;
 
 /// 两次点击间隔小于这个时间、并且在同一个格子上，算作双击（三击）
@@ -73,6 +74,12 @@ struct Congminal {
     clipboard_request: Option<ClipboardRequest>,
     /// 上次看到的是不是备用屏幕。切换屏幕时选区就没有意义了。
     was_alt_screen: bool,
+    /// 发给了程序的那次鼠标按下（抬起时也要发给程序）
+    reported_button: Option<MouseButton>,
+    /// 上次上报的鼠标位置，同一个格子里移动不重复上报
+    last_report_cell: Option<(usize, usize)>,
+    /// 窗口是否有键盘焦点（没有时方块光标画成空心）
+    focused: bool,
     dirty: bool,
 }
 
@@ -230,9 +237,29 @@ impl Congminal {
         Point { line: self.term.line_id(row), col }
     }
 
-    fn scroll(&mut self, delta: ScrollDelta) {
-        // 鼠标滚轮一格滚 3 行
+    /// 程序开了鼠标模式、并且没按住 Shift：鼠标操作发给程序。按住 Shift 时还是终端自己选文字。
+    fn reports_mouse(&self, mods: Mods) -> bool {
+        self.term.modes().mouse != MouseMode::Off && !mods.shift
+    }
+
+    fn report_mouse(&mut self, action: mouse::Action, x: f64, y: f64, mods: Mods) {
+        let (row, col) = self.renderer.grid_position(x, y, &self.term);
+        let col = (col.floor() as usize).min(self.term.cols() - 1);
+        if matches!(action, mouse::Action::Move(_)) && self.last_report_cell == Some((row, col)) {
+            return;
+        }
+        self.last_report_cell = Some((row, col));
+        let modes = self.term.modes();
+        if let Some(bytes) = mouse::encode(action, col, row, mods, modes.mouse, modes.mouse_encoding) {
+            self.write_to_pty(&bytes);
+        }
+    }
+
+    fn scroll(&mut self, delta: ScrollDelta, x: f64, y: f64, mods: Mods) {
+        let reporting = self.reports_mouse(mods);
         let lines = match delta {
+            // 发给程序时一格算一次（程序自己决定滚几行）；终端自己翻历史时一格滚 3 行
+            ScrollDelta::Lines(lines) if reporting => lines,
             ScrollDelta::Lines(lines) => lines * 3.0,
             ScrollDelta::Pixels(pixels) => pixels / self.renderer.cell_height() as f64,
         };
@@ -242,7 +269,12 @@ impl Congminal {
         if whole == 0.0 {
             return;
         }
-        if self.term.is_alt_screen() {
+        if reporting {
+            let action = if whole > 0.0 { mouse::Action::WheelUp } else { mouse::Action::WheelDown };
+            for _ in 0..whole.abs() as usize {
+                self.report_mouse(action, x, y, mods);
+            }
+        } else if self.term.is_alt_screen() {
             // 备用屏幕没有历史：把滚轮变成上下方向键，less、vim 里也能用滚轮
             let key = if whole > 0.0 { Key::Up } else { Key::Down };
             let bytes = input::encode(key, Mods::default(), self.term.modes().app_cursor);
@@ -303,7 +335,16 @@ impl App for Congminal {
                 self.dirty = true;
                 self.write_to_pty(text.as_bytes());
             }
-            Event::MouseDown { button, x, y } => self.mouse_down(button, x, y),
+            Event::MouseDown { button, x, y, mods } if self.reports_mouse(mods) => {
+                self.reported_button = Some(button);
+                self.report_mouse(mouse::Action::Press(button), x, y, mods);
+            }
+            Event::MouseDown { button, x, y, .. } => self.mouse_down(button, x, y),
+            // 按下发给了程序，抬起也要发给程序，否则它会以为按键一直没松开
+            Event::MouseUp { button, x, y, mods } if self.reported_button == Some(button) => {
+                self.reported_button = None;
+                self.report_mouse(mouse::Action::Release(button), x, y, mods);
+            }
             Event::MouseUp { button: MouseButton::Left, .. } => {
                 self.selecting = false;
                 if self.selection.as_ref().is_some_and(|s| s.range(&self.term).is_none()) {
@@ -311,8 +352,19 @@ impl App for Congminal {
                 }
             }
             Event::MouseUp { .. } => {}
-            Event::MouseMove { x, y } => self.mouse_move(x, y),
-            Event::Scroll(delta) => self.scroll(delta),
+            Event::MouseMove { x, y, .. } if self.selecting => self.mouse_move(x, y),
+            Event::MouseMove { x, y, mods } if self.reports_mouse(mods) => {
+                self.report_mouse(mouse::Action::Move(self.reported_button), x, y, mods);
+            }
+            Event::MouseMove { .. } => {}
+            Event::Scroll { delta, x, y, mods } => self.scroll(delta, x, y, mods),
+            Event::Focus(focused) => {
+                self.focused = focused;
+                if self.term.modes().focus_events {
+                    self.write_to_pty(if focused { b"\x1b[I" } else { b"\x1b[O" });
+                }
+                self.dirty = true;
+            }
             Event::Copy => self.copy(),
             Event::PasteRequest => self.clipboard_request = Some(ClipboardRequest::Paste),
             Event::Paste(text) => self.paste(&text),
@@ -333,7 +385,7 @@ impl App for Congminal {
 
     fn draw(&mut self) -> &Framebuffer {
         let selection = self.selection.as_ref().and_then(|s| s.range(&self.term));
-        self.renderer.draw(&self.term, &self.preedit, selection, &mut self.framebuffer);
+        self.renderer.draw(&self.term, &self.preedit, selection, self.focused, &mut self.framebuffer);
         self.dirty = false;
         &self.framebuffer
     }
@@ -463,6 +515,9 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         scroll_remainder: 0.0,
         clipboard_request: None,
         was_alt_screen: false,
+        reported_button: None,
+        last_report_cell: None,
+        focused: true,
         dirty: true,
     };
     let mut warnings: Vec<String> = config_warnings.iter().map(|w| format!("配置文件：{w}")).collect();
