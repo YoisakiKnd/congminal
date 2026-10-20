@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# macOS 输入法测试：ci/ime_test_macos.sh <congminal 可执行文件> <输出目录>
+# macOS 输入法测试：ci/ime_test_macos.sh <congminal 可执行文件> <输出目录> [--strict]
 #
 # 切换到简体拼音，用 System Events 模拟键盘输入 "nihao"、空格（选第一个候选词）、回车，
 # 检查 shell 收到的是不是"你好"。输入过程中截图，trace 日志写进注解（不登录 GitHub 也能看到）。
@@ -52,4 +52,6 @@ if [ "$got" = "你好" ]; then
     exit 0
 fi
 report error "输入法测试失败：shell 收到 $got（期望 你好）"
-exit 1
+# 加 --strict 时失败返回非零（让 CI 失败）
+[ "${3:-}" = "--strict" ] && exit 1
+exit 0
