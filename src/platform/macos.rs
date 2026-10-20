@@ -435,8 +435,11 @@ impl Window {
             if let Some(title) = app.take_title() {
                 msg![self.window, "setTitle:", nsstring(&title) => Id; ()];
             }
-            if app.needs_redraw() {
-                self.present(app.draw());
+            // 图层的内容只能整张替换，所以变化的区域用不上，送整张图
+            if app.needs_redraw()
+                && let Some((fb, _)) = app.draw()
+            {
+                self.present(fb);
             }
             if let Some(request) = app.take_clipboard_request() {
                 let pasteboard: Id = msg![class(c"NSPasteboard"), "generalPasteboard"; Id];

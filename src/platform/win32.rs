@@ -5,7 +5,7 @@
 
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::input::{Key, Mods};
-use crate::render::Framebuffer;
+use crate::render::{Damage, Framebuffer};
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::ffi::c_void;
@@ -340,8 +340,10 @@ impl Window {
             if let Some(title) = app.take_title() {
                 unsafe { SetWindowTextW(self.hwnd, wide(&title).as_ptr()) };
             }
-            if app.needs_redraw() {
-                self.present(app.draw());
+            if app.needs_redraw()
+                && let Some((fb, damage)) = app.draw()
+            {
+                self.present(fb, damage);
             }
             if let Some(request) = app.take_clipboard_request() {
                 match request {
@@ -445,8 +447,9 @@ impl Window {
         }
     }
 
-    fn present(&self, fb: &Framebuffer) {
-        if fb.width == 0 || fb.height == 0 {
+    /// 只把变化的那几行像素贴到窗口上：把它们当成一张单独的图
+    fn present(&self, fb: &Framebuffer, damage: Damage) {
+        if fb.width == 0 || fb.height == 0 || damage.height == 0 {
             return;
         }
         let info = BitmapInfo {
@@ -454,7 +457,7 @@ impl Window {
                 size: size_of::<BitmapInfoHeader>() as u32,
                 width: fb.width as i32,
                 // 负数表示自上而下存储，和我们的缓冲区一致
-                height: -(fb.height as i32),
+                height: -(damage.height as i32),
                 planes: 1,
                 bit_count: 32,
                 compression: 0,
@@ -471,14 +474,14 @@ impl Window {
             SetDIBitsToDevice(
                 hdc,
                 0,
-                0,
+                damage.y as i32,
                 fb.width as u32,
-                fb.height as u32,
+                damage.height as u32,
                 0,
                 0,
                 0,
-                fb.height as u32,
-                fb.pixels.as_ptr().cast(),
+                damage.height as u32,
+                fb.pixels[damage.y * fb.width..].as_ptr().cast(),
                 &info,
                 DIB_RGB_COLORS,
             );

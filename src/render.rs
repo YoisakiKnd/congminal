@@ -2,8 +2,10 @@
 
 use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph, Pixels};
+use crate::hash::Fnv;
 use crate::selection::Point;
 use crate::term::{Cell, Color, CursorShape, Flags, Terminal, char_width};
+use std::hash::{Hash, Hasher};
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
 pub struct Framebuffer {
@@ -54,6 +56,54 @@ pub struct Renderer {
     fonts: Fonts,
     padding: usize,
     colors: Colors,
+    /// 上一帧每一行的指纹，没变的行不重画
+    last_rows: Vec<u64>,
+    /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
+    last_frame: u64,
+}
+
+/// 这一帧变化了的区域：从第 y 行像素开始的 height 行（整个宽度）。macOS 的图层只能整张替换，用不到它。
+#[derive(Clone, Copy, Debug)]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub struct Damage {
+    pub y: usize,
+    pub height: usize,
+}
+
+/// 画光标需要的信息
+struct Cursor<'a> {
+    row: usize,
+    col: usize,
+    shape: CursorShape,
+    /// 光标显示出来（程序没隐藏它，也没往回翻历史）
+    visible: bool,
+    focused: bool,
+    preedit: &'a str,
+}
+
+impl Cursor<'_> {
+    /// 这个格子是不是被实心方块光标盖住（要反色画）
+    fn blocks(&self, row: usize, col: usize) -> bool {
+        self.visible
+            && self.focused
+            && self.shape == CursorShape::Block
+            && self.preedit.is_empty()
+            && row == self.row
+            && col == self.col
+    }
+}
+
+fn selected(selection: Option<(Point, Point)>, line: u64, col: usize) -> bool {
+    selection.is_some_and(|(start, end)| {
+        let p = Point { line, col };
+        start <= p && p <= end
+    })
+}
+
+fn hash<T: Hash>(value: &T) -> u64 {
+    let mut hasher = Fnv::default();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
 
 impl Renderer {
@@ -66,6 +116,8 @@ impl Renderer {
             fonts,
             padding: (config.window.padding * scale as f32).round() as usize,
             colors: config.colors.clone(),
+            last_rows: Vec::new(),
+            last_frame: 0,
         }
     }
 
@@ -96,9 +148,16 @@ impl Renderer {
         (x as u32, y as u32, self.fonts.cell_width as u32, self.fonts.cell_height as u32)
     }
 
+    /// 下次整屏重画（比如窗口被遮挡后重新露出来，屏幕上的内容已经不可信了）
+    pub fn invalidate(&mut self) {
+        self.last_rows.clear();
+    }
+
+    /// 画一帧。只重画和上一帧不一样的行，返回变化的区域；什么都没变时返回 None。
+    ///
     /// `preedit` 是输入法正在输入、还没上屏的文字（比如拼音），画在光标处。
     /// `selection` 是选中的范围（稳定行号表示的起点和终点，都包含在内）。
-    /// `focused`：窗口有没有键盘焦点，没有时方块光标画成空心
+    /// `focused`：窗口有没有键盘焦点，没有时方块光标画成空心。
     pub fn draw(
         &mut self,
         term: &Terminal,
@@ -106,13 +165,12 @@ impl Renderer {
         selection: Option<(Point, Point)>,
         focused: bool,
         fb: &mut Framebuffer,
-    ) {
+    ) -> Option<Damage> {
         let (default_fg, default_bg) = if term.modes().reverse_video {
             (self.colors.background, self.colors.foreground)
         } else {
             (self.colors.foreground, self.colors.background)
         };
-        fb.pixels.fill(default_bg);
         let (rows, cols) = (term.rows(), term.cols());
 
         // 光标只在看当前屏幕（没有往回翻）时画
@@ -126,90 +184,189 @@ impl Renderer {
         {
             cursor_col -= 1;
         }
-        let block_cursor = at_bottom
-            && focused
-            && term.modes().cursor_visible
-            && term.cursor_shape() == CursorShape::Block
-            && preedit.is_empty();
-        let is_cursor = |row: usize, col: usize| block_cursor && row == cursor_row && col == cursor_col;
-        let is_selected = |line: u64, col: usize| {
-            selection.is_some_and(|(start, end)| {
-                let p = Point { line, col };
-                start <= p && p <= end
-            })
+        let cursor = Cursor {
+            row: cursor_row,
+            col: cursor_col,
+            shape: term.cursor_shape(),
+            visible: at_bottom && term.modes().cursor_visible,
+            focused,
+            preedit,
         };
 
-        // 分两遍画：先画所有背景，再画所有字。这样超出格子的笔画不会被旁边格子的背景盖住。
-        for row in 0..rows {
-            let line = term.visible_row(row);
-            let id = term.line_id(row);
-            // 历史里的行可能是窗口变窄之前存进去的，比现在宽
-            for col in 0..cols.min(line.cells.len()) {
-                let cell = &line[col];
-                if cell.flags.contains(Flags::WIDE_SPACER) {
-                    continue; // 宽字符的背景由它左边的本体一起画
-                }
-                let (_, bg) = self.colors(cell, is_cursor(row, col), is_selected(id, col), default_fg, default_bg);
-                if bg != default_bg {
-                    let (x, y) = self.cell_origin(row, col);
-                    fb.fill_rect(x, y, self.cell_span(cell), self.fonts.cell_height, bg);
-                }
+        // 哪些行要重画：整体状态变了就全部重画，否则只画"指纹"变了的行
+        let frame_key =
+            hash(&(fb.width, fb.height, rows, cols, term.display_offset(), term.history().len(), default_bg));
+        let keys: Vec<u64> = (0..rows).map(|row| self.row_key(term, row, &cursor, selection)).collect();
+        let full = frame_key != self.last_frame || self.last_rows.len() != rows;
+        let dirty: Vec<bool> = (0..rows).map(|row| full || keys[row] != self.last_rows[row]).collect();
+        self.last_frame = frame_key;
+        self.last_rows = keys;
+
+        let mut damage: Option<(usize, usize)> = None;
+        let mut row = 0;
+        while row < rows {
+            if !dirty[row] {
+                row += 1;
+                continue;
+            }
+            // 连续的一段要重画的行 [start, end)
+            let start = row;
+            while row < rows && dirty[row] {
+                row += 1;
+            }
+            let end = row;
+            // 像素范围。第一行和最后一行把上下的内边距也包进去。
+            let top = if start == 0 { 0 } else { self.cell_origin(start, 0).1 };
+            let bottom = if end == rows { fb.height } else { self.cell_origin(end, 0).1 };
+            fb.fill_rect(0, top, fb.width, bottom - top, default_bg);
+            for r in start..end {
+                self.draw_backgrounds(fb, term, r, &cursor, selection, default_fg, default_bg);
+            }
+            // 有些字形会伸出格子一两个像素（比如 Maple 的竖线），上下相邻的行也要画，但只画到这一段里面
+            for r in start.saturating_sub(1)..(end + 1).min(rows) {
+                let decorations = (start..end).contains(&r);
+                self.draw_glyphs(fb, term, r, &cursor, selection, default_fg, default_bg, (top, bottom), decorations);
+            }
+            if (start..end).contains(&cursor.row) {
+                self.draw_cursor(fb, term, &cursor);
+            }
+            damage = Some(match damage {
+                Some((t, b)) => (t.min(top), b.max(bottom)),
+                None => (top, bottom),
+            });
+        }
+        if !at_bottom && full {
+            self.draw_scrollbar(fb, term);
+        }
+        damage.map(|(top, bottom)| Damage { y: top, height: bottom - top })
+    }
+
+    /// 一行的"指纹"：内容、光标、选区、输入法文字。指纹没变的行不用重画。
+    fn row_key(&self, term: &Terminal, row: usize, cursor: &Cursor, selection: Option<(Point, Point)>) -> u64 {
+        let mut hasher = Fnv::default();
+        let line = term.visible_row(row);
+        line.cells[..term.cols().min(line.cells.len())].hash(&mut hasher);
+        if cursor.visible && row == cursor.row {
+            (cursor.col, cursor.shape, cursor.focused, cursor.preedit).hash(&mut hasher);
+        }
+        // 选区在这一行覆盖的范围
+        let id = term.line_id(row);
+        if let Some((start, end)) = selection
+            && start.line <= id
+            && id <= end.line
+        {
+            let from = if start.line == id { start.col } else { 0 };
+            let to = if end.line == id { end.col } else { usize::MAX };
+            (from, to).hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_backgrounds(
+        &self,
+        fb: &mut Framebuffer,
+        term: &Terminal,
+        row: usize,
+        cursor: &Cursor,
+        selection: Option<(Point, Point)>,
+        default_fg: u32,
+        default_bg: u32,
+    ) {
+        let line = term.visible_row(row);
+        let id = term.line_id(row);
+        // 历史里的行可能是窗口变窄之前存进去的，比现在宽
+        for col in 0..term.cols().min(line.cells.len()) {
+            let cell = &line[col];
+            if cell.flags.contains(Flags::WIDE_SPACER) {
+                continue; // 宽字符的背景由它左边的本体一起画
+            }
+            let (_, bg) =
+                self.colors(cell, cursor.blocks(row, col), selected(selection, id, col), default_fg, default_bg);
+            if bg != default_bg {
+                let (x, y) = self.cell_origin(row, col);
+                fb.fill_rect(x, y, self.cell_span(cell), self.fonts.cell_height, bg);
             }
         }
-        for row in 0..rows {
-            let line = term.visible_row(row);
-            let id = term.line_id(row);
-            for col in 0..cols.min(line.cells.len()) {
-                let cell = &line[col];
-                if cell.flags.contains(Flags::WIDE_SPACER) || cell.flags.contains(Flags::HIDDEN) {
-                    continue;
+    }
+
+    /// 画一行的字。`clip` 是允许画的像素行范围；`decorations` 为 false 时不画下划线和删除线（相邻行只补画伸过来的笔画）
+    #[allow(clippy::too_many_arguments)]
+    fn draw_glyphs(
+        &mut self,
+        fb: &mut Framebuffer,
+        term: &Terminal,
+        row: usize,
+        cursor: &Cursor,
+        selection: Option<(Point, Point)>,
+        default_fg: u32,
+        default_bg: u32,
+        clip: (usize, usize),
+        decorations: bool,
+    ) {
+        let line = term.visible_row(row);
+        let id = term.line_id(row);
+        let cols = term.cols();
+        for col in 0..cols.min(line.cells.len()) {
+            let cell = &line[col];
+            if cell.flags.contains(Flags::WIDE_SPACER) || cell.flags.contains(Flags::HIDDEN) {
+                continue;
+            }
+            let (fg, _) =
+                self.colors(cell, cursor.blocks(row, col), selected(selection, id, col), default_fg, default_bg);
+            let (x, y) = self.cell_origin(row, col);
+            if cell.c != ' ' {
+                // ❤️ 这类按 1 格算的 emoji：右边是空格（并且不是光标）时，按正常大小画，伸进右边那格
+                let roomy = cell.flags.contains(Flags::EMOJI)
+                    && !cell.flags.contains(Flags::WIDE)
+                    && line.cells.get(col + 1).is_some_and(|next| {
+                        col + 1 < cols
+                            && next.c == ' '
+                            && !next.flags.contains(Flags::WIDE_SPACER)
+                            && !(cursor.visible && row == cursor.row && col + 1 == cursor.col)
+                    });
+                let cells = if cell.flags.contains(Flags::WIDE) || roomy { 2 } else { 1 };
+                if let Some(glyph) =
+                    self.fonts.glyph(cell.c, cell.flags.contains(Flags::BOLD), cell.flags.contains(Flags::EMOJI), cells)
+                {
+                    blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, fg, clip);
                 }
-                let (fg, _) = self.colors(cell, is_cursor(row, col), is_selected(id, col), default_fg, default_bg);
-                let (x, y) = self.cell_origin(row, col);
-                if cell.c != ' ' {
-                    // ❤️ 这类按 1 格算的 emoji：右边是空格（并且不是光标）时，按正常大小画，伸进右边那格
-                    let roomy = cell.flags.contains(Flags::EMOJI)
-                        && !cell.flags.contains(Flags::WIDE)
-                        && line.cells.get(col + 1).is_some_and(|next| {
-                            col + 1 < cols
-                                && next.c == ' '
-                                && !next.flags.contains(Flags::WIDE_SPACER)
-                                && !(at_bottom && row == cursor_row && col + 1 == cursor_col)
-                        });
-                    let cells = if cell.flags.contains(Flags::WIDE) || roomy { 2 } else { 1 };
-                    self.draw_char(fb, x, y, cell.c, cell.flags, cells, fg);
-                }
+            }
+            if decorations {
                 self.draw_decorations(fb, x, y, self.cell_span(cell), cell.flags, fg);
             }
         }
+    }
 
-        if !at_bottom {
-            self.draw_scrollbar(fb, term);
-        } else if !preedit.is_empty() {
-            self.draw_preedit(fb, term, preedit);
-        } else if term.modes().cursor_visible {
-            let (x, y) = self.cell_origin(cursor_row, cursor_col);
-            let thickness = (self.fonts.cell_height / 10).max(1);
-            match term.cursor_shape() {
-                // 有焦点时已经在上面反色画好了；没焦点时画一个空心框
-                CursorShape::Block if focused => {}
-                CursorShape::Block => {
-                    let (w, h) = (self.fonts.cell_width, self.fonts.cell_height);
-                    let t = thickness.div_ceil(2);
-                    fb.fill_rect(x, y, w, t, self.colors.cursor);
-                    fb.fill_rect(x, y + h - t, w, t, self.colors.cursor);
-                    fb.fill_rect(x, y, t, h, self.colors.cursor);
-                    fb.fill_rect(x + w - t, y, t, h, self.colors.cursor);
-                }
-                CursorShape::Underline => fb.fill_rect(
-                    x,
-                    y + self.fonts.cell_height - thickness,
-                    self.fonts.cell_width,
-                    thickness,
-                    self.colors.cursor,
-                ),
-                CursorShape::Bar => fb.fill_rect(x, y, thickness, self.fonts.cell_height, self.colors.cursor),
+    fn draw_cursor(&mut self, fb: &mut Framebuffer, term: &Terminal, cursor: &Cursor) {
+        if !cursor.visible {
+            return;
+        }
+        if !cursor.preedit.is_empty() {
+            self.draw_preedit(fb, term, cursor.preedit);
+            return;
+        }
+        let (x, y) = self.cell_origin(cursor.row, cursor.col);
+        let thickness = (self.fonts.cell_height / 10).max(1);
+        match cursor.shape {
+            // 有焦点时已经在上面反色画好了；没焦点时画一个空心框
+            CursorShape::Block if cursor.focused => {}
+            CursorShape::Block => {
+                let (w, h) = (self.fonts.cell_width, self.fonts.cell_height);
+                let t = thickness.div_ceil(2);
+                fb.fill_rect(x, y, w, t, self.colors.cursor);
+                fb.fill_rect(x, y + h - t, w, t, self.colors.cursor);
+                fb.fill_rect(x, y, t, h, self.colors.cursor);
+                fb.fill_rect(x + w - t, y, t, h, self.colors.cursor);
             }
+            CursorShape::Underline => fb.fill_rect(
+                x,
+                y + self.fonts.cell_height - thickness,
+                self.fonts.cell_width,
+                thickness,
+                self.colors.cursor,
+            ),
+            CursorShape::Bar => fb.fill_rect(x, y, thickness, self.fonts.cell_height, self.colors.cursor),
         }
     }
 
@@ -266,7 +423,7 @@ impl Renderer {
     #[allow(clippy::too_many_arguments)]
     fn draw_char(&mut self, fb: &mut Framebuffer, x: usize, y: usize, c: char, flags: Flags, cells: usize, color: u32) {
         if let Some(glyph) = self.fonts.glyph(c, flags.contains(Flags::BOLD), flags.contains(Flags::EMOJI), cells) {
-            blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, color);
+            blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, color, (0, usize::MAX));
         }
     }
 
@@ -322,11 +479,11 @@ impl Renderer {
 }
 
 /// 把字形贴到屏幕上。普通字形按覆盖率混合文字颜色（抗锯齿的边缘是半透明的）；
-/// 彩色字形（emoji）用自己的颜色，按透明度盖在背景上
-fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32) {
+/// 彩色字形（emoji）用自己的颜色，按透明度盖在背景上。只画 `clip` 范围内的像素行。
+fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32, clip: (usize, usize)) {
     for gy in 0..glyph.height {
         let py = y + gy as i32;
-        if py < 0 || py as usize >= fb.height {
+        if py < clip.0 as i32 || py >= clip.1.min(fb.height) as i32 {
             continue;
         }
         let line = &mut fb.pixels[py as usize * fb.width..(py as usize + 1) * fb.width];
@@ -382,4 +539,96 @@ fn rgb(r: u8, g: u8, b: u8) -> u32 {
 
 fn average(a: u32, b: u32) -> u32 {
     ((a >> 1) & 0x7F7F7F) + ((b >> 1) & 0x7F7F7F)
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+    use crate::vt::Parser;
+    use std::time::Instant;
+
+    /// 手动运行：cargo test --release bench_ -- --ignored --nocapture
+    /// 高分屏（2 倍）上 200×60 的满屏彩色文字，量画一帧的时间
+    #[test]
+    #[ignore]
+    fn bench_full_frame() {
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 2.0);
+        let (cols, rows) = (200, 60);
+        let (width, height) = renderer.pixel_size(cols, rows);
+        let mut term = Terminal::new(cols, rows);
+        let mut parser = Parser::new();
+        for row in 0..rows {
+            let line: String = (0..cols / 10)
+                .map(|i| {
+                    format!(
+                        "\x1b[{}m{}",
+                        31 + (row + i) % 7,
+                        if (row + i) % 5 == 0 { "终端模拟器" } else { "fn main() " }
+                    )
+                })
+                .collect();
+            parser.advance(&mut term, format!("{line}\x1b[0m").as_bytes());
+        }
+        let mut fb = Framebuffer::new(width as usize, height as usize);
+        renderer.draw(&term, "", None, true, &mut fb);
+        let frames = 30;
+        let started = Instant::now();
+        for _ in 0..frames {
+            renderer.invalidate();
+            renderer.draw(&term, "", None, true, &mut fb);
+        }
+        let per_frame = started.elapsed() / frames;
+        eprintln!("{}×{} 像素、{cols}×{rows} 字符：整屏重画每帧 {per_frame:?}", width, height);
+
+        // 打字时的情况：每帧只改一行
+        let started = Instant::now();
+        for i in 0..frames {
+            parser.advance(&mut term, format!("\x1b[30;{}Hx", i + 1).as_bytes());
+            renderer.draw(&term, "", None, true, &mut fb);
+        }
+        eprintln!("只改一行：每帧 {:?}", started.elapsed() / frames);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vt::Parser;
+
+    /// 只重画变化的行，结果必须和整屏重画一模一样（包括伸出格子的笔画、光标、选区）
+    #[test]
+    fn partial_redraw_matches_full_redraw() {
+        let config = Config::default();
+        let mut incremental = Renderer::new(&config, 1.0);
+        let mut fresh = Renderer::new(&config, 1.0);
+        let (cols, rows) = (30, 8);
+        let (width, height) = incremental.pixel_size(cols, rows);
+        let mut term = Terminal::new(cols, rows);
+        let mut parser = Parser::new();
+        let mut fb = Framebuffer::new(width as usize, height as usize);
+        let mut reference = Framebuffer::new(width as usize, height as usize);
+
+        let steps: &[&str] = &[
+            "┌──────┐\r\n│ 终端 │\r\n└──────┘\r\n",
+            "\x1b[31mred\x1b[0m \x1b[4munderline\x1b[0m",
+            "\x1b[2;3Hx",
+            "\r\n\r\n\r\n\r\n\r\nscroll",
+            "\x1b[1;1H\x1b[2K",
+            "\x1b[7;5H🦀 ❤\u{fe0f} ok",
+            "\x1b[3 q",
+        ];
+        let selections = [None, Some((Point { line: 1, col: 2 }, Point { line: 2, col: 4 }))];
+        for (i, step) in steps.iter().enumerate() {
+            parser.advance(&mut term, step.as_bytes());
+            let selection = selections[i % 2];
+            let focused = i != 5;
+            incremental.draw(&term, "", selection, focused, &mut fb);
+            fresh.invalidate();
+            fresh.draw(&term, "", selection, focused, &mut reference);
+            if let Some(p) = fb.pixels.iter().zip(&reference.pixels).position(|(a, b)| a != b) {
+                panic!("第 {i} 步之后，像素 ({}, {}) 不一样", p % fb.width, p / fb.width);
+            }
+        }
+    }
 }

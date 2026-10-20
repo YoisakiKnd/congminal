@@ -10,7 +10,7 @@
 
 use crate::config::OptionAsAlt;
 use crate::input::{Key, Mods};
-use crate::render::Framebuffer;
+use crate::render::{Damage, Framebuffer};
 use std::sync::atomic::{AtomicU8, Ordering};
 
 pub enum Event {
@@ -100,7 +100,8 @@ pub trait App {
     /// 处理一个事件。返回 false 表示退出。
     fn event(&mut self, event: Event) -> bool;
     fn needs_redraw(&self) -> bool;
-    fn draw(&mut self) -> &Framebuffer;
+    /// 画一帧，返回画面和变化了的区域；什么都没变时返回 None（不用提交）
+    fn draw(&mut self) -> Option<(&Framebuffer, Damage)>;
     /// 如果窗口标题需要改，返回新标题
     fn take_title(&mut self) -> Option<String>;
     /// 需要读写剪贴板时返回请求，平台层处理

@@ -11,9 +11,9 @@ mod raster;
 mod ttf;
 
 use crate::config::FontConfig;
+use crate::hash::FnvHashMap;
 use crate::term::char_width;
 use discover::FaceInfo;
-use std::collections::HashMap;
 
 #[cfg(target_os = "macos")]
 const PLATFORM_MONO: &[&str] = &["Menlo", "Monaco"];
@@ -71,7 +71,7 @@ pub struct Fonts {
     pub warnings: Vec<String>,
     source: Source,
     /// 键：(字符, 粗体, emoji 样式, 可以占几格)
-    cache: HashMap<(char, bool, bool, u8), Option<Glyph>>,
+    cache: FnvHashMap<(char, bool, bool, u8), Option<Glyph>>,
 }
 
 enum Source {
@@ -159,7 +159,7 @@ impl Fonts {
             description: "内置 Terminus 点阵字体".into(),
             warnings,
             source: Source::Bitmap { top: (cell_height as i32 - regular.height as i32) / 2, regular, bold },
-            cache: HashMap::new(),
+            cache: FnvHashMap::default(),
         }
     }
 
@@ -198,7 +198,7 @@ impl Fonts {
                 // 多出来的行距平分到上下两边
                 baseline: ((cell_height - ascent - descent) / 2.0 + ascent).round() as i32,
             })),
-            cache: HashMap::new(),
+            cache: FnvHashMap::default(),
         }
     }
 

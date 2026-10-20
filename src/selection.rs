@@ -5,7 +5,7 @@
 
 use crate::term::{Flags, Row, Terminal};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Point {
     pub line: u64,
     /// 列号。`usize::MAX` 表示"到行尾"

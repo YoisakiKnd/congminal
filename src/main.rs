@@ -16,6 +16,7 @@
 
 mod config;
 mod font;
+mod hash;
 mod image;
 mod input;
 mod mouse;
@@ -30,7 +31,7 @@ use config::Config;
 use input::{Key, Mods};
 use platform::{App, ClipboardRequest, Event, MouseButton, ScrollDelta, Window};
 use pty::{Pty, PtyEvent};
-use render::{Framebuffer, Renderer};
+use render::{Damage, Framebuffer, Renderer};
 use selection::{Kind, Point, Selection};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -373,7 +374,11 @@ impl App for Congminal {
                 self.dirty = true;
             }
             Event::Resize { width, height } => self.resize(width, height),
-            Event::Redraw => self.dirty = true,
+            // 窗口被遮挡后重新露出来：屏幕上的内容已经不可信，整屏重画
+            Event::Redraw => {
+                self.renderer.invalidate();
+                self.dirty = true;
+            }
             Event::CloseRequested => return false,
         }
         true
@@ -383,11 +388,11 @@ impl App for Congminal {
         self.dirty
     }
 
-    fn draw(&mut self) -> &Framebuffer {
-        let selection = self.selection.as_ref().and_then(|s| s.range(&self.term));
-        self.renderer.draw(&self.term, &self.preedit, selection, self.focused, &mut self.framebuffer);
+    fn draw(&mut self) -> Option<(&Framebuffer, Damage)> {
         self.dirty = false;
-        &self.framebuffer
+        let selection = self.selection.as_ref().and_then(|s| s.range(&self.term));
+        let damage = self.renderer.draw(&self.term, &self.preedit, selection, self.focused, &mut self.framebuffer)?;
+        Some((&self.framebuffer, damage))
     }
 
     fn take_title(&mut self) -> Option<String> {

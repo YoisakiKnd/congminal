@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 /// 默认保留的回滚行数（配置文件可以改）
 pub const DEFAULT_SCROLLBACK: usize = 10_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CursorShape {
     Block,
     Underline,

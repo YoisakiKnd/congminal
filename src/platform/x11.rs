@@ -7,7 +7,7 @@
 
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::input::{Key, Mods};
-use crate::render::Framebuffer;
+use crate::render::{Damage, Framebuffer};
 use std::ffi::{CStr, CString, c_char, c_int, c_long, c_uint, c_ulong, c_void};
 use std::io::{ErrorKind, Read, Write};
 use std::os::fd::AsRawFd;
@@ -540,8 +540,10 @@ impl Window {
                     }
                 }
             }
-            if app.needs_redraw() {
-                self.present(app.draw());
+            if app.needs_redraw()
+                && let Some((fb, damage)) = app.draw()
+            {
+                self.present(fb, damage);
             }
             unsafe { XFlush(self.display) };
 
@@ -760,8 +762,9 @@ impl Window {
         text.chars().map(|c| Event::Key { key: Key::Char(c), mods }).collect()
     }
 
-    fn present(&self, fb: &Framebuffer) {
-        if fb.width == 0 || fb.height == 0 {
+    /// 只把变化的那几行像素送给 X 服务器
+    fn present(&self, fb: &Framebuffer, damage: Damage) {
+        if fb.width == 0 || fb.height == 0 || damage.height == 0 {
             return;
         }
         unsafe {
@@ -787,11 +790,11 @@ impl Window {
                 XDefaultGC(self.display, self.screen),
                 image,
                 0,
+                damage.y as c_int,
                 0,
-                0,
-                0,
+                damage.y as c_int,
                 fb.width as c_uint,
-                fb.height as c_uint,
+                damage.height as c_uint,
             );
             XFree(image);
         }

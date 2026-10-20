@@ -3,7 +3,7 @@
 use std::collections::VecDeque;
 use std::ops::{BitOr, Index, IndexMut};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Color {
     /// 使用终端默认的前景色或背景色
     Default,
@@ -13,7 +13,7 @@ pub enum Color {
 }
 
 /// 字符属性位
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Flags(u16);
 
 impl Flags {
@@ -53,7 +53,7 @@ impl BitOr for Flags {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Cell {
     pub c: char,
     pub fg: Color,
