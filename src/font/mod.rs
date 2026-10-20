@@ -79,6 +79,8 @@ pub struct Fonts {
     shapes: [FnvHashMap<String, Vec<(usize, u16)>>; 2],
     /// 按字形编号取的主字体字形（连字替换出来的），键：(字形编号, 粗体)
     indexed: FnvHashMap<(u16, bool), Option<Glyph>>,
+    /// emoji 组合序列合成的字形，键：(整个序列, 占几格)
+    clusters: FnvHashMap<(String, u8), Option<Glyph>>,
 }
 
 enum Source {
@@ -99,9 +101,29 @@ struct Outline {
     gsub_bold: Option<gsub::Gsub>,
     fallbacks: Vec<Fallback>,
     emoji: Vec<Fallback>,
+    /// emoji 字体的组合规则，和 `emoji` 一一对应，第一次用到时才解析
+    emoji_shapers: Vec<Option<Option<Shaper>>>,
     pixel_size: f32,
     baseline: i32,
     cell_height: usize,
+}
+
+/// emoji 字体把组合序列合成一个字形的规则
+enum Shaper {
+    Gsub(gsub::Gsub),
+}
+
+impl Shaper {
+    fn new(face: &ttf::Face) -> Option<Shaper> {
+        gsub::Gsub::new(face, &[b"ccmp", b"liga", b"clig", b"rlig"]).map(Shaper::Gsub)
+    }
+
+    /// 执行替换。合成之后字数会变少
+    fn apply(&self, glyphs: &mut Vec<u16>) {
+        match self {
+            Shaper::Gsub(gsub) => gsub.apply(glyphs),
+        }
+    }
 }
 
 /// 后备字体第一次用到时才加载（中文字体动辄几十 MB）
@@ -179,6 +201,7 @@ impl Fonts {
             marks: FnvHashMap::default(),
             shapes: Default::default(),
             indexed: FnvHashMap::default(),
+            clusters: FnvHashMap::default(),
         }
     }
 
@@ -208,11 +231,12 @@ impl Fonts {
             description,
             warnings: Vec::new(),
             source: Source::Outline(Box::new(Outline {
-                gsub: gsub::Gsub::new(&regular),
-                gsub_bold: bold.as_ref().and_then(gsub::Gsub::new),
+                gsub: gsub::Gsub::new(&regular, &[b"calt"]),
+                gsub_bold: bold.as_ref().and_then(|face| gsub::Gsub::new(face, &[b"calt"])),
                 regular,
                 bold,
                 fallbacks,
+                emoji_shapers: Vec::new(),
                 emoji,
                 pixel_size,
                 cell_height: cell_height as usize,
@@ -223,6 +247,7 @@ impl Fonts {
             marks: FnvHashMap::default(),
             shapes: Default::default(),
             indexed: FnvHashMap::default(),
+            clusters: FnvHashMap::default(),
         }
     }
 
@@ -258,8 +283,12 @@ impl Fonts {
         let original: Vec<u16> = text.chars().map(|c| face.glyph_index(c)).collect();
         let mut glyphs = original.clone();
         gsub.apply(&mut glyphs);
-        let changed: Vec<(usize, u16)> =
-            glyphs.iter().zip(&original).enumerate().filter(|(_, (a, b))| a != b).map(|(i, (&a, _))| (i, a)).collect();
+        // 字数变了（多个字合成了一个）就放不进格子，当作没有连字
+        let changed: Vec<(usize, u16)> = if glyphs.len() == original.len() {
+            glyphs.iter().zip(&original).enumerate().filter(|(_, (a, b))| a != b).map(|(i, (&a, _))| (i, a)).collect()
+        } else {
+            Vec::new()
+        };
         // 不同的文字太多时整个清掉重来，免得一直增长
         if shapes.len() >= 4096 {
             shapes.clear();
@@ -285,6 +314,23 @@ impl Fonts {
             self.indexed.insert(key, glyph);
         }
         self.indexed.get(&key).and_then(Option::as_ref)
+    }
+
+    /// emoji 组合序列（👨‍👩‍👧、🇨🇳、👍🏽、1️⃣……）合成的一个字形。`cells`：占几格。
+    /// emoji 字体没有这个组合时返回 None，调用的地方按单个字符分别画。
+    pub fn cluster_glyph(&mut self, sequence: &str, cells: usize) -> Option<&Glyph> {
+        let key = (sequence.to_string(), cells as u8);
+        if !self.clusters.contains_key(&key) {
+            let glyph = match &mut self.source {
+                Source::Outline(outline) => outline.cluster_glyph(sequence, cells * self.cell_width),
+                Source::Bitmap { .. } => None,
+            };
+            if self.clusters.len() >= 1024 {
+                self.clusters.clear();
+            }
+            self.clusters.insert(key.clone(), glyph);
+        }
+        self.clusters.get(&key).and_then(Option::as_ref)
     }
 
     /// 叠在基础字符上的组合字符（比如 U+0301 重音符号）。`cells`：基础字符占几格。
@@ -376,6 +422,30 @@ impl Outline {
             height: bitmap.height,
             pixels: Pixels::Alpha(bitmap.alpha),
         })
+    }
+
+    fn cluster_glyph(&mut self, sequence: &str, span: usize) -> Option<Glyph> {
+        let first = sequence.chars().next()?;
+        self.emoji_shapers.resize_with(self.emoji.len(), || None);
+        for i in 0..self.emoji.len() {
+            load_pending(&mut self.emoji, i, "emoji 字体");
+            let Fallback::Loaded(face) = &self.emoji[i] else { continue };
+            if face.glyph_index(first) == 0 {
+                continue;
+            }
+            let shaper = self.emoji_shapers[i].get_or_insert_with(|| Shaper::new(face)).as_ref()?;
+            // 有的字体的组合规则里不写 U+FE0F，带着合不上时去掉再试一次
+            let without_vs: String = sequence.chars().filter(|&c| c != '\u{FE0F}').collect();
+            for text in [sequence, &without_vs] {
+                let mut glyphs: Vec<u16> = text.chars().map(|c| face.glyph_index(c)).filter(|&g| g != 0).collect();
+                shaper.apply(&mut glyphs);
+                if let [single] = glyphs[..] {
+                    return self.color_glyph(face, single, span);
+                }
+            }
+            return None;
+        }
+        None
     }
 
     /// 组合字符。`span`：基础字符占的像素宽度，`cell_width`：一格的宽度
@@ -599,6 +669,40 @@ mod tests {
         assert!(fonts.indexed_glyph(arrow[0].1, false).is_some());
     }
 
+    /// emoji 组合序列能合成一个字形。只在本地运行：
+    /// CONGMINAL_TEST_EMOJI_FONT 指向一个彩色 emoji 字体（比如 Noto Color Emoji）
+    #[test]
+    fn emoji_sequences() {
+        let Ok(path) = std::env::var("CONGMINAL_TEST_EMOJI_FONT") else { return };
+        let mut outline = Outline {
+            regular: load_face(&face_info(&path)).unwrap(),
+            bold: None,
+            gsub: None,
+            gsub_bold: None,
+            fallbacks: vec![],
+            emoji: vec![Fallback::Loaded(load_face(&face_info(&path)).unwrap())],
+            emoji_shapers: vec![],
+            pixel_size: 32.0,
+            baseline: 26,
+            cell_height: 40,
+        };
+        for sequence in [
+            "👨\u{200D}👩\u{200D}👧",
+            "🇨🇳",
+            "👍🏽",
+            "1\u{FE0F}\u{20E3}",
+            "❤\u{FE0F}\u{200D}🔥",
+            "🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}",
+            "🧑🏻\u{200D}🤝\u{200D}🧑🏿",
+        ] {
+            let glyph = outline.cluster_glyph(sequence, 40);
+            assert!(glyph.is_some(), "{sequence:?} 应该合成一个字形");
+            assert!(matches!(glyph.unwrap().pixels, Pixels::Color(_)), "{sequence:?} 应该是彩色的");
+        }
+        // 字体里没有的组合不合成
+        assert!(outline.cluster_glyph("🦀\u{200D}🦀", 40).is_none());
+    }
+
     /// 只在本地运行：CONGMINAL_TEST_COLR_FONT 指向一个 COLR 字体（比如 Twemoji Mozilla）。
     /// 设置了 CONGMINAL_TEST_DUMP 时把画出来的 🦀 存成 PPM 图片，方便用眼睛检查。
     #[test]
@@ -613,6 +717,7 @@ mod tests {
             gsub_bold: None,
             fallbacks: vec![],
             emoji: vec![],
+            emoji_shapers: vec![],
             pixel_size: 48.0,
             baseline: 40,
             cell_height: 60,

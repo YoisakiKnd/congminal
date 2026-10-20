@@ -93,7 +93,12 @@ impl Selection {
             for cell in cells.iter().filter(|cell| !cell.flags.contains(Flags::WIDE_SPACER)) {
                 // 组合字符原样跟在后面，复制出来的和程序输出的一样
                 text.push(cell.c);
-                text.push_str(term.marks(cell.marks));
+                let marks = term.marks(cell.marks);
+                // EMOJI 标记来自程序输出的 U+FE0F（❤️），复制时还原
+                if cell.flags.contains(Flags::EMOJI) && !marks.starts_with('\u{FE0F}') {
+                    text.push('\u{FE0F}');
+                }
+                text.push_str(marks);
             }
             let continues = row.wrapped && line != end.line;
             if !continues {
@@ -242,6 +247,10 @@ mod tests {
         let t = term(10, 1, "cafe\u{301} ok");
         assert_eq!(select(&t, Kind::Simple, (0, 0), (0, 4)), "cafe\u{301}");
         assert_eq!(select(&t, Kind::Word, (0, 1), (0, 1)), "cafe\u{301}");
+        // emoji 组合序列和 U+FE0F 原样复制
+        let family = "👨\u{200D}👩\u{200D}👧 ❤\u{FE0F}";
+        let t = term(20, 1, family);
+        assert_eq!(select(&t, Kind::Simple, (0, 0), (0, 9)), family);
     }
 
     #[test]

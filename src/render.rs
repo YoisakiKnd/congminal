@@ -4,7 +4,7 @@ use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph, Pixels};
 use crate::hash::Fnv;
 use crate::selection::Point;
-use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, compose_all};
+use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, compose_all, emoji_sequence_at};
 use std::hash::{Hash, Hasher};
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
@@ -108,6 +108,7 @@ fn invisible(c: char) -> bool {
             | '\u{2060}'..='\u{2064}'
             | '\u{FEFF}'
             | '\u{FE00}'..='\u{FE0F}'
+            | '\u{E0000}'..='\u{E007F}'
             | '\u{E0100}'..='\u{E01EF}')
 }
 
@@ -322,6 +323,8 @@ impl Renderer {
         let id = term.line_id(row);
         let cols = term.cols();
         let ligatures = self.ligatures(line, row, cols, cursor);
+        // emoji 组合序列已经整个画好了的格子，到这一列为止不再画字
+        let mut drawn_until = 0;
         for col in 0..cols.min(line.cells.len()) {
             let cell = &line[col];
             if cell.flags.contains(Flags::WIDE_SPACER) || cell.flags.contains(Flags::HIDDEN) {
@@ -330,16 +333,26 @@ impl Renderer {
             let (fg, _) =
                 self.colors(cell, cursor.blocks(row, col), selected(selection, id, col), default_fg, default_bg);
             let (x, y) = self.cell_origin(row, col);
-            if cell.c != ' ' {
-                // ❤️ 这类按 1 格算的 emoji：右边是空格（并且不是光标）时，按正常大小画，伸进右边那格
-                let roomy = cell.flags.contains(Flags::EMOJI)
-                    && !cell.flags.contains(Flags::WIDE)
-                    && line.cells.get(col + 1).is_some_and(|next| {
-                        col + 1 < cols
-                            && next.c == ' '
-                            && !next.flags.contains(Flags::WIDE_SPACER)
-                            && !(cursor.visible && row == cursor.row && col + 1 == cursor.col)
-                    });
+            // 右边那格是空着的（空格、不是光标），1 格的 emoji 可以伸进去按正常大小画
+            let room_right = line.cells.get(col + 1).is_some_and(|next| {
+                col + 1 < cols
+                    && next.c == ' '
+                    && next.marks == 0
+                    && !next.flags.contains(Flags::WIDE_SPACER)
+                    && !(cursor.visible && row == cursor.row && col + 1 == cursor.col)
+            });
+            if col >= drawn_until
+                && let Some((sequence, end)) = emoji_sequence_at(term, line, col, cols)
+                && let Some(glyph) =
+                    self.fonts.cluster_glyph(&sequence, if end - col >= 2 || room_right { 2 } else { 1 })
+            {
+                // 整个序列合成一个字形，画在开头（最多两格），后面的格子空着
+                blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, fg, clip);
+                drawn_until = end;
+            }
+            if cell.c != ' ' && col >= drawn_until {
+                // ❤️ 这类按 1 格算的 emoji：右边空着时按正常大小画
+                let roomy = cell.flags.contains(Flags::EMOJI) && !cell.flags.contains(Flags::WIDE) && room_right;
                 let cells = if cell.flags.contains(Flags::WIDE) || roomy { 2 } else { 1 };
                 let bold = cell.flags.contains(Flags::BOLD);
                 // 带组合字符的先合成（e + ◌́ → é），合不进去的符号叠画在上面

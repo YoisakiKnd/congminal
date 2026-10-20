@@ -6,12 +6,14 @@
 
 mod compose;
 mod compose_table;
+mod emoji;
 mod grid;
 mod reflow;
 mod width;
 mod width_table;
 
 pub use compose::compose_all;
+pub use emoji::sequence_at as emoji_sequence_at;
 pub use grid::{Cell, Color, Flags, Grid, History, Row};
 pub use width::char_width;
 
