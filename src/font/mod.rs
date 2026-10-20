@@ -7,6 +7,7 @@ mod color;
 mod discover;
 mod gsub;
 mod mmap;
+mod morx;
 mod psf;
 mod raster;
 mod ttf;
@@ -110,11 +111,17 @@ struct Outline {
 
 /// emoji 字体把组合序列合成一个字形的规则
 enum Shaper {
+    /// Noto Color Emoji、Segoe UI Emoji
     Gsub(gsub::Gsub),
+    /// Apple Color Emoji
+    Morx(morx::Morx),
 }
 
 impl Shaper {
     fn new(face: &ttf::Face) -> Option<Shaper> {
+        if let Some(morx) = morx::Morx::new(face) {
+            return Some(Shaper::Morx(morx));
+        }
         gsub::Gsub::new(face, &[b"ccmp", b"liga", b"clig", b"rlig"]).map(Shaper::Gsub)
     }
 
@@ -122,6 +129,7 @@ impl Shaper {
     fn apply(&self, glyphs: &mut Vec<u16>) {
         match self {
             Shaper::Gsub(gsub) => gsub.apply(glyphs),
+            Shaper::Morx(morx) => morx.apply(glyphs),
         }
     }
 }
@@ -669,11 +677,20 @@ mod tests {
         assert!(fonts.indexed_glyph(arrow[0].1, false).is_some());
     }
 
-    /// emoji 组合序列能合成一个字形。只在本地运行：
-    /// CONGMINAL_TEST_EMOJI_FONT 指向一个彩色 emoji 字体（比如 Noto Color Emoji）
+    /// emoji 组合序列能合成一个字形。macOS 上用系统的 Apple Color Emoji（CI 也会跑），
+    /// 其他系统上设置 CONGMINAL_TEST_EMOJI_FONT 指向一个彩色 emoji 字体（比如 Noto Color Emoji）。
+    /// 失败信息每行以 ::error:: 开头，在 GitHub Actions 里会显示成注解。
     #[test]
     fn emoji_sequences() {
-        let Ok(path) = std::env::var("CONGMINAL_TEST_EMOJI_FONT") else { return };
+        let apple = "/System/Library/Fonts/Apple Color Emoji.ttc";
+        let path = match std::env::var("CONGMINAL_TEST_EMOJI_FONT") {
+            Ok(path) => path,
+            Err(_) if std::path::Path::new(apple).exists() => apple.to_string(),
+            Err(_) => return,
+        };
+        let face = load_face(&face_info(&path)).unwrap();
+        let shaper = Shaper::new(&face).expect("emoji 字体应该有组合规则");
+        let kind = if matches!(shaper, Shaper::Morx(_)) { "morx" } else { "GSUB" };
         let mut outline = Outline {
             regular: load_face(&face_info(&path)).unwrap(),
             bold: None,
@@ -686,6 +703,7 @@ mod tests {
             baseline: 26,
             cell_height: 40,
         };
+        let mut failures = Vec::new();
         for sequence in [
             "👨\u{200D}👩\u{200D}👧",
             "🇨🇳",
@@ -695,12 +713,20 @@ mod tests {
             "🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}",
             "🧑🏻\u{200D}🤝\u{200D}🧑🏿",
         ] {
-            let glyph = outline.cluster_glyph(sequence, 40);
-            assert!(glyph.is_some(), "{sequence:?} 应该合成一个字形");
-            assert!(matches!(glyph.unwrap().pixels, Pixels::Color(_)), "{sequence:?} 应该是彩色的");
+            let ok = outline.cluster_glyph(sequence, 40).is_some_and(|g| matches!(g.pixels, Pixels::Color(_)));
+            if !ok {
+                let input: Vec<u16> = sequence.chars().map(|c| face.glyph_index(c)).collect();
+                let mut output: Vec<u16> = input.iter().copied().filter(|&g| g != 0).collect();
+                shaper.apply(&mut output);
+                failures
+                    .push(format!("::error::{kind} 没有把 {sequence:?} 合成一个字形：输入 {input:?}，输出 {output:?}"));
+            }
         }
         // 字体里没有的组合不合成
-        assert!(outline.cluster_glyph("🦀\u{200D}🦀", 40).is_none());
+        if outline.cluster_glyph("🦀\u{200D}🦀", 40).is_some() {
+            failures.push(format!("::error::{kind} 把字体里没有的 🦀‍🦀 合成了一个字形"));
+        }
+        assert!(failures.is_empty(), "\n{}", failures.join("\n"));
     }
 
     /// 只在本地运行：CONGMINAL_TEST_COLR_FONT 指向一个 COLR 字体（比如 Twemoji Mozilla）。
