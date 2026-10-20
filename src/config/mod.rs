@@ -23,6 +23,8 @@ pub struct Config {
     pub shell: ShellConfig,
     /// [env] 里的额外环境变量
     pub env: Vec<(String, String)>,
+    /// 回滚历史保留的行数
+    pub scrollback: usize,
     pub option_as_alt: OptionAsAlt,
 }
 
@@ -46,6 +48,7 @@ pub struct Colors {
     pub background: u32,
     pub cursor: u32,
     pub cursor_text: u32,
+    pub selection_background: u32,
     pub bold_is_bright: bool,
     pub palette: [u32; 256],
 }
@@ -80,12 +83,14 @@ impl Default for Config {
                 background: 0x1E1E1E,
                 cursor: 0xE0E0E0,
                 cursor_text: 0x1E1E1E,
+                selection_background: 0x264F78,
                 bold_is_bright: true,
                 palette: xterm_palette(),
             },
             cursor_shape: CursorShape::Block,
             shell: ShellConfig::default(),
             env: Vec::new(),
+            scrollback: crate::term::DEFAULT_SCROLLBACK,
             option_as_alt: OptionAsAlt::Both,
         }
     }
@@ -95,8 +100,12 @@ impl Default for Config {
 const SCHEMA: &[(&str, &[&str])] = &[
     ("font", &["family", "size", "line-height"]),
     ("window", &["columns", "rows", "padding"]),
-    ("colors", &["foreground", "background", "cursor", "cursor-text", "bold-is-bright", "palette"]),
+    (
+        "colors",
+        &["foreground", "background", "cursor", "cursor-text", "selection-background", "bold-is-bright", "palette"],
+    ),
     ("cursor", &["shape"]),
+    ("scrollback", &["lines"]),
     ("shell", &["program", "args", "working-directory"]),
     ("env", &[]),
     ("macos", &["option-as-alt"]),
@@ -167,6 +176,7 @@ impl Config {
             ("background", &mut colors.background),
             ("cursor", &mut colors.cursor),
             ("cursor-text", &mut colors.cursor_text),
+            ("selection-background", &mut colors.selection_background),
         ] {
             if let Some(color) = r.color("colors", key) {
                 *slot = color;
@@ -202,6 +212,10 @@ impl Config {
                 "bar" => config.cursor_shape = CursorShape::Bar,
                 _ => r.warn("cursor", "shape", format!("“{shape}”无效，可以是 block、underline、bar")),
             }
+        }
+
+        if let Some(lines) = r.number("scrollback", "lines", 0.0, 1_000_000.0) {
+            config.scrollback = lines as usize;
         }
 
         config.shell.program = r.string("shell", "program").filter(|p| !p.is_empty());

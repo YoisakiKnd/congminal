@@ -1,5 +1,6 @@
 //! 屏幕网格：由行组成，每行是一串字符单元格。
 
+use std::collections::VecDeque;
 use std::ops::{BitOr, Index, IndexMut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,12 +136,25 @@ impl Grid {
         }
     }
 
-    /// 区域 `[top, bottom]`（闭区间）内的内容向上滚动 n 行，底部补空行
-    pub fn scroll_up(&mut self, top: usize, bottom: usize, n: usize, blank: Cell) {
+    /// 区域 `[top, bottom]`（闭区间）内的内容向上滚动 n 行，底部补空行。
+    /// 给了 `history` 时，滚出去的行存进回滚历史，否则直接丢掉。
+    pub fn scroll_up(&mut self, top: usize, bottom: usize, n: usize, blank: Cell, history: Option<&mut History>) {
         let n = n.min(bottom + 1 - top);
         self.rows[top..=bottom].rotate_left(n);
-        for row in &mut self.rows[bottom + 1 - n..=bottom] {
-            row.reset(blank);
+        match history {
+            Some(history) if history.limit > 0 => {
+                for i in bottom + 1 - n..=bottom {
+                    let mut fresh = history.take_spare(self.cols);
+                    fresh.reset(blank);
+                    let old = std::mem::replace(&mut self.rows[i], fresh);
+                    history.rows.push_back(old);
+                }
+            }
+            _ => {
+                for row in &mut self.rows[bottom + 1 - n..=bottom] {
+                    row.reset(blank);
+                }
+            }
         }
     }
 
@@ -153,9 +167,16 @@ impl Grid {
         }
     }
 
-    /// 丢弃最上面的 n 行（窗口变矮时用）
-    pub fn drop_top_rows(&mut self, n: usize) {
-        self.rows.drain(..n.min(self.rows.len()));
+    /// 取走最上面的 n 行（窗口变矮时用）
+    pub fn take_top_rows(&mut self, n: usize) -> Vec<Row> {
+        self.rows.drain(..n.min(self.rows.len())).collect()
+    }
+
+    /// 在最上面插入一行，同时去掉最下面一行（窗口变高时从历史里拉回内容用）
+    pub fn push_top(&mut self, mut row: Row) {
+        row.cells.resize(self.cols, Cell::default());
+        self.rows.insert(0, row);
+        self.rows.pop();
     }
 
     /// 简单的缩放：多截少补，不做重排
@@ -179,5 +200,77 @@ impl Index<usize> for Grid {
 impl IndexMut<usize> for Grid {
     fn index_mut(&mut self, row: usize) -> &mut Row {
         &mut self.rows[row]
+    }
+}
+
+/// 回滚历史：从屏幕顶部滚出去的行。最旧的在前面。
+pub struct History {
+    rows: VecDeque<Row>,
+    limit: usize,
+    /// 因为超过上限被丢掉的行数。选区用它把行号换算成不会随滚动变化的编号。
+    dropped: u64,
+}
+
+impl History {
+    pub fn new(limit: usize) -> History {
+        History { rows: VecDeque::new(), limit, dropped: 0 }
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// 第 i 行，0 是最旧的
+    pub fn get(&self, i: usize) -> &Row {
+        &self.rows[i]
+    }
+
+    pub fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+
+    pub fn clear(&mut self) {
+        self.dropped += self.rows.len() as u64;
+        self.rows.clear();
+    }
+
+    pub fn set_limit(&mut self, limit: usize) {
+        self.limit = limit;
+        while self.rows.len() > limit {
+            self.rows.pop_front();
+            self.dropped += 1;
+        }
+    }
+
+    pub fn push(&mut self, row: Row) {
+        if self.limit == 0 {
+            return;
+        }
+        if self.rows.len() >= self.limit {
+            self.rows.pop_front();
+            self.dropped += 1;
+        }
+        self.rows.push_back(row);
+    }
+
+    /// 取出最新的一行（窗口变高时拉回屏幕）
+    pub fn pop_newest(&mut self) -> Option<Row> {
+        self.rows.pop_back()
+    }
+
+    /// 给屏幕准备一个新的空行：历史满了就回收最旧的那行，省得每次都分配内存
+    fn take_spare(&mut self, cols: usize) -> Row {
+        if self.rows.len() >= self.limit
+            && let Some(mut row) = self.rows.pop_front()
+        {
+            self.dropped += 1;
+            row.cells.resize(cols, Cell::default());
+            return row;
+        }
+        Row::new(cols)
     }
 }

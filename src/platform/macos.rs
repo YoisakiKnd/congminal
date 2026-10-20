@@ -10,7 +10,7 @@
 //!
 //! 视图的方法是 AppKit 回调的，拿不到 App，所以它们把事件放进线程局部的队列，事件循环再取出来交给 App。
 
-use super::{App, Event};
+use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::config::OptionAsAlt;
 use crate::input::{Key, Mods};
 use crate::render::Framebuffer;
@@ -73,7 +73,9 @@ unsafe extern "C" {
 }
 
 #[link(name = "AppKit", kind = "framework")]
-unsafe extern "C" {}
+unsafe extern "C" {
+    static NSPasteboardTypeString: Id;
+}
 
 #[link(name = "QuartzCore", kind = "framework")]
 unsafe extern "C" {}
@@ -134,22 +136,29 @@ unsafe fn nsstring(s: &str) -> Id {
     }
 }
 
-/// 读取 NSView 的 frame。返回 32 字节的结构体，x86_64 上要用 objc_msgSend_stret。
-unsafe fn view_frame(view: Id) -> NSRect {
+/// 读取返回 NSRect 的属性（frame、bounds）。返回 32 字节的结构体，x86_64 上要用 objc_msgSend_stret。
+unsafe fn rect_property(object: Id, name: &CStr) -> NSRect {
     unsafe {
+        let sel = sel_registerName(name.as_ptr());
         #[cfg(target_arch = "x86_64")]
         {
             let f: unsafe extern "C" fn(*mut NSRect, Id, Sel) =
                 std::mem::transmute(objc_msgSend_stret as unsafe extern "C" fn());
             let mut rect = std::mem::zeroed();
-            f(&mut rect, view, sel_registerName(c"frame".as_ptr()));
+            f(&mut rect, object, sel);
             rect
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            msg![view, "frame"; NSRect]
+            let f: unsafe extern "C" fn(Id, Sel) -> NSRect =
+                std::mem::transmute(objc_msgSend as unsafe extern "C" fn());
+            f(object, sel)
         }
     }
+}
+
+unsafe fn view_frame(view: Id) -> NSRect {
+    unsafe { rect_property(view, c"frame") }
 }
 
 /// 把矩形从窗口坐标换算成屏幕坐标。返回结构体，x86_64 上同样要用 objc_msgSend_stret。
@@ -318,6 +327,21 @@ impl Window {
                 Id];
             msg![app_menu, "addItem:", quit => Id; ()];
             msg![app_item, "setSubmenu:", app_menu => Id; ()];
+
+            // "编辑"菜单：复制、粘贴。菜单项没有指定目标，命令会发给第一响应者，也就是我们的视图
+            let edit_item: Id = msg![msg![class(c"NSMenuItem"), "alloc"; Id], "init"; Id];
+            msg![menubar, "addItem:", edit_item => Id; ()];
+            let edit_menu: Id = msg![msg![class(c"NSMenu"), "alloc"; Id], "initWithTitle:", nsstring("Edit") => Id; Id];
+            for (title, action, key) in [("Copy", c"copy:", "c"), ("Paste", c"paste:", "v")] {
+                let item: Id = msg![msg![class(c"NSMenuItem"), "alloc"; Id],
+                    "initWithTitle:action:keyEquivalent:",
+                    nsstring(title) => Id,
+                    sel_registerName(action.as_ptr()) => Sel,
+                    nsstring(key) => Id;
+                    Id];
+                msg![edit_menu, "addItem:", item => Id; ()];
+            }
+            msg![edit_item, "setSubmenu:", edit_menu => Id; ()];
             msg![app, "setMainMenu:", menubar => Id; ()];
         }
     }
@@ -402,6 +426,21 @@ impl Window {
             }
             if app.needs_redraw() {
                 self.present(app.draw());
+            }
+            if let Some(request) = app.take_clipboard_request() {
+                let pasteboard: Id = msg![class(c"NSPasteboard"), "generalPasteboard"; Id];
+                match request {
+                    ClipboardRequest::Copy(text) => {
+                        msg![pasteboard, "clearContents"; isize];
+                        msg![pasteboard, "setString:forType:", nsstring(&text) => Id, NSPasteboardTypeString => Id; i8];
+                    }
+                    ClipboardRequest::Paste => {
+                        let text: Id = msg![pasteboard, "stringForType:", NSPasteboardTypeString => Id; Id];
+                        if !text.is_null() && !app.event(Event::Paste(string_from(text))) {
+                            return false;
+                        }
+                    }
+                }
             }
             self.update_ime_position(app.ime_cursor_area());
             true
@@ -569,7 +608,19 @@ unsafe fn register_view_class() -> Id {
     unsafe {
         let cls = objc_allocateClassPair(class(c"NSView"), c"CongminalView".as_ptr(), 0);
         // 类型编码字符串描述参数类型：v=void c=BOOL @=对象 :=SEL Q=无符号整数 {...}=结构体 ^=指针
-        let methods: [(&CStr, *const c_void, &CStr); 13] = [
+        let methods: &[(&CStr, *const c_void, &CStr)] = &[
+            (c"acceptsFirstMouse:", accepts_first_mouse as *const c_void, c"c@:@"),
+            (c"mouseDown:", mouse_down as *const c_void, c"v@:@"),
+            (c"mouseDragged:", mouse_dragged as *const c_void, c"v@:@"),
+            (c"mouseUp:", mouse_up as *const c_void, c"v@:@"),
+            (c"rightMouseDown:", right_mouse_down as *const c_void, c"v@:@"),
+            (c"rightMouseUp:", right_mouse_up as *const c_void, c"v@:@"),
+            (c"otherMouseDown:", other_mouse_down as *const c_void, c"v@:@"),
+            (c"otherMouseUp:", other_mouse_up as *const c_void, c"v@:@"),
+            (c"scrollWheel:", scroll_wheel as *const c_void, c"v@:@"),
+            (c"copy:", copy as *const c_void, c"v@:@"),
+            (c"paste:", paste as *const c_void, c"v@:@"),
+            (c"resetCursorRects", reset_cursor_rects as *const c_void, c"v@:"),
             (c"acceptsFirstResponder", accepts_first_responder as *const c_void, c"c@:"),
             (c"keyDown:", key_down as *const c_void, c"v@:@"),
             (c"insertText:replacementRange:", insert_text as *const c_void, c"v@:@{_NSRange=QQ}"),
@@ -596,7 +647,7 @@ unsafe fn register_view_class() -> Id {
             ),
             (c"doCommandBySelector:", do_command as *const c_void, c"v@::"),
         ];
-        for (name, imp, types) in methods {
+        for &(name, imp, types) in methods {
             class_addMethod(cls, sel_registerName(name.as_ptr()), imp, types.as_ptr());
         }
         let protocol = objc_getProtocol(c"NSTextInputClient".as_ptr());
@@ -621,6 +672,100 @@ fn wake_if_async() {
 
 extern "C" fn accepts_first_responder(_: Id, _: Sel) -> i8 {
     1
+}
+
+// ---- 鼠标、滚轮、复制粘贴 ----
+
+/// 窗口没激活时点一下，也直接当作点击（而不是只用来激活窗口）
+extern "C" fn accepts_first_mouse(_: Id, _: Sel, _: Id) -> i8 {
+    1
+}
+
+/// 事件位置换算成视图里的物理像素：原点从左下角换到左上角，点换成像素
+unsafe fn event_position(view: Id, event: Id) -> (f64, f64) {
+    unsafe {
+        let point: NSPoint = msg![event, "locationInWindow"; NSPoint];
+        let window: Id = msg![view, "window"; Id];
+        let scale: f64 = msg![window, "backingScaleFactor"; f64];
+        let height = view_frame(view).size.height;
+        (point.x * scale, (height - point.y) * scale)
+    }
+}
+
+extern "C" fn mouse_down(this: Id, _: Sel, event: Id) {
+    let (x, y) = unsafe { event_position(this, event) };
+    push_event(Event::MouseDown { button: MouseButton::Left, x, y });
+}
+
+extern "C" fn mouse_dragged(this: Id, _: Sel, event: Id) {
+    let (x, y) = unsafe { event_position(this, event) };
+    push_event(Event::MouseMove { x, y });
+}
+
+extern "C" fn mouse_up(_: Id, _: Sel, _: Id) {
+    push_event(Event::MouseUp { button: MouseButton::Left });
+}
+
+extern "C" fn right_mouse_down(this: Id, _: Sel, event: Id) {
+    let (x, y) = unsafe { event_position(this, event) };
+    push_event(Event::MouseDown { button: MouseButton::Right, x, y });
+}
+
+extern "C" fn right_mouse_up(_: Id, _: Sel, _: Id) {
+    push_event(Event::MouseUp { button: MouseButton::Right });
+}
+
+/// 其他按键：2 号是中键
+extern "C" fn other_mouse_down(this: Id, _: Sel, event: Id) {
+    unsafe {
+        let number: isize = msg![event, "buttonNumber"; isize];
+        if number == 2 {
+            let (x, y) = event_position(this, event);
+            push_event(Event::MouseDown { button: MouseButton::Middle, x, y });
+        }
+    }
+}
+
+extern "C" fn other_mouse_up(_: Id, _: Sel, event: Id) {
+    let number: isize = unsafe { msg![event, "buttonNumber"; isize] };
+    if number == 2 {
+        push_event(Event::MouseUp { button: MouseButton::Middle });
+    }
+}
+
+/// 触控板给出精确的像素距离，鼠标滚轮给出格数
+extern "C" fn scroll_wheel(this: Id, _: Sel, event: Id) {
+    unsafe {
+        let dy: f64 = msg![event, "scrollingDeltaY"; f64];
+        let precise: i8 = msg![event, "hasPreciseScrollingDeltas"; i8];
+        let delta = if precise != 0 {
+            let window: Id = msg![this, "window"; Id];
+            let scale: f64 = msg![window, "backingScaleFactor"; f64];
+            ScrollDelta::Pixels(dy * scale)
+        } else {
+            ScrollDelta::Lines(dy)
+        };
+        push_event(Event::Scroll(delta));
+    }
+}
+
+/// "编辑"菜单的复制（Cmd+C）
+extern "C" fn copy(_: Id, _: Sel, _: Id) {
+    push_event(Event::Copy);
+}
+
+/// "编辑"菜单的粘贴（Cmd+V）
+extern "C" fn paste(_: Id, _: Sel, _: Id) {
+    push_event(Event::PasteRequest);
+}
+
+/// 鼠标指针在视图上时显示 I 形
+extern "C" fn reset_cursor_rects(this: Id, _: Sel) {
+    unsafe {
+        let bounds = rect_property(this, c"bounds");
+        let cursor: Id = msg![class(c"NSCursor"), "IBeamCursor"; Id];
+        msg![this, "addCursorRect:cursor:", bounds => NSRect, cursor => Id; ()];
+    }
 }
 
 extern "C" fn key_down(this: Id, _: Sel, event: Id) {

@@ -5,10 +5,10 @@
 //!
 //! 事件循环：用 `poll` 同时等待 X 服务器的连接和一个唤醒用的 socket。
 
-use super::{App, Event};
+use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::input::{Key, Mods};
 use crate::render::Framebuffer;
-use std::ffi::{CString, c_char, c_int, c_long, c_uint, c_ulong, c_void};
+use std::ffi::{CStr, CString, c_char, c_int, c_long, c_uint, c_ulong, c_void};
 use std::io::{ErrorKind, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
@@ -90,18 +90,100 @@ struct XClientMessageEvent {
     data: [c_long; 5],
 }
 
+/// 鼠标按键事件，布局和 XKeyEvent 一样，只是最后是按键编号
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct XButtonEvent {
+    type_: c_int,
+    serial: c_ulong,
+    send_event: c_int,
+    display: *mut Display,
+    window: XWindow,
+    root: XWindow,
+    subwindow: XWindow,
+    time: c_ulong,
+    x: c_int,
+    y: c_int,
+    x_root: c_int,
+    y_root: c_int,
+    state: c_uint,
+    button: c_uint,
+    same_screen: c_int,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct XMotionEvent {
+    type_: c_int,
+    serial: c_ulong,
+    send_event: c_int,
+    display: *mut Display,
+    window: XWindow,
+    root: XWindow,
+    subwindow: XWindow,
+    time: c_ulong,
+    x: c_int,
+    y: c_int,
+    x_root: c_int,
+    y_root: c_int,
+    state: c_uint,
+    is_hint: c_char,
+    same_screen: c_int,
+}
+
+/// 别的程序来要剪贴板内容
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct XSelectionRequestEvent {
+    type_: c_int,
+    serial: c_ulong,
+    send_event: c_int,
+    display: *mut Display,
+    owner: XWindow,
+    requestor: XWindow,
+    selection: Atom,
+    target: Atom,
+    property: Atom,
+    time: c_ulong,
+}
+
+/// 剪贴板内容准备好了（或者对方拒绝了）
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct XSelectionEvent {
+    type_: c_int,
+    serial: c_ulong,
+    send_event: c_int,
+    display: *mut Display,
+    requestor: XWindow,
+    selection: Atom,
+    target: Atom,
+    property: Atom,
+    time: c_ulong,
+}
+
 /// XEvent 是一个联合体，C 里定义为 24 个 long 那么大
 #[repr(C)]
 union XEvent {
     type_: c_int,
     key: XKeyEvent,
+    button: XButtonEvent,
+    motion: XMotionEvent,
     configure: XConfigureEvent,
     expose: XExposeEvent,
     client: XClientMessageEvent,
+    selection_request: XSelectionRequestEvent,
+    selection: XSelectionEvent,
     pad: [c_long; 24],
 }
 
 const KEY_PRESS: c_int = 2;
+const BUTTON_PRESS: c_int = 4;
+const BUTTON_RELEASE: c_int = 5;
+const MOTION_NOTIFY: c_int = 6;
+const SELECTION_CLEAR: c_int = 29;
+const SELECTION_REQUEST: c_int = 30;
+const SELECTION_NOTIFY: c_int = 31;
 const FOCUS_IN: c_int = 9;
 const FOCUS_OUT: c_int = 10;
 const EXPOSE: c_int = 12;
@@ -112,6 +194,17 @@ const KEY_PRESS_MASK: c_long = 1 << 0;
 const EXPOSURE_MASK: c_long = 1 << 15;
 const STRUCTURE_NOTIFY_MASK: c_long = 1 << 17;
 const FOCUS_CHANGE_MASK: c_long = 1 << 21;
+const BUTTON_PRESS_MASK: c_long = 1 << 2;
+const BUTTON_RELEASE_MASK: c_long = 1 << 3;
+/// 只在按住鼠标键时报告移动
+const BUTTON_MOTION_MASK: c_long = 1 << 13;
+
+const XA_ATOM: Atom = 4;
+const XA_STRING: Atom = 31;
+const PROP_MODE_REPLACE: c_int = 0;
+const CURRENT_TIME: c_ulong = 0;
+/// 文本输入用的 I 形鼠标指针（X11/cursorfont.h 里的 XC_xterm）
+const XC_XTERM: c_uint = 152;
 
 const SHIFT_MASK: c_uint = 1 << 0;
 const CONTROL_MASK: c_uint = 1 << 2;
@@ -178,6 +271,43 @@ unsafe extern "C" {
         height: c_uint,
     ) -> c_int;
     fn XFree(data: *mut c_void) -> c_int;
+    fn XSetSelectionOwner(display: *mut Display, selection: Atom, owner: XWindow, time: c_ulong) -> c_int;
+    fn XGetSelectionOwner(display: *mut Display, selection: Atom) -> XWindow;
+    fn XConvertSelection(
+        display: *mut Display,
+        selection: Atom,
+        target: Atom,
+        property: Atom,
+        requestor: XWindow,
+        time: c_ulong,
+    ) -> c_int;
+    fn XChangeProperty(
+        display: *mut Display,
+        window: XWindow,
+        property: Atom,
+        kind: Atom,
+        format: c_int,
+        mode: c_int,
+        data: *const u8,
+        count: c_int,
+    ) -> c_int;
+    fn XGetWindowProperty(
+        display: *mut Display,
+        window: XWindow,
+        property: Atom,
+        offset: c_long,
+        length: c_long,
+        delete: c_int,
+        requested_type: Atom,
+        actual_type: *mut Atom,
+        actual_format: *mut c_int,
+        count: *mut c_ulong,
+        bytes_after: *mut c_ulong,
+        data: *mut *mut u8,
+    ) -> c_int;
+    fn XSendEvent(display: *mut Display, window: XWindow, propagate: c_int, mask: c_long, event: *mut XEvent) -> c_int;
+    fn XCreateFontCursor(display: *mut Display, shape: c_uint) -> c_ulong;
+    fn XDefineCursor(display: *mut Display, window: XWindow, cursor: c_ulong) -> c_int;
     fn XSetLocaleModifiers(modifiers: *const c_char) -> *mut c_char;
     fn XOpenIM(display: *mut Display, db: *mut c_void, name: *mut c_char, class: *mut c_char) -> Xim;
     fn XCloseIM(im: Xim) -> c_int;
@@ -228,6 +358,17 @@ pub struct Window {
     height: u32,
     wake_read: UnixStream,
     wake_write: Arc<UnixStream>,
+    atoms: Atoms,
+    /// 我们复制的文字。X11 的剪贴板只是"所有权"，内容一直留在复制它的程序手里，别人来要时才给。
+    clipboard: Option<String>,
+}
+
+struct Atoms {
+    clipboard: Atom,
+    utf8_string: Atom,
+    targets: Atom,
+    /// 粘贴时请对方把内容放在我们窗口的这个属性上
+    paste_property: Atom,
 }
 
 /// 跨线程唤醒：往 socket 里写一个字节，事件循环的 poll 就会返回
@@ -272,7 +413,25 @@ impl Window {
                 0,
                 XBlackPixel(display, screen),
             );
-            XSelectInput(display, window, KEY_PRESS_MASK | EXPOSURE_MASK | STRUCTURE_NOTIFY_MASK | FOCUS_CHANGE_MASK);
+            XSelectInput(
+                display,
+                window,
+                KEY_PRESS_MASK
+                    | EXPOSURE_MASK
+                    | STRUCTURE_NOTIFY_MASK
+                    | FOCUS_CHANGE_MASK
+                    | BUTTON_PRESS_MASK
+                    | BUTTON_RELEASE_MASK
+                    | BUTTON_MOTION_MASK,
+            );
+            XDefineCursor(display, window, XCreateFontCursor(display, XC_XTERM));
+            let atom = |name: &CStr| XInternAtom(display, name.as_ptr(), 0);
+            let atoms = Atoms {
+                clipboard: atom(c"CLIPBOARD"),
+                utf8_string: atom(c"UTF8_STRING"),
+                targets: atom(c"TARGETS"),
+                paste_property: atom(c"CONGMINAL_PASTE"),
+            };
             let title = CString::new(title).unwrap_or_default();
             XStoreName(display, window, title.as_ptr());
 
@@ -315,6 +474,8 @@ impl Window {
                 height,
                 wake_read,
                 wake_write: Arc::new(wake_write),
+                atoms,
+                clipboard: None,
             })
         }
     }
@@ -366,6 +527,18 @@ impl Window {
                 let title = CString::new(title).unwrap_or_default();
                 unsafe { XStoreName(self.display, self.window, title.as_ptr()) };
             }
+            if let Some(request) = app.take_clipboard_request() {
+                match request {
+                    ClipboardRequest::Copy(text) => self.copy(text),
+                    ClipboardRequest::Paste => {
+                        if let Some(text) = self.request_paste()
+                            && !app.event(Event::Paste(text))
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
             if app.needs_redraw() {
                 self.present(app.draw());
             }
@@ -413,8 +586,140 @@ impl Window {
                     XUnsetICFocus(self.ic);
                     vec![]
                 }
+                BUTTON_PRESS | BUTTON_RELEASE => {
+                    let b = event.button;
+                    let (x, y) = (b.x as f64, b.y as f64);
+                    let pressed = event.type_ == BUTTON_PRESS;
+                    let button = match b.button {
+                        1 => MouseButton::Left,
+                        2 => MouseButton::Middle,
+                        3 => MouseButton::Right,
+                        // 滚轮在 X11 里是 4（上）、5（下）号按键，按下一次算一格
+                        4 if pressed => return vec![Event::Scroll(ScrollDelta::Lines(1.0))],
+                        5 if pressed => return vec![Event::Scroll(ScrollDelta::Lines(-1.0))],
+                        _ => return vec![],
+                    };
+                    if pressed { vec![Event::MouseDown { button, x, y }] } else { vec![Event::MouseUp { button }] }
+                }
+                MOTION_NOTIFY => vec![Event::MouseMove { x: event.motion.x as f64, y: event.motion.y as f64 }],
+                SELECTION_REQUEST => {
+                    self.answer_selection_request(&event.selection_request);
+                    vec![]
+                }
+                SELECTION_CLEAR => {
+                    self.clipboard = None;
+                    vec![]
+                }
+                SELECTION_NOTIFY => self.read_paste(&event.selection).map(Event::Paste).into_iter().collect(),
                 _ => vec![],
             }
+        }
+    }
+
+    // ---- 剪贴板 ----
+
+    fn copy(&mut self, text: String) {
+        self.clipboard = Some(text);
+        unsafe { XSetSelectionOwner(self.display, self.atoms.clipboard, self.window, CURRENT_TIME) };
+    }
+
+    /// 剪贴板是自己的就直接给出内容；否则请剪贴板的主人把内容转成 UTF-8 放到我们窗口上，
+    /// 结果在 SelectionNotify 事件里到达
+    fn request_paste(&mut self) -> Option<String> {
+        unsafe {
+            if XGetSelectionOwner(self.display, self.atoms.clipboard) == self.window {
+                return self.clipboard.clone();
+            }
+            XConvertSelection(
+                self.display,
+                self.atoms.clipboard,
+                self.atoms.utf8_string,
+                self.atoms.paste_property,
+                self.window,
+                CURRENT_TIME,
+            );
+        }
+        None
+    }
+
+    fn read_paste(&mut self, event: &XSelectionEvent) -> Option<String> {
+        if event.property == 0 {
+            return None; // 剪贴板是空的，或者对方不支持 UTF-8
+        }
+        unsafe {
+            let (mut kind, mut format, mut count, mut remaining) = (0, 0, 0, 0);
+            let mut data: *mut u8 = null_mut();
+            XGetWindowProperty(
+                self.display,
+                self.window,
+                event.property,
+                0,
+                // 单位是 4 字节，最多读 64 MB
+                16 * 1024 * 1024,
+                1,
+                0,
+                &mut kind,
+                &mut format,
+                &mut count,
+                &mut remaining,
+                &mut data,
+            );
+            if data.is_null() {
+                return None;
+            }
+            let text = (format == 8)
+                .then(|| String::from_utf8_lossy(std::slice::from_raw_parts(data, count as usize)).into_owned());
+            XFree(data.cast());
+            text
+        }
+    }
+
+    /// 别的程序要我们的剪贴板内容：先告诉它支持哪些格式（TARGETS），再给 UTF-8 文字
+    fn answer_selection_request(&self, request: &XSelectionRequestEvent) {
+        let property = if request.property == 0 { request.target } else { request.property };
+        let mut reply = XSelectionEvent {
+            type_: SELECTION_NOTIFY,
+            serial: 0,
+            send_event: 1,
+            display: self.display,
+            requestor: request.requestor,
+            selection: request.selection,
+            target: request.target,
+            property: 0,
+            time: request.time,
+        };
+        unsafe {
+            if let Some(text) = &self.clipboard {
+                if request.target == self.atoms.targets {
+                    // 格式为 32 的属性在 Xlib 里按 long 传
+                    let targets: [c_ulong; 3] = [self.atoms.targets, self.atoms.utf8_string, XA_STRING];
+                    XChangeProperty(
+                        self.display,
+                        request.requestor,
+                        property,
+                        XA_ATOM,
+                        32,
+                        PROP_MODE_REPLACE,
+                        targets.as_ptr().cast(),
+                        targets.len() as c_int,
+                    );
+                    reply.property = property;
+                } else if request.target == self.atoms.utf8_string || request.target == XA_STRING {
+                    XChangeProperty(
+                        self.display,
+                        request.requestor,
+                        property,
+                        request.target,
+                        8,
+                        PROP_MODE_REPLACE,
+                        text.as_ptr(),
+                        text.len() as c_int,
+                    );
+                    reply.property = property;
+                }
+            }
+            let mut event = XEvent { selection: reply };
+            XSendEvent(self.display, request.requestor, 0, 0, &mut event);
         }
     }
 

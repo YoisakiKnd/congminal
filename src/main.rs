@@ -20,19 +20,25 @@ mod input;
 mod platform;
 mod pty;
 mod render;
+mod selection;
 mod term;
 mod vt;
 
 use config::Config;
-use platform::{App, Event, Window};
+use input::{Key, Mods};
+use platform::{App, ClipboardRequest, Event, MouseButton, ScrollDelta, Window};
 use pty::{Pty, PtyEvent};
 use render::{Framebuffer, Renderer};
+use selection::{Kind, Point, Selection};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use term::Terminal;
 use vt::Parser;
+
+/// 两次点击间隔小于这个时间、并且在同一个格子上，算作双击（三击）
+const MULTI_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 
 /// 其他线程交给主线程的东西
 #[derive(Default)]
@@ -56,6 +62,16 @@ struct Congminal {
     config: Config,
     config_path: Option<PathBuf>,
     scale: f64,
+    selection: Option<Selection>,
+    /// 正在按住左键拖动选择
+    selecting: bool,
+    /// 上一次点击：时间、位置（行号、列）、连击次数
+    last_click: Option<(Instant, u64, usize, u32)>,
+    /// 触控板滚动不足一行的部分，攒着下次用
+    scroll_remainder: f64,
+    clipboard_request: Option<ClipboardRequest>,
+    /// 上次看到的是不是备用屏幕。切换屏幕时选区就没有意义了。
+    was_alt_screen: bool,
     dirty: bool,
 }
 
@@ -92,6 +108,7 @@ impl Congminal {
         }
         apply_runtime_settings(&config, &mut self.term);
         self.config = config;
+        self.selection = None;
         self.dirty = true;
         term::trace(format_args!("已重新加载配置"));
     }
@@ -100,12 +117,139 @@ impl Congminal {
         self.framebuffer.resize(width as usize, height as usize);
         let (cols, rows) = self.renderer.grid_size(width as usize, height as usize);
         if (cols, rows) != (self.term.cols(), self.term.rows()) {
+            self.selection = None;
             self.term.resize(cols, rows);
             if let Err(e) = self.pty.resize(cols as u16, rows as u16) {
                 eprintln!("调整 PTY 尺寸失败：{e}");
             }
         }
         self.dirty = true;
+    }
+}
+
+impl Congminal {
+    /// 终端自己处理的快捷键（翻看历史、复制、粘贴）。返回 true 表示已经处理，不再发给 shell。
+    fn shortcut(&mut self, key: Key, mods: Mods) -> bool {
+        let page = self.term.rows().saturating_sub(1).max(1) as isize;
+        let only_shift = mods.shift && !mods.ctrl && !mods.alt;
+        let ctrl_shift = mods.ctrl && mods.shift && !mods.alt;
+        // 备用屏幕（vim、less）没有历史，Shift+PageUp 之类的键留给程序自己用
+        let history = !self.term.is_alt_screen();
+        match key {
+            Key::PageUp if only_shift && history => self.term.scroll_display(page),
+            Key::PageDown if only_shift && history => self.term.scroll_display(-page),
+            Key::Home if only_shift && history => self.term.scroll_display(isize::MAX / 2),
+            Key::End if only_shift && history => self.term.scroll_to_bottom(),
+            // Ctrl+Shift+C 时平台层给出的可能是控制字符 0x03，所以几种写法都认
+            Key::Char('C' | 'c' | '\x03') if ctrl_shift => self.copy(),
+            Key::Char('V' | 'v' | '\x16') if ctrl_shift => self.clipboard_request = Some(ClipboardRequest::Paste),
+            Key::Insert if only_shift => self.clipboard_request = Some(ClipboardRequest::Paste),
+            _ => return false,
+        }
+        self.dirty = true;
+        true
+    }
+
+    fn copy(&mut self) {
+        if let Some(selection) = &self.selection {
+            let text = selection.text(&self.term);
+            if !text.is_empty() {
+                self.clipboard_request = Some(ClipboardRequest::Copy(text));
+            }
+        }
+    }
+
+    /// 粘贴：换行统一成回车；程序开启了 bracketed paste（2004）时用 ESC[200~ … ESC[201~ 包起来，
+    /// 并去掉文字里伪造的结束标记，免得粘贴的内容被当成命令执行
+    fn paste(&mut self, text: &str) {
+        self.term.scroll_to_bottom();
+        let text = text.replace("\r\n", "\r").replace('\n', "\r");
+        if self.term.modes().bracketed_paste {
+            let text = text.replace("\x1b[201~", "");
+            self.write_to_pty(format!("\x1b[200~{text}\x1b[201~").as_bytes());
+        } else {
+            self.write_to_pty(text.as_bytes());
+        }
+        self.dirty = true;
+    }
+
+    fn mouse_down(&mut self, button: MouseButton, x: f64, y: f64) {
+        match button {
+            MouseButton::Left => {}
+            MouseButton::Middle => {
+                self.clipboard_request = Some(ClipboardRequest::Paste);
+                return;
+            }
+            MouseButton::Right => return,
+        }
+        let (row, col) = self.renderer.grid_position(x, y, &self.term);
+        let line = self.term.line_id(row);
+        let cell = col.floor() as usize;
+        // 连击计数：同一个格子上快速点击，1 → 2 → 3 → 1 循环
+        let clicks = match self.last_click {
+            Some((time, l, c, n)) if time.elapsed() < MULTI_CLICK_INTERVAL && l == line && c == cell => n % 3 + 1,
+            _ => 1,
+        };
+        self.last_click = Some((Instant::now(), line, cell, clicks));
+        let kind = match clicks {
+            1 => Kind::Simple,
+            2 => Kind::Word,
+            _ => Kind::Line,
+        };
+        self.selection = Some(Selection::new(self.selection_point(row, col, kind), kind));
+        self.selecting = true;
+        self.dirty = true;
+    }
+
+    fn mouse_move(&mut self, x: f64, y: f64) {
+        if !self.selecting {
+            return;
+        }
+        // 拖到窗口外面时自动滚动
+        if y < 0.0 {
+            self.term.scroll_display(1);
+        } else if y > self.framebuffer.height as f64 {
+            self.term.scroll_display(-1);
+        }
+        let (row, col) = self.renderer.grid_position(x, y, &self.term);
+        let kind = if let Some(selection) = &self.selection { selection.kind() } else { return };
+        let point = self.selection_point(row, col, kind);
+        if let Some(selection) = &mut self.selection {
+            selection.update(point);
+        }
+        self.dirty = true;
+    }
+
+    /// 拖动选择用格子之间的边界（四舍五入），双击三击用鼠标所在的格子
+    fn selection_point(&self, row: usize, col: f64, kind: Kind) -> Point {
+        let col = match kind {
+            Kind::Simple => col.round() as usize,
+            _ => (col.floor() as usize).min(self.term.cols() - 1),
+        };
+        Point { line: self.term.line_id(row), col }
+    }
+
+    fn scroll(&mut self, delta: ScrollDelta) {
+        // 鼠标滚轮一格滚 3 行
+        let lines = match delta {
+            ScrollDelta::Lines(lines) => lines * 3.0,
+            ScrollDelta::Pixels(pixels) => pixels / self.renderer.cell_height() as f64,
+        };
+        self.scroll_remainder += lines;
+        let whole = self.scroll_remainder.trunc();
+        self.scroll_remainder -= whole;
+        if whole == 0.0 {
+            return;
+        }
+        if self.term.is_alt_screen() {
+            // 备用屏幕没有历史：把滚轮变成上下方向键，less、vim 里也能用滚轮
+            let key = if whole > 0.0 { Key::Up } else { Key::Down };
+            let bytes = input::encode(key, Mods::default(), self.term.modes().app_cursor);
+            self.write_to_pty(&bytes.repeat(whole.abs() as usize));
+        } else {
+            self.term.scroll_display(whole as isize);
+            self.dirty = true;
+        }
     }
 }
 
@@ -125,6 +269,10 @@ impl App for Congminal {
                     if !response.is_empty() {
                         self.write_to_pty(&response);
                     }
+                    if self.term.is_alt_screen() != self.was_alt_screen {
+                        self.was_alt_screen = self.term.is_alt_screen();
+                        self.selection = None;
+                    }
                     self.dirty = true;
                 }
                 if config_changed {
@@ -135,6 +283,14 @@ impl App for Congminal {
                 }
             }
             Event::Key { key, mods } => {
+                if self.shortcut(key, mods) {
+                    return true;
+                }
+                // 打字时回到最底下
+                if self.term.display_offset() > 0 {
+                    self.term.scroll_to_bottom();
+                    self.dirty = true;
+                }
                 let bytes = input::encode(key, mods, self.term.modes().app_cursor);
                 if !bytes.is_empty() {
                     self.write_to_pty(&bytes);
@@ -142,9 +298,23 @@ impl App for Congminal {
             }
             Event::Text(text) => {
                 self.preedit.clear();
+                self.term.scroll_to_bottom();
                 self.dirty = true;
                 self.write_to_pty(text.as_bytes());
             }
+            Event::MouseDown { button, x, y } => self.mouse_down(button, x, y),
+            Event::MouseUp { button: MouseButton::Left, .. } => {
+                self.selecting = false;
+                if self.selection.as_ref().is_some_and(|s| s.range(&self.term).is_none()) {
+                    self.selection = None;
+                }
+            }
+            Event::MouseUp { .. } => {}
+            Event::MouseMove { x, y } => self.mouse_move(x, y),
+            Event::Scroll(delta) => self.scroll(delta),
+            Event::Copy => self.copy(),
+            Event::PasteRequest => self.clipboard_request = Some(ClipboardRequest::Paste),
+            Event::Paste(text) => self.paste(&text),
             Event::Preedit(text) => {
                 self.preedit = text;
                 self.dirty = true;
@@ -161,13 +331,18 @@ impl App for Congminal {
     }
 
     fn draw(&mut self) -> &Framebuffer {
-        self.renderer.draw(&self.term, &self.preedit, &mut self.framebuffer);
+        let selection = self.selection.as_ref().and_then(|s| s.range(&self.term));
+        self.renderer.draw(&self.term, &self.preedit, selection, &mut self.framebuffer);
         self.dirty = false;
         &self.framebuffer
     }
 
     fn take_title(&mut self) -> Option<String> {
         self.term.take_title()
+    }
+
+    fn take_clipboard_request(&mut self) -> Option<ClipboardRequest> {
+        self.clipboard_request.take()
     }
 
     fn ime_cursor_area(&self) -> (u32, u32, u32, u32) {
@@ -179,6 +354,7 @@ impl App for Congminal {
 fn apply_runtime_settings(config: &Config, term: &mut Terminal) {
     platform::set_option_as_alt(config.option_as_alt);
     term.set_default_cursor_shape(config.cursor_shape);
+    term.set_scrollback_limit(config.scrollback);
 }
 
 /// CONGMINAL_SCALE 可以覆盖系统报告的缩放比例
@@ -280,6 +456,12 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         config,
         config_path,
         scale,
+        selection: None,
+        selecting: false,
+        last_click: None,
+        scroll_remainder: 0.0,
+        clipboard_request: None,
+        was_alt_screen: false,
         dirty: true,
     };
     let mut warnings: Vec<String> = config_warnings.iter().map(|w| format!("配置文件：{w}")).collect();

@@ -8,11 +8,14 @@ mod grid;
 mod width;
 mod width_table;
 
-pub use grid::{Cell, Color, Flags, Grid};
+pub use grid::{Cell, Color, Flags, Grid, History, Row};
 pub use width::char_width;
 
 use crate::vt::{Params, Perform};
 use std::sync::OnceLock;
+
+/// 默认保留的回滚行数（配置文件可以改）
+pub const DEFAULT_SCROLLBACK: usize = 10_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CursorShape {
@@ -107,6 +110,10 @@ pub struct Terminal {
     grid: Grid,
     /// 备用屏幕（vim、less、htop 用它，退出后恢复原来的内容）
     alt_grid: Grid,
+    /// 主屏幕的回滚历史（备用屏幕没有）
+    history: History,
+    /// 用户往回翻了多少行，0 表示在最底下（看的是当前屏幕）
+    display_offset: usize,
     alt_active: bool,
     cursor: Cursor,
     /// 主屏和备用屏各有一份保存的光标
@@ -135,6 +142,8 @@ impl Terminal {
         Terminal {
             grid: Grid::new(cols, rows),
             alt_grid: Grid::new(cols, rows),
+            history: History::new(DEFAULT_SCROLLBACK),
+            display_offset: 0,
             alt_active: false,
             cursor: Cursor { row: 0, col: 0, template: Cell::default(), pending_wrap: false },
             saved: [SavedCursor::default(); 2],
@@ -177,6 +186,74 @@ impl Terminal {
         self.default_cursor_shape = shape;
     }
 
+    // ---- 回滚 ----
+
+    pub fn set_scrollback_limit(&mut self, lines: usize) {
+        self.history.set_limit(lines);
+        self.display_offset = self.display_offset.min(self.history.len());
+    }
+
+    pub fn history(&self) -> &History {
+        &self.history
+    }
+
+    pub fn is_alt_screen(&self) -> bool {
+        self.alt_active
+    }
+
+    pub fn display_offset(&self) -> usize {
+        self.display_offset
+    }
+
+    /// 往回翻（正数）或往下翻（负数）若干行
+    pub fn scroll_display(&mut self, lines: isize) {
+        let max = if self.alt_active { 0 } else { self.history.len() };
+        self.display_offset = (self.display_offset as isize + lines).clamp(0, max as isize) as usize;
+    }
+
+    pub fn scroll_to_bottom(&mut self) {
+        self.display_offset = 0;
+    }
+
+    /// 屏幕上第 i 行现在显示的内容（考虑了往回翻的行数）
+    pub fn visible_row(&self, i: usize) -> &Row {
+        // 把历史和屏幕看成一个整体：前面是历史，后面是当前屏幕
+        let index = self.history.len() - self.display_offset + i;
+        if index < self.history.len() { self.history.get(index) } else { &self.grid[index - self.history.len()] }
+    }
+
+    /// 稳定的行号：不会因为新内容滚进历史而改变（选区用）。屏幕第 i 行（考虑往回翻）对应的编号。
+    pub fn line_id(&self, visible_row: usize) -> u64 {
+        self.history.dropped() + (self.history.len() - self.display_offset + visible_row) as u64
+    }
+
+    /// 稳定行号对应的行；已经从历史里丢掉的行返回 None
+    pub fn row_by_id(&self, id: u64) -> Option<&Row> {
+        let index = id.checked_sub(self.history.dropped())? as usize;
+        if index < self.history.len() {
+            Some(self.history.get(index))
+        } else {
+            let screen = index - self.history.len();
+            (screen < self.grid.rows()).then(|| &self.grid[screen])
+        }
+    }
+
+    /// 区域上滚。从屏幕最顶上滚出去的行进入回滚历史（只有主屏幕才有历史）。
+    fn scroll_region_up(&mut self, top: usize, bottom: usize, n: usize) {
+        let blank = self.blank();
+        if top == 0 && !self.alt_active {
+            let before = self.history.len() as u64 + self.history.dropped();
+            self.grid.scroll_up(top, bottom, n, blank, Some(&mut self.history));
+            // 用户正在往回看的时候，让视图跟着内容一起走，看到的东西不会跳
+            if self.display_offset > 0 {
+                let pushed = (self.history.len() as u64 + self.history.dropped() - before) as usize;
+                self.display_offset = (self.display_offset + pushed).min(self.history.len());
+            }
+        } else {
+            self.grid.scroll_up(top, bottom, n, blank, None);
+        }
+    }
+
     pub fn modes(&self) -> &Modes {
         &self.modes
     }
@@ -198,14 +275,28 @@ impl Terminal {
             return;
         }
 
-        // 变矮时把光标上方的内容往上推，保证光标所在的行仍然可见
+        let old_rows = self.rows();
+        // 变矮时把光标上方的内容往上推，保证光标所在的行仍然可见；推出去的行进入回滚历史
         if self.cursor.row >= rows {
             let shift = self.cursor.row + 1 - rows;
-            self.grid.drop_top_rows(shift);
+            for row in self.grid.take_top_rows(shift) {
+                if !self.alt_active {
+                    self.history.push(row);
+                }
+            }
             self.cursor.row -= shift;
         }
         self.grid.resize(cols, rows);
         self.alt_grid.resize(cols, rows);
+        // 变高时把历史里最近的几行拉回屏幕
+        if rows > old_rows && !self.alt_active {
+            for _ in 0..rows - old_rows {
+                let Some(row) = self.history.pop_newest() else { break };
+                self.grid.push_top(row);
+                self.cursor.row += 1;
+            }
+        }
+        self.display_offset = self.display_offset.min(self.history.len());
 
         let old_cols = self.tabs.len();
         self.tabs.resize(cols, false);
@@ -393,8 +484,7 @@ impl Terminal {
     /// IND：光标下移一行，到达滚动区域底部时整个区域上滚
     fn index(&mut self) {
         if self.cursor.row == self.scroll_bottom {
-            let blank = self.blank();
-            self.grid.scroll_up(self.scroll_top, self.scroll_bottom, 1, blank);
+            self.scroll_region_up(self.scroll_top, self.scroll_bottom, 1);
         } else if self.cursor.row + 1 < self.rows() {
             self.cursor.row += 1;
         }
@@ -489,7 +579,11 @@ impl Terminal {
                 self.grid[row].erase(0, col + 1, blank);
             }
             2 => self.grid.clear(blank),
-            // 3 = 清除回滚缓冲区，等实现了回滚再处理
+            // 清除回滚历史（clear 命令会发这个）
+            3 => {
+                self.history.clear();
+                self.display_offset = 0;
+            }
             _ => {}
         }
     }
@@ -556,7 +650,7 @@ impl Terminal {
             return;
         }
         let blank = self.blank();
-        self.grid.scroll_up(row, self.scroll_bottom, n, blank);
+        self.grid.scroll_up(row, self.scroll_bottom, n, blank, None);
         self.cursor.col = 0;
         self.cursor.pending_wrap = false;
     }
@@ -627,6 +721,7 @@ impl Terminal {
         }
         std::mem::swap(&mut self.grid, &mut self.alt_grid);
         self.alt_active = to_alt;
+        self.display_offset = 0;
     }
 
     // ---- SGR（字符属性） ----
@@ -686,8 +781,10 @@ impl Terminal {
     fn reset(&mut self) {
         let (cols, rows) = (self.cols(), self.rows());
         let default_cursor_shape = self.default_cursor_shape;
+        let scrollback = self.history.limit();
         *self = Terminal::new(cols, rows);
         self.default_cursor_shape = default_cursor_shape;
+        self.history.set_limit(scrollback);
     }
 
     /// DECSTR：软复位，不清屏
@@ -752,10 +849,7 @@ impl Perform for Terminal {
             ([], b'M') => self.delete_lines(n),
             ([], b'P') => self.delete_chars(n),
             ([], b'X') => self.erase_chars(n),
-            ([], b'S') => {
-                let blank = self.blank();
-                self.grid.scroll_up(self.scroll_top, self.scroll_bottom, n, blank);
-            }
+            ([], b'S') => self.scroll_region_up(self.scroll_top, self.scroll_bottom, n),
             ([], b'T') => {
                 let blank = self.blank();
                 self.grid.scroll_down(self.scroll_top, self.scroll_bottom, n, blank);
@@ -1116,6 +1210,79 @@ mod tests {
         // vim 退出时会发 CSI 0 q，要回到用户配置的形状
         Parser::new().advance(&mut t, b"\x1b[0 q");
         assert_eq!(t.cursor_shape(), CursorShape::Bar);
+    }
+
+    fn visible(term: &Terminal) -> Vec<String> {
+        (0..term.rows())
+            .map(|r| term.visible_row(r).cells.iter().map(|c| c.c).collect::<String>().trim_end().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn scrollback() {
+        let mut t = run(5, 2, "1\r\n2\r\n3\r\n4");
+        assert_eq!(screen(&t), ["3", "4"]);
+        assert_eq!(t.history().len(), 2);
+        t.scroll_display(1);
+        assert_eq!(visible(&t), ["2", "3"]);
+        t.scroll_display(10);
+        assert_eq!(visible(&t), ["1", "2"]);
+        // 往回看的时候来了新输出：看到的内容不动
+        Parser::new().advance(&mut t, b"\r\n5");
+        assert_eq!(visible(&t), ["1", "2"]);
+        t.scroll_to_bottom();
+        assert_eq!(visible(&t), ["4", "5"]);
+    }
+
+    #[test]
+    fn scrollback_limit() {
+        let mut t = Terminal::new(5, 2);
+        t.set_scrollback_limit(3);
+        Parser::new().advance(&mut t, b"1\r\n2\r\n3\r\n4\r\n5\r\n6");
+        assert_eq!(t.history().len(), 3);
+        assert_eq!(t.history().dropped(), 1);
+        t.scroll_display(100);
+        assert_eq!(visible(&t), ["2", "3"]);
+        // 稳定行号：最旧的那行（"2"）是 1 号
+        assert_eq!(t.line_id(0), 1);
+        assert_eq!(t.row_by_id(1).unwrap()[0].c, '2');
+        assert!(t.row_by_id(0).is_none());
+    }
+
+    #[test]
+    fn scroll_region_does_not_touch_history() {
+        let t = run(5, 4, "1\r\n2\r\n3\r\n4\x1b[2;4r\x1b[4;1H\n\n");
+        assert_eq!(t.history().len(), 0);
+        // 删除行（DL）也不进历史
+        let t = run(5, 2, "1\r\n2\x1b[H\x1b[M");
+        assert_eq!(t.history().len(), 0);
+    }
+
+    #[test]
+    fn alternate_screen_has_no_history() {
+        let mut t = run(5, 2, "\x1b[?1049h1\r\n2\r\n3\r\n4");
+        assert_eq!(t.history().len(), 0);
+        t.scroll_display(5);
+        assert_eq!(t.display_offset(), 0);
+    }
+
+    #[test]
+    fn clear_scrollback() {
+        let t = run(5, 2, "1\r\n2\r\n3\x1b[3J");
+        assert_eq!(t.history().len(), 0);
+    }
+
+    #[test]
+    fn resize_moves_lines_through_history() {
+        let mut t = run(5, 4, "1\r\n2\r\n3\r\n4");
+        t.resize(5, 2);
+        assert_eq!(screen(&t), ["3", "4"]);
+        assert_eq!(t.history().len(), 2);
+        // 再变高：从历史里拉回来
+        t.resize(5, 4);
+        assert_eq!(screen(&t), ["1", "2", "3", "4"]);
+        assert_eq!(t.history().len(), 0);
+        assert_eq!(t.cursor_position(), (3, 1));
     }
 
     #[test]

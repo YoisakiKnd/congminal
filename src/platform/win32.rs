@@ -3,7 +3,7 @@
 //! 窗口过程（WndProc）只负责把消息翻译成 [`Event`] 放进队列，
 //! 真正的处理都在 `run` 的主循环里，这样就不用在回调里拿到 App 的引用。
 
-use super::{App, Event};
+use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::input::{Key, Mods};
 use crate::render::Framebuffer;
 use std::cell::{Cell, RefCell};
@@ -93,13 +93,28 @@ const WM_KEYDOWN: u32 = 0x0100;
 const WM_CHAR: u32 = 0x0102;
 const WM_SYSKEYDOWN: u32 = 0x0104;
 const WM_SYSCHAR: u32 = 0x0106;
+const WM_MOUSEMOVE: u32 = 0x0200;
+const WM_LBUTTONDOWN: u32 = 0x0201;
+const WM_LBUTTONUP: u32 = 0x0202;
+const WM_RBUTTONDOWN: u32 = 0x0204;
+const WM_RBUTTONUP: u32 = 0x0205;
+const WM_MBUTTONDOWN: u32 = 0x0207;
+const WM_MBUTTONUP: u32 = 0x0208;
+const WM_MOUSEWHEEL: u32 = 0x020A;
 const WM_APP_WAKE: u32 = 0x8000 + 1;
+/// WM_MOUSEMOVE 的 wparam 里"左键按着"的标志
+const MK_LBUTTON: usize = 0x0001;
+/// 滚轮一格的 delta 值
+const WHEEL_DELTA: f64 = 120.0;
+const CF_UNICODETEXT: u32 = 13;
+const GMEM_MOVEABLE: u32 = 0x0002;
 
 const WS_OVERLAPPEDWINDOW: u32 = 0x00CF_0000;
 const CW_USEDEFAULT: i32 = 0x8000_0000_u32 as i32;
 const SW_SHOW: i32 = 5;
 const PM_REMOVE: u32 = 1;
-const IDC_ARROW: usize = 32512;
+/// 文本输入用的 I 形鼠标指针
+const IDC_IBEAM: usize = 32513;
 const LOGPIXELSX: i32 = 88;
 const DIB_RGB_COLORS: u32 = 0;
 
@@ -145,6 +160,13 @@ unsafe extern "system" {
     fn GetKeyState(key: i32) -> i16;
     fn SetWindowTextW(hwnd: Hwnd, text: *const u16) -> i32;
     fn SetProcessDPIAware() -> i32;
+    fn SetCapture(hwnd: Hwnd) -> Hwnd;
+    fn ReleaseCapture() -> i32;
+    fn OpenClipboard(hwnd: Hwnd) -> i32;
+    fn CloseClipboard() -> i32;
+    fn EmptyClipboard() -> i32;
+    fn GetClipboardData(format: u32) -> isize;
+    fn SetClipboardData(format: u32, memory: isize) -> isize;
 }
 
 #[link(name = "gdi32")]
@@ -169,6 +191,10 @@ unsafe extern "system" {
 #[link(name = "kernel32")]
 unsafe extern "system" {
     fn GetModuleHandleW(name: *const u16) -> Hinstance;
+    fn GlobalAlloc(flags: u32, bytes: usize) -> isize;
+    fn GlobalLock(memory: isize) -> *mut c_void;
+    fn GlobalUnlock(memory: isize) -> i32;
+    fn GlobalFree(memory: isize) -> isize;
 }
 
 #[repr(C)]
@@ -253,7 +279,7 @@ impl Window {
                 wnd_extra: 0,
                 instance,
                 icon: 0,
-                cursor: LoadCursorW(0, IDC_ARROW),
+                cursor: LoadCursorW(0, IDC_IBEAM),
                 background: 0,
                 menu_name: null(),
                 class_name: class_name.as_ptr(),
@@ -316,6 +342,18 @@ impl Window {
             if app.needs_redraw() {
                 self.present(app.draw());
             }
+            if let Some(request) = app.take_clipboard_request() {
+                match request {
+                    ClipboardRequest::Copy(text) => self.set_clipboard(&text),
+                    ClipboardRequest::Paste => {
+                        if let Some(text) = self.clipboard_text()
+                            && !app.event(Event::Paste(text))
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
             self.update_ime_position(app.ime_cursor_area());
 
             // 阻塞等待下一条消息，然后把已经排队的消息一起处理掉
@@ -334,6 +372,53 @@ impl Window {
                     return;
                 }
             }
+        }
+    }
+
+    /// 写剪贴板：UTF-16 文字放进一块全局内存交给系统。Windows 的换行习惯是 \r\n。
+    fn set_clipboard(&self, text: &str) {
+        let wide: Vec<u16> = text.replace('\n', "\r\n").encode_utf16().chain(Some(0)).collect();
+        unsafe {
+            let memory = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2);
+            if memory == 0 {
+                return;
+            }
+            let pointer = GlobalLock(memory).cast::<u16>();
+            if pointer.is_null() {
+                GlobalFree(memory);
+                return;
+            }
+            std::ptr::copy_nonoverlapping(wide.as_ptr(), pointer, wide.len());
+            GlobalUnlock(memory);
+            if OpenClipboard(self.hwnd) == 0 {
+                GlobalFree(memory);
+                return;
+            }
+            EmptyClipboard();
+            // 成功后这块内存归系统所有，不能再释放
+            if SetClipboardData(CF_UNICODETEXT, memory) == 0 {
+                GlobalFree(memory);
+            }
+            CloseClipboard();
+        }
+    }
+
+    fn clipboard_text(&self) -> Option<String> {
+        unsafe {
+            if OpenClipboard(self.hwnd) == 0 {
+                return None;
+            }
+            let memory = GetClipboardData(CF_UNICODETEXT);
+            let pointer = if memory == 0 { null_mut() } else { GlobalLock(memory).cast::<u16>() };
+            let text = (!pointer.is_null()).then(|| {
+                let len = (0..).take_while(|&i| *pointer.add(i) != 0).count();
+                String::from_utf16_lossy(std::slice::from_raw_parts(pointer, len))
+            });
+            if !pointer.is_null() {
+                GlobalUnlock(memory);
+            }
+            CloseClipboard();
+            text
         }
     }
 
@@ -436,6 +521,28 @@ unsafe extern "system" fn wnd_proc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: 
             push(Event::Wake);
             0
         }
+        WM_LBUTTONDOWN | WM_MBUTTONDOWN | WM_RBUTTONDOWN => {
+            // 捕获鼠标：拖出窗口外也能继续收到移动和抬起的消息
+            unsafe { SetCapture(hwnd) };
+            let (x, y) = mouse_position(lparam);
+            push(Event::MouseDown { button: mouse_button(msg), x, y });
+            0
+        }
+        WM_LBUTTONUP | WM_MBUTTONUP | WM_RBUTTONUP => {
+            unsafe { ReleaseCapture() };
+            push(Event::MouseUp { button: mouse_button(msg) });
+            0
+        }
+        WM_MOUSEMOVE if wparam & MK_LBUTTON != 0 => {
+            let (x, y) = mouse_position(lparam);
+            push(Event::MouseMove { x, y });
+            0
+        }
+        WM_MOUSEWHEEL => {
+            let delta = ((wparam >> 16) & 0xFFFF) as u16 as i16;
+            push(Event::Scroll(ScrollDelta::Lines(delta as f64 / WHEEL_DELTA)));
+            0
+        }
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             let mods = current_mods();
             match named_key(wparam) {
@@ -482,6 +589,19 @@ unsafe extern "system" fn wnd_proc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: 
             0
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+/// 鼠标消息的 lparam：低 16 位是 x，高 16 位是 y（有符号，拖到窗口外是负数）
+fn mouse_position(lparam: isize) -> (f64, f64) {
+    ((lparam & 0xFFFF) as u16 as i16 as f64, ((lparam >> 16) & 0xFFFF) as u16 as i16 as f64)
+}
+
+fn mouse_button(msg: u32) -> MouseButton {
+    match msg {
+        WM_MBUTTONDOWN | WM_MBUTTONUP => MouseButton::Middle,
+        WM_RBUTTONDOWN | WM_RBUTTONUP => MouseButton::Right,
+        _ => MouseButton::Left,
     }
 }
 

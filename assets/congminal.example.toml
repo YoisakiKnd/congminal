@@ -32,6 +32,8 @@ background = "#1e1e1e"
 cursor = "#e0e0e0"
 # 方块光标下面那个字的颜色
 cursor-text = "#1e1e1e"
+# 鼠标选中的文字的背景色
+selection-background = "#264f78"
 # 粗体的基本色（0-7）显示成对应的亮色（8-15）
 bold-is-bright = true
 # 16 色调色板：黑 红 绿 黄 蓝 品红 青 白，然后是它们的亮色版本。
@@ -44,6 +46,10 @@ palette = [
 [cursor]
 # block（方块）、underline（下划线）或 bar（竖线）。程序可以临时改变它。
 shape = "block"
+
+[scrollback]
+# 回滚历史保留多少行。滚轮或 Shift+PageUp / Shift+PageDown 往回看，0 表示不保留。
+lines = 10000
 
 [shell]
 # 不写 program 时：macOS / Linux 用 $SHELL，Windows 用 %COMSPEC%

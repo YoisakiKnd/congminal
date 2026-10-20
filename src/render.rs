@@ -2,6 +2,7 @@
 
 use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph};
+use crate::selection::Point;
 use crate::term::{Cell, Color, CursorShape, Flags, Terminal, char_width};
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
@@ -20,6 +21,17 @@ impl Framebuffer {
         self.width = width;
         self.height = height;
         self.pixels.resize(width * height, 0);
+    }
+
+    /// 半透明地叠一个矩形，alpha 是 0-255
+    fn blend_rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32, alpha: u32) {
+        let x_end = (x + w).min(self.width);
+        let y_end = (y + h).min(self.height);
+        for row in y..y_end {
+            for pixel in &mut self.pixels[row * self.width + x.min(x_end)..row * self.width + x_end] {
+                *pixel = mix(color, *pixel, alpha);
+            }
+        }
     }
 
     fn fill_rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {
@@ -84,17 +96,21 @@ impl Renderer {
         (x as u32, y as u32, self.fonts.cell_width as u32, self.fonts.cell_height as u32)
     }
 
-    /// `preedit` 是输入法正在输入、还没上屏的文字（比如拼音），画在光标处
-    pub fn draw(&mut self, term: &Terminal, preedit: &str, fb: &mut Framebuffer) {
+    /// `preedit` 是输入法正在输入、还没上屏的文字（比如拼音），画在光标处。
+    /// `selection` 是选中的范围（稳定行号表示的起点和终点，都包含在内）。
+    pub fn draw(&mut self, term: &Terminal, preedit: &str, selection: Option<(Point, Point)>, fb: &mut Framebuffer) {
         let (default_fg, default_bg) = if term.modes().reverse_video {
             (self.colors.background, self.colors.foreground)
         } else {
             (self.colors.foreground, self.colors.background)
         };
         fb.pixels.fill(default_bg);
+        let (rows, cols) = (term.rows(), term.cols());
 
-        let grid = term.grid();
+        // 光标只在看当前屏幕（没有往回翻）时画
+        let at_bottom = term.display_offset() == 0;
         let (cursor_row, mut cursor_col) = term.cursor_position();
+        let grid = term.grid();
         // 光标落在宽字符右半边时，算作在整个字上
         if grid[cursor_row][cursor_col].flags.contains(Flags::WIDE_SPACER)
             && cursor_col > 0
@@ -103,30 +119,41 @@ impl Renderer {
             cursor_col -= 1;
         }
         let block_cursor =
-            term.modes().cursor_visible && term.cursor_shape() == CursorShape::Block && preedit.is_empty();
+            at_bottom && term.modes().cursor_visible && term.cursor_shape() == CursorShape::Block && preedit.is_empty();
         let is_cursor = |row: usize, col: usize| block_cursor && row == cursor_row && col == cursor_col;
+        let is_selected = |line: u64, col: usize| {
+            selection.is_some_and(|(start, end)| {
+                let p = Point { line, col };
+                start <= p && p <= end
+            })
+        };
 
         // 分两遍画：先画所有背景，再画所有字。这样超出格子的笔画不会被旁边格子的背景盖住。
-        for row in 0..grid.rows() {
-            for col in 0..grid.cols() {
-                let cell = &grid[row][col];
+        for row in 0..rows {
+            let line = term.visible_row(row);
+            let id = term.line_id(row);
+            // 历史里的行可能是窗口变窄之前存进去的，比现在宽
+            for col in 0..cols.min(line.cells.len()) {
+                let cell = &line[col];
                 if cell.flags.contains(Flags::WIDE_SPACER) {
                     continue; // 宽字符的背景由它左边的本体一起画
                 }
-                let (_, bg) = self.colors(cell, is_cursor(row, col), default_fg, default_bg);
+                let (_, bg) = self.colors(cell, is_cursor(row, col), is_selected(id, col), default_fg, default_bg);
                 if bg != default_bg {
                     let (x, y) = self.cell_origin(row, col);
                     fb.fill_rect(x, y, self.cell_span(cell), self.fonts.cell_height, bg);
                 }
             }
         }
-        for row in 0..grid.rows() {
-            for col in 0..grid.cols() {
-                let cell = &grid[row][col];
+        for row in 0..rows {
+            let line = term.visible_row(row);
+            let id = term.line_id(row);
+            for col in 0..cols.min(line.cells.len()) {
+                let cell = &line[col];
                 if cell.flags.contains(Flags::WIDE_SPACER) || cell.flags.contains(Flags::HIDDEN) {
                     continue;
                 }
-                let (fg, _) = self.colors(cell, is_cursor(row, col), default_fg, default_bg);
+                let (fg, _) = self.colors(cell, is_cursor(row, col), is_selected(id, col), default_fg, default_bg);
                 let (x, y) = self.cell_origin(row, col);
                 if cell.c != ' ' {
                     self.draw_char(fb, x, y, cell.c, cell.flags.contains(Flags::BOLD), fg);
@@ -135,7 +162,9 @@ impl Renderer {
             }
         }
 
-        if !preedit.is_empty() {
+        if !at_bottom {
+            self.draw_scrollbar(fb, term);
+        } else if !preedit.is_empty() {
             self.draw_preedit(fb, term, preedit);
         } else if term.modes().cursor_visible {
             let (x, y) = self.cell_origin(cursor_row, cursor_col);
@@ -152,6 +181,35 @@ impl Renderer {
                 CursorShape::Bar => fb.fill_rect(x, y, thickness, self.fonts.cell_height, self.colors.cursor),
             }
         }
+    }
+
+    /// 往回翻的时候在右边画一条半透明的滚动位置指示
+    fn draw_scrollbar(&self, fb: &mut Framebuffer, term: &Terminal) {
+        let total = (term.history().len() + term.rows()) as f32;
+        let first_visible = (term.history().len() - term.display_offset()) as f32;
+        let track = fb.height as f32;
+        let thumb = (track * term.rows() as f32 / total).max(self.fonts.cell_height as f32);
+        let y = (track - thumb) * first_visible / (total - term.rows() as f32).max(1.0);
+        let width = (self.fonts.cell_width / 3).max(3);
+        fb.blend_rect(
+            fb.width.saturating_sub(width + 2),
+            y as usize,
+            width,
+            thumb as usize,
+            self.colors.foreground,
+            100,
+        );
+    }
+
+    /// 窗口像素坐标对应的位置：(行, 列)。行限制在屏幕范围内，列是小数（选区要据此判断点在格子的哪一半）。
+    pub fn grid_position(&self, x: f64, y: f64, term: &Terminal) -> (usize, f64) {
+        let col = ((x - self.padding as f64) / self.fonts.cell_width as f64).clamp(0.0, term.cols() as f64);
+        let row = ((y - self.padding as f64) / self.fonts.cell_height as f64).floor().max(0.0) as usize;
+        (row.min(term.rows() - 1), col)
+    }
+
+    pub fn cell_height(&self) -> usize {
+        self.fonts.cell_height
     }
 
     /// 输入法的预编辑文字：浅色背景 + 下划线，末尾画一个竖线光标
@@ -201,7 +259,7 @@ impl Renderer {
     }
 
     /// (前景色, 背景色)
-    fn colors(&self, cell: &Cell, is_cursor: bool, default_fg: u32, default_bg: u32) -> (u32, u32) {
+    fn colors(&self, cell: &Cell, is_cursor: bool, selected: bool, default_fg: u32, default_bg: u32) -> (u32, u32) {
         let bold = cell.flags.contains(Flags::BOLD);
         let mut fg = self.resolve(cell.fg, default_fg, bold);
         let mut bg = self.resolve(cell.bg, default_bg, false);
@@ -211,7 +269,13 @@ impl Renderer {
         if cell.flags.contains(Flags::DIM) {
             fg = average(fg, bg);
         }
-        if is_cursor { (self.colors.cursor_text, self.colors.cursor) } else { (fg, bg) }
+        if is_cursor {
+            (self.colors.cursor_text, self.colors.cursor)
+        } else if selected {
+            (fg, self.colors.selection_background)
+        } else {
+            (fg, bg)
+        }
     }
 
     fn resolve(&self, color: Color, default: u32, bold: bool) -> u32 {

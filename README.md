@@ -11,6 +11,18 @@ cargo run --release
 cargo test
 ```
 
+## 快捷键
+
+| 操作 | macOS | Windows / Linux |
+|---|---|---|
+| 复制选中的文字 | Cmd+C | Ctrl+Shift+C |
+| 粘贴 | Cmd+V | Ctrl+Shift+V、Shift+Insert |
+| 往回看历史 | 滚轮 / 触控板，Shift+PageUp / PageDown | 同左 |
+| 回到最顶 / 最底 | Shift+Home / Shift+End | 同左 |
+
+鼠标：拖动选择，双击选词，三击选整行（包括自动换行的部分），中键粘贴。
+在 vim、less 这类全屏程序里，滚轮会变成上下方向键。
+
 ## 配置
 
 配置文件是 TOML 格式，位置：
@@ -90,7 +102,8 @@ git push origin v0.1.0-alpha.1
 |---|---|---|
 | `src/pty/` | 启动 shell 并与之通信：Unix 用 `posix_openpt` + `fork`，Windows 用 ConPTY | 是 |
 | `src/vt.rs` | 转义序列解析器（Paul Williams 状态机）+ UTF-8 解码 | 否 |
-| `src/term/` | 终端状态机：光标、滚动区域、备用屏幕、SGR 属性、宽字符…… | 否 |
+| `src/term/` | 终端状态机：光标、滚动区域、备用屏幕、SGR 属性、宽字符、回滚历史…… | 否 |
+| `src/selection.rs` | 鼠标选区：拖动、双击选词、三击选行，取出选中的文字 | 否 |
 | `src/input.rs` | 按键编码成字节序列 | 否 |
 | `src/config/` | 配置文件：手写的 TOML 子集解析器、选项校验 | 否 |
 | `src/font/` | 字体：TrueType 解析和光栅化、系统字体查找、PSF 点阵字体 | 否 |
@@ -103,7 +116,7 @@ git push origin v0.1.0-alpha.1
 - 只支持 TrueType 轮廓的字体；OTF/CFF 字体（比如思源黑体的 .otf/.ttc）会被跳过
 - 没有连字（ligature）、没有斜体字体（斜体属性按正常字体显示）
 - 组合字符（单独的重音符号等）会被丢弃
-- 没有回滚缓冲区、文本选择、复制粘贴、鼠标上报
+- 没有鼠标上报：vim、tmux 等程序收不到鼠标点击（滚轮会转成方向键）
 - 窗口缩放时不重排文本
 - 输入法：macOS 实现了 `NSTextInputClient`，预编辑文字显示在光标处、候选词窗口跟随光标（已在真机验证）；Windows 用系统自己的输入框（尚未在真机验证）；Linux 只有基本的 XIM 支持
 

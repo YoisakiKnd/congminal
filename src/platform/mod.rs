@@ -29,12 +29,58 @@ pub enum Event {
         width: u32,
         height: u32,
     },
+    /// 鼠标按键按下。坐标是窗口内容区的物理像素，原点在左上角。
+    MouseDown {
+        button: MouseButton,
+        x: f64,
+        y: f64,
+    },
+    MouseUp {
+        button: MouseButton,
+    },
+    MouseMove {
+        x: f64,
+        y: f64,
+    },
+    /// 滚轮，正数表示往上（往回看历史）
+    Scroll(ScrollDelta),
+    /// 用户要求复制（macOS 的 Cmd+C 菜单）
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    Copy,
+    /// 用户要求粘贴（macOS 的 Cmd+V 菜单）。App 会通过 take_clipboard_request 要剪贴板内容。
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    PasteRequest,
+    /// 剪贴板里的文字（回应 ClipboardRequest::Paste）
+    Paste(String),
     /// 窗口需要重画（比如被遮挡后重新露出来）。macOS 的图层会保留内容，用不到它。
     #[cfg_attr(target_os = "macos", allow(dead_code))]
     Redraw,
     /// 其他线程调用了 `Waker::wake`
     Wake,
     CloseRequested,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseButton {
+    Left,
+    Middle,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ScrollDelta {
+    /// 鼠标滚轮的格数
+    Lines(f64),
+    /// 触控板的精确滚动（物理像素）
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    Pixels(f64),
+}
+
+/// App 请平台层读写系统剪贴板
+pub enum ClipboardRequest {
+    Copy(String),
+    /// 读出剪贴板内容，用 Event::Paste 送回来
+    Paste,
 }
 
 pub trait App {
@@ -44,6 +90,8 @@ pub trait App {
     fn draw(&mut self) -> &Framebuffer;
     /// 如果窗口标题需要改，返回新标题
     fn take_title(&mut self) -> Option<String>;
+    /// 需要读写剪贴板时返回请求，平台层处理
+    fn take_clipboard_request(&mut self) -> Option<ClipboardRequest>;
     /// 光标的像素区域 (x, y, 宽, 高)，原点在窗口内容区左上角。输入法用它摆放候选词窗口。
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     fn ime_cursor_area(&self) -> (u32, u32, u32, u32);
