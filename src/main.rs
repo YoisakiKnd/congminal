@@ -16,6 +16,8 @@
 
 mod config;
 mod font;
+#[allow(dead_code)] // emoji 还没接上
+mod image;
 mod input;
 mod platform;
 mod pty;
