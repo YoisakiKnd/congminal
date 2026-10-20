@@ -685,7 +685,11 @@ mod tests {
         let apple = "/System/Library/Fonts/Apple Color Emoji.ttc";
         let path = match std::env::var("CONGMINAL_TEST_EMOJI_FONT") {
             Ok(path) => path,
-            Err(_) if std::path::Path::new(apple).exists() => apple.to_string(),
+            // macOS 一定自带这个字体，找不到说明测试本身有问题，不能悄悄跳过
+            Err(_) if cfg!(target_os = "macos") => {
+                assert!(std::path::Path::new(apple).exists(), "::error::找不到 {apple}");
+                apple.to_string()
+            }
             Err(_) => return,
         };
         let face = load_face(&face_info(&path)).unwrap();
