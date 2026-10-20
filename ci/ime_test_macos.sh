@@ -13,11 +13,13 @@ result="$out/ime-result.txt"
 log="$out/ime-trace.log"
 rm -f "$result"
 
-annotate() {
-    local level=$1 title=$2
-    local body
-    body=$(cat "$out/input-source.txt" "$log" 2>/dev/null | grep -v '字体' | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
-    echo "::$level::$title%0A$body"
+# 把结果和日志写进注解。macOS 自带的是 bash 3.2，避免用 local（含空格的参数会被拆开）。
+# 日志按 8 行一组拆成几条注解，每条注解里的换行编码成 %0A。
+report() {
+    echo "::$1::$2"
+    cat "$out/input-source.txt" "$log" 2>/dev/null | grep -v '字体' | tail -48 | sed 's/%/%25/g' \
+        | awk 'NR % 8 == 1 { if (chunk != "") print "::notice::" chunk; chunk = "" } { chunk = chunk $0 "%0A" }
+               END { if (chunk != "") print "::notice::" chunk }'
 }
 
 CONGMINAL_SHELL="$here/macos/read_line.sh" CONGMINAL_IME_RESULT="$result" CONGMINAL_TRACE=1 "$bin" 2>"$log" &
@@ -46,8 +48,8 @@ echo "shell 收到：$got"
 echo "--- trace log ---"
 cat "$log"
 if [ "$got" = "你好" ]; then
-    annotate notice "输入法测试通过：shell 收到 $got"
+    report notice "输入法测试通过：shell 收到 $got"
     exit 0
 fi
-annotate error "输入法测试失败：shell 收到 $got（期望 你好）"
+report error "输入法测试失败：shell 收到 $got（期望 你好）"
 exit 1
