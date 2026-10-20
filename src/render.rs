@@ -156,7 +156,17 @@ impl Renderer {
                 let (fg, _) = self.colors(cell, is_cursor(row, col), is_selected(id, col), default_fg, default_bg);
                 let (x, y) = self.cell_origin(row, col);
                 if cell.c != ' ' {
-                    self.draw_char(fb, x, y, cell.c, cell.flags, fg);
+                    // ❤️ 这类按 1 格算的 emoji：右边是空格（并且不是光标）时，按正常大小画，伸进右边那格
+                    let roomy = cell.flags.contains(Flags::EMOJI)
+                        && !cell.flags.contains(Flags::WIDE)
+                        && line.cells.get(col + 1).is_some_and(|next| {
+                            col + 1 < cols
+                                && next.c == ' '
+                                && !next.flags.contains(Flags::WIDE_SPACER)
+                                && !(at_bottom && row == cursor_row && col + 1 == cursor_col)
+                        });
+                    let cells = if cell.flags.contains(Flags::WIDE) || roomy { 2 } else { 1 };
+                    self.draw_char(fb, x, y, cell.c, cell.flags, cells, fg);
                 }
                 self.draw_decorations(fb, x, y, self.cell_span(cell), cell.flags, fg);
             }
@@ -224,7 +234,7 @@ impl Renderer {
             let (x, _) = self.cell_origin(row, col);
             let span = width * self.fonts.cell_width;
             fb.fill_rect(x, y, span, self.fonts.cell_height, PREEDIT_BG);
-            self.draw_char(fb, x, y, c, Flags::default(), self.colors.foreground);
+            self.draw_char(fb, x, y, c, Flags::default(), width, self.colors.foreground);
             self.draw_decorations(fb, x, y, span, Flags::UNDERLINE, self.colors.foreground);
             col += width;
         }
@@ -232,8 +242,10 @@ impl Renderer {
         fb.fill_rect(x, y, (self.fonts.cell_height / 10).max(1), self.fonts.cell_height, self.colors.cursor);
     }
 
-    fn draw_char(&mut self, fb: &mut Framebuffer, x: usize, y: usize, c: char, flags: Flags, color: u32) {
-        if let Some(glyph) = self.fonts.glyph(c, flags.contains(Flags::BOLD), flags.contains(Flags::EMOJI)) {
+    /// `cells`：这个字可以占几格
+    #[allow(clippy::too_many_arguments)]
+    fn draw_char(&mut self, fb: &mut Framebuffer, x: usize, y: usize, c: char, flags: Flags, cells: usize, color: u32) {
+        if let Some(glyph) = self.fonts.glyph(c, flags.contains(Flags::BOLD), flags.contains(Flags::EMOJI), cells) {
             blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, color);
         }
     }

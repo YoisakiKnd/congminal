@@ -70,8 +70,8 @@ pub struct Fonts {
     /// 需要告诉用户的问题（比如指定的字体找不到）
     pub warnings: Vec<String>,
     source: Source,
-    /// 键：(字符, 粗体, emoji 样式)
-    cache: HashMap<(char, bool, bool), Option<Glyph>>,
+    /// 键：(字符, 粗体, emoji 样式, 可以占几格)
+    cache: HashMap<(char, bool, bool, u8), Option<Glyph>>,
 }
 
 enum Source {
@@ -202,15 +202,16 @@ impl Fonts {
         }
     }
 
-    /// `emoji`：这个字要求彩色 emoji 样式（后面跟了 U+FE0F）
-    pub fn glyph(&mut self, c: char, bold: bool, emoji: bool) -> Option<&Glyph> {
-        let key = (c, bold, emoji);
+    /// `emoji`：这个字要求彩色 emoji 样式（后面跟了 U+FE0F）。
+    /// `cells`：可以占几格。字形在这么宽的范围里水平居中，彩色字形还会按它限制大小。
+    pub fn glyph(&mut self, c: char, bold: bool, emoji: bool, cells: usize) -> Option<&Glyph> {
+        let key = (c, bold, emoji, cells as u8);
         if !self.cache.contains_key(&key) {
             let glyph = match &mut self.source {
                 Source::Bitmap { regular, bold: bold_font, top } => {
                     bitmap_glyph(if bold { bold_font } else { regular }, c, *top)
                 }
-                Source::Outline(outline) => outline.glyph(c, bold, emoji, self.cell_width),
+                Source::Outline(outline) => outline.glyph(c, bold, emoji, cells * self.cell_width),
             };
             self.cache.insert(key, glyph);
         }
@@ -219,7 +220,8 @@ impl Fonts {
 }
 
 impl Outline {
-    fn glyph(&mut self, c: char, bold: bool, emoji: bool, cell_width: usize) -> Option<Glyph> {
+    /// `span`：字形可以占的像素宽度
+    fn glyph(&mut self, c: char, bold: bool, emoji: bool, span: usize) -> Option<Glyph> {
         if emoji || prefers_emoji(c) {
             for i in 0..self.emoji.len() {
                 load_pending(&mut self.emoji, i, "emoji 字体");
@@ -229,7 +231,7 @@ impl Outline {
                 _ => None,
             });
             if let Some((face, index)) = found
-                && let Some(glyph) = self.color_glyph(face, index, c, cell_width)
+                && let Some(glyph) = self.color_glyph(face, index, span)
             {
                 return Some(glyph);
             }
@@ -263,7 +265,7 @@ impl Outline {
         let (face, index) = found.unwrap_or((primary, 0));
         // 后备字体恰好是彩色字体（比如用户把 emoji 字体写进了 [font] family）
         if index != 0
-            && let Some(glyph) = self.color_glyph(face, index, c, cell_width)
+            && let Some(glyph) = self.color_glyph(face, index, span)
         {
             return Some(glyph);
         }
@@ -274,7 +276,7 @@ impl Outline {
             embolden(&mut bitmap);
         }
         // 字形放在它占的格子里水平居中（后备字体的字宽和主字体不一样）
-        let span = (cell_width * char_width(c).max(1)) as f32;
+        let span = span as f32;
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span - advance) / 2.0).round() as i32;
         Some(Glyph {
@@ -287,9 +289,8 @@ impl Outline {
     }
 
     /// 彩色字形。字体没有彩色表、或者这个字形没有彩色版本时返回 None。
-    fn color_glyph(&self, face: &ttf::Face, index: u16, c: char, cell_width: usize) -> Option<Glyph> {
+    fn color_glyph(&self, face: &ttf::Face, index: u16, span: usize) -> Option<Glyph> {
         let tables = color::ColorTables::new(face)?;
-        let span = cell_width * char_width(c).max(1);
         match tables.glyph(face, index, self.pixel_size)? {
             color::ColorGlyph::Bitmap { image, ppem } => {
                 // 按字号缩放（emoji 图片四周有留白，比字号稍大一点更协调），再限制在格子里
@@ -462,7 +463,7 @@ mod tests {
             baseline: 40,
             cell_height: 60,
         };
-        let glyph = outline.color_glyph(&face, face.glyph_index('🦀'), '🦀', 28).expect("🦀 应该有彩色版本");
+        let glyph = outline.color_glyph(&face, face.glyph_index('🦀'), 56).expect("🦀 应该有彩色版本");
         let Pixels::Color(pixels) = &glyph.pixels else { panic!("应该是彩色字形") };
         // 螃蟹是橙红色的：不透明的像素里，红色分量应该明显大于蓝色
         let opaque: Vec<_> = pixels.iter().filter(|&&p| p >> 24 == 255).collect();
