@@ -26,10 +26,17 @@ note() {
 }
 
 trap 'status=$?; note "脚本退出，退出码 $status"' EXIT
+for signal in HUP INT TERM; do
+    trap "note '脚本收到信号 $signal'; exit 99" "$signal"
+done
+note "0. 开始。bash $BASH_VERSION，进程组 $(ps -o pgid= -p $$ | tr -d ' ')"
 
 CONGMINAL_SHELL="$here/macos/read_line.sh" CONGMINAL_IME_RESULT="$result" CONGMINAL_TRACE=1 "$bin" 2>"$log" &
 pid=$!
-sleep 4
+for second in 1 2 3 4; do
+    sleep 1
+    note "等待 ${second}s：$(ps -o pid=,pgid=,stat=,command= -p "$pid" 2>&1 || echo 进程不在了)"
+done
 note "1. congminal 已启动（pid $pid），进程还在：$(kill -0 "$pid" 2>&1 && echo 是 || echo 否)"
 
 front=$(osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $pid) to true" 2>&1)
