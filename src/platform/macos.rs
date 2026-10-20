@@ -58,6 +58,7 @@ const NOT_FOUND: usize = isize::MAX as usize;
 unsafe extern "C" {
     fn objc_getClass(name: *const c_char) -> Id;
     fn sel_registerName(name: *const c_char) -> Sel;
+    fn sel_getName(sel: Sel) -> *const c_char;
     fn objc_allocateClassPair(superclass: Id, name: *const c_char, extra_bytes: usize) -> Id;
     fn objc_registerClassPair(class: Id);
     fn class_addMethod(class: Id, name: Sel, imp: *const c_void, types: *const c_char) -> i8;
@@ -266,6 +267,15 @@ impl Window {
             msg![view, "release"; ()];
             msg![view, "setWantsLayer:", 1i8 => i8; ()];
             msg![window, "makeFirstResponder:", view => Id; i8];
+            let protocol = objc_getProtocol(c"NSTextInputClient".as_ptr());
+            let conforms: i8 = msg![view, "conformsToProtocol:", protocol => Id; i8];
+            let context: Id = msg![view, "inputContext"; Id];
+            crate::term::trace(format_args!(
+                "输入法：NSTextInputClient 协议={} 视图遵守协议={} 输入上下文={}",
+                !protocol.is_null(),
+                conforms != 0,
+                !context.is_null()
+            ));
 
             msg![window, "makeKeyAndOrderFront:", NIL => Id; ()];
             msg![app, "finishLaunching"; ()];
@@ -511,6 +521,8 @@ struct ImeState {
     composing_at_start: bool,
     /// 这次按键被输入法用掉了
     consumed: bool,
+    /// 输入法把这个键转成了编辑命令（说明它不要这个键）
+    command: bool,
     /// 不在输入中时 insertText: 给出的文字，等 keyDown: 决定怎么发
     pending_text: Option<String>,
     /// 光标的屏幕坐标
@@ -524,6 +536,7 @@ thread_local! {
         in_key_down: false,
         composing_at_start: false,
         consumed: false,
+        command: false,
         pending_text: None,
         cursor_rect: NSRect { origin: NSPoint { x: 0.0, y: 0.0 }, size: NSSize { width: 0.0, height: 0.0 } },
     }) };
@@ -582,6 +595,13 @@ fn push_event(event: Event) {
     IME.with(|s| s.borrow_mut().events.push_back(event));
 }
 
+/// 输入法的回调可能在 keyDown: 之外异步到达（输入法在另一个进程里），这时事件循环可能正睡着，要叫醒它
+fn wake_if_async() {
+    if IME.with(|s| !s.borrow().in_key_down) {
+        Waker.wake();
+    }
+}
+
 extern "C" fn accepts_first_responder(_: Id, _: Sel) -> i8 {
     1
 }
@@ -593,38 +613,56 @@ extern "C" fn key_down(this: Id, _: Sel, event: Id) {
         if flags & NS_COMMAND != 0 {
             return;
         }
+        let code: u16 = msg![event, "keyCode"; u16];
+        let composing = IME.with(|s| !s.borrow().marked.is_empty());
+        // 没在输入拼音时，功能键、Ctrl/Option 组合键直接按终端规则处理，不经过输入法
+        if !composing && (named_key(code).is_some() || flags & (NS_CONTROL | NS_OPTION) != 0) {
+            key_events(event, flags).into_iter().for_each(push_event);
+            return;
+        }
+
         IME.with(|s| {
             let mut s = s.borrow_mut();
             s.in_key_down = true;
-            s.composing_at_start = !s.marked.is_empty();
+            s.composing_at_start = composing;
             s.consumed = false;
+            s.command = false;
             s.pending_text = None;
         });
-        // 先给输入法：它会回调 insertText / setMarkedText / doCommandBySelector
-        let events: Id = msg![class(c"NSArray"), "arrayWithObject:", event => Id; Id];
-        msg![this, "interpretKeyEvents:", events => Id; ()];
-        let (consumed, pending) = IME.with(|s| {
+        // 交给输入法。返回值表示输入法（或系统按键绑定）接手了这个键；
+        // 它的结果（setMarkedText / insertText）可能就在这次调用里回调，也可能稍后异步到达。
+        let context: Id = msg![this, "inputContext"; Id];
+        let handled = !context.is_null() && msg![context, "handleEvent:", event => Id; i8] != 0;
+        let (consumed, command, pending) = IME.with(|s| {
             let mut s = s.borrow_mut();
             s.in_key_down = false;
-            (s.consumed || s.composing_at_start, s.pending_text.take())
+            (s.consumed, s.command, s.pending_text.take())
         });
-        if consumed {
+        crate::term::trace(format_args!(
+            "输入法 keyDown: keyCode={code} 有输入上下文={} handled={handled} 拼音中={composing} \
+             consumed={consumed} command={command} pending={pending:?}",
+            !context.is_null()
+        ));
+
+        if consumed || composing {
             return;
         }
-        let ctrl_or_alt = flags & (NS_CONTROL | NS_OPTION) != 0;
         match pending {
             // 普通文字（包括中文输入法直接给出的全角标点）
-            Some(text) if !ctrl_or_alt => push_event(Event::Text(text)),
-            // 功能键、Ctrl 组合键、Option 当 Alt 用：按终端的规则编码
-            _ => key_events(event, flags).into_iter().for_each(push_event),
+            Some(text) => push_event(Event::Text(text)),
+            // 输入法接手了，结果会异步到达
+            None if handled && !command => {}
+            // 输入法不要这个键：按终端规则处理
+            None => key_events(event, flags).into_iter().for_each(push_event),
         }
     }
 }
 
 extern "C" fn insert_text(_: Id, _: Sel, text: Id, _: NSRange) {
     let text = unsafe { string_from(text) };
-    IME.with(|s| {
+    let in_key_down = IME.with(|s| {
         let mut s = s.borrow_mut();
+        crate::term::trace(format_args!("输入法 insertText: {text:?} 在keyDown中={}", s.in_key_down));
         if !s.marked.is_empty() {
             s.marked.clear();
             s.events.push_back(Event::Preedit(String::new()));
@@ -636,27 +674,35 @@ extern "C" fn insert_text(_: Id, _: Sel, text: Id, _: NSRange) {
             s.consumed = true;
             s.events.push_back(Event::Text(text));
         }
+        s.in_key_down
     });
+    if !in_key_down {
+        wake_if_async();
+    }
 }
 
 extern "C" fn set_marked_text(_: Id, _: Sel, text: Id, _: NSRange, _: NSRange) {
     let text = unsafe { string_from(text) };
     IME.with(|s| {
         let mut s = s.borrow_mut();
+        crate::term::trace(format_args!("输入法 setMarkedText: {text:?} 在keyDown中={}", s.in_key_down));
         s.consumed = true;
         s.marked = text.clone();
         s.events.push_back(Event::Preedit(text));
     });
+    wake_if_async();
 }
 
 extern "C" fn unmark_text(_: Id, _: Sel) {
     IME.with(|s| {
         let mut s = s.borrow_mut();
+        crate::term::trace(format_args!("输入法 unmarkText"));
         if !s.marked.is_empty() {
             s.marked.clear();
             s.events.push_back(Event::Preedit(String::new()));
         }
     });
+    wake_if_async();
 }
 
 extern "C" fn has_marked_text(_: Id, _: Sel) -> i8 {
@@ -698,5 +744,9 @@ extern "C" fn first_rect(_: Id, _: Sel, _: NSRange, actual: *mut NSRange) -> NSR
     IME.with(|s| s.borrow().cursor_rect)
 }
 
-/// 输入法没用掉的按键会变成编辑命令（insertNewline: 之类），由 keyDown: 按终端规则处理，这里什么都不做
-extern "C" fn do_command(_: Id, _: Sel, _: Sel) {}
+/// 输入法没用掉的按键会变成编辑命令（insertNewline: 之类），记下来，由 keyDown: 按终端规则处理
+extern "C" fn do_command(_: Id, _: Sel, command: Sel) {
+    let name = unsafe { CStr::from_ptr(sel_getName(command)) };
+    crate::term::trace(format_args!("输入法 doCommandBySelector: {}", name.to_string_lossy()));
+    IME.with(|s| s.borrow_mut().command = true);
+}

@@ -84,6 +84,12 @@ jobs:
         if: runner.os == 'macOS'
         run: ci/smoke.sh target/release/congminal smoke/${{ matrix.name }}.png
 
+      # 先不阻塞 CI：输入法测试依赖运行机的辅助功能权限和输入法环境，稳定之后再改成必须通过
+      - name: 输入法测试
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: ci/ime_test_macos.sh target/release/congminal smoke/ime
+
       - name: 冒烟测试
         if: runner.os == 'Windows'
         shell: pwsh
