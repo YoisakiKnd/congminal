@@ -127,6 +127,8 @@ pub struct Terminal {
     active_charset: usize,
     /// REP（重复上一个字符）要用
     last_char: char,
+    /// 最近写入字符的格子，变体选择符要修改它的显示样式
+    last_glyph: Option<(usize, usize)>,
     /// 程序用 DECSCUSR 设置的光标形状，None 表示用配置里的默认形状
     cursor_shape: Option<CursorShape>,
     default_cursor_shape: CursorShape,
@@ -154,6 +156,7 @@ impl Terminal {
             charsets: [Charset::Ascii; 2],
             active_charset: 0,
             last_char: ' ',
+            last_glyph: None,
             cursor_shape: None,
             default_cursor_shape: CursorShape::Block,
             title: None,
@@ -316,8 +319,21 @@ impl Terminal {
     fn print_char(&mut self, c: char) {
         let c = self.translate_charset(c);
         let width = char_width(c);
-        // 组合字符（比如单独的重音符号）：暂时丢弃，以后可以叠加到前一个字上
+        // 组合字符（比如单独的重音符号）：暂时丢弃，以后可以叠加到前一个字上。
+        // 变体选择符例外：U+FE0F 要求前一个字用彩色 emoji 样式，U+FE0E 要求文字样式。宽度不变，和 shell 的计算一致。
         if width == 0 {
+            if let Some((row, col)) = self.last_glyph
+                && matches!(c, '\u{FE0F}' | '\u{FE0E}')
+                && row < self.rows()
+                && col < self.cols()
+            {
+                let flags = &mut self.grid[row][col].flags;
+                if c == '\u{FE0F}' {
+                    flags.insert(Flags::EMOJI);
+                } else {
+                    flags.remove(Flags::EMOJI);
+                }
+            }
             return;
         }
         let cols = self.cols();
@@ -364,6 +380,7 @@ impl Terminal {
             self.cursor.pending_wrap = self.modes.autowrap;
         }
         self.last_char = c;
+        self.last_glyph = Some((row, col));
     }
 
     fn wrap_line(&mut self) {
@@ -1192,6 +1209,19 @@ mod tests {
         // 覆盖右半边：左半边也被清掉
         let t = run(4, 1, "中\x1b[1;2Hb");
         assert_eq!(screen(&t), [" b"]);
+    }
+
+    #[test]
+    fn variation_selectors() {
+        // ❤ 本身是 1 格的普通符号，后面跟 U+FE0F 要用彩色 emoji 显示，宽度不变
+        let t = run(5, 1, "❤\u{fe0f}x");
+        assert!(t.grid()[0][0].flags.contains(Flags::EMOJI));
+        assert_eq!(t.grid()[0][1].c, 'x');
+        let t = run(5, 1, "❤\u{fe0f}\u{fe0e}");
+        assert!(!t.grid()[0][0].flags.contains(Flags::EMOJI));
+        // 覆盖之后标记也跟着消失
+        let t = run(5, 1, "❤\u{fe0f}\ra");
+        assert!(!t.grid()[0][0].flags.contains(Flags::EMOJI));
     }
 
     #[test]

@@ -29,6 +29,8 @@ impl Flags {
     pub const WIDE: Flags = Flags(1 << 8);
     /// 宽字符右半边的占位格，本身不画字
     pub const WIDE_SPACER: Flags = Flags(1 << 9);
+    /// 后面跟了 U+FE0F：要求用彩色 emoji 样式显示（比如 ❤️），即使它本身是普通符号
+    pub const EMOJI: Flags = Flags(1 << 10);
 
     pub fn contains(self, other: Flags) -> bool {
         self.0 & other.0 == other.0

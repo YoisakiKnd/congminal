@@ -156,7 +156,7 @@ impl Renderer {
                 let (fg, _) = self.colors(cell, is_cursor(row, col), is_selected(id, col), default_fg, default_bg);
                 let (x, y) = self.cell_origin(row, col);
                 if cell.c != ' ' {
-                    self.draw_char(fb, x, y, cell.c, cell.flags.contains(Flags::BOLD), fg);
+                    self.draw_char(fb, x, y, cell.c, cell.flags, fg);
                 }
                 self.draw_decorations(fb, x, y, self.cell_span(cell), cell.flags, fg);
             }
@@ -224,7 +224,7 @@ impl Renderer {
             let (x, _) = self.cell_origin(row, col);
             let span = width * self.fonts.cell_width;
             fb.fill_rect(x, y, span, self.fonts.cell_height, PREEDIT_BG);
-            self.draw_char(fb, x, y, c, false, self.colors.foreground);
+            self.draw_char(fb, x, y, c, Flags::default(), self.colors.foreground);
             self.draw_decorations(fb, x, y, span, Flags::UNDERLINE, self.colors.foreground);
             col += width;
         }
@@ -232,8 +232,8 @@ impl Renderer {
         fb.fill_rect(x, y, (self.fonts.cell_height / 10).max(1), self.fonts.cell_height, self.colors.cursor);
     }
 
-    fn draw_char(&mut self, fb: &mut Framebuffer, x: usize, y: usize, c: char, bold: bool, color: u32) {
-        if let Some(glyph) = self.fonts.glyph(c, bold) {
+    fn draw_char(&mut self, fb: &mut Framebuffer, x: usize, y: usize, c: char, flags: Flags, color: u32) {
+        if let Some(glyph) = self.fonts.glyph(c, flags.contains(Flags::BOLD), flags.contains(Flags::EMOJI)) {
             blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, color);
         }
     }

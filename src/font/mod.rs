@@ -70,7 +70,8 @@ pub struct Fonts {
     /// 需要告诉用户的问题（比如指定的字体找不到）
     pub warnings: Vec<String>,
     source: Source,
-    cache: HashMap<(char, bool), Option<Glyph>>,
+    /// 键：(字符, 粗体, emoji 样式)
+    cache: HashMap<(char, bool, bool), Option<Glyph>>,
 }
 
 enum Source {
@@ -201,23 +202,25 @@ impl Fonts {
         }
     }
 
-    pub fn glyph(&mut self, c: char, bold: bool) -> Option<&Glyph> {
-        if !self.cache.contains_key(&(c, bold)) {
+    /// `emoji`：这个字要求彩色 emoji 样式（后面跟了 U+FE0F）
+    pub fn glyph(&mut self, c: char, bold: bool, emoji: bool) -> Option<&Glyph> {
+        let key = (c, bold, emoji);
+        if !self.cache.contains_key(&key) {
             let glyph = match &mut self.source {
                 Source::Bitmap { regular, bold: bold_font, top } => {
                     bitmap_glyph(if bold { bold_font } else { regular }, c, *top)
                 }
-                Source::Outline(outline) => outline.glyph(c, bold, self.cell_width),
+                Source::Outline(outline) => outline.glyph(c, bold, emoji, self.cell_width),
             };
-            self.cache.insert((c, bold), glyph);
+            self.cache.insert(key, glyph);
         }
-        self.cache.get(&(c, bold)).and_then(Option::as_ref)
+        self.cache.get(&key).and_then(Option::as_ref)
     }
 }
 
 impl Outline {
-    fn glyph(&mut self, c: char, bold: bool, cell_width: usize) -> Option<Glyph> {
-        if prefers_emoji(c) {
+    fn glyph(&mut self, c: char, bold: bool, emoji: bool, cell_width: usize) -> Option<Glyph> {
+        if emoji || prefers_emoji(c) {
             for i in 0..self.emoji.len() {
                 load_pending(&mut self.emoji, i, "emoji 字体");
             }
