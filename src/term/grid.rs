@@ -14,7 +14,7 @@ pub enum Color {
 
 /// 字符属性位
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Flags(u16);
+pub struct Flags(u32);
 
 impl Flags {
     pub const BOLD: Flags = Flags(1 << 0);
@@ -31,6 +31,14 @@ impl Flags {
     pub const WIDE_SPACER: Flags = Flags(1 << 9);
     /// 后面跟了 U+FE0F：要求用彩色 emoji 样式显示（比如 ❤️），即使它本身是普通符号
     pub const EMOJI: Flags = Flags(1 << 10);
+
+    pub const MAX_LINK_ID: u32 = (1 << 21) - 1;
+    pub fn link_id(self) -> u32 {
+        self.0 >> 11
+    }
+    pub fn set_link(&mut self, id: u32) {
+        self.0 = (self.0 & 0x7ff) | (id << 11);
+    }
 
     pub fn contains(self, other: Flags) -> bool {
         self.0 & other.0 == other.0
@@ -102,7 +110,28 @@ impl Row {
     pub fn erase(&mut self, start: usize, end: usize, blank: Cell) {
         let end = end.min(self.cells.len());
         if start < end {
+            // 擦除边界落在半个宽字符中间时，另一半也要清掉。
+            if self.cells[start].flags.contains(Flags::WIDE_SPACER) && start > 0 {
+                self.cells[start - 1] = blank;
+            }
+            if self.cells[end - 1].flags.contains(Flags::WIDE) && end < self.cells.len() {
+                self.cells[end] = blank;
+            }
             self.cells[start..end].fill(blank);
+        }
+    }
+
+    /// 插入、删除或截断后清掉孤立的半个宽字符，普通打印无需扫描整行。
+    pub fn repair_wide(&mut self, blank: Cell) {
+        for col in 0..self.cells.len() {
+            let flags = self.cells[col].flags;
+            let orphan = (flags.contains(Flags::WIDE)
+                && !self.cells.get(col + 1).is_some_and(|c| c.flags.contains(Flags::WIDE_SPACER)))
+                || (flags.contains(Flags::WIDE_SPACER)
+                    && (col == 0 || !self.cells[col - 1].flags.contains(Flags::WIDE)));
+            if orphan {
+                self.cells[col] = blank;
+            }
         }
     }
 }
@@ -131,6 +160,11 @@ impl Grid {
         Grid { rows: (0..rows).map(|_| Row::new(cols)).collect(), cols }
     }
 
+    pub fn allocated_bytes(&self) -> usize {
+        self.rows.capacity() * std::mem::size_of::<Row>()
+            + self.rows.iter().map(|r| r.cells.capacity() * std::mem::size_of::<Cell>()).sum::<usize>()
+    }
+
     pub fn cols(&self) -> usize {
         self.cols
     }
@@ -153,10 +187,7 @@ impl Grid {
         match history {
             Some(history) if history.limit > 0 => {
                 for i in bottom + 1 - n..=bottom {
-                    let mut fresh = history.take_spare(self.cols);
-                    fresh.reset(blank);
-                    let old = std::mem::replace(&mut self.rows[i], fresh);
-                    history.rows.push_back(old);
+                    history.scroll_row(&mut self.rows[i], self.cols, blank);
                 }
             }
             _ => {
@@ -195,6 +226,7 @@ impl Grid {
     /// 在最上面插入一行，同时去掉最下面一行（窗口变高时从历史里拉回内容用）
     pub fn push_top(&mut self, mut row: Row) {
         row.cells.resize(self.cols, Cell::default());
+        row.repair_wide(Cell::default());
         self.rows.insert(0, row);
         self.rows.pop();
     }
@@ -204,6 +236,7 @@ impl Grid {
         self.rows.resize_with(rows, || Row::new(cols));
         for row in &mut self.rows {
             row.cells.resize(cols, Cell::default());
+            row.repair_wide(Cell::default());
         }
         self.cols = cols;
     }
@@ -224,16 +257,27 @@ impl IndexMut<usize> for Grid {
 }
 
 /// 回滚历史：从屏幕顶部滚出去的行。最旧的在前面。
+/// 包括行元数据和 cell 容量；行数上限之外再加一层实际内存预算。
+pub const HISTORY_BYTES: usize = 64 * 1024 * 1024;
+#[inline]
+pub fn row_bytes(cols: usize) -> usize {
+    std::mem::size_of::<Row>() + cols * std::mem::size_of::<Cell>()
+}
+
 pub struct History {
     rows: VecDeque<Row>,
     limit: usize,
+    bytes: usize,
     /// 因为超过上限被丢掉的行数。选区用它把行号换算成不会随滚动变化的编号。
     dropped: u64,
 }
 
 impl History {
+    pub fn used_bytes(&self) -> usize {
+        self.bytes
+    }
     pub fn new(limit: usize) -> History {
-        History { rows: VecDeque::new(), limit, dropped: 0 }
+        History { rows: VecDeque::new(), limit, bytes: 0, dropped: 0 }
     }
 
     pub fn len(&self) -> usize {
@@ -256,46 +300,114 @@ impl History {
     pub fn clear(&mut self) {
         self.dropped += self.rows.len() as u64;
         self.rows.clear();
+        self.bytes = 0;
     }
 
     pub fn set_limit(&mut self, limit: usize) {
         self.limit = limit;
         while self.rows.len() > limit {
-            self.rows.pop_front();
-            self.dropped += 1;
+            self.drop_oldest();
         }
     }
 
+    #[inline]
+    fn drop_oldest(&mut self) -> Option<Row> {
+        let row = self.rows.pop_front()?;
+        self.bytes -= row_bytes(row.cells.capacity());
+        self.dropped += 1;
+        Some(row)
+    }
+
+    pub fn discard(&mut self, count: usize) {
+        self.dropped += count as u64;
+    }
+
+    #[inline]
     pub fn push(&mut self, row: Row) {
-        if self.limit == 0 {
+        let cost = row_bytes(row.cells.capacity());
+        if self.limit == 0 || cost > HISTORY_BYTES {
+            self.dropped += 1;
             return;
         }
-        if self.rows.len() >= self.limit {
-            self.rows.pop_front();
-            self.dropped += 1;
+        while self.rows.len() >= self.limit || self.bytes > HISTORY_BYTES - cost {
+            self.drop_oldest();
         }
+        self.bytes += cost;
         self.rows.push_back(row);
     }
 
     /// 取走所有行，从旧到新（重排用）
     pub fn take_rows(&mut self) -> Vec<Row> {
+        self.bytes = 0;
         self.rows.drain(..).collect()
     }
 
     /// 取出最新的一行（窗口变高时拉回屏幕）
     pub fn pop_newest(&mut self) -> Option<Row> {
-        self.rows.pop_back()
+        let row = self.rows.pop_back()?;
+        self.bytes -= row_bytes(row.cells.capacity());
+        Some(row)
+    }
+
+    /// 稳态刷屏时新旧行容量相同，直接交换并复用，不重复计算/修改字节账本。
+    #[inline]
+    fn scroll_row(&mut self, screen: &mut Row, cols: usize, blank: Cell) {
+        if (self.rows.len() >= self.limit
+            || self.bytes.saturating_add(row_bytes(screen.cells.capacity())) > HISTORY_BYTES)
+            && self.rows.front().is_some_and(|row| row.cells.capacity() == screen.cells.capacity())
+        {
+            let fresh = self.rows.pop_front().unwrap();
+            let old = std::mem::replace(screen, fresh);
+            screen.cells.resize(cols, Cell::default());
+            screen.reset(blank);
+            self.rows.push_back(old);
+            self.dropped += 1;
+            return;
+        }
+        let mut fresh = self.take_spare(cols);
+        fresh.reset(blank);
+        self.push(std::mem::replace(screen, fresh));
     }
 
     /// 给屏幕准备一个新的空行：历史满了就回收最旧的那行，省得每次都分配内存
+    #[inline]
     fn take_spare(&mut self, cols: usize) -> Row {
-        if self.rows.len() >= self.limit
-            && let Some(mut row) = self.rows.pop_front()
+        if (self.rows.len() >= self.limit || self.bytes.saturating_add(row_bytes(cols)) > HISTORY_BYTES)
+            && let Some(mut row) = self.drop_oldest()
         {
-            self.dropped += 1;
             row.cells.resize(cols, Cell::default());
             return row;
         }
         Row::new(cols)
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn history_bounds_bytes_even_with_large_line_limit() {
+        let mut history = History::new(1_000_000);
+        let cols = 1000;
+        let count = HISTORY_BYTES / row_bytes(cols) + 10;
+        for _ in 0..count {
+            history.push(Row::new(cols));
+        }
+        assert!(history.bytes <= HISTORY_BYTES);
+        assert!(history.len() < count);
+        assert_eq!(history.len() as u64 + history.dropped(), count as u64);
+        let before = history.bytes;
+        let row = history.pop_newest().unwrap();
+        assert_eq!(history.bytes + row_bytes(row.cells.capacity()), before);
+        history.take_rows();
+        assert_eq!(history.bytes, 0);
+        let mut history = History::new(1_000_000);
+        let mut grid = Grid::new(cols, 2);
+        for _ in 0..count {
+            grid.scroll_up(0, 1, 1, Cell::default(), Some(&mut history));
+        }
+        assert!(history.bytes <= HISTORY_BYTES);
+        assert_eq!(history.len() as u64 + history.dropped(), count as u64);
     }
 }

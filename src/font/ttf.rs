@@ -5,6 +5,7 @@
 //!
 //! 字体文件来自外部，可能有缺陷，所以每一次读取都做边界检查，出错只返回 None，绝不 panic。
 
+use super::mmap::Bytes;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point {
     pub x: f32,
@@ -33,7 +34,7 @@ enum Cmap {
 }
 
 pub struct Face {
-    data: &'static [u8],
+    data: Bytes,
     directory: TableDirectory,
     /// 彩色 emoji 字体（CBDT）可以没有轮廓
     glyf: Option<usize>,
@@ -51,12 +52,22 @@ pub struct Face {
 
 impl Face {
     /// 解析字体文件。`index` 是字体集合（.ttc）里的第几个字体，普通 .ttf 填 0。
-    pub fn parse(data: &'static [u8], index: usize) -> Result<Face, String> {
+    pub fn parse(data: Bytes, index: usize) -> Result<Face, String> {
+        let bytes = data;
+        let data = &*bytes;
         let tables = TableDirectory::read(data, index).ok_or("字体文件头损坏")?;
         if tables.is_cff {
             return Err("CFF 轮廓（OTF）还不支持".into());
         }
-        let table = |tag: &[u8; 4]| tables.find(data, tag).ok_or(format!("缺少 {} 表", String::from_utf8_lossy(tag)));
+        let table = |tag: &[u8; 4]| {
+            tables
+                .find_with_len(data, tag)
+                .and_then(|(offset, len)| {
+                    data.get(offset..offset.checked_add(len)?)?;
+                    Some(offset)
+                })
+                .ok_or(format!("缺少或损坏的 {} 表", String::from_utf8_lossy(tag)))
+        };
 
         let head = table(b"head")?;
         let hhea = table(b"hhea")?;
@@ -65,9 +76,8 @@ impl Face {
         let err = || "字体表损坏".to_string();
 
         Ok(Face {
-            data,
-            glyf: tables.find(data, b"glyf"),
-            loca: tables.find(data, b"loca"),
+            glyf: table(b"glyf").ok(),
+            loca: table(b"loca").ok(),
             loca_long: i16_at(data, head + 50).ok_or_else(err)? != 0,
             hmtx: table(b"hmtx")?,
             num_hmetrics: u16_at(data, hhea + 34).ok_or_else(err)?,
@@ -78,13 +88,14 @@ impl Face {
             descender: i16_at(data, hhea + 6).ok_or_else(err)?,
             line_gap: i16_at(data, hhea + 8).ok_or_else(err)?,
             directory: tables,
+            data: bytes,
         })
     }
 
     /// 按名字取一张表的内容
-    pub fn table(&self, tag: &[u8; 4]) -> Option<&'static [u8]> {
-        let (offset, len) = self.directory.find_with_len(self.data, tag)?;
-        self.data.get(offset..offset + len)
+    pub fn table(&self, tag: &[u8; 4]) -> Option<Bytes> {
+        let (offset, len) = self.directory.find_with_len(&self.data, tag)?;
+        self.data.slice(offset..offset.checked_add(len)?)
     }
 
     pub fn num_glyphs(&self) -> u16 {
@@ -93,7 +104,7 @@ impl Face {
 
     /// 字符对应的字形编号，0 表示字体里没有这个字
     pub fn glyph_index(&self, c: char) -> u16 {
-        let d = self.data;
+        let d = &*self.data;
         let cp = c as u32;
         let found = match self.cmap {
             Cmap::Format12(sub) => (|| {
@@ -110,7 +121,7 @@ impl Face {
                     } else if cp > end {
                         lo = mid + 1;
                     } else {
-                        return Some(u32_at(d, group + 8)? + cp - start);
+                        return u32_at(d, group + 8)?.checked_add(cp - start);
                     }
                 }
                 None
@@ -160,47 +171,71 @@ impl Face {
     /// 字形的前进宽度（字体单位）
     pub fn advance(&self, glyph: u16) -> u16 {
         let index = glyph.min(self.num_hmetrics.saturating_sub(1)) as usize;
-        u16_at(self.data, self.hmtx + 4 * index).unwrap_or(0)
+        u16_at(&self.data, self.hmtx + 4 * index).unwrap_or(0)
     }
 
     /// 取出字形轮廓。空字形（比如空格）返回空列表。
     pub fn outline(&self, glyph: u16) -> Vec<Segment> {
         let mut segments = Vec::new();
-        self.append_outline(glyph, Transform::IDENTITY, 0, &mut segments);
+        let mut budget = 4096;
+        if self.append_outline(glyph, Transform::IDENTITY, 0, &mut segments, &mut budget).is_none() {
+            segments.clear();
+        }
         segments
     }
 
-    fn glyph_data(&self, glyph: u16) -> Option<&'static [u8]> {
+    fn glyph_data(&self, glyph: u16) -> Option<&[u8]> {
         if glyph >= self.num_glyphs {
             return None;
         }
         let (glyf, loca) = (self.glyf?, self.loca?);
         let i = glyph as usize;
         let (start, end) = if self.loca_long {
-            (u32_at(self.data, loca + 4 * i)? as usize, u32_at(self.data, loca + 4 * i + 4)? as usize)
+            (u32_at(&self.data, loca + 4 * i)? as usize, u32_at(&self.data, loca + 4 * i + 4)? as usize)
         } else {
-            (2 * u16_at(self.data, loca + 2 * i)? as usize, 2 * u16_at(self.data, loca + 2 * i + 2)? as usize)
+            (2 * u16_at(&self.data, loca + 2 * i)? as usize, 2 * u16_at(&self.data, loca + 2 * i + 2)? as usize)
         };
-        if start >= end {
+        if start > end {
             return None;
         }
         self.data.get(glyf + start..glyf + end)
     }
 
-    fn append_outline(&self, glyph: u16, transform: Transform, depth: u32, out: &mut Vec<Segment>) -> Option<()> {
+    fn append_outline(
+        &self,
+        glyph: u16,
+        transform: Transform,
+        depth: u32,
+        out: &mut Vec<Segment>,
+        budget: &mut usize,
+    ) -> Option<()> {
+        if *budget == 0 || out.len() >= 65536 {
+            return None;
+        }
+        *budget -= 1;
         let g = self.glyph_data(glyph)?;
+        if g.is_empty() {
+            return Some(());
+        }
         let contours = i16_at(g, 0)?;
         if contours >= 0 {
             simple_glyph(g, contours as usize, transform, out)
         } else if depth < 8 {
-            self.composite_glyph(g, transform, depth, out)
+            self.composite_glyph(g, transform, depth, out, budget)
         } else {
             None
         }
     }
 
     /// 组合字形：由其他字形经过平移/缩放拼成（比如 é = e + ´）
-    fn composite_glyph(&self, g: &[u8], parent: Transform, depth: u32, out: &mut Vec<Segment>) -> Option<()> {
+    fn composite_glyph(
+        &self,
+        g: &[u8],
+        parent: Transform,
+        depth: u32,
+        out: &mut Vec<Segment>,
+        budget: &mut usize,
+    ) -> Option<()> {
         const ARG_1_AND_2_ARE_WORDS: u16 = 0x0001;
         const ARGS_ARE_XY_VALUES: u16 = 0x0002;
         const WE_HAVE_A_SCALE: u16 = 0x0008;
@@ -241,7 +276,7 @@ impl Face {
                 t.dx = arg1;
                 t.dy = arg2;
             }
-            self.append_outline(component, t.then(parent), depth + 1, out);
+            self.append_outline(component, t.then(parent), depth + 1, out, budget)?;
             if flags & MORE_COMPONENTS == 0 {
                 return Some(());
             }
@@ -263,6 +298,9 @@ fn simple_glyph(g: &[u8], contours: usize, t: Transform, out: &mut Vec<Segment>)
     }
     let ends: Vec<usize> = (0..contours).map(|i| u16_at(g, 10 + 2 * i).map(|e| e as usize)).collect::<Option<_>>()?;
     let num_points = *ends.last()? + 1;
+    if num_points > (65536usize.saturating_sub(out.len())) / 2 {
+        return None;
+    }
     let instructions = u16_at(g, 10 + 2 * contours)? as usize;
     let mut pos = 12 + 2 * contours + instructions;
 
@@ -276,6 +314,9 @@ fn simple_glyph(g: &[u8], contours: usize, t: Transform, out: &mut Vec<Segment>)
             let count = *g.get(pos)?;
             pos += 1;
             for _ in 0..count {
+                if flags.len() >= num_points {
+                    return None;
+                }
                 flags.push(f);
             }
         }
@@ -430,7 +471,9 @@ impl TableDirectory {
             if data.get(record..record + 4)? != tag {
                 return None;
             }
-            Some((u32_at(data, record + 8)? as usize, u32_at(data, record + 12)? as usize))
+            let offset = u32_at(data, record + 8)? as usize;
+            let len = u32_at(data, record + 12)? as usize;
+            Some((offset, len))
         })
     }
 }
@@ -472,4 +515,108 @@ pub fn u32_at(data: &[u8], offset: usize) -> Option<u32> {
 /// 2.14 定点数：高 2 位整数，低 14 位小数
 fn f2dot14(data: &[u8], offset: usize) -> Option<f32> {
     Some(i16_at(data, offset)? as f32 / 16384.0)
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+    #[test]
+    fn directory_lookup_supports_discovery_from_a_prefix() {
+        let mut prefix = vec![0; 28];
+        prefix[0..4].copy_from_slice(&0x00010000u32.to_be_bytes());
+        prefix[4..6].copy_from_slice(&1u16.to_be_bytes());
+        prefix[12..16].copy_from_slice(b"name");
+        prefix[20..24].copy_from_slice(&10000u32.to_be_bytes());
+        prefix[24..28].copy_from_slice(&16u32.to_be_bytes());
+        let directory = TableDirectory::read(&prefix, 0).unwrap();
+        // discover 只读取文件前缀，表本体随后通过 seek 读取。
+        assert_eq!(directory.find_with_len(&prefix, b"name"), Some((10000, 16)));
+        assert!(Face::parse(prefix.into(), 0).is_err());
+    }
+}
+
+#[cfg(test)]
+mod fixture_tests {
+    use super::*;
+
+    /// 独立构造的最小 TrueType：A 是一个矩形，不依赖本机字体或下载。
+    fn fixture() -> Vec<u8> {
+        let mut head = vec![0; 54];
+        head[18..20].copy_from_slice(&1000u16.to_be_bytes());
+        head[50..52].copy_from_slice(&1u16.to_be_bytes());
+        let mut hhea = vec![0; 36];
+        hhea[4..6].copy_from_slice(&800i16.to_be_bytes());
+        hhea[6..8].copy_from_slice(&(-200i16).to_be_bytes());
+        hhea[34..36].copy_from_slice(&2u16.to_be_bytes());
+        let mut glyph = vec![0; 10];
+        glyph[..2].copy_from_slice(&1u16.to_be_bytes());
+        glyph.extend(3u16.to_be_bytes());
+        glyph.extend(0u16.to_be_bytes());
+        glyph.extend([1; 4]);
+        for n in [0i16, 500, 0, -500, 0, 0, 700, 0] {
+            glyph.extend(n.to_be_bytes());
+        }
+        let mut loca = vec![0; 8];
+        loca.extend((glyph.len() as u32).to_be_bytes());
+        let mut cmap = vec![0, 0, 0, 1, 0, 3, 0, 10];
+        cmap.extend(12u32.to_be_bytes());
+        cmap.extend([0, 12, 0, 0]);
+        for n in [28u32, 0, 1, 65, 65, 1] {
+            cmap.extend(n.to_be_bytes());
+        }
+        let tables = [
+            (*b"head", head),
+            (*b"hhea", hhea),
+            (*b"maxp", vec![0, 1, 0, 0, 0, 2]),
+            (*b"hmtx", vec![1, 244, 0, 0, 1, 244, 0, 0]),
+            (*b"loca", loca),
+            (*b"glyf", glyph),
+            (*b"cmap", cmap),
+        ];
+        let mut data = vec![0; 12 + 16 * tables.len()];
+        data[..4].copy_from_slice(&0x00010000u32.to_be_bytes());
+        data[4..6].copy_from_slice(&(tables.len() as u16).to_be_bytes());
+        for (i, (tag, body)) in tables.into_iter().enumerate() {
+            let record = 12 + 16 * i;
+            data[record..record + 4].copy_from_slice(&tag);
+            let offset = data.len() as u32;
+            data[record + 8..record + 12].copy_from_slice(&offset.to_be_bytes());
+            data[record + 12..record + 16].copy_from_slice(&(body.len() as u32).to_be_bytes());
+            data.extend(body);
+        }
+        data
+    }
+
+    #[test]
+    fn independent_font_parses_rasterizes_and_owns_tables() {
+        let face = Face::parse(fixture().into(), 0).unwrap();
+        assert_eq!(face.glyph_index('A'), 1);
+        assert_eq!(face.glyph_index('B'), 0);
+        assert_eq!(face.advance(1), 500);
+        let outline = face.outline(1);
+        assert_eq!(outline.len(), 4);
+        let bitmap = crate::font::raster::rasterize(&outline, 0.02).unwrap();
+        assert_eq!((bitmap.width, bitmap.height), (12, 14));
+        let table = face.table(b"head").unwrap();
+        drop(face);
+        assert_eq!(u16_at(&table, 18), Some(1000));
+    }
+
+    #[test]
+    fn truncated_and_mutated_font_stays_within_bounds() {
+        let data = fixture();
+        for end in 0..data.len() {
+            if let Ok(face) = Face::parse(data[..end].to_vec().into(), 0) {
+                face.outline(face.glyph_index('A'));
+            }
+        }
+        for i in 0..data.len() {
+            let mut changed = data.clone();
+            changed[i] = 255;
+            if let Ok(face) = Face::parse(changed.into(), 0) {
+                face.outline(face.glyph_index('A'));
+                face.outline(u16::MAX);
+            }
+        }
+    }
 }

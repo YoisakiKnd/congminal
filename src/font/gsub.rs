@@ -10,7 +10,9 @@
 //! 规范：<https://learn.microsoft.com/typography/opentype/spec/gsub>
 //! 以及 <https://learn.microsoft.com/typography/opentype/spec/chapter2>（Coverage、ClassDef 等公共结构）
 
+use super::mmap::Bytes;
 use super::ttf::{Face, u16_at, u32_at};
+use std::cell::Cell;
 
 /// 嵌套查找的最大深度，防止损坏的字体让查找互相引用、无限递归
 const MAX_DEPTH: u32 = 8;
@@ -18,7 +20,8 @@ const MAX_DEPTH: u32 = 8;
 const MAX_GLYPHS: usize = 256;
 
 pub struct Gsub {
-    data: &'static [u8],
+    data: Bytes,
+    budget: Cell<usize>,
     lookup_list: usize,
     /// 要执行的查找在 LookupList 里的编号，按编号从小到大（规范要求的执行顺序）
     lookups: Vec<u16>,
@@ -37,10 +40,17 @@ struct Parts {
 }
 
 impl Gsub {
+    fn spend(&self, steps: usize) -> Option<()> {
+        let remaining = self.budget.get().checked_sub(steps);
+        self.budget.set(remaining.unwrap_or(0));
+        remaining.map(|_| ())
+    }
+
     /// 取出字体默认启用的这些功能（`features`，比如 `calt`）用到的查找。
     /// 字体没有 GSUB 表、或者一个功能都没有时返回 None。
     pub fn new(face: &Face, features: &[&[u8; 4]]) -> Option<Gsub> {
-        let data = face.table(b"GSUB")?;
+        let bytes = face.table(b"GSUB")?;
+        let data = &*bytes;
         let script_list = u16_at(data, 4)? as usize;
         let feature_list = u16_at(data, 6)? as usize;
         let lookup_list = u16_at(data, 8)? as usize;
@@ -68,22 +78,25 @@ impl Gsub {
             }
             let table = feature_list + u16_at(data, record + 4)? as usize;
             for j in 0..u16_at(data, table + 2)? as usize {
+                if lookups.len() >= 4096 {
+                    return None;
+                }
                 lookups.push(u16_at(data, table + 4 + 2 * j)?);
             }
         }
         lookups.sort_unstable();
         lookups.dedup();
-        if lookups.is_empty() {
+        if lookups.is_empty() || lookups.len() > 256 {
             return None;
         }
-        let mut gsub = Gsub { data, lookup_list, lookups, starts: Vec::new() };
+        let mut gsub = Gsub { data: bytes, lookup_list, lookups, starts: Vec::new(), budget: Cell::new(1_000_000) };
         gsub.starts = gsub.lookups.iter().map(|&lookup| gsub.start_glyphs(lookup).unwrap_or_default()).collect();
         Some(gsub)
     }
 
     /// 一个查找的所有子表里，第一个字的 Coverage 合起来
     fn start_glyphs(&self, lookup: u16) -> Option<Vec<u64>> {
-        let data = self.data;
+        let data = &*self.data;
         let mut bits = Vec::new();
         for (kind, subtable) in self.subtables(lookup)? {
             let table = match (kind, u16_at(data, subtable)?) {
@@ -107,22 +120,30 @@ impl Gsub {
                 _ => continue,
             };
             for_each_covered(data, table, |glyph| {
+                if self.spend(1).is_none() {
+                    return false;
+                }
                 let (word, bit) = (glyph as usize / 64, glyph % 64);
                 if bits.len() <= word {
                     bits.resize(word + 1, 0);
                 }
                 bits[word] |= 1 << bit;
-            });
+                true
+            })?;
         }
         Some(bits)
     }
 
     /// 查找的子表：(类型, 偏移)，扩展类型已经展开
     fn subtables(&self, lookup: u16) -> Option<impl Iterator<Item = (u16, usize)>> {
-        let data = self.data;
+        let data = &*self.data;
         let table = self.lookup_list + u16_at(data, self.lookup_list + 2 + 2 * lookup as usize)? as usize;
         let kind = u16_at(data, table)?;
         let count = u16_at(data, table + 4)? as usize;
+        if count > 256 {
+            return None;
+        }
+        self.spend(count)?;
         Some((0..count).filter_map(move |i| {
             let subtable = table + u16_at(data, table + 6 + 2 * i)? as usize;
             // 扩展：真正的子表在 32 位偏移的地方（大字体里 16 位偏移不够用）
@@ -135,6 +156,7 @@ impl Gsub {
 
     /// 对一串字形编号依次执行所有查找。字数可能变（多换一、一换多）。
     pub fn apply(&self, glyphs: &mut Vec<u16>) {
+        self.budget.set(100_000);
         for (&lookup, starts) in self.lookups.iter().zip(&self.starts) {
             let can_start = |glyph: u16| starts.get(glyph as usize / 64).is_some_and(|w| w >> (glyph % 64) & 1 != 0);
             if !glyphs.iter().any(|&g| can_start(g)) {
@@ -142,6 +164,9 @@ impl Gsub {
             }
             let mut i = 0;
             while i < glyphs.len() {
+                if self.spend(1).is_none() {
+                    return;
+                }
                 // 匹配上的话跳过这次处理过的字，否则看下一个
                 let used = if can_start(glyphs[i]) { self.apply_lookup(lookup, glyphs, i, 0) } else { None };
                 i += used.unwrap_or(1).max(1);
@@ -168,7 +193,7 @@ impl Gsub {
 
     /// 类型 1：单字替换
     fn single(&self, subtable: usize, glyphs: &mut [u16], at: usize) -> Option<usize> {
-        let data = self.data;
+        let data = &*self.data;
         let index = coverage(data, subtable + u16_at(data, subtable + 2)? as usize, glyphs[at])?;
         glyphs[at] = match u16_at(data, subtable)? {
             1 => glyphs[at].wrapping_add(u16_at(data, subtable + 4)?),
@@ -180,7 +205,7 @@ impl Gsub {
 
     /// 类型 2：一个字换成好几个
     fn multiple(&self, subtable: usize, glyphs: &mut Vec<u16>, at: usize) -> Option<usize> {
-        let data = self.data;
+        let data = &*self.data;
         let index = coverage(data, subtable + u16_at(data, subtable + 2)? as usize, glyphs[at])?;
         if index >= u16_at(data, subtable + 4)? {
             return None;
@@ -197,14 +222,16 @@ impl Gsub {
 
     /// 类型 4：几个字合成一个（emoji 序列、国旗）
     fn ligature(&self, subtable: usize, glyphs: &mut Vec<u16>, at: usize) -> Option<usize> {
-        let data = self.data;
+        let data = &*self.data;
         let index = coverage(data, subtable + u16_at(data, subtable + 2)? as usize, glyphs[at])?;
         if index >= u16_at(data, subtable + 4)? {
             return None;
         }
         let set = subtable + u16_at(data, subtable + 6 + 2 * index as usize)? as usize;
         // 按字体里的顺序，第一个对得上的生效（字体会把长的排在前面）
-        for i in 0..u16_at(data, set)? as usize {
+        let count = u16_at(data, set)? as usize;
+        self.spend(count * glyphs.len().max(1))?;
+        for i in 0..count {
             let ligature = set + u16_at(data, set + 2 + 2 * i)? as usize;
             let count = u16_at(data, ligature + 2)? as usize;
             if count == 0 || at + count > glyphs.len() {
@@ -221,7 +248,7 @@ impl Gsub {
     /// 类型 5（上下文）和 6（链式上下文）：前面（backtrack）、自己（input）、后面（lookahead）都对得上时，
     /// 对 input 里指定的位置执行别的查找。类型 5 没有前面和后面。
     fn context(&self, kind: u16, subtable: usize, glyphs: &mut Vec<u16>, at: usize, depth: u32) -> Option<usize> {
-        let data = self.data;
+        let data = &*self.data;
         let chained = kind == 6;
         match u16_at(data, subtable)? {
             // 格式 1：按具体的字形编号匹配
@@ -291,8 +318,10 @@ impl Gsub {
         depth: u32,
         test: impl Fn(usize, usize, u16) -> bool,
     ) -> Option<usize> {
-        let data = self.data;
-        for i in 0..u16_at(data, set)? as usize {
+        let data = &*self.data;
+        let count = u16_at(data, set)? as usize;
+        self.spend(count * glyphs.len().max(1))?;
+        for i in 0..count {
             let rule = set + u16_at(data, set + 2 + 2 * i)? as usize;
             let parts = if chained {
                 let backtrack = u16_at(data, rule)? as usize;
@@ -332,9 +361,10 @@ impl Gsub {
         // input 里每个字现在的位置（前面的查找可能改变字数，后面的位置跟着移动）
         let mut positions: Vec<usize> = (at..at + parts.input.1).collect();
         let (records, count) = parts.records;
+        self.spend(count * parts.input.1.max(1))?;
         for i in 0..count {
-            let index = u16_at(self.data, records + 4 * i)? as usize;
-            let lookup = u16_at(self.data, records + 2 + 4 * i)?;
+            let index = u16_at(&self.data, records + 4 * i)? as usize;
+            let lookup = u16_at(&self.data, records + 2 + 4 * i)?;
             let Some(&position) = positions.get(index) else { continue };
             if position >= glyphs.len() {
                 continue;
@@ -408,18 +438,31 @@ fn coverage(data: &[u8], table: usize, glyph: u16) -> Option<u16> {
 }
 
 /// Coverage 表里的每个字形
-fn for_each_covered(data: &[u8], table: usize, mut f: impl FnMut(u16)) -> Option<()> {
+fn for_each_covered(data: &[u8], table: usize, mut f: impl FnMut(u16) -> bool) -> Option<()> {
     let count = u16_at(data, table + 2)? as usize;
     match u16_at(data, table)? {
         1 => {
             for i in 0..count {
-                f(u16_at(data, table + 4 + 2 * i)?);
+                if !f(u16_at(data, table + 4 + 2 * i)?) {
+                    return None;
+                }
             }
         }
         2 => {
+            let mut previous = None;
             for i in 0..count {
                 let range = table + 4 + 6 * i;
-                (u16_at(data, range)?..=u16_at(data, range + 2)?).for_each(&mut f);
+                let start = u16_at(data, range)?;
+                let end = u16_at(data, range + 2)?;
+                if start > end || previous.is_some_and(|p| start <= p) {
+                    return None;
+                }
+                previous = Some(end);
+                for glyph in start..=end {
+                    if !f(glyph) {
+                        return None;
+                    }
+                }
             }
         }
         _ => return None,
@@ -516,8 +559,8 @@ mod tests {
     }
 
     fn run(kind: u16, lookup0: &[u16], input: &[u16]) -> Vec<u16> {
-        let data = Box::leak(table(kind, lookup0).into_boxed_slice());
-        let mut gsub = Gsub { data, lookup_list: 44, lookups: vec![0], starts: vec![] };
+        let data = table(kind, lookup0).into();
+        let mut gsub = Gsub { data, lookup_list: 44, lookups: vec![0], starts: vec![], budget: Cell::new(1_000_000) };
         gsub.starts = vec![gsub.start_glyphs(0).unwrap()];
         let mut glyphs = input.to_vec();
         gsub.apply(&mut glyphs);

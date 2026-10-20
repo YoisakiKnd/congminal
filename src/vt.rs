@@ -12,6 +12,8 @@ const MAX_OSC_PARAMS: usize = 16;
 
 /// 解析器回调。终端状态机实现这个 trait。
 pub trait Perform {
+    fn begin_batch(&mut self) {}
+    fn osc_overflow(&mut self) {}
     /// 打印一个字符
     fn print(&mut self, c: char);
     /// 执行 C0 控制字符（换行、回车、退格……）
@@ -119,6 +121,7 @@ pub struct Parser {
     /// 参数或中间字节溢出时置位，序列仍会分发，但会带上 ignore 标记
     ignoring: bool,
     osc: Vec<u8>,
+    osc_overflow: bool,
     utf8: Utf8Decoder,
 }
 
@@ -140,11 +143,15 @@ impl Parser {
             intermediate_len: 0,
             ignoring: false,
             osc: Vec::new(),
+            osc_overflow: false,
             utf8: Utf8Decoder::default(),
         }
     }
 
     pub fn advance<P: Perform>(&mut self, performer: &mut P, bytes: &[u8]) {
+        if !bytes.is_empty() {
+            performer.begin_batch();
+        }
         for &b in bytes {
             self.byte(performer, b);
         }
@@ -170,6 +177,9 @@ impl Parser {
         // "anywhere" 转移：任何状态下遇到这几个字节都会跳转
         match b {
             0x18 | 0x1A => {
+                if self.state == State::OscString {
+                    self.osc_overflow = true;
+                }
                 self.exit_string_state(p);
                 p.execute(b);
                 self.state = State::Ground;
@@ -205,6 +215,7 @@ impl Parser {
                 b'[' => self.state = State::CsiEntry,
                 b']' => {
                     self.osc.clear();
+                    self.osc_overflow = false;
                     self.state = State::OscString;
                 }
                 b'P' => self.state = State::DcsEntry,
@@ -318,10 +329,12 @@ impl Parser {
                     self.osc_dispatch(p, true);
                     self.state = State::Ground;
                 }
-                0x00..=0x1F => {}
+                0x00..=0x1F => self.osc_overflow = true,
                 _ => {
                     if self.osc.len() < MAX_OSC_LEN {
                         self.osc.push(b);
+                    } else {
+                        self.osc_overflow = true;
                     }
                 }
             },
@@ -397,6 +410,10 @@ impl Parser {
     }
 
     fn osc_dispatch<P: Perform>(&mut self, p: &mut P, bell_terminated: bool) {
+        if self.osc_overflow {
+            p.osc_overflow();
+            return;
+        }
         // 按 `;` 切分，最多切 MAX_OSC_PARAMS 段，最后一段保留剩下的全部内容
         let mut parts: [&[u8]; MAX_OSC_PARAMS] = [&[]; MAX_OSC_PARAMS];
         let mut count = 0;

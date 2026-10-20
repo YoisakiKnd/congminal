@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 description = "一个从零手写的跨平台终端模拟器（学习项目）"
 
-# 刻意为空：所有轮子自己造，只调用操作系统自带的 API。
+# 当前为空；后续依赖按 docs/dependency-policy.md 评估性能、资源边界与适配方案。
 [dependencies]
 
 [profile.release]

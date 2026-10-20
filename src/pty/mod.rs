@@ -8,6 +8,8 @@
 //! - `Pty::write` 把键盘输入写给 shell
 //! - `Pty::resize` 通知 shell 窗口尺寸变了
 
+pub mod flow;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -27,11 +29,14 @@ pub enum PtyEvent {
     /// shell 的输出
     Data(Vec<u8>),
     /// shell 已退出
-    Exit,
+    Exit(Option<i32>),
+    /// 输出已经读完（独立于进程退出，保证退出前最后一段输出也被处理）。
+    Eof,
+    Error(std::io::Error),
 }
 
 /// 后台线程收到数据时调用的回调
-pub type EventSink = Arc<dyn Fn(PtyEvent) + Send + Sync>;
+pub type EventSink = Arc<dyn Fn(PtyEvent) -> bool + Send + Sync>;
 
 #[cfg(unix)]
 mod unix;

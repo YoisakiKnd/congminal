@@ -1,0 +1,227 @@
+{
+  "method": "macOS proc_pidinfo; startup=spawn to shell marker; idle CPU over 3s; ten alternating runs; isolated from compilation/stress; GUI natural child exit",
+  "idle": {
+    "before": [
+      {
+        "startup_ms": 232.82241700000003,
+        "rss_bytes": 115556352,
+        "threads": 14,
+        "cpu_one_core_pct": 0.015504200626761964,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 359.79708300000016,
+        "rss_bytes": 115113984,
+        "threads": 14,
+        "cpu_one_core_pct": 0.010423234039528268,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 254.6159579999987,
+        "rss_bytes": 115425280,
+        "threads": 14,
+        "cpu_one_core_pct": 0.014072087727558136,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 212.21820799999946,
+        "rss_bytes": 115408896,
+        "threads": 14,
+        "cpu_one_core_pct": 0.01322571066805664,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 238.65658400000456,
+        "rss_bytes": 115130368,
+        "threads": 14,
+        "cpu_one_core_pct": 0.013354363628119835,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 211.08608299999787,
+        "rss_bytes": 115425280,
+        "threads": 14,
+        "cpu_one_core_pct": 0.012230856532534237,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 242.7920410000013,
+        "rss_bytes": 114917376,
+        "threads": 14,
+        "cpu_one_core_pct": 0.015118760255879403,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 200.1138339999997,
+        "rss_bytes": 115064832,
+        "threads": 14,
+        "cpu_one_core_pct": 0.014169879864949029,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 216.60124999999653,
+        "rss_bytes": 115130368,
+        "threads": 14,
+        "cpu_one_core_pct": 0.012658387676324082,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 233.12441699999908,
+        "rss_bytes": 115736576,
+        "threads": 14,
+        "cpu_one_core_pct": 0.014224894523744439,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      }
+    ],
+    "after": [
+      {
+        "startup_ms": 238.38112500000008,
+        "rss_bytes": 115441664,
+        "threads": 14,
+        "cpu_one_core_pct": 0.013337328450344476,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 255.86812499999922,
+        "rss_bytes": 115326976,
+        "threads": 14,
+        "cpu_one_core_pct": 0.012382601009839697,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 264.9679169999999,
+        "rss_bytes": 115179520,
+        "threads": 14,
+        "cpu_one_core_pct": 0.014324444259066382,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 231.1917500000007,
+        "rss_bytes": 115097600,
+        "threads": 14,
+        "cpu_one_core_pct": 0.013021195620091481,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 260.83683300000615,
+        "rss_bytes": 115245056,
+        "threads": 14,
+        "cpu_one_core_pct": 0.014368966273038273,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 249.2952079999995,
+        "rss_bytes": 115310592,
+        "threads": 14,
+        "cpu_one_core_pct": 0.013319653350554168,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 324.88675000000455,
+        "rss_bytes": 115490816,
+        "threads": 14,
+        "cpu_one_core_pct": 0.012792040323709886,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 243.17470799999796,
+        "rss_bytes": 115474432,
+        "threads": 14,
+        "cpu_one_core_pct": 0.012289438518904069,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 251.0170829999936,
+        "rss_bytes": 115671040,
+        "threads": 14,
+        "cpu_one_core_pct": 0.012005607223363416,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 250.20320800000206,
+        "rss_bytes": 115064832,
+        "threads": 14,
+        "cpu_one_core_pct": 0.012425028830363177,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      }
+    ]
+  },
+  "median": {
+    "before": {
+      "startup_ms": 232.97341699999956,
+      "rss_bytes": 115269632.0,
+      "threads": 14.0,
+      "cpu_one_core_pct": 0.013713225677838985,
+      "children_rss_bytes": 1064960.0,
+      "children_cpu_one_core_pct": 0.0
+    },
+    "after": {
+      "startup_ms": 250.61014549999783,
+      "rss_bytes": 115318784.0,
+      "threads": 14.0,
+      "cpu_one_core_pct": 0.012906617971900684,
+      "children_rss_bytes": 1064960.0,
+      "children_cpu_one_core_pct": 0.0
+    }
+  }
+}

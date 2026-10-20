@@ -1,0 +1,169 @@
+{
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "runs": {
+    "before": [
+      {
+        "vt_mib_s": 133.1,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 2.839501,
+        "partial_ms": 0.31284500000000004,
+        "input_p50_ns": 42,
+        "input_p95_ns": 125,
+        "input_p99_ns": 1500,
+        "input_n": 1000
+      },
+      {
+        "vt_mib_s": 129.7,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 3.475731,
+        "partial_ms": 0.602759,
+        "input_p50_ns": 42,
+        "input_p95_ns": 209,
+        "input_p99_ns": 1666,
+        "input_n": 1000
+      },
+      {
+        "vt_mib_s": 132.4,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 3.051847,
+        "partial_ms": 0.319365,
+        "input_p50_ns": 42,
+        "input_p95_ns": 250,
+        "input_p99_ns": 2000,
+        "input_n": 1000
+      },
+      {
+        "vt_mib_s": 130.7,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 3.029034,
+        "partial_ms": 0.29927,
+        "input_p50_ns": 42,
+        "input_p95_ns": 250,
+        "input_p99_ns": 1917,
+        "input_n": 1000
+      },
+      {
+        "vt_mib_s": 132.3,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 3.012858,
+        "partial_ms": 0.295616,
+        "input_p50_ns": 42,
+        "input_p95_ns": 291,
+        "input_p99_ns": 2375,
+        "input_n": 1000
+      }
+    ],
+    "after": [
+      {
+        "vt_mib_s": 132.6,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 2.920512,
+        "partial_ms": 0.307068,
+        "input_p50_ns": 42,
+        "input_p95_ns": 250,
+        "input_p99_ns": 1708,
+        "input_n": 1000,
+        "search_history_bytes": 67108608,
+        "search_slices": 202,
+        "search_p95_us": 154,
+        "search_max_us": 191,
+        "search_total_ms": 25,
+        "search_state_bytes": 33422
+      },
+      {
+        "vt_mib_s": 132.9,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 3.057448,
+        "partial_ms": 0.309212,
+        "input_p50_ns": 42,
+        "input_p95_ns": 166,
+        "input_p99_ns": 2583,
+        "input_n": 1000,
+        "search_history_bytes": 67108608,
+        "search_slices": 202,
+        "search_p95_us": 148,
+        "search_max_us": 169,
+        "search_total_ms": 25,
+        "search_state_bytes": 33422
+      },
+      {
+        "vt_mib_s": 131.8,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 2.999281,
+        "partial_ms": 0.31505,
+        "input_p50_ns": 42,
+        "input_p95_ns": 125,
+        "input_p99_ns": 2542,
+        "input_n": 1000,
+        "search_history_bytes": 67108608,
+        "search_slices": 202,
+        "search_p95_us": 150,
+        "search_max_us": 175,
+        "search_total_ms": 25,
+        "search_state_bytes": 33422
+      },
+      {
+        "vt_mib_s": 132.5,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 2.899373,
+        "partial_ms": 0.31759,
+        "input_p50_ns": 42,
+        "input_p95_ns": 250,
+        "input_p99_ns": 3000,
+        "input_n": 1000,
+        "search_history_bytes": 67108608,
+        "search_slices": 202,
+        "search_p95_us": 150,
+        "search_max_us": 161,
+        "search_total_ms": 26,
+        "search_state_bytes": 33422
+      },
+      {
+        "vt_mib_s": 131.3,
+        "pixels": "3616\u00d72416",
+        "frame_ms": 3.103661,
+        "partial_ms": 0.33145100000000005,
+        "input_p50_ns": 42,
+        "input_p95_ns": 250,
+        "input_p99_ns": 2917,
+        "input_n": 1000,
+        "search_history_bytes": 67108608,
+        "search_slices": 202,
+        "search_p95_us": 150,
+        "search_max_us": 174,
+        "search_total_ms": 26,
+        "search_state_bytes": 33422
+      }
+    ]
+  },
+  "median": {
+    "before": {
+      "vt_mib_s": 132.3,
+      "frame_ms": 3.029034,
+      "partial_ms": 0.31284500000000004,
+      "input_p50_ns": 42,
+      "input_p95_ns": 250,
+      "input_p99_ns": 1917,
+      "input_n": 1000
+    },
+    "after": {
+      "vt_mib_s": 132.5,
+      "frame_ms": 2.999281,
+      "partial_ms": 0.31505,
+      "input_p50_ns": 42,
+      "input_p95_ns": 250,
+      "input_p99_ns": 2583,
+      "input_n": 1000,
+      "search_history_bytes": 67108608,
+      "search_slices": 202,
+      "search_p95_us": 150,
+      "search_max_us": 174,
+      "search_total_ms": 25,
+      "search_state_bytes": 33422
+    }
+  },
+  "binary_bytes": {
+    "before": 1436136,
+    "after": 1549064
+  }
+}

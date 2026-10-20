@@ -1,11 +1,14 @@
 //! PNG 解码。emoji 字体（Apple Color Emoji、Noto Color Emoji）里的彩色图标都是 PNG。
 //!
 //! 支持规范里的全部颜色类型（灰度、RGB、调色板、带透明度）、1 到 16 位深度、
-//! 五种行过滤方式和 Adam7 隔行扫描。不检查 CRC。
+//! 五种行过滤方式和 Adam7 隔行扫描。校验 CRC，并限制压缩数据、总像素和解压大小。
 //! 规范：<https://www.w3.org/TR/png-3/>
 
 use super::Image;
-use super::inflate::zlib_decompress;
+use super::inflate::zlib_decompress_limited;
+
+const MAX_PIXELS: usize = 4 * 1024 * 1024;
+const MAX_COMPRESSED: usize = 32 * 1024 * 1024;
 
 const SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 
@@ -53,6 +56,9 @@ enum Transparency {
 }
 
 pub fn decode(data: &[u8]) -> Result<Image, String> {
+    if data.len() > MAX_COMPRESSED {
+        return Err("PNG 文件超过预算".into());
+    }
     if data.get(..8) != Some(&SIGNATURE[..]) {
         return Err("不是 PNG 图片".into());
     }
@@ -62,20 +68,53 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
     let mut compressed = Vec::new();
 
     // 数据由一个个"块"组成：长度、类型、内容、CRC
-    let mut pos = 8;
+    let mut pos = 8usize;
+    let mut saw_data = false;
+    let mut ended_data = false;
     loop {
-        let length = u32::from_be_bytes(data.get(pos..pos + 4).ok_or("PNG 数据不完整")?.try_into().unwrap()) as usize;
-        let kind = data.get(pos + 4..pos + 8).ok_or("PNG 数据不完整")?;
-        let body = data.get(pos + 8..pos + 8 + length).ok_or("PNG 数据不完整")?;
-        pos += 12 + length;
-        match kind {
-            b"IHDR" => header = Some(parse_header(body)?),
-            b"PLTE" => palette = body.as_chunks::<3>().0.to_vec(),
-            b"tRNS" => transparency_chunk = Some(body),
-            b"IDAT" => compressed.extend_from_slice(body),
-            b"IEND" => break,
-            _ => {} // 其他块（gAMA、文字说明等）忽略
+        let chunk_header = data.get(pos..pos.checked_add(8).ok_or("PNG 偏移溢出")?).ok_or("PNG 数据不完整")?;
+        let length = u32::from_be_bytes(chunk_header[..4].try_into().unwrap()) as usize;
+        let kind = &chunk_header[4..];
+        let end = pos.checked_add(12).and_then(|p| p.checked_add(length)).ok_or("PNG 块长度溢出")?;
+        let chunk = data.get(pos..end).ok_or("PNG 数据不完整")?;
+        let body = &chunk[8..8 + length];
+        let expected = u32::from_be_bytes(chunk[8 + length..].try_into().unwrap());
+        if crc32(&chunk[4..8 + length]) != expected {
+            return Err("PNG CRC 不对".into());
         }
+        if header.is_none() && kind != b"IHDR" {
+            return Err("PNG 第一块必须是 IHDR".into());
+        }
+        if saw_data && kind != b"IDAT" {
+            ended_data = true;
+        }
+        match kind {
+            b"IHDR" if header.is_none() && length == 13 => header = Some(parse_header(body)?),
+            b"IHDR" => return Err("PNG IHDR 重复或长度错误".into()),
+            b"PLTE" if !saw_data && !body.is_empty() && length <= 768 && length.is_multiple_of(3) => {
+                palette = body.as_chunks::<3>().0.to_vec();
+            }
+            b"PLTE" => return Err("PNG PLTE 无效".into()),
+            b"tRNS" if !saw_data && length <= 256 => transparency_chunk = Some(body),
+            b"tRNS" => return Err("PNG tRNS 无效".into()),
+            b"IDAT" => {
+                if ended_data || length > MAX_COMPRESSED.saturating_sub(compressed.len()) {
+                    return Err("PNG IDAT 不连续或超过预算".into());
+                }
+                saw_data = true;
+                let needed = compressed.len() + length;
+                if needed > compressed.capacity() {
+                    let capacity = needed.max(compressed.capacity().saturating_mul(2)).min(MAX_COMPRESSED);
+                    compressed.try_reserve_exact(capacity - compressed.len()).map_err(|_| "无法分配 PNG 缓冲区")?;
+                }
+                compressed.extend_from_slice(body);
+            }
+            b"IEND" if length == 0 && saw_data => break,
+            b"IEND" => return Err("PNG IEND 无效或缺少 IDAT".into()),
+            _ if kind[0] & 0x20 == 0 => return Err("PNG 包含未知的关键块".into()),
+            _ => {}
+        }
+        pos = end;
     }
     let header = header.ok_or("缺少 IHDR")?;
     if header.color_type == 3 && palette.is_empty() {
@@ -92,10 +131,22 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
         _ => Transparency::None,
     };
 
-    let raw = zlib_decompress(&compressed)?;
+    let passes: &[(usize, usize, usize, usize)] = if header.interlaced { &ADAM7 } else { &[(0, 0, 1, 1)] };
+    // 先计算全部扫描行（含 Adam7 每遍的过滤字节），在解压前确定精确上限。
+    let expected: usize = passes
+        .iter()
+        .map(|&(x0, y0, dx, dy)| {
+            let w = header.width.saturating_sub(x0).div_ceil(dx);
+            let h = header.height.saturating_sub(y0).div_ceil(dy);
+            if w == 0 || h == 0 { 0 } else { (header.stride(w) + 1) * h }
+        })
+        .sum();
+    let raw = zlib_decompress_limited(&compressed, expected)?;
+    if raw.len() != expected {
+        return Err("PNG 扫描行大小不匹配".into());
+    }
     let mut image =
         Image { width: header.width, height: header.height, rgba: vec![0; header.width * header.height * 4] };
-    let passes: &[(usize, usize, usize, usize)] = if header.interlaced { &ADAM7 } else { &[(0, 0, 1, 1)] };
     let mut offset = 0;
     for &(x0, y0, dx, dy) in passes {
         // 这一遍的子图尺寸。图很小时某些遍可能是空的，空的遍不占数据。
@@ -118,6 +169,27 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
     Ok(image)
 }
 
+const fn crc_table() -> [u32; 256] {
+    let mut table = [0; 256];
+    let mut i = 0;
+    while i < 256 {
+        let mut c = i as u32;
+        let mut bit = 0;
+        while bit < 8 {
+            c = (c >> 1) ^ (0xEDB8_8320u32.wrapping_mul(c & 1));
+            bit += 1;
+        }
+        table[i] = c;
+        i += 1;
+    }
+    table
+}
+
+fn crc32(bytes: &[u8]) -> u32 {
+    const TABLE: [u32; 256] = crc_table();
+    !bytes.iter().fold(!0u32, |crc, &b| (crc >> 8) ^ TABLE[((crc as u8) ^ b) as usize])
+}
+
 fn parse_header(body: &[u8]) -> Result<Header, String> {
     if body.len() < 13 {
         return Err("IHDR 不完整".into());
@@ -125,7 +197,12 @@ fn parse_header(body: &[u8]) -> Result<Header, String> {
     let width = u32::from_be_bytes(body[0..4].try_into().unwrap()) as usize;
     let height = u32::from_be_bytes(body[4..8].try_into().unwrap()) as usize;
     let header = Header { width, height, depth: body[8], color_type: body[9], interlaced: body[12] == 1 };
-    if width == 0 || height == 0 || width > 16384 || height > 16384 {
+    if width == 0
+        || height == 0
+        || width > 16384
+        || height > 16384
+        || width.checked_mul(height).is_none_or(|n| n > MAX_PIXELS)
+    {
         return Err(format!("图片尺寸 {width}×{height} 不支持"));
     }
     let valid_depth = match header.color_type {
@@ -134,7 +211,7 @@ fn parse_header(body: &[u8]) -> Result<Header, String> {
         2 | 4 | 6 => matches!(header.depth, 8 | 16),
         _ => false,
     };
-    if !valid_depth || body[10] != 0 || body[11] != 0 {
+    if !valid_depth || body[10] != 0 || body[11] != 0 || body[12] > 1 {
         return Err("不支持的 PNG 格式".into());
     }
     Ok(header)
@@ -321,5 +398,46 @@ mod tests {
         assert!(decode(b"not a png").is_err());
         let truncated = &include_bytes!("testdata/rgba8.png")[..100];
         assert!(decode(truncated).is_err());
+    }
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+
+    fn chunk(kind: &[u8; 4], body: &[u8], png: &mut Vec<u8>) {
+        png.extend((body.len() as u32).to_be_bytes());
+        let start = png.len();
+        png.extend(kind);
+        png.extend(body);
+        let crc = crc32(&png[start..]);
+        png.extend(crc.to_be_bytes());
+    }
+
+    #[test]
+    fn rejects_bad_crc_and_every_truncation() {
+        let png = include_bytes!("testdata/rgba8.png");
+        for end in 0..png.len() {
+            assert!(decode(&png[..end]).is_err(), "{end}");
+        }
+        let mut corrupt = png.to_vec();
+        corrupt[20] ^= 1;
+        assert!(decode(&corrupt).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_pixels_before_inflating() {
+        let mut png = SIGNATURE.to_vec();
+        let mut header = vec![];
+        header.extend(16384u32.to_be_bytes());
+        header.extend(16384u32.to_be_bytes());
+        header.extend([8, 6, 0, 0, 0]);
+        chunk(b"IHDR", &header, &mut png);
+        assert!(decode(&png).err().unwrap().contains("尺寸"));
+    }
+
+    #[test]
+    fn crc_reference() {
+        assert_eq!(crc32(b"123456789"), 0xcbf43926);
     }
 }

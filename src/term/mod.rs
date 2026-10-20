@@ -9,6 +9,8 @@ mod compose_table;
 mod emoji;
 mod grid;
 mod reflow;
+#[cfg(test)]
+mod regression;
 mod width;
 mod width_table;
 
@@ -20,6 +22,12 @@ pub use width::char_width;
 use crate::hash::FnvHashMap;
 use crate::vt::{Params, Perform};
 use std::sync::OnceLock;
+
+/// 防止异常窗口尺寸或极小字体构造无限大的主/备用网格，同时适配 ConPTY 的 i16 坐标。
+pub fn grid_dimensions(cols: usize, rows: usize) -> (usize, usize) {
+    let cols = cols.clamp(1, 4096);
+    (cols, rows.clamp(1, 2048).min(1024 * 1024 / cols))
+}
 
 /// 默认保留的回滚行数（配置文件可以改）
 pub const DEFAULT_SCROLLBACK: usize = 10_000;
@@ -162,6 +170,10 @@ impl Default for SavedCursor {
 }
 
 pub struct Terminal {
+    pub shell: crate::shell::Shell,
+    text_epoch: u64,
+    text_revision: u64,
+    links: crate::links::Links,
     grid: Grid,
     /// 备用屏幕（vim、less、htop 用它，退出后恢复原来的内容）
     alt_grid: Grid,
@@ -196,10 +208,55 @@ pub struct Terminal {
 }
 
 impl Terminal {
+    fn finish_link_run(&mut self) {
+        // 按一段 OSC 属性的结束位置记保守水位，避免在每个普通字符上查链接池。
+        let id = self.cursor.template.flags.link_id();
+        if id != 0 {
+            self.links.touch(id, self.text_bounds().2);
+        }
+    }
+    pub fn link_url(&self, id: u32) -> Option<&str> {
+        self.links.get(id)
+    }
+    pub fn link_bytes(&self) -> usize {
+        self.links.resource_bytes()
+    }
+    pub fn prune_links(&mut self) {
+        if !self.alt_active {
+            self.links.prune(self.history.dropped(), self.cursor.template.flags.link_id());
+        }
+    }
+    pub fn text_stamp(&self) -> (u64, u64) {
+        (self.text_epoch, self.text_revision)
+    }
+    pub fn text_bounds(&self) -> (u64, u64, u64) {
+        let first = self.history.dropped();
+        let screen = first + self.history.len() as u64;
+        (if self.alt_active { screen } else { first }, screen, screen + self.rows() as u64)
+    }
+    pub fn reveal_line(&mut self, line: u64) {
+        let (first, screen, end) = self.text_bounds();
+        if line < first || line >= end || self.alt_active {
+            return;
+        }
+        let top = line.saturating_sub((self.rows() / 2) as u64).max(first).min(screen);
+        self.display_offset = (screen - top) as usize;
+    }
+
+    pub fn resource_bytes(&self) -> (usize, usize, usize) {
+        let marks = self.marks.capacity() * std::mem::size_of::<String>()
+            + self.marks.iter().map(String::capacity).sum::<usize>()
+            + self.mark_ids.keys().map(String::capacity).sum::<usize>();
+        (self.grid.allocated_bytes() + self.alt_grid.allocated_bytes(), self.history.used_bytes(), marks)
+    }
+
     pub fn new(cols: usize, rows: usize) -> Terminal {
-        let cols = cols.max(1);
-        let rows = rows.max(1);
+        let (cols, rows) = grid_dimensions(cols, rows);
         Terminal {
+            shell: crate::shell::Shell::default(),
+            text_epoch: 1,
+            text_revision: 0,
+            links: crate::links::Links::default(),
             grid: Grid::new(cols, rows),
             alt_grid: Grid::new(cols, rows),
             history: History::new(DEFAULT_SCROLLBACK),
@@ -313,6 +370,7 @@ impl Terminal {
                 self.display_offset = (self.display_offset + pushed).min(self.history.len());
             }
         } else {
+            self.invalidate_command_output(top, 0);
             self.grid.scroll_up(top, bottom, n, blank, None);
         }
     }
@@ -332,12 +390,13 @@ impl Terminal {
     }
 
     pub fn resize(&mut self, cols: usize, rows: usize) {
-        let cols = cols.max(1);
-        let rows = rows.max(1);
+        let (cols, rows) = grid_dimensions(cols, rows);
         if cols == self.cols() && rows == self.rows() {
             return;
         }
 
+        self.shell.invalidate_positions();
+        self.text_epoch = self.text_epoch.wrapping_add(1);
         let old_rows = self.rows();
         let mut pending_wrap = false;
         // 宽度变了：主屏幕连同回滚历史一起重新折行（备用屏幕上的程序会自己重画，不用管）
@@ -377,6 +436,7 @@ impl Terminal {
         self.cursor.row = self.cursor.row.min(rows - 1);
         self.cursor.col = self.cursor.col.min(cols - 1);
         self.cursor.pending_wrap = pending_wrap;
+        self.links.reflow(self.text_bounds().2);
     }
 
     /// 按新宽度重新折行，行数不变。返回光标是否处于"写满一行、等下一个字再换行"的状态。
@@ -391,6 +451,7 @@ impl Terminal {
             pending_wrap: self.cursor.pending_wrap,
         };
         let result = reflow::reflow(all, screen_start, cursor, cols);
+        self.history.discard(result.discarded);
 
         // 屏幕从原来屏幕第一行的内容开始；光标被挤到屏幕外面时，把上面的行推进历史
         let (cursor_row, cursor_col) = result.cursor;
@@ -620,6 +681,7 @@ impl Terminal {
         let (top, bottom) =
             if self.modes.origin { (self.scroll_top, self.scroll_bottom) } else { (0, self.rows() - 1) };
         self.cursor.row = row.clamp(top, bottom);
+        self.invalidate_command_output(self.cursor.row, col);
         self.cursor.col = col.min(self.cols() - 1);
         self.cursor.pending_wrap = false;
     }
@@ -631,6 +693,7 @@ impl Terminal {
     }
 
     fn goto_col(&mut self, col: usize) {
+        self.invalidate_command_output(self.cursor.row, col);
         self.cursor.col = col.min(self.cols() - 1);
         self.cursor.pending_wrap = false;
     }
@@ -639,6 +702,7 @@ impl Terminal {
         // 光标在滚动区域内时，不能移出区域顶部
         let top = if self.cursor.row >= self.scroll_top { self.scroll_top } else { 0 };
         self.cursor.row = self.cursor.row.saturating_sub(n).max(top);
+        self.invalidate_command_output(self.cursor.row, self.cursor.col);
         self.cursor.pending_wrap = false;
     }
 
@@ -650,6 +714,7 @@ impl Terminal {
 
     fn move_left(&mut self, n: usize) {
         self.cursor.col = self.cursor.col.saturating_sub(n);
+        self.invalidate_command_output(self.cursor.row, self.cursor.col);
         self.cursor.pending_wrap = false;
     }
 
@@ -670,6 +735,7 @@ impl Terminal {
 
     /// RI：光标上移一行，到达滚动区域顶部时整个区域下滚
     fn reverse_index(&mut self) {
+        self.invalidate_command_output(self.cursor.row.saturating_sub(1), 0);
         if self.cursor.row == self.scroll_top {
             let blank = self.blank();
             self.grid.scroll_down(self.scroll_top, self.scroll_bottom, 1, blank);
@@ -724,6 +790,7 @@ impl Terminal {
     }
 
     fn restore_cursor(&mut self) {
+        self.finish_link_run();
         let saved = self.saved[self.alt_active as usize];
         self.cursor.template = saved.template;
         self.modes.origin = saved.origin;
@@ -732,11 +799,25 @@ impl Terminal {
         self.cursor.row = saved.row.min(self.rows() - 1);
         self.cursor.col = saved.col.min(self.cols() - 1);
         self.cursor.pending_wrap = saved.pending_wrap;
+        self.invalidate_command_output(self.cursor.row, self.cursor.col);
     }
 
+    fn invalidate_command_output(&mut self, row: usize, col: usize) {
+        if !self.alt_active {
+            self.shell.invalidate_from(crate::selection::Point { line: self.text_bounds().1 + row as u64, col });
+        }
+    }
     // ---- 擦除和编辑 ----
 
     fn erase_display(&mut self, mode: usize) {
+        if !self.alt_active && mode <= 3 {
+            self.shell.invalidate_current_output();
+        }
+        match mode {
+            0 => self.invalidate_command_output(self.cursor.row, self.cursor.col),
+            1 | 2 => self.invalidate_command_output(0, 0),
+            _ => {}
+        }
         let blank = self.blank();
         let (row, col) = (self.cursor.row, self.cursor.col);
         let cols = self.cols();
@@ -758,6 +839,8 @@ impl Terminal {
             2 => self.grid.clear(blank),
             // 清除回滚历史（clear 命令会发这个）
             3 => {
+                self.shell.invalidate_positions();
+                self.text_epoch = self.text_epoch.wrapping_add(1);
                 self.history.clear();
                 self.display_offset = 0;
             }
@@ -766,6 +849,10 @@ impl Terminal {
     }
 
     fn erase_line(&mut self, mode: usize) {
+        if !self.alt_active {
+            self.shell.invalidate_current_output();
+        }
+        self.invalidate_command_output(self.cursor.row, 0);
         let blank = self.blank();
         let (row, col) = (self.cursor.row, self.cursor.col);
         let cols = self.cols();
@@ -779,6 +866,10 @@ impl Terminal {
 
     /// ICH：在光标处插入 n 个空格，右边的字符往右挤，挤出行尾的丢掉
     fn insert_blanks(&mut self, n: usize) {
+        if !self.alt_active {
+            self.shell.invalidate_current_output();
+        }
+        self.invalidate_command_output(self.cursor.row, 0);
         let blank = self.blank();
         let cols = self.cols();
         let col = self.cursor.col;
@@ -786,10 +877,15 @@ impl Terminal {
         let cells = &mut self.grid[self.cursor.row].cells;
         cells.copy_within(col..cols - n, col + n);
         cells[col..col + n].fill(blank);
+        self.grid[self.cursor.row].repair_wide(blank);
     }
 
     /// DCH：删除光标处的 n 个字符，右边的字符往左补，行尾补空格
     fn delete_chars(&mut self, n: usize) {
+        if !self.alt_active {
+            self.shell.invalidate_current_output();
+        }
+        self.invalidate_command_output(self.cursor.row, 0);
         let blank = self.blank();
         let cols = self.cols();
         let col = self.cursor.col;
@@ -797,11 +893,16 @@ impl Terminal {
         let cells = &mut self.grid[self.cursor.row].cells;
         cells.copy_within(col + n..cols, col);
         cells[cols - n..].fill(blank);
+        self.grid[self.cursor.row].repair_wide(blank);
         self.cursor.pending_wrap = false;
     }
 
     /// ECH：把光标开始的 n 个字符擦成空格，不移动其他字符
     fn erase_chars(&mut self, n: usize) {
+        if !self.alt_active {
+            self.shell.invalidate_current_output();
+        }
+        self.invalidate_command_output(self.cursor.row, 0);
         let blank = self.blank();
         let col = self.cursor.col;
         self.grid[self.cursor.row].erase(col, col + n, blank);
@@ -810,6 +911,10 @@ impl Terminal {
 
     /// IL：在光标所在行插入 n 个空行（只在滚动区域内生效）
     fn insert_lines(&mut self, n: usize) {
+        if !self.alt_active {
+            self.shell.invalidate_current_output();
+        }
+        self.invalidate_command_output(self.cursor.row, 0);
         let row = self.cursor.row;
         if row < self.scroll_top || row > self.scroll_bottom {
             return;
@@ -822,6 +927,10 @@ impl Terminal {
 
     /// DL：删除光标所在行开始的 n 行（只在滚动区域内生效）
     fn delete_lines(&mut self, n: usize) {
+        if !self.alt_active {
+            self.shell.invalidate_current_output();
+        }
+        self.invalidate_command_output(self.cursor.row, 0);
         let row = self.cursor.row;
         if row < self.scroll_top || row > self.scroll_bottom {
             return;
@@ -966,6 +1075,10 @@ impl Terminal {
         if clear_before_leaving {
             self.grid.clear(self.blank());
         }
+        self.text_epoch = self.text_epoch.wrapping_add(1);
+        if to_alt {
+            self.shell.invalidate_current_output();
+        }
         std::mem::swap(&mut self.grid, &mut self.alt_grid);
         self.alt_active = to_alt;
         self.display_offset = 0;
@@ -976,13 +1089,19 @@ impl Terminal {
     fn sgr(&mut self, params: &Params) {
         let t = &mut self.cursor.template;
         if params.is_empty() {
+            let link = t.flags.link_id();
             *t = Cell::default();
+            t.flags.set_link(link);
             return;
         }
         let mut groups = params.iter();
         while let Some(group) = groups.next() {
             match group[0] {
-                0 => *t = Cell::default(),
+                0 => {
+                    let link = t.flags.link_id();
+                    *t = Cell::default();
+                    t.flags.set_link(link);
+                }
                 1 => t.flags.insert(Flags::BOLD),
                 2 => t.flags.insert(Flags::DIM),
                 3 => t.flags.insert(Flags::ITALIC),
@@ -1029,13 +1148,20 @@ impl Terminal {
         let (cols, rows) = (self.cols(), self.rows());
         let default_cursor_shape = self.default_cursor_shape;
         let scrollback = self.history.limit();
+        let epoch = self.text_epoch.wrapping_add(1);
+        let mut shell = std::mem::take(&mut self.shell);
+        shell.invalidate_positions();
+        shell.disconnect();
         *self = Terminal::new(cols, rows);
+        self.shell = shell;
+        self.text_epoch = epoch;
         self.default_cursor_shape = default_cursor_shape;
         self.history.set_limit(scrollback);
     }
 
     /// DECSTR：软复位，不清屏
     fn soft_reset(&mut self) {
+        self.finish_link_run();
         self.modes = Modes::default();
         self.cursor.template = Cell::default();
         self.cursor.pending_wrap = false;
@@ -1048,6 +1174,14 @@ impl Terminal {
 }
 
 impl Perform for Terminal {
+    fn osc_overflow(&mut self) {
+        self.shell.directory = None;
+        self.finish_link_run();
+        self.cursor.template.flags.set_link(0);
+    }
+    fn begin_batch(&mut self) {
+        self.text_revision = self.text_revision.wrapping_add(1);
+    }
     fn print(&mut self, c: char) {
         self.print_char(c);
     }
@@ -1088,8 +1222,8 @@ impl Perform for Terminal {
             ([], b'G' | b'`') => self.goto_col(n - 1),
             ([], b'H' | b'f') => self.goto_origin(n - 1, arg(params, 1, 1) - 1),
             ([], b'd') => self.goto_origin(n - 1, self.cursor.col),
-            ([], b'I') => (0..n).for_each(|_| self.tab_forward()),
-            ([], b'Z') => (0..n).for_each(|_| self.tab_backward()),
+            ([], b'I') => (0..n.min(self.cols())).for_each(|_| self.tab_forward()),
+            ([], b'Z') => (0..n.min(self.cols())).for_each(|_| self.tab_backward()),
             ([] | [b'?'], b'J') => self.erase_display(arg(params, 0, 0)),
             ([] | [b'?'], b'K') => self.erase_line(arg(params, 0, 0)),
             ([], b'L') => self.insert_lines(n),
@@ -1098,6 +1232,7 @@ impl Perform for Terminal {
             ([], b'X') => self.erase_chars(n),
             ([], b'S') => self.scroll_region_up(self.scroll_top, self.scroll_bottom, n),
             ([], b'T') => {
+                self.invalidate_command_output(self.scroll_top, 0);
                 let blank = self.blank();
                 self.grid.scroll_down(self.scroll_top, self.scroll_bottom, n, blank);
             }
@@ -1192,6 +1327,7 @@ impl Perform for Terminal {
             ([], b'\\') => {} // ST：字符串结束符，OSC/DCS 已经处理过了
             // DECALN：用 E 填满屏幕，用来校准屏幕
             ([b'#'], b'8') => {
+                self.invalidate_command_output(0, 0);
                 for r in 0..self.rows() {
                     self.grid[r].reset(Cell { c: 'E', ..Cell::default() });
                 }
@@ -1207,9 +1343,41 @@ impl Perform for Terminal {
 
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
         match params {
+            [b"7", parts @ ..] if !self.alt_active => {
+                // OSC parser 已限制整帧为 4 KiB；分号也是 URI 路径的一部分。
+                let uri = parts.iter().map(|p| std::str::from_utf8(p)).collect::<Result<Vec<_>, _>>();
+                self.shell.directory = uri.ok().and_then(|parts| crate::shell::Directory::parse(&parts.join(";")));
+            }
+            [b"133", parts @ ..] if !self.alt_active => {
+                let point = crate::selection::Point {
+                    line: self.text_bounds().1 + self.cursor.row as u64,
+                    col: self.cursor.col + usize::from(self.cursor.pending_wrap),
+                };
+                self.shell.marker(parts, point);
+            }
             [b"0" | b"2", title @ ..] => {
                 let parts: Vec<_> = title.iter().map(|p| String::from_utf8_lossy(p)).collect();
                 self.title = Some(parts.join(";"));
+            }
+            [b"8", _params, uri @ ..] => {
+                self.finish_link_run();
+                let len = uri.iter().map(|p| p.len()).sum::<usize>() + uri.len().saturating_sub(1);
+                let id = if len == 0 || len > crate::links::URL_LIMIT {
+                    0
+                } else {
+                    let mut bytes = Vec::with_capacity(len);
+                    for (i, part) in uri.iter().enumerate() {
+                        if i > 0 {
+                            bytes.push(b';');
+                        }
+                        bytes.extend_from_slice(part);
+                    }
+                    std::str::from_utf8(&bytes)
+                        .ok()
+                        .map(|s| s.to_string())
+                        .map_or(0, |url| self.links.insert(url, self.text_bounds().2))
+                };
+                self.cursor.template.flags.set_link(id);
             }
             [b"1", ..] => {} // 图标名
             _ => trace(format_args!(

@@ -5,7 +5,7 @@
 
 use crate::term::{Flags, Row, Terminal};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Point {
     pub line: u64,
     /// 列号。`usize::MAX` 表示"到行尾"
@@ -78,6 +78,7 @@ impl Selection {
     }
 
     /// 选中的文字。每行末尾的空格去掉；自动换行的地方不加换行符。
+    #[cfg(test)]
     pub fn text(&self, term: &Terminal) -> String {
         let Some((start, end)) = self.range(term) else { return String::new() };
         let mut out = String::new();

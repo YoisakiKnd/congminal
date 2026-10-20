@@ -1,0 +1,457 @@
+{
+  "seconds": 75.554,
+  "status": 0,
+  "samples": [
+    {
+      "t": 0.0,
+      "rss": 90767360,
+      "cpu_ns": 1870976,
+      "threads": 5
+    },
+    {
+      "t": 1.01,
+      "rss": 252264448,
+      "cpu_ns": 25994995,
+      "threads": 5
+    },
+    {
+      "t": 2.017,
+      "rss": 257277952,
+      "cpu_ns": 49810809,
+      "threads": 5
+    },
+    {
+      "t": 3.024,
+      "rss": 259637248,
+      "cpu_ns": 73933396,
+      "threads": 5
+    },
+    {
+      "t": 4.034,
+      "rss": 261996544,
+      "cpu_ns": 98182158,
+      "threads": 5
+    },
+    {
+      "t": 5.045,
+      "rss": 263028736,
+      "cpu_ns": 122405433,
+      "threads": 5
+    },
+    {
+      "t": 6.05,
+      "rss": 263028736,
+      "cpu_ns": 146519536,
+      "threads": 5
+    },
+    {
+      "t": 7.053,
+      "rss": 263028736,
+      "cpu_ns": 170558759,
+      "threads": 5
+    },
+    {
+      "t": 8.06,
+      "rss": 263028736,
+      "cpu_ns": 194673010,
+      "threads": 5
+    },
+    {
+      "t": 9.07,
+      "rss": 263028736,
+      "cpu_ns": 218946525,
+      "threads": 5
+    },
+    {
+      "t": 10.075,
+      "rss": 263028736,
+      "cpu_ns": 243002366,
+      "threads": 5
+    },
+    {
+      "t": 11.085,
+      "rss": 263569408,
+      "cpu_ns": 267204755,
+      "threads": 5
+    },
+    {
+      "t": 12.095,
+      "rss": 263569408,
+      "cpu_ns": 291471672,
+      "threads": 5
+    },
+    {
+      "t": 13.105,
+      "rss": 263569408,
+      "cpu_ns": 315665257,
+      "threads": 5
+    },
+    {
+      "t": 14.107,
+      "rss": 263569408,
+      "cpu_ns": 339671490,
+      "threads": 5
+    },
+    {
+      "t": 15.112,
+      "rss": 263569408,
+      "cpu_ns": 363824402,
+      "threads": 5
+    },
+    {
+      "t": 16.117,
+      "rss": 263569408,
+      "cpu_ns": 387938214,
+      "threads": 5
+    },
+    {
+      "t": 17.127,
+      "rss": 263569408,
+      "cpu_ns": 412165971,
+      "threads": 5
+    },
+    {
+      "t": 18.134,
+      "rss": 263569408,
+      "cpu_ns": 436302132,
+      "threads": 5
+    },
+    {
+      "t": 19.144,
+      "rss": 263569408,
+      "cpu_ns": 460521942,
+      "threads": 5
+    },
+    {
+      "t": 20.154,
+      "rss": 263569408,
+      "cpu_ns": 484739646,
+      "threads": 5
+    },
+    {
+      "t": 21.164,
+      "rss": 263569408,
+      "cpu_ns": 508961769,
+      "threads": 5
+    },
+    {
+      "t": 22.167,
+      "rss": 263569408,
+      "cpu_ns": 533010792,
+      "threads": 5
+    },
+    {
+      "t": 23.177,
+      "rss": 263569408,
+      "cpu_ns": 557231827,
+      "threads": 5
+    },
+    {
+      "t": 24.187,
+      "rss": 263569408,
+      "cpu_ns": 581441012,
+      "threads": 5
+    },
+    {
+      "t": 25.197,
+      "rss": 263569408,
+      "cpu_ns": 605512787,
+      "threads": 5
+    },
+    {
+      "t": 26.2,
+      "rss": 263569408,
+      "cpu_ns": 629735251,
+      "threads": 5
+    },
+    {
+      "t": 27.206,
+      "rss": 263569408,
+      "cpu_ns": 653789516,
+      "threads": 5
+    },
+    {
+      "t": 28.216,
+      "rss": 263569408,
+      "cpu_ns": 678071498,
+      "threads": 5
+    },
+    {
+      "t": 29.217,
+      "rss": 263569408,
+      "cpu_ns": 702035069,
+      "threads": 5
+    },
+    {
+      "t": 30.227,
+      "rss": 263569408,
+      "cpu_ns": 726283605,
+      "threads": 5
+    },
+    {
+      "t": 31.234,
+      "rss": 263569408,
+      "cpu_ns": 750430262,
+      "threads": 5
+    },
+    {
+      "t": 32.244,
+      "rss": 263569408,
+      "cpu_ns": 774652443,
+      "threads": 5
+    },
+    {
+      "t": 33.254,
+      "rss": 263569408,
+      "cpu_ns": 798844648,
+      "threads": 5
+    },
+    {
+      "t": 34.262,
+      "rss": 263569408,
+      "cpu_ns": 823055995,
+      "threads": 5
+    },
+    {
+      "t": 35.267,
+      "rss": 263569408,
+      "cpu_ns": 847165534,
+      "threads": 5
+    },
+    {
+      "t": 36.269,
+      "rss": 263569408,
+      "cpu_ns": 871198383,
+      "threads": 5
+    },
+    {
+      "t": 37.279,
+      "rss": 263569408,
+      "cpu_ns": 895422170,
+      "threads": 5
+    },
+    {
+      "t": 38.28,
+      "rss": 263569408,
+      "cpu_ns": 919430475,
+      "threads": 5
+    },
+    {
+      "t": 39.291,
+      "rss": 263569408,
+      "cpu_ns": 943618134,
+      "threads": 5
+    },
+    {
+      "t": 40.301,
+      "rss": 263569408,
+      "cpu_ns": 967864866,
+      "threads": 5
+    },
+    {
+      "t": 41.303,
+      "rss": 263569408,
+      "cpu_ns": 991886726,
+      "threads": 5
+    },
+    {
+      "t": 42.313,
+      "rss": 263569408,
+      "cpu_ns": 1016070531,
+      "threads": 5
+    },
+    {
+      "t": 43.323,
+      "rss": 263569408,
+      "cpu_ns": 1040356588,
+      "threads": 5
+    },
+    {
+      "t": 44.333,
+      "rss": 263569408,
+      "cpu_ns": 1064573087,
+      "threads": 5
+    },
+    {
+      "t": 45.343,
+      "rss": 263569408,
+      "cpu_ns": 1088761451,
+      "threads": 5
+    },
+    {
+      "t": 46.35,
+      "rss": 263569408,
+      "cpu_ns": 1112908410,
+      "threads": 5
+    },
+    {
+      "t": 47.358,
+      "rss": 263569408,
+      "cpu_ns": 1137073366,
+      "threads": 5
+    },
+    {
+      "t": 48.367,
+      "rss": 263569408,
+      "cpu_ns": 1161271540,
+      "threads": 5
+    },
+    {
+      "t": 49.377,
+      "rss": 265420800,
+      "cpu_ns": 1185083381,
+      "threads": 5
+    },
+    {
+      "t": 50.378,
+      "rss": 265420800,
+      "cpu_ns": 1209080954,
+      "threads": 5
+    },
+    {
+      "t": 51.383,
+      "rss": 265420800,
+      "cpu_ns": 1233199865,
+      "threads": 5
+    },
+    {
+      "t": 52.39,
+      "rss": 265420800,
+      "cpu_ns": 1257347073,
+      "threads": 5
+    },
+    {
+      "t": 53.391,
+      "rss": 265420800,
+      "cpu_ns": 1281325416,
+      "threads": 5
+    },
+    {
+      "t": 54.401,
+      "rss": 265437184,
+      "cpu_ns": 1305550239,
+      "threads": 5
+    },
+    {
+      "t": 55.412,
+      "rss": 265437184,
+      "cpu_ns": 1329771125,
+      "threads": 5
+    },
+    {
+      "t": 56.417,
+      "rss": 265437184,
+      "cpu_ns": 1353916132,
+      "threads": 5
+    },
+    {
+      "t": 57.427,
+      "rss": 265437184,
+      "cpu_ns": 1378054017,
+      "threads": 5
+    },
+    {
+      "t": 58.437,
+      "rss": 265437184,
+      "cpu_ns": 1402345964,
+      "threads": 5
+    },
+    {
+      "t": 59.447,
+      "rss": 265437184,
+      "cpu_ns": 1426554429,
+      "threads": 5
+    },
+    {
+      "t": 60.45,
+      "rss": 265437184,
+      "cpu_ns": 1450644929,
+      "threads": 5
+    },
+    {
+      "t": 61.453,
+      "rss": 265437184,
+      "cpu_ns": 1474649265,
+      "threads": 5
+    },
+    {
+      "t": 62.463,
+      "rss": 265437184,
+      "cpu_ns": 1498870223,
+      "threads": 5
+    },
+    {
+      "t": 63.473,
+      "rss": 265437184,
+      "cpu_ns": 1523028370,
+      "threads": 5
+    },
+    {
+      "t": 64.48,
+      "rss": 265437184,
+      "cpu_ns": 1547273472,
+      "threads": 5
+    },
+    {
+      "t": 65.483,
+      "rss": 265437184,
+      "cpu_ns": 1571291561,
+      "threads": 5
+    },
+    {
+      "t": 66.484,
+      "rss": 265437184,
+      "cpu_ns": 1595279112,
+      "threads": 5
+    },
+    {
+      "t": 67.494,
+      "rss": 265437184,
+      "cpu_ns": 1619503954,
+      "threads": 5
+    },
+    {
+      "t": 68.504,
+      "rss": 265437184,
+      "cpu_ns": 1643727675,
+      "threads": 5
+    },
+    {
+      "t": 69.515,
+      "rss": 265437184,
+      "cpu_ns": 1667945983,
+      "threads": 5
+    },
+    {
+      "t": 70.517,
+      "rss": 265437184,
+      "cpu_ns": 1691975047,
+      "threads": 5
+    },
+    {
+      "t": 71.517,
+      "rss": 265437184,
+      "cpu_ns": 1715955546,
+      "threads": 5
+    },
+    {
+      "t": 72.524,
+      "rss": 265437184,
+      "cpu_ns": 1740098316,
+      "threads": 5
+    },
+    {
+      "t": 73.533,
+      "rss": 265437184,
+      "cpu_ns": 1764236919,
+      "threads": 5
+    },
+    {
+      "t": 74.544,
+      "rss": 265437184,
+      "cpu_ns": 1788368784,
+      "threads": 5
+    }
+  ],
+  "log": "    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-5c404c6bdf5c4e82)\n\nrunning 1 test\ntest integration_tests::stress_commands_and_notifications ... M3STRESS t=5 cycles=23776 history=66707784 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=10 cycles=48971 history=66736800 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=15 cycles=74232 history=66978600 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=20 cycles=99203 history=66285440 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=25 cycles=124132 history=67107840 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=30 cycles=149148 history=66565928 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=35 cycles=173990 history=67107840 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=40 cycles=198919 history=66285440 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=45 cycles=224338 history=67036632 shell=45184 notifications=4096 max_tick_us=55\nM3STRESS t=50 cycles=248777 history=66285440 shell=45184 notifications=4096 max_tick_us=71\nM3STRESS t=55 cycles=273461 history=66324128 shell=45184 notifications=4096 max_tick_us=71\nM3STRESS t=60 cycles=298193 history=66517568 shell=45184 notifications=4096 max_tick_us=71\nM3STRESS t=65 cycles=323107 history=67107840 shell=45184 notifications=4096 max_tick_us=71\nM3STRESS t=70 cycles=348054 history=66527240 shell=45184 notifications=4096 max_tick_us=71\nM3STRESS done cycles=372394 max_tick_us=71\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 183 filtered out; finished in 75.11s\n\n"
+}

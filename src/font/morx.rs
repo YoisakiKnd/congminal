@@ -8,6 +8,7 @@
 //! 规范：<https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6morx.html>
 //! 细节上和 HarfBuzz 的实现保持一致（规范没写清楚的地方以它为准）。
 
+use super::mmap::Bytes;
 use super::ttf::{Face, u16_at, u32_at};
 
 /// 被连字吃掉的字形，处理完所有子表之后再删除
@@ -35,7 +36,7 @@ const LIG_OFFSET: u32 = 0x3FFF_FFFF;
 const MAX_COMPONENTS: usize = 64;
 
 pub struct Morx {
-    data: &'static [u8],
+    data: Bytes,
     num_glyphs: u16,
 }
 
@@ -50,7 +51,7 @@ struct StateTable {
 impl Morx {
     pub fn new(face: &Face) -> Option<Morx> {
         let data = face.table(b"morx")?;
-        (u16_at(data, 0)? >= 2).then_some(Morx { data, num_glyphs: face.num_glyphs() })
+        (u16_at(&data, 0)? >= 2).then_some(Morx { data, num_glyphs: face.num_glyphs() })
     }
 
     /// 对字形序列执行所有默认启用的子表。被合并掉的字形会被删除，所以字数会变少。
@@ -60,16 +61,31 @@ impl Morx {
     }
 
     fn apply_chains(&self, glyphs: &mut [u16]) -> Option<()> {
-        let data = self.data;
+        let data = &*self.data;
         let mut chain = 8;
-        for _ in 0..u32_at(data, 4)? {
+        let chains = u32_at(data, 4)?;
+        if chains > 256 {
+            return None;
+        }
+        for _ in 0..chains {
             // 只用字体默认打开的功能
             let flags = u32_at(data, chain)?;
             let chain_length = u32_at(data, chain + 4)? as usize;
             let features = u32_at(data, chain + 8)? as usize;
+            if chain_length < 16 {
+                return None;
+            }
+            data.get(chain..chain + chain_length)?;
             let mut subtable = chain + 16 + 12 * features;
-            for _ in 0..u32_at(data, chain + 12)? {
+            let subtables = u32_at(data, chain + 12)?;
+            if subtables > 256 {
+                return None;
+            }
+            for _ in 0..subtables {
                 let length = u32_at(data, subtable)? as usize;
+                if length < 12 || subtable + length > chain + chain_length {
+                    return None;
+                }
                 let coverage = u32_at(data, subtable + 4)?;
                 let enabled = u32_at(data, subtable + 8)? & flags != 0;
                 // 只用于竖排的子表跳过
@@ -105,7 +121,7 @@ impl Morx {
     }
 
     fn state_table(&self, base: usize) -> Option<StateTable> {
-        let data = self.data;
+        let data = &*self.data;
         Some(StateTable {
             classes: u32_at(data, base)?,
             class_table: base + u32_at(data, base + 4)? as usize,
@@ -119,7 +135,7 @@ impl Morx {
         match glyph {
             None => END_OF_TEXT,
             Some(DELETED) => DELETED_GLYPH,
-            Some(glyph) => lookup(self.data, table.class_table, glyph, self.num_glyphs).unwrap_or(OUT_OF_BOUNDS),
+            Some(glyph) => lookup(&self.data, table.class_table, glyph, self.num_glyphs).unwrap_or(OUT_OF_BOUNDS),
         }
     }
 
@@ -131,7 +147,7 @@ impl Morx {
         glyphs: &mut [u16],
         mut transition: impl FnMut(&mut [u16], usize, usize) -> Option<()>,
     ) -> Option<()> {
-        let data = self.data;
+        let data = &*self.data;
         let mut state = START_OF_TEXT;
         let mut i = 0;
         // 防止"不前进"的动作让损坏的字体死循环
@@ -159,7 +175,7 @@ impl Morx {
     /// 类型 2：连字。设置了 SetComponent 的字形压进组件栈；PerformAction 时按动作列表依次弹出组件，
     /// 用"字形编号 + 偏移"在组件表里查到的值累加出连字表的下标，取出连字字形放在最前面的组件处，其余组件删掉。
     fn ligature(&self, body: usize, glyphs: &mut [u16]) -> Option<()> {
-        let data = self.data;
+        let data = &*self.data;
         let table = self.state_table(body)?;
         let actions = body + u32_at(data, body + 16)? as usize;
         let components = body + u32_at(data, body + 20)? as usize;
@@ -219,7 +235,7 @@ impl Morx {
 
     /// 类型 1：上下文替换。可以记住一个"标记"位置，之后按动作替换标记处或当前位置的字形
     fn contextual(&self, body: usize, glyphs: &mut [u16]) -> Option<()> {
-        let data = self.data;
+        let data = &*self.data;
         let table = self.state_table(body)?;
         let substitutions = body + u32_at(data, body + 16)? as usize;
         let mut mark: Option<usize> = None;
@@ -257,7 +273,7 @@ impl Morx {
     /// 类型 4：每个字形查表替换，不看上下文
     fn noncontextual(&self, body: usize, glyphs: &mut [u16]) -> Option<()> {
         for glyph in glyphs.iter_mut().filter(|g| **g != DELETED) {
-            if let Some(replacement) = lookup(self.data, body, *glyph, self.num_glyphs) {
+            if let Some(replacement) = lookup(&self.data, body, *glyph, self.num_glyphs) {
                 *glyph = replacement;
             }
         }
@@ -397,7 +413,7 @@ mod tests {
     }
 
     fn run(input: &[u16]) -> Vec<u16> {
-        let data = Box::leak(ligature_table().into_boxed_slice());
+        let data = ligature_table().into();
         let morx = Morx { data, num_glyphs: 100 };
         let mut glyphs = input.to_vec();
         morx.ligature(0, &mut glyphs);

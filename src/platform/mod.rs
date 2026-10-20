@@ -107,6 +107,8 @@ pub enum ClipboardRequest {
 pub trait App {
     /// 处理一个事件。返回 false 表示退出。
     fn event(&mut self, event: Event) -> bool;
+    /// 每轮原生事件处理后执行一次有预算的后台工作，返回 false 表示退出。
+    fn tick(&mut self) -> bool;
     fn needs_redraw(&self) -> bool;
     /// 画一帧，返回画面和变化了的区域；什么都没变时返回 None（不用提交）
     fn draw(&mut self) -> Option<(&Framebuffer, Damage)>;

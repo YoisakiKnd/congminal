@@ -1,0 +1,300 @@
+{
+  "method": "macOS proc_pidinfo; startup=spawn to shell marker; idle CPU over 3s; five alternating runs; GUI natural child exit",
+  "idle": {
+    "before": [
+      {
+        "startup_ms": 108.15716600000002,
+        "rss_bytes": 115277824,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0027600673694832076,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 122.56525000000096,
+        "rss_bytes": 114819072,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0023064463223297473,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 127.36904100000146,
+        "rss_bytes": 115277824,
+        "threads": 14,
+        "cpu_one_core_pct": 0.002836983808193223,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 136.21695799999856,
+        "rss_bytes": 115310592,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0026945973885436677,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 133.70262499999797,
+        "rss_bytes": 115097600,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0029566852667916336,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      }
+    ],
+    "after": [
+      {
+        "startup_ms": 145.96537500000028,
+        "rss_bytes": 115802112,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0026433372144790556,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 134.99075000000005,
+        "rss_bytes": 115212288,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0028796425711179823,
+        "children_rss_bytes": 1048576,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 128.65333299999904,
+        "rss_bytes": 115048448,
+        "threads": 14,
+        "cpu_one_core_pct": 0.002441254020056197,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 116.63725000000014,
+        "rss_bytes": 115163136,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0028858838557074664,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      },
+      {
+        "startup_ms": 129.30529100000143,
+        "rss_bytes": 115572736,
+        "threads": 14,
+        "cpu_one_core_pct": 0.0019552675155525487,
+        "children_rss_bytes": 1064960,
+        "children_cpu_one_core_pct": 0.0,
+        "children": 1,
+        "exit": 0
+      }
+    ]
+  },
+  "reload": {
+    "timeline": [
+      {
+        "step": 0,
+        "font_size": 17,
+        "theme": "light",
+        "rss": 115589120,
+        "cpu_ns": 4593041,
+        "threads": 15
+      },
+      {
+        "step": 1,
+        "font_size": 15,
+        "theme": "midnight",
+        "rss": 115638272,
+        "cpu_ns": 5755957,
+        "threads": 15
+      },
+      {
+        "step": 2,
+        "font_size": 17,
+        "theme": "dark",
+        "rss": 115654656,
+        "cpu_ns": 6858200,
+        "threads": 15
+      },
+      {
+        "step": 3,
+        "font_size": 15,
+        "theme": "light",
+        "rss": 115556352,
+        "cpu_ns": 7992179,
+        "threads": 13
+      },
+      {
+        "step": 4,
+        "font_size": 17,
+        "theme": "midnight",
+        "rss": 115458048,
+        "cpu_ns": 9207354,
+        "threads": 11
+      },
+      {
+        "step": 5,
+        "font_size": 15,
+        "theme": "dark",
+        "rss": 115458048,
+        "cpu_ns": 10320128,
+        "threads": 11
+      },
+      {
+        "step": 6,
+        "font_size": 17,
+        "theme": "light",
+        "rss": 115458048,
+        "cpu_ns": 11366102,
+        "threads": 11
+      },
+      {
+        "step": 7,
+        "font_size": 15,
+        "theme": "midnight",
+        "rss": 115458048,
+        "cpu_ns": 12441877,
+        "threads": 11
+      },
+      {
+        "step": 8,
+        "font_size": 17,
+        "theme": "dark",
+        "rss": 115458048,
+        "cpu_ns": 13428848,
+        "threads": 11
+      },
+      {
+        "step": 9,
+        "font_size": 15,
+        "theme": "light",
+        "rss": 115458048,
+        "cpu_ns": 14540921,
+        "threads": 11
+      },
+      {
+        "step": 10,
+        "font_size": 17,
+        "theme": "midnight",
+        "rss": 115458048,
+        "cpu_ns": 15626973,
+        "threads": 11
+      },
+      {
+        "step": 11,
+        "font_size": 15,
+        "theme": "dark",
+        "rss": 115458048,
+        "cpu_ns": 16718831,
+        "threads": 11
+      },
+      {
+        "step": 12,
+        "font_size": 17,
+        "theme": "light",
+        "rss": 115507200,
+        "cpu_ns": 17709352,
+        "threads": 11
+      },
+      {
+        "step": 13,
+        "font_size": 15,
+        "theme": "midnight",
+        "rss": 115507200,
+        "cpu_ns": 18816306,
+        "threads": 11
+      },
+      {
+        "step": 14,
+        "font_size": 17,
+        "theme": "dark",
+        "rss": 115507200,
+        "cpu_ns": 19883091,
+        "threads": 11
+      },
+      {
+        "step": 15,
+        "font_size": 15,
+        "theme": "light",
+        "rss": 115507200,
+        "cpu_ns": 20971237,
+        "threads": 11
+      },
+      {
+        "step": 16,
+        "font_size": 17,
+        "theme": "midnight",
+        "rss": 115507200,
+        "cpu_ns": 22081277,
+        "threads": 11
+      },
+      {
+        "step": 17,
+        "font_size": 15,
+        "theme": "dark",
+        "rss": 115507200,
+        "cpu_ns": 23189389,
+        "threads": 11
+      },
+      {
+        "step": 18,
+        "font_size": 17,
+        "theme": "light",
+        "rss": 115507200,
+        "cpu_ns": 24282342,
+        "threads": 11
+      },
+      {
+        "step": 19,
+        "font_size": 15,
+        "theme": "midnight",
+        "rss": 115507200,
+        "cpu_ns": 25341000,
+        "threads": 11
+      }
+    ],
+    "final": {
+      "rss": 115507200,
+      "cpu_ns": 25671566,
+      "threads": 11
+    },
+    "exit": 0,
+    "font_commits": 20,
+    "config_reloads": 21,
+    "duration_s": 32.24624408300001
+  },
+  "median": {
+    "before": {
+      "startup_ms": 127.36904100000146,
+      "rss_bytes": 115277824,
+      "threads": 14,
+      "cpu_one_core_pct": 0.0027600673694832076,
+      "children_rss_bytes": 1064960,
+      "children_cpu_one_core_pct": 0.0
+    },
+    "after": {
+      "startup_ms": 129.30529100000143,
+      "rss_bytes": 115212288,
+      "threads": 14,
+      "cpu_one_core_pct": 0.0026433372144790556,
+      "children_rss_bytes": 1064960,
+      "children_cpu_one_core_pct": 0.0
+    }
+  }
+}

@@ -15,48 +15,50 @@ impl Image {
     ///
     /// 缩小时用面积平均（每个目标像素取它覆盖的那块源图的平均值，不会有锯齿），放大时用双线性插值。
     /// 先预乘透明度再插值，否则半透明的边缘会混进透明像素的颜色，出现黑边。
-    pub fn resize_premultiplied(&self, width: usize, height: usize) -> Vec<u32> {
+    pub fn resize_premultiplied(&self, width: usize, height: usize) -> Option<Vec<u32>> {
+        if width == 0
+            || height == 0
+            || self.width == 0
+            || self.height == 0
+            || width > 16384
+            || height > 16384
+            || self.width > 16384
+            || self.height > 16384
+            || width.checked_mul(height)? > 1024 * 1024
+            || self.width.checked_mul(self.height)?.checked_mul(4)? != self.rgba.len()
+        {
+            return None;
+        }
         let xs = weights(self.width, width);
         let ys = weights(self.height, height);
-        let premultiplied: Vec<[f32; 4]> = self
-            .rgba
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|p| {
-                let a = p[3] as f32 / 255.0;
-                [p[0] as f32 * a, p[1] as f32 * a, p[2] as f32 * a, p[3] as f32]
-            })
-            .collect();
-        // 先横向缩放每一行，再纵向缩放每一列
-        let mut horizontal = vec![[0f32; 4]; width * self.height];
-        for y in 0..self.height {
-            for (x, taps) in xs.iter().enumerate() {
-                let mut sum = [0f32; 4];
-                for &(sx, w) in taps {
-                    let p = premultiplied[y * self.width + sx];
-                    for c in 0..4 {
-                        sum[c] += p[c] * w;
-                    }
-                }
-                horizontal[y * width + x] = sum;
-            }
-        }
+        // 只保留一行浮点中间值。极窄长图横向放大时也不分配 width * source_height。
+        let mut sums = vec![[0f32; 4]; width];
         let mut out = vec![0u32; width * height];
         for (y, taps) in ys.iter().enumerate() {
-            for x in 0..width {
-                let mut sum = [0f32; 4];
-                for &(sy, w) in taps {
-                    let p = horizontal[sy * width + x];
-                    for c in 0..4 {
-                        sum[c] += p[c] * w;
+            sums.fill([0.0; 4]);
+            for &(sy, wy) in taps {
+                for (x, horizontal) in xs.iter().enumerate() {
+                    let mut sum = [0f32; 4];
+                    for &(sx, wx) in horizontal {
+                        let i = (sy * self.width + sx) * 4;
+                        let p = &self.rgba[i..i + 4];
+                        let a = p[3] as f32 / 255.0;
+                        let premultiplied = [p[0] as f32 * a, p[1] as f32 * a, p[2] as f32 * a, p[3] as f32];
+                        for c in 0..4 {
+                            sum[c] += premultiplied[c] * wx;
+                        }
+                    }
+                    for (target, source) in sums[x].iter_mut().zip(sum) {
+                        *target += source * wy;
                     }
                 }
+            }
+            for (x, sum) in sums.iter().enumerate() {
                 let [r, g, b, a] = sum.map(|v| v.round().clamp(0.0, 255.0) as u32);
                 out[y * width + x] = a << 24 | r << 16 | g << 8 | b;
             }
         }
-        out
+        Some(out)
     }
 }
 
@@ -96,28 +98,41 @@ mod tests {
     fn downscale_averages_area() {
         // 2×2 → 1×1：两白两黑平均成灰
         let img = image(2, 2, &[[255, 255, 255, 255], [0, 0, 0, 255], [0, 0, 0, 255], [255, 255, 255, 255]]);
-        assert_eq!(img.resize_premultiplied(1, 1), [0xFF808080]);
+        assert_eq!(img.resize_premultiplied(1, 1).unwrap(), [0xFF808080]);
     }
 
     #[test]
     fn transparent_pixels_do_not_darken_edges() {
         // 红色和完全透明的黑色平均：结果是半透明的红（预乘后 R=128），而不是暗红
         let img = image(2, 1, &[[255, 0, 0, 255], [0, 0, 0, 0]]);
-        assert_eq!(img.resize_premultiplied(1, 1), [0x80800000]);
+        assert_eq!(img.resize_premultiplied(1, 1).unwrap(), [0x80800000]);
     }
 
     #[test]
     fn same_size_is_identity() {
         let img = image(2, 1, &[[10, 20, 30, 255], [40, 50, 60, 255]]);
-        assert_eq!(img.resize_premultiplied(2, 1), [0xFF0A141E, 0xFF28323C]);
+        assert_eq!(img.resize_premultiplied(2, 1).unwrap(), [0xFF0A141E, 0xFF28323C]);
     }
 
     #[test]
     fn upscale_interpolates() {
         let img = image(2, 1, &[[0, 0, 0, 255], [255, 255, 255, 255]]);
-        let out = img.resize_premultiplied(4, 1);
+        let out = img.resize_premultiplied(4, 1).unwrap();
         assert_eq!(out[0], 0xFF000000);
         assert_eq!(out[3], 0xFFFFFFFF);
         assert!(out[1] & 0xFF > 0 && out[1] & 0xFF < out[2] & 0xFF);
+    }
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+    #[test]
+    fn thin_image_scales_without_a_full_height_intermediate() {
+        let image = Image { width: 1, height: 16384, rgba: [10, 20, 30, 255].repeat(16384) };
+        let resized = image.resize_premultiplied(512, 1).unwrap();
+        assert!(resized.iter().all(|&p| p == 0xff0a141e));
+        assert!(image.resize_premultiplied(usize::MAX, 2).is_none());
+        assert!(image.resize_premultiplied(0, 2).is_none());
     }
 }

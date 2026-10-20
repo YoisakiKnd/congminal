@@ -7,13 +7,17 @@
 //!    → 接到 stdin/stdout/stderr → `execve` 启动 shell。父进程关掉自己手里的从设备
 //! 4. 父进程读写主设备，就等于在和 shell 的终端交互
 
+use super::flow::{AsyncWriter, READ_CHUNK};
 use super::{Command, EventSink, PtyEvent};
 use std::ffi::{CStr, CString, c_char, c_int, c_ulong, c_ushort};
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
-use std::path::{Path, PathBuf};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[repr(C)]
 struct Winsize {
@@ -28,6 +32,8 @@ struct Winsize {
 mod consts {
     use std::ffi::{c_int, c_ulong};
     pub const O_NOCTTY: c_int = 0o400;
+    pub const O_NONBLOCK: c_int = 0o4000;
+    pub const WNOWAIT: c_int = 0x0100_0000;
     pub const TIOCSWINSZ: c_ulong = 0x5414;
     pub const TIOCSCTTY: c_ulong = 0x540E;
 }
@@ -36,6 +42,8 @@ mod consts {
 mod consts {
     use std::ffi::{c_int, c_ulong};
     pub const O_NOCTTY: c_int = 0x20000;
+    pub const O_NONBLOCK: c_int = 0x4;
+    pub const WNOWAIT: c_int = 0x20;
     pub const TIOCSWINSZ: c_ulong = 0x8008_7467;
     pub const TIOCSCTTY: c_ulong = 0x2000_7461;
 }
@@ -68,11 +76,48 @@ unsafe extern "C" {
     fn waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int;
     fn kill(pid: c_int, signal: c_int) -> c_int;
     fn signal(signal: c_int, handler: usize) -> usize;
+    fn waitid(kind: c_int, id: u32, info: *mut std::ffi::c_void, options: c_int) -> c_int;
+    fn poll(fds: *mut PollFd, count: PollCount, timeout: c_int) -> c_int;
+    fn write(fd: c_int, data: *const std::ffi::c_void, len: usize) -> isize;
+    #[cfg(target_os = "macos")]
+    fn __error() -> *mut c_int;
+    #[cfg(target_os = "linux")]
+    fn __errno_location() -> *mut c_int;
+}
+
+#[cfg(target_os = "macos")]
+type PollCount = u32;
+#[cfg(target_os = "linux")]
+type PollCount = c_ulong;
+
+#[repr(C)]
+struct PollFd {
+    fd: c_int,
+    events: i16,
+    revents: i16,
+}
+
+struct Process {
+    pid: Mutex<Option<c_int>>,
+    running: AtomicBool,
+    wake: UnixStream,
+}
+
+impl Process {
+    fn stop(&self) {
+        if !self.running.swap(false, Ordering::AcqRel) {
+            return;
+        }
+        unsafe {
+            write(self.wake.as_raw_fd(), b"x".as_ptr().cast(), 1);
+        }
+    }
 }
 
 pub struct Pty {
     master: File,
-    pid: c_int,
+    writer: Option<AsyncWriter>,
+    process: Arc<Process>,
 }
 
 impl Pty {
@@ -82,9 +127,16 @@ impl Pty {
         if fd < 0 {
             return Err(os_error("posix_openpt"));
         }
-        let master = unsafe { OwnedFd::from_raw_fd(fd) };
+        let master = above_stdio(unsafe { OwnedFd::from_raw_fd(fd) })?;
+        let fd = master.as_raw_fd();
         // 避免以后启动的其他子进程继承这个 fd
-        unsafe { fcntl(fd, F_SETFD, FD_CLOEXEC) };
+        if unsafe { fcntl(fd, F_SETFD, FD_CLOEXEC) } < 0 {
+            return Err(os_error("fcntl(CLOEXEC)"));
+        }
+        // dup 后的 fd 共享非阻塞状态。读写线程分别处理 WouldBlock，UI 不做系统写入。
+        if unsafe { fcntl(fd, 4 as c_int, O_RDWR | O_NONBLOCK) } < 0 {
+            return Err(os_error("fcntl(NONBLOCK)"));
+        }
         if unsafe { grantpt(fd) } != 0 {
             return Err(os_error("grantpt"));
         }
@@ -99,8 +151,11 @@ impl Pty {
         if slave_fd < 0 {
             return Err(os_error("open(slave)"));
         }
-        let slave = unsafe { OwnedFd::from_raw_fd(slave_fd) };
-        unsafe { fcntl(slave_fd, F_SETFD, FD_CLOEXEC) };
+        let slave = above_stdio(unsafe { OwnedFd::from_raw_fd(slave_fd) })?;
+        let slave_fd = slave.as_raw_fd();
+        if unsafe { fcntl(slave_fd, F_SETFD, FD_CLOEXEC) } < 0 {
+            return Err(os_error("fcntl(CLOEXEC)"));
+        }
         // macOS 上从设备被打开之前，对主设备设置尺寸会失败（ENOTTY），所以在从设备上设置
         set_winsize(slave_fd, cols, rows)?;
 
@@ -117,41 +172,160 @@ impl Pty {
         envp.push(std::ptr::null());
         let cwd = command.working_directory.as_ref().map(|dir| to_c(dir.as_os_str().as_bytes())).transpose()?;
 
+        // CLOEXEC 的启动通道：成功 exec 自动关闭；失败写回步骤和 errno。
+        let (mut startup, child_startup) = channel()?;
+        let (exit_read, exit_write) = channel()?;
         // 3. fork
         let pid = unsafe { fork() };
         if pid < 0 {
             return Err(os_error("fork"));
         }
         if pid == 0 {
-            unsafe { exec_child(slave_fd, fd, cwd.as_deref(), &shell, argv.as_ptr(), envp.as_ptr()) }
+            unsafe {
+                close(startup.as_raw_fd());
+                exec_child(
+                    slave_fd,
+                    fd,
+                    child_startup.as_raw_fd(),
+                    cwd.as_deref(),
+                    &shell,
+                    argv.as_ptr(),
+                    envp.as_ptr(),
+                )
+            }
         }
         // 父进程不需要从设备。必须关掉，否则 shell 退出后读主设备永远等不到 EOF。
         drop(slave);
 
-        // 4. 父进程：开一个线程专门读 shell 的输出
-        let master = File::from(master);
-        let mut reader = master.try_clone()?;
+        drop(child_startup);
+        let mut report = Vec::new();
+        let handshake = startup.by_ref().take(9).read_to_end(&mut report);
+        if handshake.is_err() || !report.is_empty() {
+            unsafe {
+                kill(pid, 9);
+                waitpid(pid, std::ptr::null_mut(), 0);
+            }
+            handshake?;
+            if report.len() != 8 {
+                return Err(io::Error::other("shell 启动错误报告不完整"));
+            }
+            let stage = i32::from_ne_bytes(report[..4].try_into().unwrap());
+            let error = io::Error::from_raw_os_error(i32::from_ne_bytes(report[4..].try_into().unwrap()));
+            let stage = match stage {
+                1 => "setsid",
+                2 => "TIOCSCTTY",
+                3 => "dup2",
+                4 => "chdir",
+                _ => "execve",
+            };
+            return Err(io::Error::new(error.kind(), format!("{stage}: {error}")));
+        }
+        drop(startup);
+
+        let process =
+            Arc::new(Process { pid: Mutex::new(Some(pid)), running: AtomicBool::new(true), wake: exit_write });
+        let mut pty = Pty { master: File::from(master), writer: None, process: process.clone() };
+        // waitid 不回收 PID；持锁执行 waitpid 和清除 PID，避免关闭窗口时误杀复用的 PID。
+        let exit_sink = sink.clone();
+        let child = process.clone();
+        let waiter = std::thread::Builder::new().name("pty-waiter".into()).spawn(move || {
+            #[repr(C, align(16))]
+            struct SigInfo([u8; 128]); // Linux 为 128 字节，Darwin 更小；只让系统写入，不解释布局。
+            let mut info = SigInfo([0; 128]);
+            loop {
+                if unsafe { waitid(1, pid as u32, info.0.as_mut_ptr().cast(), 4 | WNOWAIT) } == 0 {
+                    break;
+                }
+                let error = io::Error::last_os_error();
+                if error.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                if error.raw_os_error() == Some(10) {
+                    *child.pid.lock().unwrap() = None;
+                }
+                child.stop();
+                exit_sink(PtyEvent::Error(error));
+                exit_sink(PtyEvent::Exit(None));
+                return;
+            }
+            let mut status = 0;
+            let result = {
+                let mut current = child.pid.lock().unwrap();
+                let result = loop {
+                    let result = unsafe { waitpid(pid, &mut status, 0) };
+                    if result >= 0 || io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                        break result;
+                    }
+                };
+                *current = None;
+                result
+            };
+            child.stop();
+            let code =
+                (result > 0).then(|| if status & 0x7f == 0 { (status >> 8) & 0xff } else { 128 + (status & 0x7f) });
+            exit_sink(PtyEvent::Exit(code));
+        });
+        if let Err(error) = waiter {
+            unsafe {
+                kill(pid, 9);
+                waitpid(pid, std::ptr::null_mut(), 0);
+            }
+            *process.pid.lock().unwrap() = None;
+            return Err(error);
+        }
+        let writer = pty.master.try_clone()?;
+        let mut writable = PollFd { fd: writer.as_raw_fd(), events: 4, revents: 0 };
+        pty.writer = Some(AsyncWriter::spawn_with_wait(writer, sink.clone(), move || {
+            // 仅输入管道已满时等待，读端一消费就能继续写。超时用于有界检查关闭。
+            unsafe {
+                poll(&mut writable, 1, 50);
+            }
+        })?);
+        let mut reader = pty.master.try_clone()?;
         std::thread::Builder::new().name("pty-reader".into()).spawn(move || {
-            let mut buf = vec![0u8; 64 * 1024];
+            let mut buf = vec![0u8; READ_CHUNK];
+            let mut poll_fds = [
+                PollFd { fd: reader.as_raw_fd(), events: 1, revents: 0 },
+                PollFd { fd: exit_read.as_raw_fd(), events: 1, revents: 0 },
+            ];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
-                    Ok(n) => sink(PtyEvent::Data(buf[..n].to_vec())),
+                    Ok(n) => {
+                        if !sink(PtyEvent::Data(buf[..n].to_vec())) {
+                            break;
+                        }
+                    }
                     Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                    // 子进程退出、从设备全部关闭后，Linux 上 read 会返回 EIO
-                    Err(_) => break,
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        // 进程退出后仍先排空内核缓冲；后代持有 slave 也不会让窗口一直等 EOF。
+                        if !process.running.load(Ordering::Acquire) {
+                            break;
+                        }
+                        unsafe {
+                            poll(poll_fds.as_mut_ptr(), 2, -1);
+                        }
+                    }
+                    Err(e) => {
+                        // Linux 在从设备关闭后返回 EIO，这是正常 EOF。
+                        if e.raw_os_error() != Some(5) {
+                            sink(PtyEvent::Error(e));
+                        }
+                        break;
+                    }
                 }
             }
-            let mut status = 0;
-            unsafe { waitpid(pid, &mut status, 0) };
-            sink(PtyEvent::Exit);
+            sink(PtyEvent::Eof);
         })?;
+        Ok(pty)
+    }
 
-        Ok(Pty { master, pid })
+    pub fn pending_bytes(&self) -> usize {
+        self.writer.as_ref().map_or(0, AsyncWriter::pending_bytes)
     }
 
     pub fn write(&mut self, data: &[u8]) -> io::Result<()> {
-        self.master.write_all(data)
+        self.writer.as_ref().unwrap().write(data)
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> io::Result<()> {
@@ -162,7 +336,15 @@ impl Pty {
 
 impl Drop for Pty {
     fn drop(&mut self) {
-        unsafe { kill(self.pid, SIGHUP) };
+        self.process.stop();
+        drop(self.writer.take());
+        if let Some(pid) = *self.process.pid.lock().unwrap() {
+            // 新会话的进程组，以及 shell 本身。所有 master 关闭后内核还会通知前台进程组。
+            unsafe {
+                kill(-pid, SIGHUP);
+                kill(pid, SIGHUP);
+            }
+        }
     }
 }
 
@@ -170,6 +352,7 @@ impl Drop for Pty {
 unsafe fn exec_child(
     slave: c_int,
     master_fd: c_int,
+    report_fd: c_int,
     cwd: Option<&CStr>,
     shell: &CStr,
     argv: *const *const c_char,
@@ -177,19 +360,26 @@ unsafe fn exec_child(
 ) -> ! {
     unsafe {
         // 新建会话，脱离父进程的控制终端
-        setsid();
+        if setsid() < 0 {
+            child_failed(report_fd, 1);
+        }
         // 让从设备成为这个会话的控制终端，这样 Ctrl+C 才能变成 SIGINT
-        ioctl(slave, TIOCSCTTY, 0 as c_int);
-        dup2(slave, 0);
-        dup2(slave, 1);
-        dup2(slave, 2);
+        if ioctl(slave, TIOCSCTTY, 0 as c_int) < 0 {
+            child_failed(report_fd, 2);
+        }
+        for target in 0..=2 {
+            if dup2(slave, target) < 0 {
+                child_failed(report_fd, 3);
+            }
+        }
         if slave > 2 {
             close(slave);
         }
         close(master_fd);
-        // 切换目录失败就留在原来的目录，不影响启动
-        if let Some(dir) = cwd {
-            chdir(dir.as_ptr());
+        if let Some(dir) = cwd
+            && chdir(dir.as_ptr()) < 0
+        {
+            child_failed(report_fd, 4);
         }
         // 被忽略的信号会经过 exec 继承下去：Rust 运行时忽略了 SIGPIPE，
         // 从脚本后台启动时 SIGINT 也可能被忽略（那样 Ctrl+C 就失效了）。全部恢复默认。
@@ -197,6 +387,49 @@ unsafe fn exec_child(
             signal(sig, SIG_DFL);
         }
         execve(shell.as_ptr(), argv, envp);
+        child_failed(report_fd, 5);
+    }
+}
+
+// 即使从 stdin/stdout 已关闭的进程启动，PTY 和启动通道也不能占用 0/1/2。
+fn above_stdio(fd: OwnedFd) -> io::Result<OwnedFd> {
+    if fd.as_raw_fd() >= 3 {
+        return Ok(fd);
+    }
+    let raw = unsafe { fcntl(fd.as_raw_fd(), 0 as c_int, 3 as c_int) };
+    if raw < 0 {
+        return Err(os_error("fcntl(DUPFD)"));
+    }
+    let moved = unsafe { OwnedFd::from_raw_fd(raw) };
+    if unsafe { fcntl(raw, F_SETFD, FD_CLOEXEC) } < 0 {
+        return Err(os_error("fcntl(CLOEXEC)"));
+    }
+    Ok(moved)
+}
+
+fn channel() -> io::Result<(UnixStream, UnixStream)> {
+    let (a, b) = UnixStream::pair()?;
+    Ok((above_stdio(a.into())?.into(), above_stdio(b.into())?.into()))
+}
+
+/// fork 后只用栈内存和 async-signal-safe 的 write/_exit 报告错误。
+unsafe fn child_failed(fd: c_int, stage: i32) -> ! {
+    unsafe {
+        #[cfg(target_os = "macos")]
+        let errno = *__error();
+        #[cfg(target_os = "linux")]
+        let errno = *__errno_location();
+        let mut report = [0u8; 8];
+        report[..4].copy_from_slice(&stage.to_ne_bytes());
+        report[4..].copy_from_slice(&errno.to_ne_bytes());
+        let mut offset = 0;
+        while offset < report.len() {
+            let n = write(fd, report[offset..].as_ptr().cast(), report.len() - offset);
+            if n <= 0 {
+                break;
+            }
+            offset += n as usize;
+        }
         _exit(127);
     }
 }
@@ -228,7 +461,7 @@ fn find_shell(program: Option<&str>) -> PathBuf {
     }
     std::env::var_os("PATH")
         .and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(&name)).find(|p| p.is_file()))
-        .unwrap_or_else(|| Path::new("/bin/sh").to_path_buf())
+        .unwrap_or(path)
 }
 
 /// 继承当前的环境变量，加上终端相关的几个，最后是配置里的（配置优先）
@@ -248,4 +481,102 @@ fn build_env(extra: &[(String, String)]) -> Vec<CString> {
         .collect();
     env.extend(overrides.iter().filter_map(|(key, value)| CString::new(format!("{key}={value}")).ok()));
     env
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pty::flow::{ByteQueue, OUTPUT_LIMIT};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn startup_errors_reach_the_parent() {
+        let sink: EventSink = Arc::new(|_| true);
+        let command = Command { program: Some("/congminal-missing-shell".into()), ..Default::default() };
+        let error = Pty::spawn(&command, 80, 24, sink.clone()).err().unwrap();
+        assert!(error.to_string().contains("execve"), "{error}");
+        let command = Command {
+            program: Some("/bin/sh".into()),
+            working_directory: Some("/congminal-missing-cwd".into()),
+            ..Default::default()
+        };
+        let error = Pty::spawn(&command, 80, 24, sink).err().unwrap();
+        assert!(error.to_string().contains("chdir"), "{error}");
+    }
+
+    #[test]
+    fn real_pty_preserves_output_across_backpressure_and_exit() {
+        let output = Arc::new(ByteQueue::new(OUTPUT_LIMIT));
+        let pending = output.clone();
+        let (send, receive) = mpsc::channel();
+        let sink: EventSink = Arc::new(move |event| match event {
+            PtyEvent::Data(data) => pending.push(data),
+            other => send.send(other).is_ok(),
+        });
+        let command = Command {
+            program: Some("/bin/sh".into()),
+            args: vec!["-c".into(), "head -c 2097152 /dev/zero; printf tail; exit 7".into()],
+            ..Default::default()
+        };
+        let _pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+        // 先让读线程触及背压，再开始消费。整个测试仍有明确超时。
+        std::thread::sleep(Duration::from_millis(30));
+        let until = Instant::now() + Duration::from_secs(10);
+        let (mut exited, mut eof) = (false, false);
+        let mut bytes = Vec::new();
+        while Instant::now() < until {
+            while let Some(data) = output.pop() {
+                bytes.extend(data);
+            }
+            while let Ok(event) = receive.try_recv() {
+                match event {
+                    PtyEvent::Exit(code) => {
+                        assert_eq!(code, Some(7));
+                        exited = true;
+                    }
+                    PtyEvent::Eof => eof = true,
+                    PtyEvent::Error(error) => panic!("{error}"),
+                    _ => unreachable!(),
+                }
+            }
+            if eof && exited && output.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        output.close();
+        assert!(exited && eof, "PTY 超时");
+        assert_eq!(bytes.len(), 2097152 + 4);
+        assert!(bytes[..2097152].iter().all(|&b| b == 0));
+        assert_eq!(&bytes[2097152..], b"tail");
+    }
+
+    #[test]
+    fn nonreading_child_does_not_block_the_caller() {
+        let (send, receive) = mpsc::channel();
+        let sink: EventSink = Arc::new(move |event| {
+            if let PtyEvent::Data(data) = event {
+                let _ = send.send(data);
+            }
+            true
+        });
+        let command = Command {
+            program: Some("/bin/sh".into()),
+            args: vec!["-c".into(), "stty -echo -icanon; printf ready; sleep 10".into()],
+            ..Default::default()
+        };
+        let mut pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+        assert_eq!(receive.recv_timeout(Duration::from_secs(2)).unwrap(), b"ready");
+        let (send, receive) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            pty.write(&vec![b'x'; crate::pty::flow::INPUT_LIMIT]).unwrap();
+            let result = pty.write(b"extra");
+            send.send(result.map_err(|e| e.kind())).unwrap();
+            drop(pty);
+        });
+        let result = receive.recv_timeout(Duration::from_secs(2)).expect("写入阻塞了调用线程");
+        assert_eq!(result, Err(io::ErrorKind::WouldBlock));
+        worker.join().unwrap();
+    }
 }

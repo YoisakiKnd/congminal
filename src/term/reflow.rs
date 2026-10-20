@@ -3,10 +3,12 @@
 //! 自动换行的行（`Row::wrapped`）和下一行原本是同一行。把回滚历史和屏幕的所有行还原成完整的"逻辑行"，
 //! 再按新的宽度重新折开。光标、屏幕顶端跟着内容走。
 
-use super::grid::{Cell, Flags, Row};
+use super::grid::{Cell, Flags, HISTORY_BYTES, Row, row_bytes};
+use std::collections::VecDeque;
 
 pub struct Reflowed {
     pub rows: Vec<Row>,
+    pub discarded: usize,
     /// 光标在新行列表里的 (行, 列)
     pub cursor: (usize, usize),
     /// 光标正好在一行的末尾之后（行写满了），下一个字要换行再写
@@ -25,6 +27,8 @@ pub struct CursorPos {
 
 /// `rows` 是历史加屏幕的所有行，`screen_start` 是屏幕第一行在其中的下标
 pub fn reflow(mut rows: Vec<Row>, screen_start: usize, cursor: CursorPos, cols: usize) -> Reflowed {
+    let screen_rows = rows.len().saturating_sub(screen_start).max(1);
+    let max_rows = HISTORY_BYTES / row_bytes(cols) + screen_rows;
     // 光标下面的空行不算内容（重新折行之后会在屏幕底部补回来）
     let last_content = rows.iter().rposition(|row| row.cells.iter().any(|c| !is_blank(c))).unwrap_or(0);
     rows.truncate(last_content.max(cursor.row).max(screen_start) + 1);
@@ -69,7 +73,8 @@ pub fn reflow(mut rows: Vec<Row>, screen_start: usize, cursor: CursorPos, cols: 
     }
 
     // 2. 按新宽度重新切开
-    let mut out = Vec::new();
+    let mut out = VecDeque::new();
+    let mut discarded = 0;
     let mut new_cursor = None;
     let mut new_screen_top = None;
     for (index, line) in lines.iter().enumerate() {
@@ -91,16 +96,23 @@ pub fn reflow(mut rows: Vec<Row>, screen_start: usize, cursor: CursorPos, cols: 
             // 这一行放不下了：结束这一行，接着写下一行
             if width > 0 && col + width > cols {
                 row.wrapped = true;
-                out.push(std::mem::replace(&mut row, Row::new(cols)));
+                push_bounded(
+                    &mut out,
+                    &mut discarded,
+                    std::mem::replace(&mut row, Row::new(cols)),
+                    max_rows,
+                    new_cursor,
+                    screen_rows,
+                );
                 col = 0;
             }
             // 记下位置。光标可能在宽字符的右半边（占位格）上，所以占位格也要记。
             for (offset, at) in [(i, col), (i + 1, col + 1)].into_iter().take(width.max(1)) {
                 if screen_offset == Some(offset) {
-                    new_screen_top.get_or_insert(out.len());
+                    new_screen_top.get_or_insert(discarded + out.len());
                 }
                 if cursor_offset == Some(offset) {
-                    new_cursor = Some((out.len(), at));
+                    new_cursor = Some((discarded + out.len(), at));
                 }
             }
             let Some(&cell) = cell else { break };
@@ -122,21 +134,43 @@ pub fn reflow(mut rows: Vec<Row>, screen_start: usize, cursor: CursorPos, cols: 
         if let Some(offset) = cursor_offset
             && offset > line.len()
         {
-            new_cursor = Some((out.len(), col + offset - line.len()));
+            new_cursor = Some((discarded + out.len(), col + offset - line.len()));
         }
-        out.push(row);
+        push_bounded(&mut out, &mut discarded, row, max_rows, new_cursor, screen_rows);
     }
     if out.is_empty() {
-        out.push(Row::new(cols));
+        out.push_back(Row::new(cols));
     }
 
-    let (cursor_row, cursor_col) = new_cursor.unwrap_or((out.len() - 1, 0));
+    let (cursor_row, cursor_col) = new_cursor.unwrap_or((discarded + out.len() - 1, 0));
+    let cursor_row = cursor_row.saturating_sub(discarded);
     Reflowed {
         cursor: (cursor_row, cursor_col.min(cols - 1)),
         // 写满一行时光标停在最后一列，等下一个字再换行
         pending_wrap: cursor_col >= cols,
-        screen_top: new_screen_top.unwrap_or(0).min(cursor_row),
-        rows: out,
+        screen_top: new_screen_top.unwrap_or(discarded).saturating_sub(discarded).min(cursor_row),
+        rows: out.into_iter().collect(),
+        discarded,
+    }
+}
+
+// 历史加宽时不能先构造全部宽行再淘汰，否则瞬时内存可能是原来的几千倍。
+fn push_bounded(
+    out: &mut VecDeque<Row>,
+    discarded: &mut usize,
+    row: Row,
+    limit: usize,
+    cursor: Option<(usize, usize)>,
+    screen_rows: usize,
+) {
+    // 光标下面超过一屏的部分原本也不会进入最终屏幕，直接丢弃，保住光标所在行。
+    if cursor.is_some_and(|(row, _)| *discarded + out.len() >= row + screen_rows) {
+        return;
+    }
+    out.push_back(row);
+    if out.len() > limit {
+        out.pop_front();
+        *discarded += 1;
     }
 }
 

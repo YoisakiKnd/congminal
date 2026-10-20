@@ -148,6 +148,7 @@ unsafe extern "system" {
     fn DestroyWindow(hwnd: Hwnd) -> i32;
     fn DefWindowProcW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize;
     fn PeekMessageW(msg: *mut Msg, hwnd: Hwnd, min: u32, max: u32, remove: u32) -> i32;
+    fn MapVirtualKeyW(code: u32, map_type: u32) -> u32;
     fn TranslateMessage(msg: *const Msg) -> i32;
     fn DispatchMessageW(msg: *const Msg) -> isize;
     fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
@@ -346,6 +347,9 @@ impl Window {
                     return;
                 }
             }
+            if !app.tick() {
+                return;
+            }
             if let Some(title) = app.take_title() {
                 unsafe { SetWindowTextW(self.hwnd, wide(&title).as_ptr()) };
             }
@@ -374,6 +378,18 @@ impl Window {
             while unsafe { PeekMessageW(&mut msg, 0, 0, 0, PM_REMOVE) } != 0 {
                 if msg.message == WM_QUIT {
                     return;
+                }
+                // Ctrl+数字/符号在部分布局下不产生 WM_CHAR，先产生可配置快捷键事件。
+                // 在 TranslateMessage 前拦截，避免重复字符或抑制下一次正常输入。
+                if matches!(msg.message, WM_KEYDOWN | WM_SYSKEYDOWN) && matches!(msg.wparam, 0x30 | 0xBB | 0xBD) {
+                    let mods = current_mods();
+                    if mods.ctrl && !mods.alt {
+                        let code = unsafe { MapVirtualKeyW(msg.wparam as u32, 2) };
+                        if let Some(c) = char::from_u32(code).filter(|c| !c.is_control()) {
+                            push(Event::Key { key: Key::Char(c), mods });
+                            continue;
+                        }
+                    }
                 }
                 unsafe {
                     TranslateMessage(&msg);

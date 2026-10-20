@@ -3,9 +3,11 @@
 //! 写错的地方不会让程序启动失败：那一项保留默认值，错误收集起来显示在终端里。
 //! 完整的选项说明见 `assets/congminal.example.toml`（也就是 `congminal --print-config` 的输出）。
 
+pub mod theme;
 pub mod toml;
 
 use crate::term::CursorShape;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use toml::{Table, Value};
 
@@ -19,6 +21,10 @@ pub struct Config {
     pub font: FontConfig,
     pub window: WindowConfig,
     pub colors: Colors,
+    pub theme: theme::Theme,
+    color_overrides: theme::Overrides,
+    pub bindings: crate::action::Bindings,
+    pub notifications: crate::notifications::Settings,
     pub cursor_shape: CursorShape,
     pub shell: ShellConfig,
     /// [env] 里的额外环境变量
@@ -51,6 +57,7 @@ pub struct Colors {
     pub cursor: u32,
     pub cursor_text: u32,
     pub selection_background: u32,
+    pub preedit_background: u32,
     pub bold_is_bright: bool,
     pub palette: [u32; 256],
 }
@@ -81,15 +88,11 @@ impl Default for Config {
                 ligatures: true,
             },
             window: WindowConfig { columns: 80, rows: 24, padding: 4.0 },
-            colors: Colors {
-                foreground: 0xD8D8D8,
-                background: 0x1E1E1E,
-                cursor: 0xE0E0E0,
-                cursor_text: 0x1E1E1E,
-                selection_background: 0x264F78,
-                bold_is_bright: true,
-                palette: xterm_palette(),
-            },
+            colors: Colors::default(),
+            theme: theme::Theme::default(),
+            color_overrides: theme::Overrides::default(),
+            bindings: crate::action::Bindings::default(),
+            notifications: crate::notifications::Settings::default(),
             cursor_shape: CursorShape::Block,
             shell: ShellConfig::default(),
             env: Vec::new(),
@@ -99,14 +102,41 @@ impl Default for Config {
     }
 }
 
+impl Default for Colors {
+    fn default() -> Self {
+        Self {
+            foreground: 0xD8D8D8,
+            background: 0x1E1E1E,
+            cursor: 0xE0E0E0,
+            cursor_text: 0x1E1E1E,
+            selection_background: 0x264F78,
+            preedit_background: 0x3A3D41,
+            bold_is_bright: true,
+            palette: xterm_palette(),
+        }
+    }
+}
+
 /// 允许出现的分组和键。[env] 里可以写任意环境变量。
 const SCHEMA: &[(&str, &[&str])] = &[
+    ("appearance", &["theme"]),
+    ("keybindings", &[]),
     ("font", &["family", "size", "line-height", "ligatures"]),
     ("window", &["columns", "rows", "padding"]),
     (
         "colors",
-        &["foreground", "background", "cursor", "cursor-text", "selection-background", "bold-is-bright", "palette"],
+        &[
+            "foreground",
+            "background",
+            "cursor",
+            "cursor-text",
+            "selection-background",
+            "preedit-background",
+            "bold-is-bright",
+            "palette",
+        ],
     ),
+    ("notifications", &["muted", "system", "failures", "long-commands", "background", "long-seconds"]),
     ("cursor", &["shape"]),
     ("scrollback", &["lines"]),
     ("shell", &["program", "args", "working-directory"]),
@@ -132,7 +162,16 @@ impl Config {
 
     /// 读取配置。文件不存在时用默认值。返回配置和需要提示给用户的问题。
     pub fn load(path: Option<&Path>) -> (Config, Vec<String>) {
-        let (mut config, warnings) = match path.map(std::fs::read_to_string) {
+        let read = |path: &Path| -> std::io::Result<String> {
+            let file = std::fs::File::open(path)?;
+            let mut bytes = Vec::new();
+            file.take(toml::MAX_CONFIG_BYTES as u64 + 1).read_to_end(&mut bytes)?;
+            if bytes.len() > toml::MAX_CONFIG_BYTES {
+                return Err(std::io::Error::other("配置超过 1 MiB"));
+            }
+            String::from_utf8(bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+        };
+        let (mut config, warnings) = match path.map(read) {
             Some(Ok(text)) => Config::parse(&text),
             Some(Err(e)) if e.kind() != std::io::ErrorKind::NotFound => {
                 (Config::default(), vec![format!("读取失败：{e}")])
@@ -154,7 +193,10 @@ impl Config {
         r.check_unknown_keys();
 
         if let Some(families) = r.strings("font", "family") {
-            config.font.families = families;
+            if families.len() > 16 {
+                r.warn("font", "family", "最多使用前 16 个字体".into());
+            }
+            config.font.families = families.into_iter().take(16).collect();
         }
         if let Some(size) = r.number("font", "size", 4.0, 200.0) {
             config.font.size = size as f32;
@@ -176,21 +218,38 @@ impl Config {
             config.window.padding = padding as f32;
         }
 
-        let colors = &mut config.colors;
-        for (key, slot) in [
-            ("foreground", &mut colors.foreground),
-            ("background", &mut colors.background),
-            ("cursor", &mut colors.cursor),
-            ("cursor-text", &mut colors.cursor_text),
-            ("selection-background", &mut colors.selection_background),
-        ] {
-            if let Some(color) = r.color("colors", key) {
-                *slot = color;
+        if let Some(name) = r.string("appearance", "theme") {
+            match theme::Theme::parse(&name) {
+                Some(theme) => config.theme = theme,
+                None => r.warn("appearance", "theme", format!("“{name}”无效，可以是 dark、light、midnight")),
             }
         }
-        if let Some(bright) = r.boolean("colors", "bold-is-bright") {
-            colors.bold_is_bright = bright;
+        for (key, slot) in [
+            ("muted", &mut config.notifications.muted),
+            ("system", &mut config.notifications.system),
+            ("failures", &mut config.notifications.failures),
+            ("long-commands", &mut config.notifications.long_commands),
+            ("background", &mut config.notifications.background),
+        ] {
+            if let Some(value) = r.boolean("notifications", key) {
+                *slot = value;
+            }
         }
+        if let Some(value) = r.number("notifications", "long-seconds", 1.0, 86400.0) {
+            config.notifications.long_seconds = value as u64;
+        }
+        let overrides = &mut config.color_overrides;
+        for (key, slot) in [
+            ("foreground", &mut overrides.foreground),
+            ("background", &mut overrides.background),
+            ("cursor", &mut overrides.cursor),
+            ("cursor-text", &mut overrides.cursor_text),
+            ("selection-background", &mut overrides.selection_background),
+            ("preedit-background", &mut overrides.preedit_background),
+        ] {
+            *slot = r.color("colors", key);
+        }
+        overrides.bold_is_bright = r.boolean("colors", "bold-is-bright");
         if let Some(Value::Array(items)) = r.get("colors", "palette") {
             if items.len() > 256 {
                 r.warn("colors", "palette", "最多 256 个颜色".into());
@@ -198,7 +257,7 @@ impl Config {
             for (i, item) in items.iter().take(256).enumerate() {
                 match item {
                     Value::String(s) => match parse_color(s) {
-                        Some(color) => colors.palette[i] = color,
+                        Some(color) => overrides.palette.push((i, color)),
                         None => r.warn("colors", "palette", format!("第 {} 个颜色“{s}”无效", i + 1)),
                     },
                     other => {
@@ -207,8 +266,11 @@ impl Config {
                 }
             }
         } else if let Some(other) = r.get("colors", "palette") {
-            let got = other.type_name();
-            r.warn("colors", "palette", format!("应该是颜色数组，不是{got}"));
+            r.warn("colors", "palette", format!("应该是颜色数组，不是{}", other.type_name()));
+        }
+        config.refresh_theme();
+        if let Some(Value::Table(table)) = root.get("keybindings") {
+            r.warnings.extend(config.bindings.configure(table));
         }
 
         if let Some(shape) = r.string("cursor", "shape") {
@@ -259,16 +321,30 @@ impl Config {
             let families: Vec<String> =
                 fonts.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
             if !families.is_empty() {
-                self.font.families = families;
+                self.font.families = families.into_iter().take(16).collect();
             }
         }
-        if let Some(size) = std::env::var("CONGMINAL_FONT_SIZE").ok().and_then(|s| s.parse().ok()) {
+        if let Some(size) = std::env::var("CONGMINAL_FONT_SIZE")
+            .ok()
+            .and_then(|s| s.parse::<f32>().ok())
+            .filter(|n| n.is_finite() && (4.0..=200.0).contains(n))
+        {
             self.font.size = size;
         }
         if let Ok(shell) = std::env::var("CONGMINAL_SHELL") {
             self.shell.program = Some(shell);
             self.shell.args.clear();
         }
+    }
+
+    fn refresh_theme(&mut self) {
+        self.colors = self.theme.colors();
+        self.color_overrides.apply(&mut self.colors);
+    }
+
+    pub fn cycle_theme(&mut self) {
+        self.theme = self.theme.next();
+        self.refresh_theme();
     }
 
     /// 用户是否自己指定了字体（只有这时找不到字体才值得提示）
@@ -297,7 +373,7 @@ impl<'a> Reader<'a> {
                 self.warnings.push(format!("“{section}”应该是一个分组 [{section}]"));
                 continue;
             };
-            if section == "env" {
+            if section == "env" || section == "keybindings" {
                 continue;
             }
             for (key, _) in &table.entries {
@@ -435,6 +511,40 @@ fn xterm_palette() -> [u32; 256] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn themes_keep_explicit_overrides_and_reject_bad_names() {
+        let (mut config, warnings) = Config::parse(
+            r##"
+[appearance]
+theme = "light"
+[colors]
+background = "#123456"
+preedit-background = "#234567"
+palette = ["#345678"]
+[keybindings]
+"Primary+Equal" = "font-increase"
+"Primary+Minus" = "font-decrease"
+"Primary+0" = "font-reset"
+"F9" = {action = "send-text", text = "中文"}
+"F10" = "pass-through"
+"F11" = "none"
+"##,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let light = config.colors.foreground;
+        config.cycle_theme();
+        assert_ne!(config.colors.foreground, light);
+        for _ in 0..99 {
+            assert_eq!(config.colors.background, 0x123456);
+            assert_eq!(config.colors.preedit_background, 0x234567);
+            assert_eq!(config.colors.palette[0], 0x345678);
+            config.cycle_theme();
+        }
+        let (bad, warnings) = Config::parse("[appearance]\ntheme='typo'");
+        assert_eq!(bad, Config::default());
+        assert_eq!(warnings.len(), 1);
+    }
 
     #[test]
     fn example_matches_defaults() {

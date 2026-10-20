@@ -6,6 +6,7 @@
 //!
 //! 规范：<https://learn.microsoft.com/typography/opentype/spec/sbix> 以及同目录下的 cbdt、cblc、colr、cpal
 
+use super::mmap::Bytes;
 use super::ttf::{Face, u16_at, u32_at};
 use crate::image::{Image, png};
 
@@ -18,9 +19,9 @@ pub enum ColorGlyph {
 
 /// 字体里的彩色字形表
 pub enum ColorTables {
-    Sbix(&'static [u8]),
-    Cbdt { cblc: &'static [u8], cbdt: &'static [u8] },
-    Colr { colr: &'static [u8], cpal: &'static [u8] },
+    Sbix(Bytes),
+    Cbdt { cblc: Bytes, cbdt: Bytes },
+    Colr { colr: Bytes, cpal: Bytes },
 }
 
 impl ColorTables {
@@ -47,7 +48,7 @@ impl ColorTables {
 
     /// `ppem`：要画的字号（每 em 多少像素），位图格式据此挑最合适的一组图片
     pub fn glyph(&self, face: &Face, glyph: u16, ppem: f32) -> Option<ColorGlyph> {
-        match *self {
+        match self {
             ColorTables::Sbix(sbix) => sbix_glyph(sbix, face.num_glyphs(), glyph, ppem, 0),
             ColorTables::Cbdt { cblc, cbdt } => cbdt_glyph(cblc, cbdt, glyph, ppem),
             ColorTables::Colr { colr, cpal } => colr_glyph(colr, cpal, glyph),

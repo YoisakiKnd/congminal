@@ -39,7 +39,11 @@ pub fn rasterize(segments: &[Segment], scale: f32) -> Option<Bitmap> {
             }
         }
     }
-    if min.x > max.x {
+    if !scale.is_finite()
+        || scale <= 0.0
+        || min.x > max.x
+        || ![min.x, min.y, max.x, max.y].iter().all(|v| v.is_finite() && (v * scale).abs() <= 1_000_000.0)
+    {
         return None;
     }
 
@@ -49,9 +53,9 @@ pub fn rasterize(segments: &[Segment], scale: f32) -> Option<Bitmap> {
     let top = (-max.y * scale).floor() as i32;
     let bottom = (-min.y * scale).ceil() as i32;
     // 右边多留两列：累加算法会往线段右边一格写数据
-    let width = (right - left) as usize + 2;
-    let height = (bottom - top).max(1) as usize;
-    if width * height > 4096 * 4096 {
+    let width = right.checked_sub(left)?.checked_add(2)? as usize;
+    let height = bottom.checked_sub(top)?.max(1) as usize;
+    if width.checked_mul(height)? > 1024 * 1024 {
         return None;
     }
 

@@ -4,23 +4,31 @@
 //! 不建查找表，每读一位就看看当前码长下有没有对应的符号。代码短、容易验证，emoji 图片这么小足够快了。
 
 /// 解压 zlib 格式的数据（2 字节头 + DEFLATE 数据 + Adler-32 校验和）
-pub fn zlib_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
+#[cfg(test)]
+fn zlib_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
+    zlib_decompress_limited(data, 64 * 1024 * 1024)
+}
+
+/// 在写出每个块/匹配前检查预算，避免压缩炸弹。PNG 用精确的扫描行大小作为上限。
+pub fn zlib_decompress_limited(data: &[u8], limit: usize) -> Result<Vec<u8>, String> {
     let (&cmf, &flg) = (data.first().ok_or("zlib 数据为空")?, data.get(1).ok_or("zlib 头不完整")?);
-    if cmf & 0x0F != 8 || (u16::from(cmf) << 8 | u16::from(flg)) % 31 != 0 {
+    if cmf >> 4 > 7 || cmf & 0x0F != 8 || (u16::from(cmf) << 8 | u16::from(flg)) % 31 != 0 {
         return Err("不是 zlib 数据".into());
     }
     if flg & 0x20 != 0 {
         return Err("不支持预设字典".into());
     }
-    let mut inflater = Inflater { input: &data[2..], pos: 0, bit_buffer: 0, bit_count: 0, output: Vec::new() };
+    let mut inflater = Inflater { input: &data[2..], pos: 0, bit_buffer: 0, bit_count: 0, output: Vec::new(), limit };
     inflater.run()?;
-    // 校验和在压缩数据后面，按字节对齐
+    // 解码器一次只补足所需位数，不预读下一个字节，所以 pos 就是校验和的位置。
     let checksum_at = 2 + inflater.pos;
-    if let Some(bytes) = data.get(checksum_at..checksum_at + 4) {
-        let expected = u32::from_be_bytes(bytes.try_into().unwrap());
-        if adler32(&inflater.output) != expected {
-            return Err("zlib 校验和不对，数据损坏".into());
-        }
+    let bytes = data.get(checksum_at..checksum_at + 4).ok_or("zlib 缺少校验和")?;
+    if checksum_at + 4 != data.len() {
+        return Err("zlib 结束后还有多余数据".into());
+    }
+    let expected = u32::from_be_bytes(bytes.try_into().unwrap());
+    if adler32(&inflater.output) != expected {
+        return Err("zlib 校验和不对，数据损坏".into());
     }
     Ok(inflater.output)
 }
@@ -82,6 +90,7 @@ struct Inflater<'a> {
     bit_buffer: u32,
     bit_count: u32,
     output: Vec<u8>,
+    limit: usize,
 }
 
 const LENGTH_BASE: [u16; 29] =
@@ -95,6 +104,19 @@ const DISTANCE_EXTRA: [u8; 30] =
     [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
 
 impl Inflater<'_> {
+    fn reserve_output(&mut self, count: usize) -> Result<(), String> {
+        if count > self.limit.saturating_sub(self.output.len()) {
+            return Err("解压数据超过预算".into());
+        }
+        // 用显式增长策略避免 Vec 的自动扩容超出预算，也避免每个字节一次分配。
+        let needed = self.output.len() + count;
+        if needed > self.output.capacity() {
+            let capacity = needed.max(self.output.capacity().saturating_mul(2)).max(4096).min(self.limit);
+            self.output.try_reserve_exact(capacity - self.output.len()).map_err(|_| "无法分配解压缓冲区")?;
+        }
+        Ok(())
+    }
+
     fn run(&mut self) -> Result<(), String> {
         loop {
             let last = self.bits(1)? == 1;
@@ -136,6 +158,7 @@ impl Inflater<'_> {
         }
         self.pos += 4;
         let bytes = self.input.get(self.pos..self.pos + len as usize).ok_or("压缩数据不完整")?;
+        self.reserve_output(len as usize)?;
         self.output.extend_from_slice(bytes);
         self.pos += len as usize;
         Ok(())
@@ -216,7 +239,10 @@ impl Inflater<'_> {
         loop {
             let symbol = self.decode(literals)? as usize;
             match symbol {
-                0..=255 => self.output.push(symbol as u8),
+                0..=255 => {
+                    self.reserve_output(1)?;
+                    self.output.push(symbol as u8);
+                }
                 256 => return Ok(()),
                 _ => {
                     let i = symbol - 257;
@@ -233,6 +259,7 @@ impl Inflater<'_> {
                         return Err("复制距离超出已解压的数据".into());
                     }
                     // 源和目标可能重叠（比如 distance=1 表示重复上一个字节），只能逐字节复制
+                    self.reserve_output(length)?;
                     let start = self.output.len() - distance;
                     for k in 0..length {
                         let byte = self.output[start + k];
@@ -275,5 +302,25 @@ mod tests {
         let mut data = [0x78, 0x01, 0x01, 0x05, 0x00, 0xfa, 0xff, b'h', b'e', b'l', b'l', b'o', 0x06, 0x2c, 0x02, 0x15];
         data[15] ^= 1;
         assert!(zlib_decompress(&data).is_err());
+    }
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+
+    #[test]
+    fn limits_stored_literals_and_back_references() {
+        let stored = [0x78, 0x01, 1, 5, 0, 0xfa, 0xff, b'h', b'e', b'l', b'l', b'o', 6, 0x2c, 2, 0x15];
+        let repeated = [0x78, 0x9c, 0x4b, 0x4c, 0x4a, 0x4e, 0x44, 0x45, 0, 0x41, 0x7c, 6, 0xe5];
+        for (data, size) in [(&stored[..], 5), (&repeated[..], 18)] {
+            assert_eq!(zlib_decompress_limited(data, size).unwrap().len(), size);
+            for limit in 0..size {
+                assert!(zlib_decompress_limited(data, limit).is_err());
+            }
+            for end in 0..data.len() {
+                assert!(zlib_decompress_limited(&data[..end], size).is_err());
+            }
+        }
     }
 }

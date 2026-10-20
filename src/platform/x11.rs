@@ -523,6 +523,10 @@ impl Window {
                 return;
             }
 
+            if !app.tick() {
+                return;
+            }
+
             // 3. 改标题、重画
             if let Some(title) = app.take_title() {
                 let title = CString::new(title).unwrap_or_default();
@@ -759,6 +763,11 @@ impl Window {
         let mods = mods_from_state(event.state);
         if let Some(key) = named_key(keysym) {
             return vec![Event::Key { key, mods }];
+        }
+        // 控制转换会把 Ctrl+Shift+Minus 变成与 Ctrl+/ 相同的 0x1f；
+        // 对缩放符号保留布局产生的 keysym，让动作分发能区分，VT 编码仍在 input 层完成。
+        if mods.ctrl && matches!(keysym, 0x2b | 0x2d | 0x30 | 0x3d | 0x5f | 0x29) {
+            return vec![Event::Key { key: Key::Char(char::from_u32(keysym as u32).unwrap()), mods }];
         }
         text.chars().map(|c| Event::Key { key: Key::Char(c), mods }).collect()
     }

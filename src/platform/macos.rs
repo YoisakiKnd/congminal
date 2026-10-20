@@ -336,7 +336,7 @@ impl Window {
             let edit_item: Id = msg![msg![class(c"NSMenuItem"), "alloc"; Id], "init"; Id];
             msg![menubar, "addItem:", edit_item => Id; ()];
             let edit_menu: Id = msg![msg![class(c"NSMenu"), "alloc"; Id], "initWithTitle:", nsstring("Edit") => Id; Id];
-            for (title, action, key) in [("Copy", c"copy:", "c"), ("Paste", c"paste:", "v")] {
+            for (title, action, key) in [("Copy", c"copy:", ""), ("Paste", c"paste:", "")] {
                 let item: Id = msg![msg![class(c"NSMenuItem"), "alloc"; Id],
                     "initWithTitle:action:keyEquivalent:",
                     nsstring(title) => Id,
@@ -410,6 +410,9 @@ impl Window {
                         return false;
                     }
                 }
+            }
+            if !app.tick() {
+                return false;
             }
             msg![self.app, "updateWindows"; ()];
 
@@ -539,8 +542,11 @@ unsafe fn key_events(event: Id, flags: usize) -> Vec<Event> {
             return vec![Event::Key { key, mods }];
         }
         // Option 当作 Alt 用：取不受 Option 影响的字符（否则 Option+f 会变成 ƒ）
-        let chars: Id =
-            if mods.alt { msg![event, "charactersIgnoringModifiers"; Id] } else { msg![event, "characters"; Id] };
+        let chars: Id = if mods.alt || mods.logo {
+            msg![event, "charactersIgnoringModifiers"; Id]
+        } else {
+            msg![event, "characters"; Id]
+        };
         if chars.is_null() {
             return vec![];
         }
@@ -812,14 +818,10 @@ extern "C" fn reset_cursor_rects(this: Id, _: Sel) {
 extern "C" fn key_down(this: Id, _: Sel, event: Id) {
     unsafe {
         let flags: usize = msg![event, "modifierFlags"; usize];
-        // Cmd 组合键是给菜单用的，菜单没处理的就忽略
-        if flags & NS_COMMAND != 0 {
-            return;
-        }
         let code: u16 = msg![event, "keyCode"; u16];
         let composing = IME.with(|s| !s.borrow().marked.is_empty());
         // 没在输入拼音时，功能键、Ctrl/Option 组合键直接按终端规则处理，不经过输入法
-        if !composing && (named_key(code).is_some() || flags & NS_CONTROL != 0 || option_is_alt(flags)) {
+        if !composing && (named_key(code).is_some() || flags & (NS_CONTROL | NS_COMMAND) != 0 || option_is_alt(flags)) {
             key_events(event, flags).into_iter().for_each(push_event);
             return;
         }

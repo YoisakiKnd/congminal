@@ -2,7 +2,7 @@
 //!
 //! 规则参考 xterm 的默认行为（PC 风格功能键）。
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Key {
     /// 普通字符（平台层已经处理过键盘布局和 Shift）
     Char(char),
@@ -24,7 +24,7 @@ pub enum Key {
     F(u8),
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mods {
     pub shift: bool,
     pub ctrl: bool,

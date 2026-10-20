@@ -2,7 +2,8 @@
 
 一个从零手写的跨平台终端模拟器（Rust 学习项目）。
 
-**零第三方依赖**：`Cargo.toml` 的 `[dependencies]` 是空的，只调用操作系统自带的 API（libc、Xlib、Win32、Cocoa）。
+**当前无 Rust 第三方依赖**：`Cargo.toml` 的 `[dependencies]` 是空的，现有底层通过系统 API（libc、Xlib、Win32、Cocoa）实现。
+后续允许引入第三方包或外部程序，但先测量性能与资源影响；不达标时优化、更换或自写适配，见 [依赖与适配策略](docs/dependency-policy.md)。
 
 ## 运行
 
@@ -19,6 +20,17 @@ cargo test
 | 粘贴 | Cmd+V | Ctrl+Shift+V、Shift+Insert |
 | 往回看历史 | 滚轮 / 触控板，Shift+PageUp / PageDown | 同左 |
 | 回到最顶 / 最底 | Shift+Home / Shift+End | 同左 |
+| 字体放大 / 缩小 / 复位 | Cmd+Equal（或 Plus）/ Minus / 0 | Ctrl+Shift+Equal（或 Plus）/ Minus / 0 |
+| 循环切换主题 | Cmd+F6 | Ctrl+Shift+F6 |
+| 查看资源快照 | Cmd+F12 | Ctrl+Shift+F12 |
+| 搜索历史 | Cmd+F | Ctrl+Shift+F |
+| 后一项 / 前一项 | Enter / Shift+Enter（搜索栏内），F3 / Shift+F3 | 同左 |
+| 打开链接 / 复制链接目标 | Cmd+单击 / Cmd+Shift+单击 | Ctrl+单击 / Ctrl+Shift+单击 |
+
+快捷键可在 `[keybindings]` 中覆盖；字号调整会合并连续请求并在后台加载，范围为 4–200 逻辑像素。
+
+搜索支持中文输入、粘贴、匹配高亮和 Esc 返回终端；精确区分大小写。命中缓存最多 1024 条，`…` 表示扫描中，`+` 表示还有内容，继续导航会发现更多。
+链接支持 OSC 8 与可见 HTTP/HTTPS URL，悬停显示真实目标；Linux 打开链接需要 `gio`，缺失时仍可复制地址。
 
 鼠标：拖动选择，双击选词，三击选整行（包括自动换行的部分），中键粘贴。
 程序开启了鼠标模式时（vim 的 `mouse=a`、tmux、htop），点击、拖动、滚轮会发给程序；这时按住 Shift 仍然可以选文字。
@@ -38,11 +50,11 @@ mkdir -p ~/.config/congminal
 congminal --print-config > ~/.config/congminal/congminal.toml
 ```
 
-可以配置字体（多个字体、字号、行高）、窗口初始大小和内边距、颜色和调色板、光标形状、
+可以配置字体（多个字体、字号、行高）、窗口初始大小和内边距、主题（dark / light / midnight）、颜色和调色板、快捷键、光标形状、
 shell 程序和参数、工作目录、环境变量，以及 macOS 上 Option 键是否当 Alt 用。
 完整说明见 [`assets/congminal.example.toml`](assets/congminal.example.toml)。
 
-保存后自动生效（字体、颜色、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
+保存后自动生效（字体、主题、颜色、快捷键、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
 写错的地方会用黄色文字显示在终端里，那一项保持默认值，不影响其他设置。
 
 | 环境变量 | 作用 |
@@ -110,11 +122,29 @@ git push origin v0.1.0-alpha.1
 | `src/selection.rs` | 鼠标选区：拖动、双击选词、三击选行，取出选中的文字 | 否 |
 | `src/mouse.rs` | 鼠标上报：把点击、拖动、滚轮编码成 xterm 鼠标协议的转义序列 | 否 |
 | `src/input.rs` | 按键编码成字节序列 | 否 |
+| `src/action.rs` | 可配置动作、按键规范化与焦点路由 | 否 |
+| `src/search.rs` / `src/text.rs` | 分片搜索、软换行文本与坐标映射 | 否 |
+| `src/links.rs` / `src/launcher.rs` | 有界链接目标、可见 URL 命中与桌面打开适配 | 打开接口相关 |
+| `src/ui.rs` | 搜索栏与高亮模型，复用软件渲染 | 否 |
+| `src/session.rs` | 单会话终端状态、PTY、输出消费及关闭生命周期 | 通过 PTY/鼠标事件接口 |
+| `src/tasks.rs` / `src/resources.rs` | 有限后台任务、取消/版本校验和按需资源快照 | 否 |
 | `src/config/` | 配置文件：手写的 TOML 子集解析器、选项校验 | 否 |
 | `src/font/` | 字体：TrueType 解析和光栅化、编程连字（GSUB）、彩色 emoji 表、系统字体查找、mmap、PSF 点阵字体 | 否 |
 | `src/image/` | zlib 解压、PNG 解码、图像缩放（emoji 用） | 否 |
 | `src/render.rs` | 软件渲染到像素缓冲区 | 否 |
 | `src/platform/` | 窗口和事件循环：X11 / Win32 / Cocoa | 是 |
+
+## 开发计划
+
+历史搜索、缩放、链接、快捷键、Shell 集成、多标签/分屏、左右侧栏、SSH/SFTP、
+监控、Git、通知与终端美化的分阶段范围和验收标准见 [功能开发计划](docs/roadmap.md)。
+
+## 资源边界与回归验证
+
+PTY 收发队列、回滚历史、字体缓存、图片解压和帧缓冲均有明确预算。
+大量输出会向子进程施加背压；输入排队超过预算时整笔拒绝并提示。
+配置的历史行数是上限，实际保留内容同时受 64 MiB 行存储预算限制。
+详细预算、测试方法和后续范围见 [底层加固说明](docs/foundations.md)。
 
 ## 已知限制
 
@@ -132,3 +162,9 @@ git push origin v0.1.0-alpha.1
 
 `assets/fonts/` 里是 Terminus Font，使用 SIL Open Font License 1.1 授权，见 `assets/fonts/LICENSE-Terminus.txt`。
 Maple Mono 不随程序分发，需要另外安装。
+
+本轮评估、实施目标、已实现内容与剩余验证见 [M1 执行记录](docs/execution-m1.md)，测量数据见 [M1 性能评估](docs/evaluations/m1.md)。
+
+M2 已实现搜索与链接，使用方法、资源边界及剩余验证见 [M2 执行记录](docs/execution-m2.md)。
+
+Shell 集成与命令输出导航已加入：可选 source zsh/Bash 脚本，Primary+↑/↓ 跳命令，Primary+F7/F8 选择/复制输出，Primary+F9 查看状态，Primary+F10 查看通知，Primary+F11 静音。Primary 在 macOS 为 Cmd，其他平台为 Ctrl+Shift。系统通知适配默认关闭，资源边界、启用方式与未验证项目见 [M3 使用说明](docs/execution-m3.md)。

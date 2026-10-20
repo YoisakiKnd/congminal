@@ -13,8 +13,9 @@ mod raster;
 mod ttf;
 
 use crate::config::FontConfig;
-use crate::hash::FnvHashMap;
+mod cache;
 use crate::term::char_width;
+use cache::Cache;
 use discover::FaceInfo;
 
 #[cfg(target_os = "macos")]
@@ -57,6 +58,13 @@ pub struct Glyph {
     pub pixels: Pixels,
 }
 
+fn glyph_cost(glyph: &Option<Glyph>) -> usize {
+    128 + glyph.as_ref().map_or(0, |glyph| match &glyph.pixels {
+        Pixels::Alpha(pixels) => pixels.capacity(),
+        Pixels::Color(pixels) => pixels.capacity() * 4,
+    })
+}
+
 pub enum Pixels {
     /// 普通字形：每个像素的覆盖率（0-255），颜色由文字颜色决定
     Alpha(Vec<u8>),
@@ -73,15 +81,15 @@ pub struct Fonts {
     pub warnings: Vec<String>,
     source: Source,
     /// 键：(字符, 粗体, emoji 样式, 可以占几格)
-    cache: FnvHashMap<(char, bool, bool, u8), Option<Glyph>>,
+    cache: Cache<(char, bool, bool, u8), Option<Glyph>>,
     /// 组合字符（重音符号等）的字形，键：(字符, 粗体, 基础字符占几格)
-    marks: FnvHashMap<(char, bool, u8), Option<Glyph>>,
+    marks: Cache<(char, bool, u8), Option<Glyph>>,
     /// 连字替换的结果（[常规, 粗体]），键：一段文字，值：(第几个字, 换成的字形编号)
-    shapes: [FnvHashMap<String, Vec<(usize, u16)>>; 2],
+    shapes: [Cache<String, Vec<(usize, u16)>>; 2],
     /// 按字形编号取的主字体字形（连字替换出来的），键：(字形编号, 粗体)
-    indexed: FnvHashMap<(u16, bool), Option<Glyph>>,
+    indexed: Cache<(u16, bool), Option<Glyph>>,
     /// emoji 组合序列合成的字形，键：(整个序列, 占几格)
-    clusters: FnvHashMap<(String, u8), Option<Glyph>>,
+    clusters: Cache<(String, u8), Option<Glyph>>,
 }
 
 enum Source {
@@ -142,9 +150,22 @@ enum Fallback {
 }
 
 impl Fonts {
+    pub fn cache_bytes(&self) -> usize {
+        self.cache.used_bytes()
+            + self.marks.used_bytes()
+            + self.indexed.used_bytes()
+            + self.clusters.used_bytes()
+            + self.shapes.iter().map(Cache::used_bytes).sum::<usize>()
+    }
+
+    pub fn file_bytes() -> usize {
+        mmap::live_bytes()
+    }
+
     /// `scale` 是屏幕缩放比例。`warn_missing`：用户自己指定了字体时，找不到要提示
     pub fn load(config: &FontConfig, scale: f64, warn_missing: bool) -> Fonts {
-        let pixel_size = (config.size * scale as f32).max(4.0);
+        let scale = if scale.is_finite() { scale.clamp(0.25, 8.0) } else { 1.0 };
+        let pixel_size = (config.size * scale as f32).clamp(4.0, 1600.0);
         let line_height = config.line_height;
         let requested = &config.families;
         let mut warnings = Vec::new();
@@ -205,11 +226,11 @@ impl Fonts {
             description: "内置 Terminus 点阵字体".into(),
             warnings,
             source: Source::Bitmap { top: (cell_height as i32 - regular.height as i32) / 2, regular, bold },
-            cache: FnvHashMap::default(),
-            marks: FnvHashMap::default(),
-            shapes: Default::default(),
-            indexed: FnvHashMap::default(),
-            clusters: FnvHashMap::default(),
+            cache: Cache::new(16 * 1024 * 1024, 8192),
+            marks: Cache::new(4 * 1024 * 1024, 2048),
+            shapes: [Cache::new(1024 * 1024, 2048), Cache::new(1024 * 1024, 2048)],
+            indexed: Cache::new(4 * 1024 * 1024, 2048),
+            clusters: Cache::new(8 * 1024 * 1024, 1024),
         }
     }
 
@@ -234,8 +255,8 @@ impl Fonts {
         let gap = regular.line_gap.max(0) as f32 * scale;
         let cell_height = ((ascent + descent + gap) * line_height).round().max(1.0);
         Fonts {
-            cell_width: (advance as f32 * scale).round().max(1.0) as usize,
-            cell_height: cell_height as usize,
+            cell_width: (advance as f32 * scale).round().clamp(1.0, 4096.0) as usize,
+            cell_height: cell_height.clamp(1.0, 4096.0) as usize,
             description,
             warnings: Vec::new(),
             source: Source::Outline(Box::new(Outline {
@@ -247,15 +268,15 @@ impl Fonts {
                 emoji_shapers: Vec::new(),
                 emoji,
                 pixel_size,
-                cell_height: cell_height as usize,
+                cell_height: cell_height.clamp(1.0, 4096.0) as usize,
                 // 多出来的行距平分到上下两边
                 baseline: ((cell_height - ascent - descent) / 2.0 + ascent).round() as i32,
             })),
-            cache: FnvHashMap::default(),
-            marks: FnvHashMap::default(),
-            shapes: Default::default(),
-            indexed: FnvHashMap::default(),
-            clusters: FnvHashMap::default(),
+            cache: Cache::new(16 * 1024 * 1024, 8192),
+            marks: Cache::new(4 * 1024 * 1024, 2048),
+            shapes: [Cache::new(1024 * 1024, 2048), Cache::new(1024 * 1024, 2048)],
+            indexed: Cache::new(4 * 1024 * 1024, 2048),
+            clusters: Cache::new(8 * 1024 * 1024, 1024),
         }
     }
 
@@ -270,7 +291,8 @@ impl Fonts {
                 }
                 Source::Outline(outline) => outline.glyph(c, bold, emoji, cells * self.cell_width),
             };
-            self.cache.insert(key, glyph);
+            let cost = glyph_cost(&glyph);
+            self.cache.insert(key, glyph, cost);
         }
         self.cache.get(&key).and_then(Option::as_ref)
     }
@@ -278,6 +300,10 @@ impl Fonts {
     /// 编程连字：一段连续的 ASCII 字（不含空格）里哪些要换成别的字形。
     /// 返回 (第几个字, 字形编号)，没有要换的（或者字体没有连字、关掉了连字）时是空的。
     pub fn ligatures(&mut self, text: &str, bold: bool) -> Vec<(usize, u16)> {
+        // GSUB 的工作量和缓存 key 都不能跟随任意长的输出增长。
+        if text.len() > 1024 {
+            return Vec::new();
+        }
         let Source::Outline(outline) = &self.source else { return Vec::new() };
         let (face, gsub) = match (&outline.bold, &outline.gsub_bold) {
             (Some(face), gsub) if bold => (face, gsub),
@@ -297,11 +323,8 @@ impl Fonts {
         } else {
             Vec::new()
         };
-        // 不同的文字太多时整个清掉重来，免得一直增长
-        if shapes.len() >= 4096 {
-            shapes.clear();
-        }
-        shapes.insert(text.to_string(), changed.clone());
+        let cost = 2 * text.len() + changed.capacity() * std::mem::size_of::<(usize, u16)>() + 128;
+        shapes.insert(text.to_string(), changed.clone(), cost);
         changed
     }
 
@@ -319,7 +342,8 @@ impl Fonts {
                 }
                 Source::Bitmap { .. } => None,
             };
-            self.indexed.insert(key, glyph);
+            let cost = glyph_cost(&glyph);
+            self.indexed.insert(key, glyph, cost);
         }
         self.indexed.get(&key).and_then(Option::as_ref)
     }
@@ -333,10 +357,8 @@ impl Fonts {
                 Source::Outline(outline) => outline.cluster_glyph(sequence, cells * self.cell_width),
                 Source::Bitmap { .. } => None,
             };
-            if self.clusters.len() >= 1024 {
-                self.clusters.clear();
-            }
-            self.clusters.insert(key.clone(), glyph);
+            let cost = glyph_cost(&glyph) + 2 * sequence.len();
+            self.clusters.insert(key.clone(), glyph, cost);
         }
         self.clusters.get(&key).and_then(Option::as_ref)
     }
@@ -353,7 +375,8 @@ impl Fonts {
                 }
                 Source::Outline(outline) => outline.mark_glyph(c, bold, cells * self.cell_width, self.cell_width),
             };
-            self.marks.insert(key, glyph);
+            let cost = glyph_cost(&glyph);
+            self.marks.insert(key, glyph, cost);
         }
         self.marks.get(&key).and_then(Option::as_ref)
     }
@@ -518,7 +541,7 @@ impl Outline {
                     top: (self.cell_height as i32 - height as i32) / 2,
                     width,
                     height,
-                    pixels: Pixels::Color(image.resize_premultiplied(width, height)),
+                    pixels: Pixels::Color(image.resize_premultiplied(width, height)?),
                 })
             }
             color::ColorGlyph::Layers(layers) => self.layered_glyph(face, index, &layers, span),
@@ -528,18 +551,30 @@ impl Outline {
     /// COLR：每一层是一个普通轮廓，按顺序用各自的颜色叠起来
     fn layered_glyph(&self, face: &ttf::Face, index: u16, layers: &[(u16, Option<u32>)], span: usize) -> Option<Glyph> {
         let scale = self.pixel_size / face.units_per_em as f32;
-        let bitmaps: Vec<(raster::Bitmap, u32)> = layers
-            .iter()
-            .filter_map(|&(glyph, color)| {
-                Some((raster::rasterize(&face.outline(glyph), scale)?, color.unwrap_or(COLOR_LAYER_FOREGROUND)))
-            })
-            .collect();
+        if layers.len() > 128 {
+            return None;
+        }
+        let mut bitmaps = Vec::new();
+        let mut total_pixels = 0usize;
+        for &(glyph, color) in layers {
+            let Some(bitmap) = raster::rasterize(&face.outline(glyph), scale) else {
+                continue;
+            };
+            total_pixels = total_pixels.checked_add(bitmap.alpha.len())?;
+            if total_pixels > 1024 * 1024 {
+                return None;
+            }
+            bitmaps.push((bitmap, color.unwrap_or(COLOR_LAYER_FOREGROUND)));
+        }
         // 所有图层的并集
         let left = bitmaps.iter().map(|(b, _)| b.left).min()?;
         let top = bitmaps.iter().map(|(b, _)| b.top).min()?;
         let right = bitmaps.iter().map(|(b, _)| b.left + b.width as i32).max()?;
         let bottom = bitmaps.iter().map(|(b, _)| b.top + b.height as i32).max()?;
         let (width, height) = ((right - left) as usize, (bottom - top) as usize);
+        if width.checked_mul(height)? > 1024 * 1024 {
+            return None;
+        }
         let mut pixels = vec![[0f32; 4]; width * height];
         for (bitmap, color) in &bitmaps {
             let [a, r, g, b] = color.to_be_bytes().map(|v| v as f32 / 255.0);
@@ -627,13 +662,9 @@ fn bitmap_glyph(font: &psf::Font, c: char, top: i32) -> Option<Glyph> {
     Some(Glyph { left: 0, top, width: font.width, height: font.height, pixels: Pixels::Alpha(alpha) })
 }
 
-/// 把字体文件映射进内存。映射失败（比如某些网络文件系统）时退回整个读进来，并泄漏成 'static。
+/// 共享映射的所有权会随 Face、整形器和彩色字体表一起保留，热加载后自动释放。
 fn load_face(info: &FaceInfo) -> Result<ttf::Face, String> {
-    let data = match mmap::map(&info.path) {
-        Ok(data) => data,
-        Err(_) => Box::leak(std::fs::read(&info.path).map_err(|e| e.to_string())?.into_boxed_slice()),
-    };
-    ttf::Face::parse(data, info.index)
+    ttf::Face::parse(mmap::map(&info.path).map_err(|e| e.to_string())?, info.index)
 }
 
 /// 系统字体列表，第一次按名字查找时才扫描

@@ -7,13 +7,15 @@
 //!
 //! ConPTY 会把 Windows 控制台 API 的调用翻译成 VT 序列，所以我们的解析器可以原样复用。
 
+use super::flow::{AsyncWriter, READ_CHUNK};
 use super::{Command, EventSink, PtyEvent};
 use std::ffi::c_void;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::os::windows::ffi::OsStrExt;
-use std::os::windows::io::FromRawHandle;
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::ptr::{null, null_mut};
+use std::sync::{Arc, Mutex};
 
 type Handle = *mut c_void;
 
@@ -97,15 +99,29 @@ unsafe extern "system" {
     ) -> i32;
     fn WaitForSingleObject(handle: Handle, milliseconds: u32) -> u32;
     fn CloseHandle(handle: Handle) -> i32;
+    fn GetExitCodeProcess(handle: Handle, code: *mut u32) -> i32;
 }
 
 /// 让裸句柄可以移进线程
 struct SendHandle(Handle);
 unsafe impl Send for SendHandle {}
 
+struct Console(Mutex<Option<SendHandle>>);
+impl Console {
+    fn close(&self) {
+        // 只取一次句柄，不持锁等待 ConPTY 排空。读线程必须在关闭期间继续读。
+        let console = self.0.lock().unwrap().take();
+        if let Some(console) = console {
+            unsafe {
+                ClosePseudoConsole(console.0);
+            }
+        }
+    }
+}
+
 pub struct Pty {
-    console: Handle,
-    input: File,
+    console: Arc<Console>,
+    input: Option<AsyncWriter>,
 }
 
 impl Pty {
@@ -135,7 +151,7 @@ impl Pty {
             if hr < 0 {
                 return Err(io::Error::other(format!("CreatePseudoConsole 失败：HRESULT {hr:#010x}")));
             }
-            let pty = Pty { console, input };
+            let mut pty = Pty { console: Arc::new(Console(Mutex::new(Some(SendHandle(console))))), input: None };
 
             // 3. 属性列表：告诉 CreateProcessW 把这个伪控制台交给子进程
             let mut size = 0;
@@ -189,36 +205,52 @@ impl Pty {
                 return Err(io::Error::last_os_error());
             }
             CloseHandle(info.thread);
+            let process = OwnedHandle::from_raw_handle(info.process);
 
+            pty.input = Some(AsyncWriter::spawn(input, sink.clone())?);
             // 4. 读线程：把 shell 输出送出去
             let data_sink = sink.clone();
             let mut output = output;
             std::thread::Builder::new().name("pty-reader".into()).spawn(move || {
-                let mut buf = vec![0u8; 64 * 1024];
+                let mut buf = vec![0u8; READ_CHUNK];
+                let mut forward = true;
                 while let Ok(n @ 1..) = output.read(&mut buf) {
-                    data_sink(PtyEvent::Data(buf[..n].to_vec()));
+                    if forward {
+                        forward = data_sink(PtyEvent::Data(buf[..n].to_vec()));
+                    }
+                    // UI 关闭后继续排空 ConPTY 的关闭消息，避免 ClosePseudoConsole 等待读端。
                 }
+                data_sink(PtyEvent::Eof);
             })?;
 
             // 5. 等待线程：shell 退出时通知。ConPTY 下读端不一定会马上收到 EOF，所以单独等进程句柄。
-            let process = SendHandle(info.process);
+            let console = pty.console.clone();
             std::thread::Builder::new().name("pty-waiter".into()).spawn(move || {
                 let process = process;
-                WaitForSingleObject(process.0, INFINITE);
-                CloseHandle(process.0);
-                sink(PtyEvent::Exit);
+                WaitForSingleObject(process.as_raw_handle(), INFINITE);
+                let mut code = 0;
+                let code = (GetExitCodeProcess(process.as_raw_handle(), &mut code) != 0).then_some(code as i32);
+                // shell 已退出后主动关闭 ConPTY，读线程排完最后输出才会收到 EOF。
+                console.close();
+                sink(PtyEvent::Exit(code));
             })?;
 
             Ok(pty)
         }
     }
 
+    pub fn pending_bytes(&self) -> usize {
+        self.input.as_ref().map_or(0, AsyncWriter::pending_bytes)
+    }
+
     pub fn write(&mut self, data: &[u8]) -> io::Result<()> {
-        self.input.write_all(data)
+        self.input.as_ref().unwrap().write(data)
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> io::Result<()> {
-        let hr = unsafe { ResizePseudoConsole(self.console, coord(cols, rows)) };
+        let console = self.console.0.lock().unwrap();
+        let console = console.as_ref().ok_or(io::ErrorKind::BrokenPipe)?;
+        let hr = unsafe { ResizePseudoConsole(console.0, coord(cols, rows)) };
         if hr < 0 {
             return Err(io::Error::other(format!("ResizePseudoConsole 失败：HRESULT {hr:#010x}")));
         }
@@ -229,7 +261,8 @@ impl Pty {
 impl Drop for Pty {
     fn drop(&mut self) {
         // 关闭伪控制台会结束挂在上面的进程
-        unsafe { ClosePseudoConsole(self.console) };
+        drop(self.input.take());
+        self.console.close();
     }
 }
 

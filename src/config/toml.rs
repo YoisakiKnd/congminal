@@ -80,10 +80,14 @@ impl fmt::Display for Error {
     }
 }
 
+pub const MAX_CONFIG_BYTES: usize = 1024 * 1024;
 pub fn parse(text: &str) -> Result<Table, Error> {
+    if text.len() > MAX_CONFIG_BYTES {
+        return Err(Error { line: 1, message: "配置超过 1 MiB".into() });
+    }
     // Windows 的记事本保存 UTF-8 时可能在开头加 BOM
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-    let mut parser = Parser { chars: text.chars().collect(), pos: 0, line: 1 };
+    let mut parser = Parser { chars: text.chars().collect(), pos: 0, line: 1, depth: 0, items: 0 };
     parser.document().map_err(|message| Error { line: parser.line, message })
 }
 
@@ -91,6 +95,8 @@ struct Parser {
     chars: Vec<char>,
     pos: usize,
     line: usize,
+    depth: usize,
+    items: usize,
 }
 
 type Result2<T> = Result<T, String>;
@@ -149,6 +155,10 @@ impl Parser {
 
     /// 点分键：a.b."c d"
     fn key(&mut self) -> Result2<Vec<String>> {
+        if self.items >= 4096 {
+            return Err("配置条目数超过限制".into());
+        }
+        self.items += 1;
         let mut parts = vec![self.simple_key()?];
         loop {
             let saved = self.pos;
@@ -159,6 +169,9 @@ impl Parser {
             }
             self.pos += 1;
             self.skip_spaces();
+            if parts.len() >= 32 {
+                return Err("键路径超过 32 层".into());
+            }
             parts.push(self.simple_key()?);
         }
     }
@@ -186,6 +199,17 @@ impl Parser {
     // ---- 值 ----
 
     fn value(&mut self) -> Result2<Value> {
+        if self.depth >= 32 || self.items >= 4096 {
+            return Err("配置嵌套或条目数超过限制".into());
+        }
+        self.depth += 1;
+        self.items += 1;
+        let result = self.value_inner();
+        self.depth -= 1;
+        result
+    }
+
+    fn value_inner(&mut self) -> Result2<Value> {
         match self.peek() {
             Some('"') => Ok(Value::String(self.basic_string()?)),
             Some('\'') => Ok(Value::String(self.literal_string()?)),
@@ -553,5 +577,22 @@ size = 15
     fn value_then_table_conflict() {
         let e = parse("a = 1\n[a]\nb = 2\n").unwrap_err();
         assert!(e.message.contains("不能再当作表"));
+    }
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+    #[test]
+    fn rejects_deep_values_paths_and_oversized_files() {
+        let nested = format!("x = {}0{}", "[".repeat(10000), "]".repeat(10000));
+        assert!(parse(&nested).is_err());
+        assert!(parse(&format!("{}x = 0", "a.".repeat(10000))).is_err());
+        assert!(parse(&" ".repeat(MAX_CONFIG_BYTES + 1)).is_err());
+        let mut many = String::new();
+        for i in 0..4097 {
+            many.push_str(&format!("x{i}=1\n"));
+        }
+        assert!(parse(&many).is_err());
     }
 }

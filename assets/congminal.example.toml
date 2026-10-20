@@ -6,7 +6,7 @@
 #   也可以用 --config <路径> 或环境变量 CONGMINAL_CONFIG 指定。
 #
 # 这份文件里写的都是默认值，只需要保留你想改的部分。
-# 保存后自动生效（字体、颜色、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
+# 保存后自动生效（字体、主题、颜色、快捷键、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
 # 用 congminal --print-config 可以重新打印这份文件。
 
 [font]
@@ -28,22 +28,37 @@ rows = 24
 # 文字和窗口边缘之间的空白（逻辑像素）
 padding = 4
 
+[appearance]
+# dark、light、midnight；快捷键 Primary+F6 循环切换（不写回文件）。
+theme = "dark"
+
 [colors]
-foreground = "#d8d8d8"
-background = "#1e1e1e"
-cursor = "#e0e0e0"
-# 方块光标下面那个字的颜色
-cursor-text = "#1e1e1e"
-# 鼠标选中的文字的背景色
-selection-background = "#264f78"
-# 粗体的基本色（0-7）显示成对应的亮色（8-15）
-bold-is-bright = true
-# 16 色调色板：黑 红 绿 黄 蓝 品红 青 白，然后是它们的亮色版本。
-# 可以写到 256 个，没写的用 xterm 的默认值。
-palette = [
-    "#000000", "#cd3131", "#0dbc79", "#e5e510", "#2472c8", "#bc3fbc", "#11a8cd", "#e5e5e5",
-    "#666666", "#f14c4c", "#23d18b", "#f5f543", "#3b8eea", "#d670d6", "#29b8db", "#ffffff",
-]
+# 显式设置的颜色覆盖主题，并在切换主题时保留；以下展示 dark 的默认值。
+# foreground = "#d8d8d8"
+# background = "#1e1e1e"
+# cursor = "#e0e0e0"
+# cursor-text = "#1e1e1e"
+# selection-background = "#264f78"
+# preedit-background = "#3a3d41"
+# bold-is-bright = true
+# palette = ["#000000", "#cd3131"] # 最多 256 项，依次覆盖调色板
+
+[keybindings]
+# Primary 在 macOS 是 Cmd，其他平台是 Ctrl+Shift。键名不区分大小写。
+# 默认：Primary+C/V 复制/粘贴，Primary+Equal/Plus/Minus/0 缩放/复位，
+# Primary+F6 切换主题，Primary+F12 显示资源统计。
+# Primary+F 打开搜索，Enter/F3 下一项，Shift+Enter/Shift+F3 上一项，Esc 退出。
+# 链接：macOS Cmd+单击，其他平台 Ctrl+单击；加 Shift 复制目标。
+# Shift+PageUp/PageDown/Home/End 浏览历史（备用屏幕交给程序）。
+# "Primary+Equal" = "font-increase"
+# "Primary+Minus" = "font-decrease"
+# "Primary+0" = "font-reset"
+# "Primary+F6" = "next-theme"
+# "Ctrl+Shift+X" = { action = "send-text", text = "hello" }
+# "Primary+C" = "pass-through" # 交给终端程序；none 表示忽略
+# 支持 copy、paste、page-up、page-down、history-top、history-bottom、
+# font-increase、font-decrease、font-reset、next-theme、show-resources、
+# search、search-next、search-previous、open-link、copy-link。
 
 [cursor]
 # block（方块）、underline（下划线）或 bar（竖线）。程序可以临时改变它。
@@ -68,3 +83,14 @@ lines = 10000
 # 把 Option 键当作 Alt 用（发送 ESC 前缀，方便 shell 和 vim 的快捷键）。
 # true / false，或者 "left" / "right" 只让一边的 Option 当 Alt，另一边照常输入特殊字符。
 option-as-alt = true
+
+# 应用内通知默认开启；system 仅在显式启用后调用系统工具。
+# 系统适配：macOS osascript / Linux notify-send / Windows PowerShell .NET NotifyIcon。
+# 调用有 5 秒超时、每 10 秒最多一次，失败在通知中心显示；不会发送命令、路径或输出正文。
+[notifications]
+muted = false
+system = false
+failures = true
+long-commands = true
+background = true
+long-seconds = 10

@@ -5,9 +5,13 @@ use crate::font::{Fonts, Glyph, Pixels};
 use crate::hash::Fnv;
 use crate::selection::Point;
 use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, compose_all, emoji_sequence_at};
+use crate::ui::{Bar, Decoration, DecorationKind};
 use std::hash::{Hash, Hasher};
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
+const MAX_FRAME_PIXELS: usize = 64 * 1024 * 1024;
+const MAX_WINDOW_SIDE: usize = 16384;
+
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
@@ -16,13 +20,25 @@ pub struct Framebuffer {
 
 impl Framebuffer {
     pub fn new(width: usize, height: usize) -> Framebuffer {
-        Framebuffer { width, height, pixels: vec![0; width * height] }
+        let mut framebuffer = Framebuffer { width: 0, height: 0, pixels: Vec::new() };
+        assert!(framebuffer.resize(width, height), "帧缓冲大小超过预算或分配失败");
+        framebuffer
     }
 
-    pub fn resize(&mut self, width: usize, height: usize) {
+    pub fn resize(&mut self, width: usize, height: usize) -> bool {
+        let Some(count) = width.checked_mul(height) else {
+            return false;
+        };
+        if width > MAX_WINDOW_SIDE || height > MAX_WINDOW_SIDE || count > MAX_FRAME_PIXELS {
+            return false;
+        }
+        if count > self.pixels.capacity() && self.pixels.try_reserve_exact(count - self.pixels.len()).is_err() {
+            return false;
+        }
         self.width = width;
         self.height = height;
-        self.pixels.resize(width * height, 0);
+        self.pixels.resize(count, 0);
+        true
     }
 
     /// 半透明地叠一个矩形，alpha 是 0-255
@@ -49,9 +65,6 @@ impl Framebuffer {
     }
 }
 
-/// 输入法正在输入（还没上屏）的文字的背景色
-const PREEDIT_BG: u32 = 0x3A3D41;
-
 pub struct Renderer {
     fonts: Fonts,
     padding: usize,
@@ -60,6 +73,8 @@ pub struct Renderer {
     last_rows: Vec<u64>,
     /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
     last_frame: u64,
+    decorations: Vec<Decoration>,
+    bar: Option<Bar>,
 }
 
 /// 这一帧变化了的区域：从第 y 行像素开始的 height 行（整个宽度）。macOS 的图层只能整张替换，用不到它。
@@ -130,7 +145,47 @@ impl Renderer {
             colors: config.colors.clone(),
             last_rows: Vec::new(),
             last_frame: 0,
+            decorations: Vec::new(),
+            bar: None,
         }
+    }
+
+    pub fn set_ui(&mut self, decorations: Vec<Decoration>, bar: Option<Bar>) {
+        self.decorations = decorations;
+        self.bar = bar;
+    }
+    pub fn bar_cursor_rect(&self, term: &Terminal) -> Option<(u32, u32, u32, u32)> {
+        let col = self.bar.as_ref()?.caret?;
+        let (x, y) = self.cell_origin(term.rows() - 1, col);
+        Some((x as u32, y as u32, self.fonts.cell_width as u32, self.fonts.cell_height as u32))
+    }
+    pub fn is_bar(&self, term: &Terminal, y: f64) -> bool {
+        self.bar.is_some() && y >= self.cell_origin(term.rows() - 1, 0).1 as f64
+    }
+    fn ui_range(&self, term: &Terminal, row: usize, decoration: &Decoration) -> Option<(usize, usize)> {
+        let id = term.line_id(row);
+        let (first, last) = decoration.range;
+        if id < first.line || id > last.line {
+            return None;
+        }
+        let from = if id == first.line { first.col } else { 0 };
+        let to = if id == last.line { last.col.saturating_add(1).min(term.cols()) } else { term.cols() };
+        (from < to).then_some((from, to))
+    }
+
+    pub fn resource_bytes(&self, framebuffer: &Framebuffer) -> (usize, usize) {
+        (framebuffer.pixels.capacity() * std::mem::size_of::<u32>(), self.fonts.cache_bytes())
+    }
+
+    pub fn apply_style(&mut self, config: &Config, scale: f64) {
+        self.padding = (config.window.padding * scale as f32).round() as usize;
+        self.colors = config.colors.clone();
+        self.invalidate();
+    }
+
+    pub fn replace_fonts(&mut self, fonts: Fonts) {
+        self.fonts = fonts;
+        self.invalidate();
     }
 
     /// 加载字体时遇到的问题
@@ -142,15 +197,19 @@ impl Renderer {
     pub fn grid_size(&self, width: usize, height: usize) -> (usize, usize) {
         let cols = width.saturating_sub(2 * self.padding) / self.fonts.cell_width;
         let rows = height.saturating_sub(2 * self.padding) / self.fonts.cell_height;
-        (cols.max(1), rows.max(1))
+        crate::term::grid_dimensions(cols, rows)
     }
 
     /// 放下 cols × rows 个字符需要的窗口像素尺寸
     pub fn pixel_size(&self, cols: usize, rows: usize) -> (u32, u32) {
-        (
-            (cols * self.fonts.cell_width + 2 * self.padding) as u32,
-            (rows * self.fonts.cell_height + 2 * self.padding) as u32,
-        )
+        let width =
+            cols.saturating_mul(self.fonts.cell_width).saturating_add(2 * self.padding).clamp(1, MAX_WINDOW_SIDE);
+        let height = rows
+            .saturating_mul(self.fonts.cell_height)
+            .saturating_add(2 * self.padding)
+            .clamp(1, MAX_WINDOW_SIDE)
+            .min(MAX_FRAME_PIXELS / width);
+        (width as u32, height as u32)
     }
 
     /// 光标所在格子的像素区域 (x, y, 宽, 高)，输入法用它来摆放候选词窗口
@@ -245,6 +304,12 @@ impl Renderer {
             if (start..end).contains(&cursor.row) {
                 self.draw_cursor(fb, term, &cursor);
             }
+            for r in start..end {
+                self.draw_ui_decorations(fb, term, r);
+            }
+            if end == rows {
+                self.draw_bar(fb, term);
+            }
             damage = Some(match damage {
                 Some((t, b)) => (t.min(top), b.max(bottom)),
                 None => (top, bottom),
@@ -274,6 +339,14 @@ impl Renderer {
             let to = if end.line == id { end.col } else { usize::MAX };
             (from, to).hash(&mut hasher);
         }
+        for decoration in &self.decorations {
+            if let Some(range) = self.ui_range(term, row, decoration) {
+                (range, decoration.kind).hash(&mut hasher);
+            }
+        }
+        if row + 1 == term.rows() {
+            self.bar.hash(&mut hasher);
+        }
         hasher.finish()
     }
 
@@ -301,6 +374,28 @@ impl Renderer {
             if bg != default_bg {
                 let (x, y) = self.cell_origin(row, col);
                 fb.fill_rect(x, y, self.cell_span(cell), self.fonts.cell_height, bg);
+            }
+        }
+        for decoration in &self.decorations {
+            if decoration.kind == DecorationKind::Link {
+                continue;
+            }
+            let Some((from, to)) = self.ui_range(term, row, decoration) else {
+                continue;
+            };
+            for col in from..to {
+                if selected(selection, id, col) {
+                    continue;
+                }
+                let (x, y) = self.cell_origin(row, col);
+                fb.blend_rect(
+                    x,
+                    y,
+                    self.fonts.cell_width,
+                    self.fonts.cell_height,
+                    self.colors.palette[3],
+                    if decoration.kind == DecorationKind::Current { 100 } else { 55 },
+                );
             }
         }
     }
@@ -376,6 +471,73 @@ impl Renderer {
             if decorations {
                 self.draw_decorations(fb, x, y, self.cell_span(cell), cell.flags, fg);
             }
+        }
+    }
+
+    fn draw_ui_decorations(&self, fb: &mut Framebuffer, term: &Terminal, row: usize) {
+        for decoration in &self.decorations {
+            if decoration.kind == DecorationKind::Match {
+                continue;
+            }
+            let Some((from, to)) = self.ui_range(term, row, decoration) else {
+                continue;
+            };
+            let (x, y) = self.cell_origin(row, from);
+            fb.fill_rect(
+                x,
+                y + self.fonts.cell_height.saturating_sub(2),
+                (to - from) * self.fonts.cell_width,
+                1,
+                self.colors.cursor,
+            );
+        }
+    }
+    fn draw_bar(&mut self, fb: &mut Framebuffer, term: &Terminal) {
+        let Some(bar) = self.bar.clone() else {
+            return;
+        };
+        let row = term.rows() - 1;
+        let (_, y) = self.cell_origin(row, 0);
+        fb.fill_rect(0, y, fb.width, fb.height.saturating_sub(y), self.colors.preedit_background);
+        let mut col = 0;
+        let mut previous = (0, 1);
+        for c in bar.text.chars() {
+            let cells = char_width(c);
+            if col + cells > term.cols() {
+                break;
+            }
+            if cells == 0 {
+                let (x, _) = self.cell_origin(row, previous.0);
+                if let Some(glyph) = self.fonts.mark_glyph(c, false, previous.1) {
+                    blend_glyph(
+                        fb,
+                        x as i32 + glyph.left,
+                        y as i32 + glyph.top,
+                        glyph,
+                        self.colors.foreground,
+                        (y, fb.height),
+                    );
+                }
+                continue;
+            }
+            let (x, _) = self.cell_origin(row, col);
+            self.draw_char(fb, x, y, c, Flags::default(), cells, self.colors.foreground);
+            previous = (col, cells);
+            col += cells;
+        }
+        if let Some((from, cells)) = bar.preedit {
+            let (x, _) = self.cell_origin(row, from.min(term.cols() - 1));
+            fb.fill_rect(
+                x,
+                y + self.fonts.cell_height.saturating_sub(2),
+                cells.min(term.cols().saturating_sub(from)) * self.fonts.cell_width,
+                1,
+                self.colors.cursor,
+            );
+        }
+        if let Some(col) = bar.caret {
+            let (x, _) = self.cell_origin(row, col.min(term.cols() - 1));
+            fb.fill_rect(x, y, 1, self.fonts.cell_height, self.colors.cursor);
         }
     }
 
@@ -466,6 +628,15 @@ impl Renderer {
     }
 
     /// 窗口像素坐标对应的位置：(行, 列)。行限制在屏幕范围内，列是小数（选区要据此判断点在格子的哪一半）。
+    pub fn hit_cell(&self, x: f64, y: f64, term: &Terminal) -> Option<(usize, usize)> {
+        if !x.is_finite() || !y.is_finite() || x < self.padding as f64 || y < self.padding as f64 {
+            return None;
+        }
+        let col = ((x - self.padding as f64) / self.fonts.cell_width as f64).floor() as usize;
+        let row = ((y - self.padding as f64) / self.fonts.cell_height as f64).floor() as usize;
+        (col < term.cols() && row < term.rows()).then_some((row, col))
+    }
+
     pub fn grid_position(&self, x: f64, y: f64, term: &Terminal) -> (usize, f64) {
         let col = ((x - self.padding as f64) / self.fonts.cell_width as f64).clamp(0.0, term.cols() as f64);
         let row = ((y - self.padding as f64) / self.fonts.cell_height as f64).floor().max(0.0) as usize;
@@ -487,7 +658,7 @@ impl Renderer {
             }
             let (x, _) = self.cell_origin(row, col);
             let span = width * self.fonts.cell_width;
-            fb.fill_rect(x, y, span, self.fonts.cell_height, PREEDIT_BG);
+            fb.fill_rect(x, y, span, self.fonts.cell_height, self.colors.preedit_background);
             self.draw_char(fb, x, y, c, Flags::default(), width, self.colors.foreground);
             self.draw_decorations(fb, x, y, span, Flags::UNDERLINE, self.colors.foreground);
             col += width;
@@ -743,6 +914,44 @@ mod tests {
         }
     }
 
+    #[test]
+    fn search_and_link_decorations_and_bar_clear_without_stale_pixels() {
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let mut fresh = Renderer::new(&config, 1.0);
+        let mut term = Terminal::new(30, 6);
+        Parser::new().advance(&mut term, b"hello world\r\nsecond line");
+        let (w, h) = renderer.pixel_size(30, 6);
+        let mut frame = Framebuffer::new(w as usize, h as usize);
+        let states = [
+            (
+                vec![Decoration {
+                    range: (Point { line: 0, col: 1 }, Point { line: 1, col: 4 }),
+                    kind: DecorationKind::Current,
+                }],
+                Some(Bar { text: "查找 中文".into(), caret: Some(7), preedit: Some((5, 2)) }),
+            ),
+            (
+                vec![Decoration {
+                    range: (Point { line: 1, col: 0 }, Point { line: 1, col: 5 }),
+                    kind: DecorationKind::Link,
+                }],
+                Some(Bar::link("https://example.com")),
+            ),
+            (vec![], None),
+        ];
+        for (decorations, bar) in states {
+            renderer.set_ui(decorations.clone(), bar.clone());
+            fresh.set_ui(decorations, bar);
+            fresh.invalidate();
+            renderer.draw(&term, "", None, true, &mut frame);
+            let mut expected = Framebuffer::new(w as usize, h as usize);
+            fresh.draw(&term, "", None, true, &mut expected);
+            assert_eq!(frame.pixels, expected.pixels);
+        }
+        assert!(renderer.draw(&term, "", None, true, &mut frame).is_none());
+    }
+
     /// 分解形式（e + U+0301）和合成好的 é 画出来一样
     #[test]
     fn combining_marks_are_composed() {
@@ -759,5 +968,17 @@ mod tests {
         };
         assert_eq!(draw("e\u{301}\x1b[?25l"), draw("é\x1b[?25l"));
         assert_eq!(draw("\u{1112}\u{1161}\u{11AB}\x1b[?25l"), draw("한\x1b[?25l"));
+    }
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+    #[test]
+    fn oversized_resize_is_rejected_without_changing_framebuffer() {
+        let mut framebuffer = Framebuffer::new(2, 2);
+        assert!(!framebuffer.resize(usize::MAX, usize::MAX));
+        assert!(!framebuffer.resize(MAX_WINDOW_SIDE, MAX_WINDOW_SIDE));
+        assert_eq!((framebuffer.width, framebuffer.height, framebuffer.pixels.len()), (2, 2, 4));
     }
 }
