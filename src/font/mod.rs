@@ -3,7 +3,9 @@
 //! 按配置 [font] 里的顺序找系统里安装的 TrueType 字体（默认是 Maple Mono），
 //! 都找不到时用系统等宽字体，最后退回内置的 Terminus 点阵字体。
 
+mod color;
 mod discover;
+mod mmap;
 mod psf;
 mod raster;
 mod ttf;
@@ -24,9 +26,20 @@ const PLATFORM_MONO: &[&str] = &["DejaVu Sans Mono", "Liberation Mono", "Noto Mo
 #[cfg(target_os = "macos")]
 const FALLBACK: &[&str] = &["PingFang SC", "Hiragino Sans GB", "STHeiti", "Arial Unicode MS"];
 #[cfg(windows)]
-const FALLBACK: &[&str] = &["Microsoft YaHei", "SimSun", "Segoe UI Symbol", "Segoe UI Emoji"];
+const FALLBACK: &[&str] = &["Microsoft YaHei", "SimSun", "Segoe UI Symbol"];
 #[cfg(not(any(target_os = "macos", windows)))]
 const FALLBACK: &[&str] = &["Noto Sans Mono CJK SC", "WenQuanYi Micro Hei", "Droid Sans Fallback", "DejaVu Sans"];
+
+/// 彩色 emoji 字体。emoji 字符先在这里找，找不到再按普通字符的顺序找。
+#[cfg(target_os = "macos")]
+const EMOJI: &[&str] = &["Apple Color Emoji"];
+#[cfg(windows)]
+const EMOJI: &[&str] = &["Segoe UI Emoji"];
+#[cfg(not(any(target_os = "macos", windows)))]
+const EMOJI: &[&str] = &["Noto Color Emoji", "Twemoji Mozilla"];
+
+/// COLR 图层要求"用文字颜色"时用的颜色（字形缓存不区分颜色，先用一个浅灰）
+const COLOR_LAYER_FOREGROUND: u32 = 0xFFD8D8D8;
 
 static TERMINUS_16: &[u8] = include_bytes!("../../assets/fonts/Terminus16.psf");
 static TERMINUS_BOLD_16: &[u8] = include_bytes!("../../assets/fonts/TerminusBold16.psf");
@@ -39,7 +52,14 @@ pub struct Glyph {
     pub top: i32,
     pub width: usize,
     pub height: usize,
-    pub alpha: Vec<u8>,
+    pub pixels: Pixels,
+}
+
+pub enum Pixels {
+    /// 普通字形：每个像素的覆盖率（0-255），颜色由文字颜色决定
+    Alpha(Vec<u8>),
+    /// 彩色字形（emoji）：预乘过透明度的 0xAARRGGBB
+    Color(Vec<u32>),
 }
 
 pub struct Fonts {
@@ -67,8 +87,10 @@ struct Outline {
     regular: ttf::Face,
     bold: Option<ttf::Face>,
     fallbacks: Vec<Fallback>,
+    emoji: Vec<Fallback>,
     pixel_size: f32,
     baseline: i32,
+    cell_height: usize,
 }
 
 /// 后备字体第一次用到时才加载（中文字体动辄几十 MB）
@@ -111,8 +133,13 @@ impl Fonts {
                 .filter_map(|name| discover::pick_regular_and_bold(&library.find(name)))
                 .map(|(info, _)| Fallback::Pending(info))
                 .collect();
+            let emoji = EMOJI
+                .iter()
+                .filter_map(|name| discover::pick_regular_and_bold(&library.find(name)))
+                .map(|(info, _)| Fallback::Pending(info))
+                .collect();
             let description = format!("{}（{}，{pixel_size}px）", name, regular_info.path.display());
-            let mut fonts = Fonts::outline(regular, bold, fallbacks, pixel_size, line_height, description);
+            let mut fonts = Fonts::outline(regular, bold, fallbacks, emoji, pixel_size, line_height, description);
             fonts.warnings = warnings;
             return fonts;
         }
@@ -139,6 +166,7 @@ impl Fonts {
         regular: ttf::Face,
         bold: Option<ttf::Face>,
         fallbacks: Vec<Fallback>,
+        emoji: Vec<Fallback>,
         pixel_size: f32,
         line_height: f32,
         description: String,
@@ -163,7 +191,9 @@ impl Fonts {
                 regular,
                 bold,
                 fallbacks,
+                emoji,
                 pixel_size,
+                cell_height: cell_height as usize,
                 // 多出来的行距平分到上下两边
                 baseline: ((cell_height - ascent - descent) / 2.0 + ascent).round() as i32,
             })),
@@ -187,6 +217,20 @@ impl Fonts {
 
 impl Outline {
     fn glyph(&mut self, c: char, bold: bool, cell_width: usize) -> Option<Glyph> {
+        if prefers_emoji(c) {
+            for i in 0..self.emoji.len() {
+                load_pending(&mut self.emoji, i, "emoji 字体");
+            }
+            let found = self.emoji.iter().find_map(|f| match f {
+                Fallback::Loaded(face) if face.glyph_index(c) != 0 => Some((face, face.glyph_index(c))),
+                _ => None,
+            });
+            if let Some((face, index)) = found
+                && let Some(glyph) = self.color_glyph(face, index, c, cell_width)
+            {
+                return Some(glyph);
+            }
+        }
         let synthetic_bold = bold && self.bold.is_none();
         let primary = match &self.bold {
             Some(face) if bold => face,
@@ -197,15 +241,7 @@ impl Outline {
         let mut found = (primary.glyph_index(c) != 0).then_some((primary, primary.glyph_index(c)));
         if found.is_none() {
             for i in 0..self.fallbacks.len() {
-                if let Fallback::Pending(info) = &self.fallbacks[i] {
-                    self.fallbacks[i] = match load_face(info) {
-                        Ok(face) => Fallback::Loaded(face),
-                        Err(e) => {
-                            crate::term::trace(format_args!("后备字体 {} 不可用：{e}", info.path.display()));
-                            Fallback::Failed
-                        }
-                    };
-                }
+                load_pending(&mut self.fallbacks, i, "后备字体");
                 if let Fallback::Loaded(face) = &self.fallbacks[i]
                     && face.glyph_index(c) != 0
                 {
@@ -222,6 +258,12 @@ impl Outline {
             _ => &self.regular,
         };
         let (face, index) = found.unwrap_or((primary, 0));
+        // 后备字体恰好是彩色字体（比如用户把 emoji 字体写进了 [font] family）
+        if index != 0
+            && let Some(glyph) = self.color_glyph(face, index, c, cell_width)
+        {
+            return Some(glyph);
+        }
 
         let scale = self.pixel_size / face.units_per_em as f32;
         let mut bitmap = raster::rasterize(&face.outline(index), scale)?;
@@ -237,9 +279,108 @@ impl Outline {
             top: self.baseline + bitmap.top,
             width: bitmap.width,
             height: bitmap.height,
-            alpha: bitmap.alpha,
+            pixels: Pixels::Alpha(bitmap.alpha),
         })
     }
+
+    /// 彩色字形。字体没有彩色表、或者这个字形没有彩色版本时返回 None。
+    fn color_glyph(&self, face: &ttf::Face, index: u16, c: char, cell_width: usize) -> Option<Glyph> {
+        let tables = color::ColorTables::new(face)?;
+        let span = cell_width * char_width(c).max(1);
+        match tables.glyph(face, index, self.pixel_size)? {
+            color::ColorGlyph::Bitmap { image, ppem } => {
+                // 按字号缩放（emoji 图片四周有留白，比字号稍大一点更协调），再限制在格子里
+                let scale = (self.pixel_size * 1.15 / ppem as f32)
+                    .min(span as f32 / image.width as f32)
+                    .min(self.cell_height as f32 / image.height as f32);
+                let width = ((image.width as f32 * scale).round() as usize).max(1);
+                let height = ((image.height as f32 * scale).round() as usize).max(1);
+                Some(Glyph {
+                    left: (span as i32 - width as i32) / 2,
+                    top: (self.cell_height as i32 - height as i32) / 2,
+                    width,
+                    height,
+                    pixels: Pixels::Color(image.resize_premultiplied(width, height)),
+                })
+            }
+            color::ColorGlyph::Layers(layers) => self.layered_glyph(face, index, &layers, span),
+        }
+    }
+
+    /// COLR：每一层是一个普通轮廓，按顺序用各自的颜色叠起来
+    fn layered_glyph(&self, face: &ttf::Face, index: u16, layers: &[(u16, Option<u32>)], span: usize) -> Option<Glyph> {
+        let scale = self.pixel_size / face.units_per_em as f32;
+        let bitmaps: Vec<(raster::Bitmap, u32)> = layers
+            .iter()
+            .filter_map(|&(glyph, color)| {
+                Some((raster::rasterize(&face.outline(glyph), scale)?, color.unwrap_or(COLOR_LAYER_FOREGROUND)))
+            })
+            .collect();
+        // 所有图层的并集
+        let left = bitmaps.iter().map(|(b, _)| b.left).min()?;
+        let top = bitmaps.iter().map(|(b, _)| b.top).min()?;
+        let right = bitmaps.iter().map(|(b, _)| b.left + b.width as i32).max()?;
+        let bottom = bitmaps.iter().map(|(b, _)| b.top + b.height as i32).max()?;
+        let (width, height) = ((right - left) as usize, (bottom - top) as usize);
+        let mut pixels = vec![[0f32; 4]; width * height];
+        for (bitmap, color) in &bitmaps {
+            let [a, r, g, b] = color.to_be_bytes().map(|v| v as f32 / 255.0);
+            for y in 0..bitmap.height {
+                for x in 0..bitmap.width {
+                    let coverage = bitmap.alpha[y * bitmap.width + x] as f32 / 255.0 * a;
+                    if coverage == 0.0 {
+                        continue;
+                    }
+                    let i = (y + (bitmap.top - top) as usize) * width + x + (bitmap.left - left) as usize;
+                    // 预乘透明度下的"盖上去"：新 = 源 + 旧 × (1 - 源的不透明度)
+                    let p = &mut pixels[i];
+                    let keep = 1.0 - coverage;
+                    *p = [
+                        coverage + p[0] * keep,
+                        r * coverage + p[1] * keep,
+                        g * coverage + p[2] * keep,
+                        b * coverage + p[3] * keep,
+                    ];
+                }
+            }
+        }
+        let pixels = pixels
+            .iter()
+            .map(|p| {
+                let [a, r, g, b] = p.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u32);
+                a << 24 | r << 16 | g << 8 | b
+            })
+            .collect();
+        let advance = face.advance(index) as f32 * scale;
+        let shift = ((span as f32 - advance) / 2.0).round() as i32;
+        Some(Glyph { left: left + shift, top: self.baseline + top, width, height, pixels: Pixels::Color(pixels) })
+    }
+}
+
+/// 第一次用到时才加载字体（中文、emoji 字体都很大）
+fn load_pending(list: &mut [Fallback], i: usize, what: &str) {
+    if let Fallback::Pending(info) = &list[i] {
+        list[i] = match load_face(info) {
+            Ok(face) => {
+                let kind = color::ColorTables::new(&face).map_or("轮廓", |t| t.kind());
+                crate::term::trace(format_args!("{what}：{}（{kind}）", info.path.display()));
+                Fallback::Loaded(face)
+            }
+            Err(e) => {
+                crate::term::trace(format_args!("{what} {} 不可用：{e}", info.path.display()));
+                Fallback::Failed
+            }
+        };
+    }
+}
+
+/// 优先用彩色 emoji 字体显示的字符：占两格的符号和图形（不包括汉字），以及组成国旗的区域指示符
+/// （两个合成一面国旗要靠字体的连字规则，还没实现，暂时分开显示成两个带框的字母）
+fn prefers_emoji(c: char) -> bool {
+    let cp = c as u32;
+    (0x1F1E6..=0x1F1FF).contains(&cp)
+        || char_width(c) == 2
+            && (cp >= 0x1F000 || (0x2190..=0x2BFF).contains(&cp) || matches!(cp, 0x3030 | 0x303D | 0x3297 | 0x3299))
 }
 
 /// 没有粗体字体时"伪粗体"：把字形向右多描一个像素
@@ -265,13 +406,16 @@ fn bitmap_glyph(font: &psf::Font, c: char, top: i32) -> Option<Glyph> {
                 .map(move |x| if bits[y * font.bytes_per_row + x / 8] & (0x80 >> (x % 8)) != 0 { 255 } else { 0 })
         })
         .collect();
-    Some(Glyph { left: 0, top, width: font.width, height: font.height, alpha })
+    Some(Glyph { left: 0, top, width: font.width, height: font.height, pixels: Pixels::Alpha(alpha) })
 }
 
-/// 读入整个字体文件。字体在程序运行期间一直要用，所以直接泄漏成 'static。
+/// 把字体文件映射进内存。映射失败（比如某些网络文件系统）时退回整个读进来，并泄漏成 'static。
 fn load_face(info: &FaceInfo) -> Result<ttf::Face, String> {
-    let data = std::fs::read(&info.path).map_err(|e| e.to_string())?;
-    ttf::Face::parse(Box::leak(data.into_boxed_slice()), info.index)
+    let data = match mmap::map(&info.path) {
+        Ok(data) => data,
+        Err(_) => Box::leak(std::fs::read(&info.path).map_err(|e| e.to_string())?.into_boxed_slice()),
+    };
+    ttf::Face::parse(data, info.index)
 }
 
 /// 系统字体列表，第一次按名字查找时才扫描
@@ -288,5 +432,48 @@ impl Library {
         }
         let faces = self.faces.get_or_insert_with(discover::scan);
         faces.iter().filter(|f| f.families.iter().any(|family| family.to_lowercase() == lower)).cloned().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn face_info(path: &str) -> FaceInfo {
+        FaceInfo { path: path.into(), index: 0, families: vec![], weight: 400, italic: false }
+    }
+
+    /// 只在本地运行：CONGMINAL_TEST_COLR_FONT 指向一个 COLR 字体（比如 Twemoji Mozilla）。
+    /// 设置了 CONGMINAL_TEST_DUMP 时把画出来的 🦀 存成 PPM 图片，方便用眼睛检查。
+    #[test]
+    fn colr_emoji() {
+        let Ok(path) = std::env::var("CONGMINAL_TEST_COLR_FONT") else { return };
+        let face = load_face(&face_info(&path)).unwrap();
+        assert_eq!(color::ColorTables::new(&face).map(|t| t.kind()), Some("COLR"));
+        let outline = Outline {
+            regular: load_face(&face_info(&path)).unwrap(),
+            bold: None,
+            fallbacks: vec![],
+            emoji: vec![],
+            pixel_size: 48.0,
+            baseline: 40,
+            cell_height: 60,
+        };
+        let glyph = outline.color_glyph(&face, face.glyph_index('🦀'), '🦀', 28).expect("🦀 应该有彩色版本");
+        let Pixels::Color(pixels) = &glyph.pixels else { panic!("应该是彩色字形") };
+        // 螃蟹是橙红色的：不透明的像素里，红色分量应该明显大于蓝色
+        let opaque: Vec<_> = pixels.iter().filter(|&&p| p >> 24 == 255).collect();
+        assert!(opaque.len() > pixels.len() / 4, "不透明的像素太少");
+        let reddish = opaque.iter().filter(|&&&p| (p >> 16 & 0xFF) > (p & 0xFF) + 60).count();
+        assert!(reddish > opaque.len() / 2, "大部分应该是红色");
+        if let Ok(out) = std::env::var("CONGMINAL_TEST_DUMP") {
+            let mut ppm = format!("P6 {} {} 255\n", glyph.width, glyph.height).into_bytes();
+            for p in pixels {
+                // 盖在白底上看
+                let a = p >> 24;
+                ppm.extend([16, 8, 0].map(|s| ((p >> s & 0xFF) + 255 - a) as u8));
+            }
+            std::fs::write(out, ppm).unwrap();
+        }
     }
 }

@@ -1,7 +1,7 @@
 //! 软件渲染：把终端网格画进一块像素缓冲区，再交给平台层贴到窗口上。
 
 use crate::config::{Colors, Config};
-use crate::font::{Fonts, Glyph};
+use crate::font::{Fonts, Glyph, Pixels};
 use crate::selection::Point;
 use crate::term::{Cell, Color, CursorShape, Flags, Terminal, char_width};
 
@@ -289,7 +289,8 @@ impl Renderer {
     }
 }
 
-/// 按覆盖率把字的颜色混合到背景上（抗锯齿的边缘是半透明的）
+/// 把字形贴到屏幕上。普通字形按覆盖率混合文字颜色（抗锯齿的边缘是半透明的）；
+/// 彩色字形（emoji）用自己的颜色，按透明度盖在背景上
 fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32) {
     for gy in 0..glyph.height {
         let py = y + gy as i32;
@@ -297,14 +298,38 @@ fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32) 
             continue;
         }
         let line = &mut fb.pixels[py as usize * fb.width..(py as usize + 1) * fb.width];
-        let coverage = &glyph.alpha[gy * glyph.width..(gy + 1) * glyph.width];
-        for (gx, &a) in coverage.iter().enumerate() {
+        for gx in 0..glyph.width {
             let px = x + gx as i32;
-            if a == 0 || px < 0 || px as usize >= line.len() {
+            if px < 0 || px as usize >= line.len() {
                 continue;
             }
             let pixel = &mut line[px as usize];
-            *pixel = if a == 255 { color } else { mix(color, *pixel, a as u32) };
+            let i = gy * glyph.width + gx;
+            match &glyph.pixels {
+                Pixels::Alpha(alpha) => match alpha[i] {
+                    0 => {}
+                    255 => *pixel = color,
+                    a => *pixel = mix(color, *pixel, a as u32),
+                },
+                Pixels::Color(colors) => *pixel = over(colors[i], *pixel),
+            }
+        }
+    }
+}
+
+/// 预乘透明度的颜色盖在背景上：结果 = 源 + 背景 × (1 - 源的不透明度)
+fn over(src: u32, dst: u32) -> u32 {
+    let a = src >> 24;
+    match a {
+        0 => dst,
+        255 => src & 0xFFFFFF,
+        _ => {
+            let channel = |shift: u32| {
+                let s = (src >> shift) & 0xFF;
+                let d = (dst >> shift) & 0xFF;
+                ((s + (d * (255 - a) + 127) / 255).min(255)) << shift
+            };
+            channel(16) | channel(8) | channel(0)
         }
     }
 }

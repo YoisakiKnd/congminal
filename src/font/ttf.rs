@@ -34,8 +34,10 @@ enum Cmap {
 
 pub struct Face {
     data: &'static [u8],
-    glyf: usize,
-    loca: usize,
+    directory: TableDirectory,
+    /// 彩色 emoji 字体（CBDT）可以没有轮廓
+    glyf: Option<usize>,
+    loca: Option<usize>,
     loca_long: bool,
     hmtx: usize,
     num_hmetrics: u16,
@@ -64,8 +66,8 @@ impl Face {
 
         Ok(Face {
             data,
-            glyf: table(b"glyf")?,
-            loca: table(b"loca")?,
+            glyf: tables.find(data, b"glyf"),
+            loca: tables.find(data, b"loca"),
             loca_long: i16_at(data, head + 50).ok_or_else(err)? != 0,
             hmtx: table(b"hmtx")?,
             num_hmetrics: u16_at(data, hhea + 34).ok_or_else(err)?,
@@ -75,7 +77,18 @@ impl Face {
             ascender: i16_at(data, hhea + 4).ok_or_else(err)?,
             descender: i16_at(data, hhea + 6).ok_or_else(err)?,
             line_gap: i16_at(data, hhea + 8).ok_or_else(err)?,
+            directory: tables,
         })
+    }
+
+    /// 按名字取一张表的内容
+    pub fn table(&self, tag: &[u8; 4]) -> Option<&'static [u8]> {
+        let (offset, len) = self.directory.find_with_len(self.data, tag)?;
+        self.data.get(offset..offset + len)
+    }
+
+    pub fn num_glyphs(&self) -> u16 {
+        self.num_glyphs
     }
 
     /// 字符对应的字形编号，0 表示字体里没有这个字
@@ -161,16 +174,17 @@ impl Face {
         if glyph >= self.num_glyphs {
             return None;
         }
+        let (glyf, loca) = (self.glyf?, self.loca?);
         let i = glyph as usize;
         let (start, end) = if self.loca_long {
-            (u32_at(self.data, self.loca + 4 * i)? as usize, u32_at(self.data, self.loca + 4 * i + 4)? as usize)
+            (u32_at(self.data, loca + 4 * i)? as usize, u32_at(self.data, loca + 4 * i + 4)? as usize)
         } else {
-            (2 * u16_at(self.data, self.loca + 2 * i)? as usize, 2 * u16_at(self.data, self.loca + 2 * i + 2)? as usize)
+            (2 * u16_at(self.data, loca + 2 * i)? as usize, 2 * u16_at(self.data, loca + 2 * i + 2)? as usize)
         };
         if start >= end {
             return None;
         }
-        self.data.get(self.glyf + start..self.glyf + end)
+        self.data.get(glyf + start..glyf + end)
     }
 
     fn append_outline(&self, glyph: u16, transform: Transform, depth: u32, out: &mut Vec<Segment>) -> Option<()> {

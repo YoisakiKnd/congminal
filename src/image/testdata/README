@@ -1,0 +1,6 @@
+inflate 测试：
+  dynamic.txt：随机拼接的中英文单词
+  dynamic.zlib：python3 -c "import zlib; zlib.compress(text, 9)"（压缩结果使用动态哈夫曼块）
+
+PNG 测试图片由 ImageMagick 6 生成（convert -seed 7 -size 37x23 plasma:fractal ...，见提交记录），
+同名的 .rgba 文件是用 `convert x.png -depth 8 rgba:x.rgba` 解码出来的标准答案。
