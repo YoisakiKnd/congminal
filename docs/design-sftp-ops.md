@@ -2,6 +2,8 @@
 
 左栏“文件”页的 SFTP 目录视图新增三个远端写操作。所有写操作都由用户显式点击或按键触发，走既有 Service 队列、预算、取消与认证流程，不新增线程、子进程或后台设施。
 
+平台范围：SFTP 服务层本就是 Unix 专用（`src/sftp/service.rs` 以 `cfg(unix)` 编译），因此写操作函数（`operations::mkdir/rename/remove`）与本地 `sftp-server` 互操作测试同样只在 Unix 构建中编译；Windows/macOS 交叉编译仍通过 `cargo check` 与 `clippy -D warnings`，只是不含这条写路径。
+
 ## 入口、配置与快捷键
 
 | 项目 | 值 |
