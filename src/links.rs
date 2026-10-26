@@ -1,11 +1,12 @@
 //! OSC 8 目标池和按需可见 URL 命中；只接受 http/https，解析不执行外部动作。
 use crate::{
-    hash::FnvHashMap,
+    resources::{Budget, Kind, Tracked},
     selection::Point,
     term::{Flags, Terminal},
     text,
 };
 use std::collections::VecDeque;
+use std::sync::Arc;
 pub const URL_LIMIT: usize = 2048;
 const ENTRY_LIMIT: usize = 1024;
 const BYTE_LIMIT: usize = 1024 * 1024;
@@ -24,46 +25,130 @@ pub fn valid_url(url: &str) -> bool {
     !authority.is_empty() && !authority.starts_with(':')
 }
 
+/// 唯一拥有者；文本、票据一起移到复制请求或后台打开任务，不提供隐式Clone。
+pub(crate) struct Url(Tracked<String>);
+impl Url {
+    pub(crate) fn new(text: &str, pool: &Arc<Budget>) -> Option<Self> {
+        if text.len() > URL_LIMIT {
+            return None;
+        }
+        let memory = pool.lease(Kind::Links, text.len()).ok()?;
+        let mut value = Tracked::new(String::new(), memory);
+        value.data.try_reserve_exact(text.len()).ok()?;
+        value.memory.resize(value.capacity()).ok()?;
+        value.data.push_str(text);
+        Some(Self(value))
+    }
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0.data
+    }
+    pub(crate) fn into_text(self) -> Tracked<String> {
+        self.0
+    }
+}
+impl std::ops::Deref for Url {
+    type Target = str;
+    fn deref(&self) -> &str {
+        self.as_str()
+    }
+}
+impl std::fmt::Display for Url {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_str().fmt(f)
+    }
+}
+impl std::fmt::Debug for Url {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(self.as_str(), f)
+    }
+}
+impl PartialEq for Url {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+impl Eq for Url {}
+impl PartialEq<&str> for Url {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+#[cfg(test)]
+impl From<&str> for Url {
+    fn from(text: &str) -> Self {
+        Self::new(text, &crate::resources::current()).expect("测试URL额度")
+    }
+}
+
 struct Entry {
-    url: String,
+    id: u32,
+    url: Url,
     last_line: u64,
 }
-#[derive(Default)]
 pub struct Links {
-    entries: FnvHashMap<u32, Entry>,
-    order: VecDeque<u32>,
+    entries: Tracked<VecDeque<Entry>>,
     bytes: usize,
     next: u32,
 }
+impl Default for Links {
+    fn default() -> Self {
+        let pool = crate::resources::current();
+        Self { entries: Tracked::new(VecDeque::new(), pool.lease(Kind::Links, 0).unwrap()), bytes: 0, next: 0 }
+    }
+}
 impl Links {
-    pub fn insert(&mut self, url: String, line: u64) -> u32 {
-        if !valid_url(&url) || self.next == Flags::MAX_LINK_ID {
+    pub fn insert(&mut self, url: &str, line: u64) -> u32 {
+        if !valid_url(url) || self.next == Flags::MAX_LINK_ID {
             return 0;
         }
+        let Some(url) = Url::new(url, self.entries.memory.budget()) else { return 0 };
+        if self.entries.len() < ENTRY_LIMIT
+            && self.bytes + url.len() <= BYTE_LIMIT
+            && self.entries.len() == self.entries.capacity()
+        {
+            let capacity = (self.entries.len() + 1).next_power_of_two().clamp(4, ENTRY_LIMIT);
+            let width = std::mem::size_of::<Entry>();
+            let old = self.entries.capacity() * width;
+            if self.entries.memory.resize(old + capacity * width).is_err() {
+                return 0;
+            }
+            if self.entries.data.try_reserve_exact(capacity - self.entries.len()).is_err() {
+                self.entries.memory.resize(old).unwrap();
+                return 0;
+            }
+            self.entries.memory.resize(self.entries.capacity() * width).unwrap();
+        }
         while self.entries.len() >= ENTRY_LIMIT || self.bytes + url.len() > BYTE_LIMIT {
-            let Some(id) = self.order.pop_front() else {
+            let Some(entry) = self.entries.data.pop_front() else {
                 break;
             };
-            if let Some(entry) = self.entries.remove(&id) {
-                self.bytes -= entry.url.len();
-            }
+            self.bytes -= entry.url.len();
         }
         self.next += 1;
         self.bytes += url.len();
-        self.order.push_back(self.next);
-        self.entries.insert(self.next, Entry { url, last_line: line });
+        self.entries.data.push_back(Entry { id: self.next, url, last_line: line });
         self.next
     }
+    #[inline(always)]
+    fn index(&self, id: u32) -> Option<usize> {
+        let candidate = id.checked_sub(self.entries.front()?.id)? as usize;
+        if self.entries.get(candidate).is_some_and(|entry| entry.id == id) {
+            return Some(candidate);
+        }
+        // 稀疏淘汰后位置不再等于ID差值，只在核对真实ID失败时查找，绝不重定向旧格子。
+        self.entries.binary_search_by_key(&id, |e| e.id).ok()
+    }
     pub fn get(&self, id: u32) -> Option<&str> {
-        self.entries.get(&id).map(|entry| entry.url.as_str())
+        self.index(id).map(|index| self.entries[index].url.as_str())
     }
     pub fn touch(&mut self, id: u32, line: u64) {
-        if let Some(entry) = self.entries.get_mut(&id) {
+        if let Some(index) = self.index(id) {
+            let entry = &mut self.entries.data[index];
             entry.last_line = entry.last_line.max(line);
         }
     }
     pub fn reflow(&mut self, end: u64) {
-        for entry in self.entries.values_mut() {
+        for entry in &mut self.entries.data {
             entry.last_line = end;
         }
     }
@@ -71,24 +156,23 @@ impl Links {
         if self.entries.is_empty() {
             return;
         }
-        self.entries.retain(|&id, entry| {
-            if entry.last_line >= oldest || id == active {
+        self.entries.data.retain(|entry| {
+            if entry.last_line >= oldest || entry.id == active {
                 true
             } else {
                 self.bytes -= entry.url.len();
                 false
             }
         });
-        self.order.retain(|id| self.entries.contains_key(id));
     }
     pub fn resource_bytes(&self) -> usize {
-        self.bytes + self.entries.capacity() * std::mem::size_of::<(u32, Entry)>() + self.order.capacity() * 4
+        self.entries.memory.bytes() + self.entries.iter().map(|e| e.url.0.capacity()).sum::<usize>()
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Hit {
-    pub url: String,
+    pub url: Url,
     pub range: (Point, Point),
 }
 
@@ -122,13 +206,16 @@ fn next(term: &Terminal, mut p: Point) -> Option<Point> {
     }
     Some(p)
 }
-fn word_piece(term: &Terminal, p: Point) -> Option<String> {
+fn word_piece(term: &Terminal, p: Point) -> Option<impl Iterator<Item = char> + Clone + '_> {
     let row = term.row_by_id(p.line)?;
-    if row.cells[p.col].flags.contains(Flags::HIDDEN) {
+    let cell = row.cells.get(p.col)?;
+    if cell.flags.contains(Flags::HIDDEN) || cell.flags.contains(Flags::WIDE_SPACER) {
         return None;
     }
-    let text = text::cell_text(term, row, p.col);
-    (!text.chars().any(|c| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>' | '"' | '\'' | '`')))
+    let marks = term.marks(cell.marks);
+    let vs = (cell.flags.contains(Flags::EMOJI) && !marks.starts_with('\u{FE0F}')).then_some('\u{FE0F}');
+    let text = std::iter::once(cell.c).chain(vs).chain(marks.chars());
+    (!text.clone().any(|c| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>' | '"' | '\'' | '`')))
         .then_some(text)
 }
 
@@ -147,7 +234,7 @@ pub fn at(term: &Terminal, mut p: Point) -> Option<Hit> {
     }
     let id = row.cells[p.col].flags.link_id();
     if id != 0 {
-        let url = term.link_url(id)?.to_string();
+        let url = Url::new(term.link_url(id)?, term.resource_budget())?;
         let (mut first, mut last) = (p, p);
         for _ in 0..URL_LIMIT {
             let Some(prev) = previous(term, first).filter(|p| p.line >= oldest) else {
@@ -174,38 +261,55 @@ pub fn at(term: &Terminal, mut p: Point) -> Option<Hit> {
         }
         return Some(Hit { url, range: (first, last) });
     }
-    let mut pieces = VecDeque::new();
-    let mut bytes = 0;
-    let mut cursor = p;
-    while let Some(piece) = word_piece(term, cursor) {
-        bytes += piece.len();
+    let mut bytes = word_piece(term, p)?.map(char::len_utf8).sum::<usize>();
+    let mut first = p;
+    while let Some(before) = previous(term, first).filter(|p| p.line >= oldest) {
+        let Some(piece) = word_piece(term, before) else { break };
+        bytes += piece.map(char::len_utf8).sum::<usize>();
         if bytes > URL_LIMIT {
             return None;
         }
-        pieces.push_front((cursor, piece));
-        let Some(before) = previous(term, cursor).filter(|p| p.line >= oldest) else {
-            break;
-        };
-        cursor = before;
+        first = before;
     }
-    cursor = p;
-    while let Some(after) = next(term, cursor) {
+    let mut last = p;
+    while let Some(after) = next(term, last) {
         let Some(piece) = word_piece(term, after) else {
             break;
         };
-        bytes += piece.len();
+        bytes += piece.map(char::len_utf8).sum::<usize>();
         if bytes > URL_LIMIT {
             return None;
         }
-        pieces.push_back((after, piece));
-        cursor = after;
+        last = after;
     }
-    let mut token = String::with_capacity(bytes);
-    let mut offsets = Vec::with_capacity(pieces.len());
-    for (point, piece) in &pieces {
-        offsets.push((token.len(), *point));
-        token.push_str(piece);
+    if bytes > URL_LIMIT {
+        return None;
     }
+    // 同一有界词最多2048 UTF-8字节；只在最后确认URL时分配拥有者。
+    let mut token = [0u8; URL_LIMIT];
+    let mut length = 0;
+    let mut target = 0;
+    let mut cursor = first;
+    loop {
+        if cursor == p {
+            target = length;
+        }
+        for c in word_piece(term, cursor)? {
+            let mut encoded = [0; 4];
+            let text = c.encode_utf8(&mut encoded).as_bytes();
+            let end = length + text.len();
+            if end > URL_LIMIT {
+                return None;
+            }
+            token[length..end].copy_from_slice(text);
+            length = end;
+        }
+        if cursor == last {
+            break;
+        }
+        cursor = next(term, cursor)?;
+    }
+    let token = std::str::from_utf8(&token[..length]).ok()?;
     let start = token.char_indices().find_map(|(i, _)| {
         let tail = &token[i..];
         ((i == 0 || token[..i].ends_with(['(', '[', '{']))
@@ -240,16 +344,31 @@ pub fn at(term: &Terminal, mut p: Point) -> Option<Hit> {
     if !valid_url(url) {
         return None;
     }
-    let target = offsets.iter().find(|(_, point)| *point == p)?.0;
     if target < start || target >= stop {
         return None;
     }
-    let first = offsets.iter().find(|(i, _)| *i == start)?.1;
-    let mut last = offsets.iter().rfind(|(i, _)| *i < stop)?.1;
-    if term.row_by_id(last.line)?.cells[last.col].flags.contains(Flags::WIDE) {
-        last.col += 1;
+    let mut cursor = first;
+    let mut offset = 0;
+    let mut url_first = None;
+    let mut url_last = None;
+    loop {
+        if offset == start {
+            url_first = Some(cursor);
+        }
+        if offset < stop {
+            url_last = Some(cursor);
+        }
+        offset += word_piece(term, cursor)?.map(char::len_utf8).sum::<usize>();
+        if offset >= stop {
+            break;
+        }
+        cursor = next(term, cursor)?;
     }
-    Some(Hit { url: url.to_string(), range: (first, last) })
+    let mut url_last = url_last?;
+    if term.row_by_id(url_last.line)?.cells[url_last.col].flags.contains(Flags::WIDE) {
+        url_last.col += 1;
+    }
+    Some(Hit { url: Url::new(url, term.resource_budget())?, range: (url_first?, url_last) })
 }
 
 #[cfg(test)]
@@ -258,6 +377,111 @@ mod tests {
     use crate::vt::Parser;
     fn hit(term: &Terminal, line: u64, col: usize) -> Option<Hit> {
         at(term, Point { line, col })
+    }
+    #[test]
+    fn pool_admission_growth_refusal_preserves_old_ids_and_creation_budget() {
+        use crate::resources::Scope;
+        let pool = Budget::new(256 * 1024, 0);
+        let mut links = {
+            let _scope = Scope::enter(pool.clone());
+            Links::default()
+        };
+        let other = Budget::new(0, 0);
+        let _scope = Scope::enter(other.clone());
+        let mut ids = [0; 4];
+        for id in &mut ids {
+            *id = links.insert("https://h/", 0);
+            assert_ne!(*id, 0);
+        }
+        assert_eq!(links.entries.capacity(), 4);
+        assert_eq!(pool.snapshot().used, links.resource_bytes());
+        let before = links.resource_bytes();
+        let spare = "https://new/".len();
+        let hold = pool.lease(Kind::Queue, pool.snapshot().limit - pool.snapshot().used - spare).unwrap();
+        assert_eq!(links.insert("https://new/", 1), 0); // URL可付，但新旧记录块不能同时容纳。
+        for id in ids {
+            assert_eq!(links.get(id), Some("https://h/"));
+        }
+        assert_eq!(links.next, 4);
+        assert_eq!(links.resource_bytes(), before);
+        drop(hold);
+        assert_eq!(links.insert("https://new/", 1), 5);
+        assert_eq!(other.snapshot().used, 0);
+        drop(links);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn sparse_prune_wrapped_records_and_id_exhaustion_never_retarget_cells() {
+        let mut links = Links::default();
+        for line in 0..4096 {
+            assert_ne!(links.insert("https://h/", line), 0);
+        }
+        let kept: Vec<_> = links.entries.iter().map(|e| e.id).collect();
+        for id in kept.iter().step_by(2) {
+            links.touch(*id, 10000);
+        }
+        links.prune(10000, 0);
+        for (i, id) in kept.iter().enumerate() {
+            assert_eq!(links.get(*id).is_some(), i % 2 == 0);
+        }
+        for _ in 0..512 {
+            links.insert("https://new/", 10001);
+        }
+        for id in kept.iter().step_by(2) {
+            assert_eq!(links.get(*id), Some("https://h/"));
+        }
+        assert_eq!(links.entries.len(), ENTRY_LIMIT);
+        assert_eq!(links.insert("https://last/", 10002), 4609);
+        assert!(links.get(kept[0]).is_none());
+        links.next = Flags::MAX_LINK_ID;
+        let bytes = links.resource_bytes();
+        assert_eq!(links.insert("https://denied/", 10003), 0);
+        assert_eq!(links.resource_bytes(), bytes);
+        links.reflow(20000);
+        links.prune(20001, 4609);
+        assert_eq!(links.entries.len(), 1);
+        assert_eq!(links.get(4609), Some("https://last/"));
+    }
+    #[test]
+    fn detection_borrows_cell_semantics_and_owned_url_survives_source_and_scope() {
+        use crate::resources::Scope;
+        let pool = Budget::new(16 * 1024 * 1024, 0);
+        let mut term = {
+            let _scope = Scope::enter(pool.clone());
+            Terminal::new(80, 8)
+        };
+        Parser::new()
+            .advance(&mut term, "中😀 e\u{301} \x1b[8mhidden\x1b[0m https://example.com/文e\u{301} next".as_bytes());
+        for line in 0..8 {
+            let row = term.row_by_id(line).unwrap();
+            for col in 0..row.cells.len() {
+                if row.cells[col].flags.contains(Flags::WIDE_SPACER) {
+                    continue;
+                }
+                let old = text::cell_text(&term, row, col);
+                let expected = !row.cells[col].flags.contains(Flags::HIDDEN)
+                    && !old
+                        .chars()
+                        .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>' | '"' | '\'' | '`'));
+                assert_eq!(
+                    word_piece(&term, Point { line, col }).map(|s| s.collect::<String>()),
+                    expected.then_some(old)
+                );
+            }
+        }
+        let other = Budget::new(0, 0);
+        let _scope = Scope::enter(other.clone());
+        let found = (0..80).find_map(|col| hit(&term, 0, col)).unwrap();
+        assert_eq!(found.url, "https://example.com/文e\u{301}");
+        let pointer = found.url.as_ptr();
+        let bytes = found.url.len();
+        let request = crate::platform::CopyText::from_url(found.url, 1);
+        assert_eq!(request.as_ptr(), pointer);
+        drop(term);
+        assert_eq!(pool.snapshot().used, bytes);
+        assert_eq!(other.snapshot().used, 0);
+        drop(request);
+        assert_eq!(pool.snapshot().used, 0);
     }
     #[test]
     fn osc8_survives_sgr_and_reflow_and_never_opens_from_output() {
@@ -319,15 +543,15 @@ mod tests {
     fn pool_is_bounded_eviction_never_retargets_old_cells_and_dropped_history_is_pruned() {
         assert_eq!(std::mem::size_of::<crate::term::Cell>(), 20);
         let mut pool = Links::default();
-        let first = pool.insert("https://first.example".into(), 0);
+        let first = pool.insert("https://first.example", 0);
         for i in 0..10_000 {
-            pool.insert(format!("https://{i}.example/{}", "x".repeat(1000)), i);
+            pool.insert(&format!("https://{i}.example/{}", "x".repeat(1000)), i);
         }
         assert!(pool.get(first).is_none());
         assert!(pool.entries.len() <= ENTRY_LIMIT && pool.bytes <= BYTE_LIMIT);
         pool.prune(20_000, 0);
         assert!(pool.entries.is_empty());
-        let id = pool.insert("https://new.example".into(), 20_000);
+        let id = pool.insert("https://new.example", 20_000);
         assert_ne!(first, id);
         let mut term = Terminal::new(20, 2);
         term.set_scrollback_limit(1);

@@ -33,6 +33,25 @@ enum Cmap {
     Format12(usize),
 }
 
+#[derive(Debug)]
+pub(super) enum Error {
+    Message(&'static str),
+    Missing([u8; 4]),
+}
+impl From<&'static str> for Error {
+    fn from(s: &'static str) -> Self {
+        Self::Message(s)
+    }
+}
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Message(s) => f.write_str(s),
+            Self::Missing(tag) => write!(f, "缺少或损坏的 {} 表", std::str::from_utf8(tag).unwrap_or("????")),
+        }
+    }
+}
+
 pub struct Face {
     data: Bytes,
     directory: TableDirectory,
@@ -51,8 +70,11 @@ pub struct Face {
 }
 
 impl Face {
+    pub(super) fn budget(&self) -> &std::sync::Arc<crate::resources::Budget> {
+        self.data.budget()
+    }
     /// 解析字体文件。`index` 是字体集合（.ttc）里的第几个字体，普通 .ttf 填 0。
-    pub fn parse(data: Bytes, index: usize) -> Result<Face, String> {
+    pub fn parse(data: Bytes, index: usize) -> Result<Face, Error> {
         let bytes = data;
         let data = &*bytes;
         let tables = TableDirectory::read(data, index).ok_or("字体文件头损坏")?;
@@ -66,14 +88,14 @@ impl Face {
                     data.get(offset..offset.checked_add(len)?)?;
                     Some(offset)
                 })
-                .ok_or(format!("缺少或损坏的 {} 表", String::from_utf8_lossy(tag)))
+                .ok_or(Error::Missing(*tag))
         };
 
         let head = table(b"head")?;
         let hhea = table(b"hhea")?;
         let maxp = table(b"maxp")?;
         let cmap = table(b"cmap")?;
-        let err = || "字体表损坏".to_string();
+        let err = || Error::Message("字体表损坏");
 
         Ok(Face {
             glyf: table(b"glyf").ok(),
@@ -175,13 +197,12 @@ impl Face {
     }
 
     /// 取出字形轮廓。空字形（比如空格）返回空列表。
-    pub fn outline(&self, glyph: u16) -> Vec<Segment> {
-        let mut segments = Vec::new();
+    pub fn outline(&self, glyph: u16) -> Option<crate::resources::Tracked<Vec<Segment>>> {
+        let memory = self.data.budget().lease(crate::resources::Kind::FontOutline, 0).unwrap();
+        let mut segments = crate::resources::Tracked::new(Vec::new(), memory);
         let mut budget = 4096;
-        if self.append_outline(glyph, Transform::IDENTITY, 0, &mut segments, &mut budget).is_none() {
-            segments.clear();
-        }
-        segments
+        self.append_outline(glyph, Transform::IDENTITY, 0, &mut segments, &mut budget)?;
+        Some(segments)
     }
 
     fn glyph_data(&self, glyph: u16) -> Option<&[u8]> {
@@ -206,7 +227,7 @@ impl Face {
         glyph: u16,
         transform: Transform,
         depth: u32,
-        out: &mut Vec<Segment>,
+        out: &mut crate::resources::Tracked<Vec<Segment>>,
         budget: &mut usize,
     ) -> Option<()> {
         if *budget == 0 || out.len() >= 65536 {
@@ -233,7 +254,7 @@ impl Face {
         g: &[u8],
         parent: Transform,
         depth: u32,
-        out: &mut Vec<Segment>,
+        out: &mut crate::resources::Tracked<Vec<Segment>>,
         budget: &mut usize,
     ) -> Option<()> {
         const ARG_1_AND_2_ARE_WORDS: u16 = 0x0001;
@@ -285,7 +306,12 @@ impl Face {
 }
 
 /// 简单字形：若干条闭合轮廓，每个点要么在曲线上，要么是二次贝塞尔的控制点
-fn simple_glyph(g: &[u8], contours: usize, t: Transform, out: &mut Vec<Segment>) -> Option<()> {
+fn simple_glyph(
+    g: &[u8],
+    contours: usize,
+    t: Transform,
+    out: &mut crate::resources::Tracked<Vec<Segment>>,
+) -> Option<()> {
     const ON_CURVE: u8 = 0x01;
     const X_SHORT: u8 = 0x02;
     const Y_SHORT: u8 = 0x04;
@@ -296,13 +322,30 @@ fn simple_glyph(g: &[u8], contours: usize, t: Transform, out: &mut Vec<Segment>)
     if contours == 0 {
         return Some(());
     }
-    let ends: Vec<usize> = (0..contours).map(|i| u16_at(g, 10 + 2 * i).map(|e| e as usize)).collect::<Option<_>>()?;
-    let num_points = *ends.last()? + 1;
-    if num_points > (65536usize.saturating_sub(out.len())) / 2 {
+    let num_points = u16_at(g, 8 + 2 * contours)? as usize + 1;
+    if contours > num_points || num_points > (65536usize.saturating_sub(out.len())) / 2 {
         return None;
     }
     let instructions = u16_at(g, 10 + 2 * contours)? as usize;
     let mut pos = 12 + 2 * contours + instructions;
+    g.get(..pos)?;
+    // 此票据先声明，所有临时 Vec 在提前返回时也先销毁。含一条最长轮廓的点对。
+    let _scratch = out
+        .memory
+        .budget()
+        .lease(
+            crate::resources::Kind::FontOutline,
+            contours * std::mem::size_of::<usize>() + num_points * (1 + 8 + std::mem::size_of::<(Point, bool)>()),
+        )
+        .ok()?;
+    let mut ends = Vec::with_capacity(contours);
+    for i in 0..contours {
+        ends.push(u16_at(g, 10 + 2 * i)? as usize);
+    }
+    let required = out.len() + 2 * num_points;
+    if required > out.capacity() {
+        out.reserve_capacity(required.max(out.capacity().saturating_mul(2)).min(65536))?;
+    }
 
     // 标志位：带 REPEAT 时下一个字节是重复次数
     let mut flags = Vec::with_capacity(num_points);
@@ -350,7 +393,7 @@ fn simple_glyph(g: &[u8], contours: usize, t: Transform, out: &mut Vec<Segment>)
         }
         let points: Vec<(Point, bool)> =
             (start..=end).map(|i| (t.apply(Point { x: xs[i], y: ys[i] }), flags[i] & ON_CURVE != 0)).collect();
-        emit_contour(&points, out);
+        emit_contour(&points, &mut out.data);
         start = end + 1;
     }
     Some(())
@@ -442,6 +485,18 @@ pub struct TableDirectory {
 }
 
 impl TableDirectory {
+    pub(super) fn prefix_records(&self, data: &[u8]) -> usize {
+        self.offset
+            .checked_add(12)
+            .and_then(|start| data.len().checked_sub(start))
+            .map_or(0, |bytes| self.num_tables.min(bytes / 16))
+    }
+    pub(super) fn prefix_complete(&self, data: &[u8]) -> bool {
+        self.offset
+            .checked_add(12)
+            .and_then(|n| self.num_tables.checked_mul(16).and_then(|size| n.checked_add(size)))
+            .is_some_and(|end| end <= data.len())
+    }
     pub fn read(data: &[u8], index: usize) -> Option<TableDirectory> {
         let offset = if data.get(0..4)? == b"ttcf" {
             let count = u32_at(data, 8)? as usize;
@@ -466,7 +521,7 @@ impl TableDirectory {
     }
 
     pub fn find_with_len(&self, data: &[u8], tag: &[u8; 4]) -> Option<(usize, usize)> {
-        (0..self.num_tables).find_map(|i| {
+        (0..self.prefix_records(data)).find_map(|i| {
             let record = self.offset + 12 + 16 * i;
             if data.get(record..record + 4)? != tag {
                 return None;
@@ -536,11 +591,15 @@ mod boundary_tests {
 }
 
 #[cfg(test)]
-mod fixture_tests {
+pub(super) mod fixture_tests {
     use super::*;
 
     /// 独立构造的最小 TrueType：A 是一个矩形，不依赖本机字体或下载。
     fn fixture() -> Vec<u8> {
+        fixture_with_table(None)
+    }
+
+    pub(in crate::font) fn fixture_with_table(extra: Option<([u8; 4], Vec<u8>)>) -> Vec<u8> {
         let mut head = vec![0; 54];
         head[18..20].copy_from_slice(&1000u16.to_be_bytes());
         head[50..52].copy_from_slice(&1u16.to_be_bytes());
@@ -564,7 +623,7 @@ mod fixture_tests {
         for n in [28u32, 0, 1, 65, 65, 1] {
             cmap.extend(n.to_be_bytes());
         }
-        let tables = [
+        let mut tables = vec![
             (*b"head", head),
             (*b"hhea", hhea),
             (*b"maxp", vec![0, 1, 0, 0, 0, 2]),
@@ -573,6 +632,9 @@ mod fixture_tests {
             (*b"glyf", glyph),
             (*b"cmap", cmap),
         ];
+        if let Some(extra) = extra {
+            tables.push(extra);
+        }
         let mut data = vec![0; 12 + 16 * tables.len()];
         data[..4].copy_from_slice(&0x00010000u32.to_be_bytes());
         data[4..6].copy_from_slice(&(tables.len() as u16).to_be_bytes());
@@ -593,13 +655,128 @@ mod fixture_tests {
         assert_eq!(face.glyph_index('A'), 1);
         assert_eq!(face.glyph_index('B'), 0);
         assert_eq!(face.advance(1), 500);
-        let outline = face.outline(1);
+        let outline = face.outline(1).unwrap();
         assert_eq!(outline.len(), 4);
-        let bitmap = crate::font::raster::rasterize(&outline, 0.02).unwrap();
+        let bitmap = crate::font::raster::rasterize(&outline, 0.02, face.budget()).unwrap();
         assert_eq!((bitmap.width, bitmap.height), (12, 14));
         let table = face.table(b"head").unwrap();
         drop(face);
         assert_eq!(u16_at(&table, 18), Some(1000));
+    }
+
+    #[test]
+    fn outline_keeps_the_face_owner_and_releases_after_the_last_buffer() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(16384, 0);
+        let face = {
+            let _scope = Scope::enter(pool.clone());
+            Face::parse(fixture().into(), 0).unwrap()
+        };
+        let other = Budget::new(0, 0);
+        let _scope = Scope::enter(other.clone());
+        let outline = face.outline(1).unwrap();
+        let bytes = outline.capacity() * std::mem::size_of::<Segment>();
+        assert_eq!(pool.snapshot().kinds[11], bytes);
+        assert_eq!(other.snapshot().used, 0);
+        drop(face);
+        assert_eq!(pool.snapshot().used, bytes);
+        drop(outline);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
+    #[test]
+    fn outline_admission_refuses_scratch_and_old_new_growth_without_partial_results() {
+        use crate::resources::{Budget, Kind, Scope, Tracked};
+        let data = fixture();
+        let file = data.len() + crate::font::mmap::storage_bytes();
+        let scratch = std::mem::size_of::<usize>() + 4 * (9 + std::mem::size_of::<(Point, bool)>());
+        let old = 8 * std::mem::size_of::<Segment>();
+        let new = 16 * std::mem::size_of::<Segment>();
+        let pool = Budget::new(file + scratch + old + new - 1, 0);
+        let _scope = Scope::enter(pool.clone());
+        let face = Face::parse(data.into(), 0).unwrap();
+        let mut out = Tracked::new(Vec::new(), pool.lease(Kind::FontOutline, 0).unwrap());
+        let glyph = face.glyph_data(1).unwrap();
+        simple_glyph(glyph, 1, Transform::IDENTITY, &mut out).unwrap();
+        assert_eq!(out.len(), 4);
+        assert!(simple_glyph(glyph, 1, Transform::IDENTITY, &mut out).is_none());
+        assert_eq!(out.len(), 4);
+        assert_eq!(pool.snapshot().used, file + old);
+        drop(out);
+        let _full = pool.lease(Kind::Canvas, pool.snapshot().limit - file).unwrap();
+        assert!(face.outline(1).is_none());
+        assert_eq!(pool.snapshot().kinds[11], 0);
+    }
+
+    #[test]
+    fn colr_working_set_failure_discards_all_layers_and_success_hands_output_to_cache() {
+        use crate::font::{Fonts, Pixels, Source};
+        use crate::resources::{Budget, Kind, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let face = Face::parse(fixture().into(), 0).unwrap();
+        let mut fonts = Fonts::outline(face, None, vec![], vec![], 20.0, 1.0, String::new());
+        let Source::Outline(outline) = &fonts.source else { unreachable!() };
+        let layers = [(1, Some(0xffff0000)), (1, Some(0x800000ff))];
+        let base = pool.snapshot().used;
+        let metadata =
+            layers.len() * std::mem::size_of::<(crate::resources::Tracked<crate::font::raster::Bitmap>, u32)>();
+        // 够保留两个灰度图及单次光栅化，不能再容纳浮点颜色和最终 u32 图。
+        let occupied = pool.lease(Kind::Canvas, pool.snapshot().limit - base - metadata - 336 - 1500).unwrap();
+        assert!(outline.layered_glyph(&outline.regular, 1, &layers, 10).is_none());
+        assert_eq!(pool.snapshot().used, base + occupied.bytes());
+        assert_eq!(pool.snapshot().kinds[10], 0);
+        assert_eq!(pool.snapshot().kinds[11], 0);
+        drop(occupied);
+        let glyph = outline.layered_glyph(&outline.regular, 1, &layers, 10).unwrap();
+        let Pixels::Color(pixels) = &glyph.pixels else { unreachable!() };
+        assert_eq!(pixels[0], 0xff7f0080);
+        assert_eq!(pool.snapshot().kinds[10], pixels.capacity() * 4);
+        crate::font::cache_glyph(&mut fonts.indexed, (1, false), Some(glyph), 0);
+        assert_eq!(pool.snapshot().kinds[10], 0);
+        assert_eq!(pool.snapshot().kinds[11], 0);
+        assert!(fonts.indexed_glyph(1, false).is_some());
+        drop(fonts);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
+    #[test]
+    fn cluster_cache_checks_text_and_span_even_when_fingerprints_collide() {
+        use crate::font::{Cluster, Fonts, Glyph, Pixels};
+        use std::hash::Hasher;
+        let pool = crate::resources::Budget::new(1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let face = Face::parse(fixture().into(), 0).unwrap();
+        let mut fonts = Fonts::outline(face, None, vec![], vec![], 20.0, 1.0, String::new());
+        let mut hash = crate::hash::Fnv::default();
+        hash.write(b"abc");
+        hash.write_usize(2);
+        let key = hash.finish();
+        fonts.clusters.insert(
+            key,
+            Cluster {
+                text: "different".into(),
+                cells: 2,
+                glyph: Some(Glyph { left: 0, top: 0, width: 1, height: 1, pixels: Pixels::Alpha(vec![255]) }),
+            },
+            256,
+        );
+        assert!(fonts.cluster_glyph("abc", 2).is_none());
+        let entry = fonts.clusters.get(&key).unwrap();
+        assert_eq!(entry.text, "abc");
+        assert!(entry.glyph.is_none());
+        let pointer = entry.text.as_ptr();
+        let used = pool.snapshot().used;
+        assert!(fonts.cluster_glyph("abc", 2).is_none());
+        assert_eq!(fonts.clusters.get(&key).unwrap().text.as_ptr(), pointer);
+        assert_eq!(pool.snapshot().used, used);
+        assert!(fonts.cluster_glyph("abc", 3).is_none());
+        assert!(fonts.cluster_glyph(&"x".repeat(1025), 2).is_none());
+        assert_eq!(pool.snapshot().used, used);
+        fonts.clear_caches();
+        assert_eq!(pool.snapshot().kinds[12], 0);
+        drop(fonts);
+        assert_eq!(pool.snapshot().used, 0);
     }
 
     #[test]

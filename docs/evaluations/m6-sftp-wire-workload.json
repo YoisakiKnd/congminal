@@ -1,0 +1,241 @@
+{
+  "method": "wire encode or frame decode/parse/drop only; excludes caller input and OS/SSH/process memory; one-byte fragmentation stress separate; requested Rust allocator bytes and ledger, final return; timing in separate uninstrumented build, five rounds, no concurrent performance jobs",
+  "source_sha256": {
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/session.rs": "dc3f4ee4e3a92aebbd5ae7e16ff27089eefc8b375585904653a644e5774c841e",
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+    "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+    "src/workspace.rs": "c07031a3b4f61c4f1e8bf8e2a21d4f9c7988e887c4d28351f7d5eb391d595600",
+    "src/ssh.rs": "1841c29f9995ac15df39b1734a87801445c8881a6975d2dc53b772d1d46e19fc",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/main.rs": "63f19bf1c1182b086dc791f7ca82f1e31111c42fa17d71728240f721d5f0b0cd",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/resources.rs": "aa299533d3bd5ae7dda2ed798618ff6f7f7319a0b83368a7cbd190918a920a72",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/profiles.rs": "090d904e5b2b4baf3ce64e7bfe6ae399645dd8a5193be43eba00ddce5c07cd90",
+    "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/resources/budget.rs": "309ff4802bee32fda3e7cf0497a9d4611876cd63abe01355d3c67c06b9bb2ab8",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+    "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/remote.rs": "aa393538b30473bb696cf331a14a2eb390fb41b2cadca6e15c24a354a9b37708",
+    "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/sftp/mod.rs": "e813d9acac308b852a8880d50fc476c607c6312a309a8599d4652a9d0e7e4ad9",
+    "src/sftp/wire.rs": "74033e9a4035522c59b3d41ef1c59f1b8579ae89fbbfae925ce2b834679cfaf1",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2"
+  },
+  "test_injection": "\n#[cfg(test)]mod measured_wire {\n use super::*;\n #[test]fn measure_wire(){\n  let mode=std::env::var(\"SFTP_WIRE_MODE\").unwrap();\n  for(name,n,chunk)in [(\"data64k\",CHUNK_LIMIT,16384),(\"data64k_byte_fragments\",CHUNK_LIMIT,1),(\"max_frame\",PACKET_LIMIT-9,16384)] {\n   let mut source=Vec::with_capacity(n+13);source.extend_from_slice(&((n+9)as u32).to_be_bytes());source.extend_from_slice(&[103,0,0,0,1]);source.extend_from_slice(&(n as u32).to_be_bytes());source.resize(n+13,0x5a);\n   let pool=Budget::new(4*PACKET_LIMIT,0);let _=std::thread::current();let _=pool.snapshot();\n   let run=||{let mut decoder=Decoder::new(pool.clone());let mut packet=None;for block in source.chunks(chunk){let(used,next)=decoder.push(block).unwrap();assert_eq!(used,block.len());if next.is_some(){packet=next;}}packet.unwrap()};\n   if mode==\"probe\" {\n    crate::png_meter::start();let packet=run();let Response::Data{id,data}=parse(packet.payload()).unwrap()else{panic!()};assert_eq!(id,1);assert_eq!(data.len(),n);\n    let(live,peak)=crate::png_meter::peek();let s=pool.snapshot();assert_eq!(live,s.used as isize);assert!(peak>=0 && peak as usize<=s.peak);drop(packet);let(final_bytes,_)=crate::png_meter::stop();assert_eq!(final_bytes,0);assert_eq!(pool.snapshot().used,0);\n    eprintln!(\"SFTP_WIRE_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"requested_live\\\":{live},\\\"requested_peak\\\":{peak},\\\"ledger_live\\\":{},\\\"ledger_peak\\\":{},\\\"final_requested\\\":0,\\\"final_loan\\\":0}}\",s.used,s.peak);\n   }else{\n    drop(run());let iterations=if chunk==1{100}else{1000};let start=std::time::Instant::now();for _ in 0..iterations{let packet=run();let response=parse(packet.payload()).unwrap();std::hint::black_box(response);drop(packet);}\n    eprintln!(\"SFTP_WIRE_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"decode_parse_drop_ns\\\":{},\\\"iterations\\\":{iterations}}}\",start.elapsed().as_nanos()/iterations);\n   }\n  }\n  let data=[0x5au8;CHUNK_LIMIT];let handle=[1u8;HANDLE_LIMIT];let pool=Budget::new(4*PACKET_LIMIT,0);let _=pool.snapshot();\n  let request=Request::Write{id:9,handle:&handle,offset:0,data:&data};\n  if mode==\"probe\"{\n   crate::png_meter::start();let packet=encode(&request,Capabilities::default(),&pool).unwrap();let(live,peak)=crate::png_meter::peek();let s=pool.snapshot();assert_eq!(live,s.used as isize);assert_eq!(peak,s.peak as isize);drop(packet);let(final_bytes,_)=crate::png_meter::stop();assert_eq!(final_bytes,0);assert_eq!(pool.snapshot().used,0);\n   eprintln!(\"SFTP_WIRE_SAMPLE {{\\\"name\\\":\\\"write64k_max_handle\\\",\\\"requested_live\\\":{live},\\\"requested_peak\\\":{peak},\\\"ledger_live\\\":{},\\\"ledger_peak\\\":{},\\\"final_requested\\\":0,\\\"final_loan\\\":0}}\",s.used,s.peak);\n  }else{\n   let start=std::time::Instant::now();for _ in 0..10000{let packet=encode(&request,Capabilities::default(),&pool).unwrap();std::hint::black_box(&packet.data);drop(packet);}eprintln!(\"SFTP_WIRE_SAMPLE {{\\\"name\\\":\\\"write64k_max_handle\\\",\\\"encode_drop_ns\\\":{}}}\",start.elapsed().as_nanos()/10000);\n  }\n }\n}\n",
+  "allocator_injection": "\n#[cfg(test)]\nmod png_meter {\n use std::{alloc::{GlobalAlloc,Layout,System},cell::Cell};\n thread_local! {static ON:Cell<bool>=const{Cell::new(false)};static LIVE:Cell<isize>=const{Cell::new(0)};static PEAK:Cell<isize>=const{Cell::new(0)};}\n fn count(n:isize){let _=ON.try_with(|v|if v.get(){LIVE.with(|l|{let n=l.get()+n;l.set(n);PEAK.with(|p|p.set(p.get().max(n)))})});}\n struct Meter;\n unsafe impl GlobalAlloc for Meter{\n  unsafe fn alloc(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn alloc_zeroed(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc_zeroed(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn dealloc(&self,p:*mut u8,l:Layout){unsafe{System.dealloc(p,l)};count(-(l.size()as isize));}\n  unsafe fn realloc(&self,p:*mut u8,l:Layout,n:usize)->*mut u8{count(n as isize);let p=unsafe{System.realloc(p,l,n)};count(-((if p.is_null(){n}else{l.size()})as isize));p}\n }\n #[global_allocator]static ALLOC:Meter=Meter;\n pub fn start(){LIVE.with(|v|v.set(0));PEAK.with(|v|v.set(0));ON.with(|v|v.set(true));}\n pub fn peek()->(isize,isize){(LIVE.with(Cell::get),PEAK.with(Cell::get))} pub fn stop()->(isize,isize){ON.with(|v|v.set(false));(LIVE.with(Cell::get),PEAK.with(Cell::get))}\n}\n",
+  "runs": [
+    {
+      "samples": [
+        {
+          "name": "data64k",
+          "decode_parse_drop_ns": 2773,
+          "iterations": 1000
+        },
+        {
+          "name": "data64k_byte_fragments",
+          "decode_parse_drop_ns": 455758,
+          "iterations": 100
+        },
+        {
+          "name": "max_frame",
+          "decode_parse_drop_ns": 15245,
+          "iterations": 1000
+        },
+        {
+          "name": "write64k_max_handle",
+          "encode_drop_ns": 740
+        }
+      ],
+      "log": "\nrunning 1 test\ntest sftp::wire::measured_wire::measure_wire ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.07s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nSFTP_WIRE_SAMPLE {\"name\":\"data64k\",\"decode_parse_drop_ns\":2773,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"data64k_byte_fragments\",\"decode_parse_drop_ns\":455758,\"iterations\":100}\nSFTP_WIRE_SAMPLE {\"name\":\"max_frame\",\"decode_parse_drop_ns\":15245,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"write64k_max_handle\",\"encode_drop_ns\":740}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "data64k",
+          "decode_parse_drop_ns": 973,
+          "iterations": 1000
+        },
+        {
+          "name": "data64k_byte_fragments",
+          "decode_parse_drop_ns": 269628,
+          "iterations": 100
+        },
+        {
+          "name": "max_frame",
+          "decode_parse_drop_ns": 14448,
+          "iterations": 1000
+        },
+        {
+          "name": "write64k_max_handle",
+          "encode_drop_ns": 681
+        }
+      ],
+      "log": "\nrunning 1 test\ntest sftp::wire::measured_wire::measure_wire ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.05s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nSFTP_WIRE_SAMPLE {\"name\":\"data64k\",\"decode_parse_drop_ns\":973,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"data64k_byte_fragments\",\"decode_parse_drop_ns\":269628,\"iterations\":100}\nSFTP_WIRE_SAMPLE {\"name\":\"max_frame\",\"decode_parse_drop_ns\":14448,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"write64k_max_handle\",\"encode_drop_ns\":681}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "data64k",
+          "decode_parse_drop_ns": 976,
+          "iterations": 1000
+        },
+        {
+          "name": "data64k_byte_fragments",
+          "decode_parse_drop_ns": 270992,
+          "iterations": 100
+        },
+        {
+          "name": "max_frame",
+          "decode_parse_drop_ns": 14519,
+          "iterations": 1000
+        },
+        {
+          "name": "write64k_max_handle",
+          "encode_drop_ns": 671
+        }
+      ],
+      "log": "\nrunning 1 test\ntest sftp::wire::measured_wire::measure_wire ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.05s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nSFTP_WIRE_SAMPLE {\"name\":\"data64k\",\"decode_parse_drop_ns\":976,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"data64k_byte_fragments\",\"decode_parse_drop_ns\":270992,\"iterations\":100}\nSFTP_WIRE_SAMPLE {\"name\":\"max_frame\",\"decode_parse_drop_ns\":14519,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"write64k_max_handle\",\"encode_drop_ns\":671}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "data64k",
+          "decode_parse_drop_ns": 992,
+          "iterations": 1000
+        },
+        {
+          "name": "data64k_byte_fragments",
+          "decode_parse_drop_ns": 271252,
+          "iterations": 100
+        },
+        {
+          "name": "max_frame",
+          "decode_parse_drop_ns": 14596,
+          "iterations": 1000
+        },
+        {
+          "name": "write64k_max_handle",
+          "encode_drop_ns": 675
+        }
+      ],
+      "log": "\nrunning 1 test\ntest sftp::wire::measured_wire::measure_wire ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.05s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nSFTP_WIRE_SAMPLE {\"name\":\"data64k\",\"decode_parse_drop_ns\":992,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"data64k_byte_fragments\",\"decode_parse_drop_ns\":271252,\"iterations\":100}\nSFTP_WIRE_SAMPLE {\"name\":\"max_frame\",\"decode_parse_drop_ns\":14596,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"write64k_max_handle\",\"encode_drop_ns\":675}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "data64k",
+          "decode_parse_drop_ns": 961,
+          "iterations": 1000
+        },
+        {
+          "name": "data64k_byte_fragments",
+          "decode_parse_drop_ns": 272577,
+          "iterations": 100
+        },
+        {
+          "name": "max_frame",
+          "decode_parse_drop_ns": 14578,
+          "iterations": 1000
+        },
+        {
+          "name": "write64k_max_handle",
+          "encode_drop_ns": 661
+        }
+      ],
+      "log": "\nrunning 1 test\ntest sftp::wire::measured_wire::measure_wire ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.05s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nSFTP_WIRE_SAMPLE {\"name\":\"data64k\",\"decode_parse_drop_ns\":961,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"data64k_byte_fragments\",\"decode_parse_drop_ns\":272577,\"iterations\":100}\nSFTP_WIRE_SAMPLE {\"name\":\"max_frame\",\"decode_parse_drop_ns\":14578,\"iterations\":1000}\nSFTP_WIRE_SAMPLE {\"name\":\"write64k_max_handle\",\"encode_drop_ns\":661}\n"
+    }
+  ],
+  "allocation": {
+    "samples": [
+      {
+        "name": "data64k",
+        "requested_live": 65545,
+        "requested_peak": 65545,
+        "ledger_live": 65545,
+        "ledger_peak": 65545,
+        "final_requested": 0,
+        "final_loan": 0
+      },
+      {
+        "name": "data64k_byte_fragments",
+        "requested_live": 65545,
+        "requested_peak": 65545,
+        "ledger_live": 65545,
+        "ledger_peak": 65545,
+        "final_requested": 0,
+        "final_loan": 0
+      },
+      {
+        "name": "max_frame",
+        "requested_live": 1048576,
+        "requested_peak": 1048576,
+        "ledger_live": 1048576,
+        "ledger_peak": 1048576,
+        "final_requested": 0,
+        "final_loan": 0
+      },
+      {
+        "name": "write64k_max_handle",
+        "requested_live": 65817,
+        "requested_peak": 65817,
+        "ledger_live": 65817,
+        "ledger_peak": 65817,
+        "final_requested": 0,
+        "final_loan": 0
+      }
+    ],
+    "log": "\nrunning 1 test\ntest sftp::wire::measured_wire::measure_wire ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 342 filtered out; finished in 0.00s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nSFTP_WIRE_SAMPLE {\"name\":\"data64k\",\"requested_live\":65545,\"requested_peak\":65545,\"ledger_live\":65545,\"ledger_peak\":65545,\"final_requested\":0,\"final_loan\":0}\nSFTP_WIRE_SAMPLE {\"name\":\"data64k_byte_fragments\",\"requested_live\":65545,\"requested_peak\":65545,\"ledger_live\":65545,\"ledger_peak\":65545,\"final_requested\":0,\"final_loan\":0}\nSFTP_WIRE_SAMPLE {\"name\":\"max_frame\",\"requested_live\":1048576,\"requested_peak\":1048576,\"ledger_live\":1048576,\"ledger_peak\":1048576,\"final_requested\":0,\"final_loan\":0}\nSFTP_WIRE_SAMPLE {\"name\":\"write64k_max_handle\",\"requested_live\":65817,\"requested_peak\":65817,\"ledger_live\":65817,\"ledger_peak\":65817,\"final_requested\":0,\"final_loan\":0}\n"
+  },
+  "median_ns": {
+    "data64k": 976,
+    "data64k_byte_fragments": 271252,
+    "max_frame": 14578,
+    "write64k_max_handle": 675
+  }
+}

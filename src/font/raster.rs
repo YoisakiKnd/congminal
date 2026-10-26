@@ -16,7 +16,11 @@ pub struct Bitmap {
 }
 
 /// `scale` = 像素 / 字体单位
-pub fn rasterize(segments: &[Segment], scale: f32) -> Option<Bitmap> {
+pub fn rasterize(
+    segments: &[Segment],
+    scale: f32,
+    budget: &std::sync::Arc<crate::resources::Budget>,
+) -> Option<crate::resources::Tracked<Bitmap>> {
     // 用所有点（包括控制点）求包围盒，二次曲线一定落在控制点围成的范围内
     let mut min = Point { x: f32::MAX, y: f32::MAX };
     let mut max = Point { x: f32::MIN, y: f32::MIN };
@@ -59,6 +63,10 @@ pub fn rasterize(segments: &[Segment], scale: f32) -> Option<Bitmap> {
         return None;
     }
 
+    // finish 时面积缓冲和返回的 alpha 同时存活，先准入整个峰值。
+    let count = width * height;
+    let mut memory = budget.lease(crate::resources::Kind::FontRaster, (count + 4) * 4 + count).ok()?;
+
     let to_pixel = |p: Point| Point { x: p.x * scale - left as f32, y: -p.y * scale - top as f32 };
     let mut raster = Accumulator { width, height, area: vec![0.0; width * height + 4] };
     for segment in segments {
@@ -67,7 +75,9 @@ pub fn rasterize(segments: &[Segment], scale: f32) -> Option<Bitmap> {
             Segment::Quad(a, b, c) => raster.quad(to_pixel(a), to_pixel(b), to_pixel(c)),
         }
     }
-    Some(Bitmap { left, top, width, height, alpha: raster.finish() })
+    let bitmap = Bitmap { left, top, width, height, alpha: raster.finish() };
+    memory.resize(bitmap.alpha.capacity()).unwrap();
+    Some(crate::resources::Tracked::new(bitmap, memory))
 }
 
 struct Accumulator {
@@ -183,8 +193,30 @@ mod tests {
     }
 
     #[test]
+    fn raster_admits_area_and_alpha_together_and_retains_only_output() {
+        use crate::resources::{Budget, Scope};
+        let segments = square(0.0, 0.0, 8.0, 4.0);
+        let small = Budget::new(40, 0);
+        assert!(rasterize(&segments, 1.0, &small).is_none());
+        assert_eq!(small.snapshot().used, 0);
+        assert_eq!(small.snapshot().denied, 1);
+        let pool = Budget::new(216, 0);
+        let other = Budget::new(0, 0);
+        let _scope = Scope::enter(other.clone());
+        let bitmap = rasterize(&segments, 1.0, &pool).unwrap();
+        assert_eq!(pool.snapshot().peak, 216);
+        assert_eq!(pool.snapshot().used, bitmap.alpha.capacity());
+        assert_eq!(other.snapshot().used, 0);
+        drop(bitmap);
+        assert_eq!(pool.snapshot().used, 0);
+        assert!(rasterize(&segments, f32::MAX, &pool).is_none());
+        assert!(rasterize(&[], 1.0, &pool).is_none());
+        assert_eq!(pool.snapshot().denied, 0);
+    }
+
+    #[test]
     fn pixel_aligned_square_is_solid() {
-        let bitmap = rasterize(&square(0.0, 0.0, 4.0, 2.0), 1.0).unwrap();
+        let bitmap = rasterize(&square(0.0, 0.0, 4.0, 2.0), 1.0, &crate::resources::current()).unwrap();
         assert_eq!((bitmap.left, bitmap.top, bitmap.height), (0, -2, 2));
         for row in bitmap.alpha.chunks(bitmap.width) {
             assert_eq!(&row[..4], &[255; 4]);
@@ -195,7 +227,7 @@ mod tests {
     #[test]
     fn half_covered_pixel_is_grey() {
         // 右边缘在 x = 2.5，第三列每个像素被盖住一半
-        let bitmap = rasterize(&square(0.0, 0.0, 2.5, 1.0), 1.0).unwrap();
+        let bitmap = rasterize(&square(0.0, 0.0, 2.5, 1.0), 1.0, &crate::resources::current()).unwrap();
         assert_eq!(&bitmap.alpha[..3], &[255, 255, 128]);
     }
 
@@ -210,7 +242,7 @@ mod tests {
             }
         }
         segments.extend(inner);
-        let bitmap = rasterize(&segments, 1.0).unwrap();
+        let bitmap = rasterize(&segments, 1.0, &crate::resources::current()).unwrap();
         let at = |x: usize, y: usize| bitmap.alpha[y * bitmap.width + x];
         assert_eq!(at(0, 0), 255);
         assert_eq!(at(1, 1), 0);

@@ -1,0 +1,966 @@
+{
+  "scope": "Real feature-gated Rust Session/NativePool over isolated SSH, generated keys, strict host records, 32MiB streaming / 8MiB managed test budget. Test fixture input reservation is included in shared_peak. Not GUI, DNS/config resolution, Windows native runtime, or full heap/RSS verification.",
+  "sampler": "libproc \u6bcf 5 ms\uff1bMach \u65f6\u95f4\u57fa\u51c6 125/3\uff1b\u8fdb\u7a0b\u6811\u6700\u591a 64 \u9879",
+  "source_sha256": {
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+    "src/config/profiles.rs": "090d904e5b2b4baf3ce64e7bfe6ae399645dd8a5193be43eba00ddce5c07cd90",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/main.rs": "63f19bf1c1182b086dc791f7ca82f1e31111c42fa17d71728240f721d5f0b0cd",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+    "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+    "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+    "src/resources/budget.rs": "309ff4802bee32fda3e7cf0497a9d4611876cd63abe01355d3c67c06b9bb2ab8",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/resources.rs": "aa299533d3bd5ae7dda2ed798618ff6f7f7319a0b83368a7cbd190918a920a72",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/session.rs": "dc3f4ee4e3a92aebbd5ae7e16ff27089eefc8b375585904653a644e5774c841e",
+    "src/sftp/allocation.rs": "555f3521488b7ca257cbffcbeb1d8ab457d9092df00662553c891eb4943e86e6",
+    "src/sftp/client.rs": "119f08c3c7b53a8871af2533319b8e7c88f7da951eadb725996f0839fa59bab4",
+    "src/sftp/mod.rs": "9d2ecbd81d618d9e6801f716197d074beea4609070f3605b473fef4ae54042c5",
+    "src/sftp/model.rs": "91c83fd80bd48f5b696a0269a9baaed8d5207dfc7a3dd8abb239837fa5b3c1ad",
+    "src/sftp/native.rs": "a50974b7e83ae0379f6f0eb99bf024e41dfdb69a3176afb67915ddb1c0abf242",
+    "src/sftp/native_wait.rs": "959ef1f2e7d1f9c429004f3fdd1191d026f45eaff2210533382fb3fed8e680d4",
+    "src/sftp/operations.rs": "cda190e0ddca16cf262108b0a14484af6d59e793d0c9f06e5a3aa7bc69a3f56b",
+    "src/sftp/secret.rs": "84654f08ff44fc6e80902b6d39e97266bdc218b26fafd97dbf74aa78cd27880f",
+    "src/sftp/transfer.rs": "ef00171c08c25fbba13f373dfbc99567e73b19ee8445fbe373f529942d304637",
+    "src/sftp/wire.rs": "dadc53f2c7b89a9b7d963fe629567df68fa6e9b6de2df801d060be647aeb0348",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/ssh.rs": "1841c29f9995ac15df39b1734a87801445c8881a6975d2dc53b772d1d46e19fc",
+    "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/remote.rs": "aa393538b30473bb696cf331a14a2eb390fb41b2cadca6e15c24a354a9b37708",
+    "src/workspace.rs": "c07031a3b4f61c4f1e8bf8e2a21d4f9c7988e887c4d28351f7d5eb391d595600"
+  },
+  "runs": [
+    {
+      "scenario": "positive",
+      "exit": 101,
+      "log": "\nrunning 1 test\ntest sftp::native::tests::native_isolated_session_validates_hosts_handles_streams_and_cleanup ... \nthread 'sftp::native::tests::native_isolated_session_validates_hosts_handles_streams_and_cleanup' (17369889) panicked at src/sftp/native.rs:844:9:\nassertion failed: session.attrs(fresh, &cancel).is_ok()\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    sftp::native::tests::native_isolated_session_validates_hosts_handles_streams_and_cleanup\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 361 filtered out; finished in 0.08s\n\n",
+      "samples": [
+        {
+          "elapsed_ns": 1348875,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6520832,
+              "cpu_ns": 2948708,
+              "threads": 1
+            },
+            "74691": {
+              "rss": 147456,
+              "cpu_ns": 704250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 8948250,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 14909542,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 21170583,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 28830167,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 36469042,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 44094417,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 51693625,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 59291583,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 64884417,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 72451583,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 80051375,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 87646708,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 95238500,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 102838125,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 110428042,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 116398417,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 123988333,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 131561500,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 139148250,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 146734500,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 154320542,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 161909583,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 169484500,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 177073542,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 183094875,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 190810042,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 198207208,
+          "client": {
+            "74692": {
+              "rss": 32768,
+              "cpu_ns": 383166,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 204784958,
+          "client": {
+            "74692": {
+              "rss": 180224,
+              "cpu_ns": 4196458,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 212470333,
+          "client": {
+            "74692": {
+              "rss": 7389184,
+              "cpu_ns": 11333125,
+              "threads": 1
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6537216,
+              "cpu_ns": 3019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 220073250,
+          "client": {
+            "74692": {
+              "rss": 9355264,
+              "cpu_ns": 14860833,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6553600,
+              "cpu_ns": 3938083,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 3145728,
+              "cpu_ns": 2884291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 227717792,
+          "client": {
+            "74692": {
+              "rss": 10829824,
+              "cpu_ns": 16861333,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6553600,
+              "cpu_ns": 3958166,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 6848512,
+              "cpu_ns": 6026916,
+              "threads": 1
+            },
+            "74695": {
+              "rss": 4587520,
+              "cpu_ns": 2623833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 235338250,
+          "client": {
+            "74692": {
+              "rss": 11796480,
+              "cpu_ns": 18459458,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6553600,
+              "cpu_ns": 3958166,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 6864896,
+              "cpu_ns": 6430125,
+              "threads": 1
+            },
+            "74695": {
+              "rss": 6832128,
+              "cpu_ns": 4600750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 242946833,
+          "client": {
+            "74692": {
+              "rss": 12468224,
+              "cpu_ns": 19510000,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6553600,
+              "cpu_ns": 3958166,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7307264,
+              "cpu_ns": 7717291,
+              "threads": 1
+            },
+            "74695": {
+              "rss": 7012352,
+              "cpu_ns": 7106208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 250579417,
+          "client": {
+            "74692": {
+              "rss": 12468224,
+              "cpu_ns": 19510000,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6553600,
+              "cpu_ns": 3958166,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7340032,
+              "cpu_ns": 9435083,
+              "threads": 1
+            },
+            "74695": {
+              "rss": 7012352,
+              "cpu_ns": 7205625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 258166667,
+          "client": {
+            "74692": {
+              "rss": 12484608,
+              "cpu_ns": 19606625,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6553600,
+              "cpu_ns": 3999250,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7389184,
+              "cpu_ns": 9863791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 265768542,
+          "client": {
+            "74692": {
+              "rss": 12746752,
+              "cpu_ns": 19956583,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6569984,
+              "cpu_ns": 4396875,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7503872,
+              "cpu_ns": 11832583,
+              "threads": 1
+            },
+            "74696": {
+              "rss": 2539520,
+              "cpu_ns": 1025250,
+              "threads": 1
+            },
+            "74697": {
+              "rss": 2965504,
+              "cpu_ns": 1505708,
+              "threads": 1
+            },
+            "74698": {
+              "rss": 180224,
+              "cpu_ns": 638041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 273401167,
+          "client": {
+            "74692": {
+              "rss": 12746752,
+              "cpu_ns": 19956583,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6569984,
+              "cpu_ns": 4411583,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7503872,
+              "cpu_ns": 11832583,
+              "threads": 1
+            },
+            "74696": {
+              "rss": 2539520,
+              "cpu_ns": 1025250,
+              "threads": 1
+            },
+            "74697": {
+              "rss": 2965504,
+              "cpu_ns": 1505708,
+              "threads": 1
+            },
+            "74698": {
+              "rss": 6864896,
+              "cpu_ns": 3891416,
+              "threads": 1
+            },
+            "74699": {
+              "rss": 6668288,
+              "cpu_ns": 2926083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 281047000,
+          "client": {
+            "74692": {
+              "rss": 12779520,
+              "cpu_ns": 20343166,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6569984,
+              "cpu_ns": 4411583,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7503872,
+              "cpu_ns": 11832583,
+              "threads": 1
+            },
+            "74696": {
+              "rss": 2539520,
+              "cpu_ns": 1025250,
+              "threads": 1
+            },
+            "74697": {
+              "rss": 2965504,
+              "cpu_ns": 1505708,
+              "threads": 1
+            },
+            "74698": {
+              "rss": 7307264,
+              "cpu_ns": 5154666,
+              "threads": 1
+            },
+            "74699": {
+              "rss": 7012352,
+              "cpu_ns": 5281333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 288728500,
+          "client": {
+            "74692": {
+              "rss": 12779520,
+              "cpu_ns": 20343166,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6569984,
+              "cpu_ns": 4411583,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7503872,
+              "cpu_ns": 11832583,
+              "threads": 1
+            },
+            "74696": {
+              "rss": 2539520,
+              "cpu_ns": 1025250,
+              "threads": 1
+            },
+            "74697": {
+              "rss": 2965504,
+              "cpu_ns": 1505708,
+              "threads": 1
+            },
+            "74698": {
+              "rss": 7340032,
+              "cpu_ns": 6567583,
+              "threads": 1
+            },
+            "74699": {
+              "rss": 7012352,
+              "cpu_ns": 5340541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 296400083,
+          "client": {
+            "74692": {
+              "rss": 12779520,
+              "cpu_ns": 20382458,
+              "threads": 2
+            }
+          },
+          "server": {
+            "74690": {
+              "rss": 6569984,
+              "cpu_ns": 4438416,
+              "threads": 1
+            },
+            "74694": {
+              "rss": 7503872,
+              "cpu_ns": 11832583,
+              "threads": 1
+            },
+            "74696": {
+              "rss": 2539520,
+              "cpu_ns": 1025250,
+              "threads": 1
+            },
+            "74697": {
+              "rss": 2965504,
+              "cpu_ns": 1505708,
+              "threads": 1
+            },
+            "74698": {
+              "rss": 7503872,
+              "cpu_ns": 8506666,
+              "threads": 1
+            },
+            "74700": {
+              "rss": 2408448,
+              "cpu_ns": 459208,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "server_log": "debug2: fd 6 setting O_NONBLOCK\ndebug1: Bind to port 51493 on 127.0.0.1.\nServer listening on 127.0.0.1 port 51493.\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug1: Forked child 74691.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 74691 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 51495\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 51495 on 127.0.0.1 port 51493\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 74693\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 537\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\nkex_exchange_identification: Connection closed by remote host [preauth]\nConnection closed by 127.0.0.1 port 51495 [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: mm_request_receive: entering\ndebug3: mm_request_receive: monitor fd closed\ndebug1: mm_reap: child exited with status 255\ndebug1: do_cleanup\ndebug1: Killing privsep child 74693\ndebug1: audit_event: connection closed without authentication\ndebug3: server_accept_loop: child 74691 for connection from 127.0.0.1 to 127.0.0.1 closed pipe\ndebug1: child_close: enter\ndebug1: child_reap: preauth child 74691 for connection from 127.0.0.1 to 127.0.0.1 exited with status 255\nsrclimit_penalise: ipv4: new 127.0.0.1/32 deferred penalty of 1.000 seconds for penalty: connections without attempting authentication\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug1: Forked child 74694.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 74694 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 51496\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 51496 on 127.0.0.1 port 51493\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 74695\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 537\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\ndebug1: Remote protocol version 2.0, remote software version libssh2_1.11.1_DEV [preauth]\ndebug1: compat_banner: no match: libssh2_1.11.1_DEV [preauth]\ndebug3: mm_sshkey_setcompat: entering [preauth]\ndebug3: mm_request_send: entering, type 18 [preauth]\ndebug3: send packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT sent [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 18\ndebug3: mm_answer_setcompat: entering\ndebug2: monitor_read: 18 used once, disabling now\ndebug3: receive packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT received [preauth]\ndebug2: local server KEXINIT proposal [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug2: peer client KEXINIT proposal [preauth]\ndebug2: KEX algorithms: curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1,ext-info-c,kex-strict-c-v00@openssh.com [preauth]\ndebug2: host key algorithms: ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-rsa,ssh-rsa-cert-v01@openssh.com [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: MACs ctos: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: MACs stoc: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: compression ctos: none [preauth]\ndebug2: compression stoc: none [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug3: kex_choose_conf: will use strict KEX ordering [preauth]\ndebug1: kex: algorithm: curve25519-sha256 [preauth]\ndebug1: kex: host key algorithm: ssh-ed25519 [preauth]\ndebug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: expecting SSH2_MSG_KEX_ECDH_INIT [preauth]\ndebug3: receive packet: type 30 [preauth]\ndebug1: SSH2_MSG_KEX_ECDH_INIT received [preauth]\ndebug3: mm_sshkey_sign: entering [preauth]\ndebug3: mm_request_send: entering, type 6 [preauth]\ndebug3: mm_sshkey_sign: waiting for MONITOR_ANS_SIGN [preauth]\ndebug3: mm_request_receive_expect: entering, type 7 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 6\ndebug3: mm_answer_sign: entering\ndebug1: mm_answer_sign: hostkey ssh-ed25519 index 0\ndebug3: mm_answer_sign: ssh-ed25519 KEX signature len=83\ndebug3: mm_request_send: entering, type 7\ndebug2: monitor_read: 6 used once, disabling now\ndebug3: mm_sshkey_sign: ssh-ed25519 signature len=83 [preauth]\ndebug3: send packet: type 31 [preauth]\ndebug3: send packet: type 21 [preauth]\ndebug1: ssh_packet_send2_wrapped: resetting send seqnr 3 [preauth]\ndebug2: ssh_set_newkeys: mode 1 [preauth]\ndebug1: rekey out after 134217728 blocks [preauth]\ndebug1: SSH2_MSG_NEWKEYS sent [preauth]\ndebug1: Sending SSH2_MSG_EXT_INFO [preauth]\ndebug3: send packet: type 7 [preauth]\ndebug1: expecting SSH2_MSG_NEWKEYS [preauth]\ndebug3: receive packet: type 21 [preauth]\ndebug1: ssh_packet_read_poll2: resetting read seqnr 3 [preauth]\ndebug1: SSH2_MSG_NEWKEYS received [preauth]\ndebug2: ssh_set_newkeys: mode 0 [preauth]\ndebug1: rekey in after 134217728 blocks [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug1: KEX done [preauth]\ndebug3: receive packet: type 5 [preauth]\ndebug3: send packet: type 6 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 0 failures 0 [preauth]\ndebug3: mm_getpwnamallow: entering [preauth]\ndebug3: mm_request_send: entering, type 8 [preauth]\ndebug3: mm_getpwnamallow: waiting for MONITOR_ANS_PWNAM [preauth]\ndebug3: mm_request_receive_expect: entering, type 9 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 8\ndebug3: mm_answer_pwnamallow: entering\ndebug2: parse_server_config_depth: config reprocess config len 537\ndebug3: mm_answer_pwnamallow: sending MONITOR_ANS_PWNAM: 1\ndebug3: mm_request_send: entering, type 9\ndebug2: monitor_read: 8 used once, disabling now\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug2: input_userauth_request: setting up authctxt for tenonsuzu [preauth]\ndebug3: mm_inform_authserv: entering [preauth]\ndebug3: mm_request_send: entering, type 4 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu querying public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR/ZYY3oqUEMwveW/FntEhbaeFmtqKgiRTV/EFJnXQ+ [preauth]\ndebug1: userauth_pubkey: publickey test pkalg ssh-ed25519 pkblob ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 4\ndebug3: mm_answer_authserv: service=ssh-connection, style=\ndebug2: monitor_read: 4 used once, disabling now\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: matching key found: ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication test: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: send packet: type 60 [preauth]\ndebug2: userauth_pubkey: authenticated 0 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.871ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 1.154ms, delaying 5.717ms (requested 6.871ms) [preauth]\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51496 ssh2 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 1 failures 0 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu attempting public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR/ZYY3oqUEMwveW/FntEhbaeFmtqKgiRTV/EFJnXQ+ [preauth]\ndebug3: userauth_pubkey: publickey have ssh-ed25519 signature for ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: matching key found: ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: mm_sshkey_verify: entering [preauth]\ndebug3: mm_request_send: entering, type 24 [preauth]\ndebug3: mm_sshkey_verify: waiting for MONITOR_ANS_KEYVERIFY [preauth]\ndebug3: mm_request_receive_expect: entering, type 25 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 24\ndebug3: mm_answer_keyverify: publickey ED25519 signature using ssh-ed25519 verified\ndebug1: auth_activate_options: setting new authentication options\ndebug3: mm_request_send: entering, type 25\nAccepted publickey for tenonsuzu from 127.0.0.1 port 51496 ssh2: ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY\ndebug1: monitor_child_preauth: user tenonsuzu authenticated by privileged process\ndebug3: mm_get_keystate: Waiting for new keys\ndebug3: mm_request_receive_expect: entering, type 26\ndebug3: mm_request_receive: entering\ndebug3: mm_get_keystate: GOT new keys\ndebug1: auth_activate_options: setting new authentication options [preauth]\ndebug2: userauth_pubkey: authenticated 1 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.871ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 1.696ms, delaying 5.175ms (requested 6.871ms) [preauth]\ndebug3: send packet: type 52 [preauth]\ndebug3: mm_request_send: entering, type 26 [preauth]\ndebug3: mm_send_keystate: Finished sending state [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: monitor_child_preauth: preauth child 74695 terminated successfully\ndebug2: server_accept_loop: child 74694 for connection from 127.0.0.1 to 127.0.0.1 auth done\ndebug1: child_close: enter (forcing)\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\ndebug3: BSM audit: typ 0 rc 0 \"successful login tenonsuzu\"\nUser child is on pid 74696\ndebug3: monitor_apply_keystate: packet_set_state\ndebug2: ssh_set_newkeys: mode 0\ndebug1: rekey in after 134217728 blocks\ndebug2: ssh_set_newkeys: mode 1\ndebug1: rekey out after 134217728 blocks\ndebug1: ssh_packet_set_postauth: called\ndebug3: ssh_packet_set_state: done\ndebug3: notify_hostkeys: key 0: ssh-ed25519 SHA256:0/cSvV1iSkvLGmmrN2VewkSoVRa2bVzbpp9xR8loFdE\ndebug3: notify_hostkeys: sent 1 hostkeys\ndebug3: send packet: type 80\ndebug1: active: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug1: Entering interactive session for SSH2.\ndebug1: server_init_dispatch\ndebug3: receive packet: type 90\ndebug1: server_input_channel_open: ctype session rchan 0 win 2097152 max 32768\ndebug1: input_session_request\ndebug1: channel 0: new session [server-session] (inactive timeout: 0)\ndebug2: session_new: allocate (allocated 0 max 10)\ndebug3: session_unused: session id 0 unused\ndebug1: session_new: session 0\ndebug1: session_open: channel 0\ndebug1: session_open: session 0: link with channel 0\ndebug1: server_input_channel_open: confirm session\ndebug3: send packet: type 91\ndebug2: process_output: session QoS is now interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: receive packet: type 98\ndebug1: server_input_channel_req: channel 0 request subsystem reply 1\ndebug1: session_by_channel: session 0 channel 0\ndebug1: session_input_channel_req: session 0 req subsystem\ndebug2: subsystem request for sftp by user tenonsuzu\ndebug1: subsystem: internal-sftp\ndebug2: channel_set_xtype: labeled channel 0 as session:subsystem:sftp (inactive timeout 0)\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 51496 id 0\ndebug3: mm_audit_run_command: entering command internal-sftp\ndebug3: mm_request_send: entering, type 113\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 113\ndebug3: mm_answer_audit_command: entering\ndebug2: fd 14 setting O_NONBLOCK\ndebug2: fd 13 setting O_NONBLOCK\ndebug2: fd 16 setting O_NONBLOCK\ndebug3: send packet: type 99\ndebug2: process_output: session QoS is now non-interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0x00\ndebug2: channel 0: read 34 from efd 16\ndebug3: channel 0: discard efd\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug1: Forked child 74698.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 74698 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 51497\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 51497 on 127.0.0.1 port 51493\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 74699\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 537\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\ndebug1: Remote protocol version 2.0, remote software version libssh2_1.11.1_DEV [preauth]\ndebug1: compat_banner: no match: libssh2_1.11.1_DEV [preauth]\ndebug3: mm_sshkey_setcompat: entering [preauth]\ndebug3: mm_request_send: entering, type 18 [preauth]\ndebug3: send packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT sent [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 18\ndebug3: mm_answer_setcompat: entering\ndebug2: monitor_read: 18 used once, disabling now\ndebug3: receive packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT received [preauth]\ndebug2: local server KEXINIT proposal [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug2: peer client KEXINIT proposal [preauth]\ndebug2: KEX algorithms: curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1,ext-info-c,kex-strict-c-v00@openssh.com [preauth]\ndebug2: host key algorithms: ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-rsa,ssh-rsa-cert-v01@openssh.com [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: MACs ctos: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: MACs stoc: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: compression ctos: none [preauth]\ndebug2: compression stoc: none [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug3: kex_choose_conf: will use strict KEX ordering [preauth]\ndebug1: kex: algorithm: curve25519-sha256 [preauth]\ndebug1: kex: host key algorithm: ssh-ed25519 [preauth]\ndebug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: expecting SSH2_MSG_KEX_ECDH_INIT [preauth]\ndebug3: receive packet: type 30 [preauth]\ndebug1: SSH2_MSG_KEX_ECDH_INIT received [preauth]\ndebug3: mm_sshkey_sign: entering [preauth]\ndebug3: mm_request_send: entering, type 6 [preauth]\ndebug3: mm_sshkey_sign: waiting for MONITOR_ANS_SIGN [preauth]\ndebug3: mm_request_receive_expect: entering, type 7 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 6\ndebug3: mm_answer_sign: entering\ndebug1: mm_answer_sign: hostkey ssh-ed25519 index 0\ndebug3: mm_answer_sign: ssh-ed25519 KEX signature len=83\ndebug3: mm_request_send: entering, type 7\ndebug2: monitor_read: 6 used once, disabling now\ndebug3: mm_sshkey_sign: ssh-ed25519 signature len=83 [preauth]\ndebug3: send packet: type 31 [preauth]\ndebug3: send packet: type 21 [preauth]\ndebug1: ssh_packet_send2_wrapped: resetting send seqnr 3 [preauth]\ndebug2: ssh_set_newkeys: mode 1 [preauth]\ndebug1: rekey out after 134217728 blocks [preauth]\ndebug1: SSH2_MSG_NEWKEYS sent [preauth]\ndebug1: Sending SSH2_MSG_EXT_INFO [preauth]\ndebug3: send packet: type 7 [preauth]\ndebug1: expecting SSH2_MSG_NEWKEYS [preauth]\ndebug3: receive packet: type 21 [preauth]\ndebug1: ssh_packet_read_poll2: resetting read seqnr 3 [preauth]\ndebug1: SSH2_MSG_NEWKEYS received [preauth]\ndebug2: ssh_set_newkeys: mode 0 [preauth]\ndebug1: rekey in after 134217728 blocks [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug1: KEX done [preauth]\ndebug3: receive packet: type 5 [preauth]\ndebug3: send packet: type 6 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 0 failures 0 [preauth]\ndebug3: mm_getpwnamallow: entering [preauth]\ndebug3: mm_request_send: entering, type 8 [preauth]\ndebug3: mm_getpwnamallow: waiting for MONITOR_ANS_PWNAM [preauth]\ndebug3: mm_request_receive_expect: entering, type 9 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 8\ndebug3: mm_answer_pwnamallow: entering\ndebug2: parse_server_config_depth: config reprocess config len 537\ndebug3: mm_answer_pwnamallow: sending MONITOR_ANS_PWNAM: 1\ndebug3: mm_request_send: entering, type 9\ndebug2: monitor_read: 8 used once, disabling now\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug2: input_userauth_request: setting up authctxt for tenonsuzu [preauth]\ndebug3: mm_inform_authserv: entering [preauth]\ndebug3: mm_request_send: entering, type 4 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu querying public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR/ZYY3oqUEMwveW/FntEhbaeFmtqKgiRTV/EFJnXQ+ [preauth]\ndebug1: userauth_pubkey: publickey test pkalg ssh-ed25519 pkblob ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 4\ndebug3: mm_answer_authserv: service=ssh-connection, style=\ndebug2: monitor_read: 4 used once, disabling now\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: matching key found: ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication test: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: send packet: type 60 [preauth]\ndebug2: userauth_pubkey: authenticated 0 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.871ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 0.897ms, delaying 5.974ms (requested 6.871ms) [preauth]\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51497 ssh2 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 1 failures 0 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu attempting public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJR/ZYY3oqUEMwveW/FntEhbaeFmtqKgiRTV/EFJnXQ+ [preauth]\ndebug3: userauth_pubkey: publickey have ssh-ed25519 signature for ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: matching key found: ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: mm_sshkey_verify: entering [preauth]\ndebug3: mm_request_send: entering, type 24 [preauth]\ndebug3: mm_sshkey_verify: waiting for MONITOR_ANS_KEYVERIFY [preauth]\ndebug3: mm_request_receive_expect: entering, type 25 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 24\ndebug3: mm_answer_keyverify: publickey ED25519 signature using ssh-ed25519 verified\ndebug1: auth_activate_options: setting new authentication options\ndebug3: mm_request_send: entering, type 25\nAccepted publickey for tenonsuzu from 127.0.0.1 port 51497 ssh2: ED25519 SHA256:9QM4niGfGD0K7wGOw7Df8aikhc/1Mx6bKoe6oTpFwEY\ndebug1: monitor_child_preauth: user tenonsuzu authenticated by privileged process\ndebug3: mm_get_keystate: Waiting for new keys\ndebug3: mm_request_receive_expect: entering, type 26\ndebug3: mm_request_receive: entering\ndebug3: mm_get_keystate: GOT new keys\ndebug1: auth_activate_options: setting new authentication options [preauth]\ndebug2: userauth_pubkey: authenticated 1 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.871ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 1.414ms, delaying 5.457ms (requested 6.871ms) [preauth]\ndebug3: send packet: type 52 [preauth]\ndebug3: mm_request_send: entering, type 26 [preauth]\ndebug3: mm_send_keystate: Finished sending state [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: monitor_child_preauth: preauth child 74699 terminated successfully\ndebug2: server_accept_loop: child 74698 for connection from 127.0.0.1 to 127.0.0.1 auth done\ndebug1: child_close: enter (forcing)\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\ndebug3: BSM audit: typ 0 rc 0 \"successful login tenonsuzu\"\nUser child is on pid 74700\ndebug3: monitor_apply_keystate: packet_set_state\ndebug2: ssh_set_newkeys: mode 0\ndebug1: rekey in after 134217728 blocks\ndebug2: ssh_set_newkeys: mode 1\ndebug1: rekey out after 134217728 blocks\ndebug1: ssh_packet_set_postauth: called\ndebug3: ssh_packet_set_state: done\ndebug3: notify_hostkeys: key 0: ssh-ed25519 SHA256:0/cSvV1iSkvLGmmrN2VewkSoVRa2bVzbpp9xR8loFdE\ndebug3: notify_hostkeys: sent 1 hostkeys\ndebug3: send packet: type 80\ndebug1: active: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-wx4_rgeu/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug1: Entering interactive session for SSH2.\ndebug1: server_init_dispatch\ndebug3: receive packet: type 90\ndebug1: server_input_channel_open: ctype session rchan 0 win 2097152 max 32768\ndebug1: input_session_request\ndebug1: channel 0: new session [server-session] (inactive timeout: 0)\ndebug2: session_new: allocate (allocated 0 max 10)\ndebug3: session_unused: session id 0 unused\ndebug1: session_new: session 0\ndebug1: session_open: channel 0\ndebug1: session_open: session 0: link with channel 0\ndebug1: server_input_channel_open: confirm session\ndebug3: send packet: type 91\ndebug2: process_output: session QoS is now interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: receive packet: type 98\ndebug1: server_input_channel_req: channel 0 request subsystem reply 1\ndebug1: session_by_channel: session 0 channel 0\ndebug1: session_input_channel_req: session 0 req subsystem\ndebug2: subsystem request for sftp by user tenonsuzu\ndebug1: subsystem: internal-sftp\ndebug2: channel_set_xtype: labeled channel 0 as session:subsystem:sftp (inactive timeout 0)\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 51497 id 0\ndebug3: mm_audit_run_command: entering command internal-sftp\ndebug3: mm_request_send: entering, type 113\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 113\ndebug3: mm_answer_audit_command: entering\ndebug2: fd 14 setting O_NONBLOCK\ndebug2: fd 13 setting O_NONBLOCK\ndebug2: fd 16 setting O_NONBLOCK\ndebug3: send packet: type 99\ndebug2: process_output: session QoS is now non-interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0x00\ndebug2: channel 0: read 34 from efd 16\ndebug3: channel 0: discard efd\nConnection closed by 127.0.0.1 port 51497\ndebug1: channel 0: free: server-session, nchannels 1\ndebug3: channel 0: status: The following connections are open:\n  #0 server-session (t4 [session:subsystem:sftp] r0 nm0 i0/0 o0/0 e[ignore]/0 fd 14/13/16 sock -1 cc -1 nc0 io 0x05/0x00 B)\n\nClose session: user tenonsuzu from 127.0.0.1 port 51497 id 0\ndebug3: session_unused: session id 0 unused\ndebug1: do_cleanup\nTransferred: sent 2556, received 2176 bytes\nClosing connection to 127.0.0.1 port 51497\ndebug3: mm_audit_event: entering\ndebug3: mm_request_send: entering, type 112\ndebug3: mm_submit_ess_event entering\ndebug3: mm_request_send: entering, type 212\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 112\ndebug3: mm_answer_audit_event: entering\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug3: mm_request_send: entering, type 50\ndebug1: Forked child 74702.\nConnection closed by 127.0.0.1 port 51496\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: channel 0: free: server-session, nchannels 1\ndebug3: channel 0: status: The following connections are open:\n  #0 server-session (t4 [session:subsystem:sftp] r0 nm0 i0/0 o0/0 e[ignore]/0 fd 14/13/16 sock -1 cc -1 nc0 io 0x05/0x00 B)\n\nClose session: user tenonsuzu from 127.0.0.1 port 51496 id 0\ndebug3: session_unused: session id 0 unused\ndebug1: do_cleanup\nTransferred: sent 3468, received 2728 bytes\nClosing connection to 127.0.0.1 port 51496\ndebug3: mm_audit_event: entering\ndebug3: mm_request_send: entering, type 112\ndebug3: mm_submit_ess_event entering\ndebug3: mm_request_send: entering, type 212\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 112\ndebug3: mm_answer_audit_event: entering\ndebug3: mm_request_send: entering, type 50\ndebug3: BSM audit: typ 0 rc 0 \"sshd logout tenonsuzu\"\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 212\ndebug3: mm_answer_ess_event entering\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 50\ndebug3: mm_answer_term: tearing down sessions\ndebug3: BSM audit: typ 0 rc 0 \"sshd logout tenonsuzu\"\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 212\ndebug3: mm_answer_ess_event entering\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 50\ndebug3: mm_answer_term: tearing down sessions\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 74702 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 51498\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 51498 on 127.0.0.1 port 51493\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 74703\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 537\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\nkex_exchange_identification: Connection closed by remote host [preauth]\nConnection closed by 127.0.0.1 port 51498 [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: mm_request_receive: entering\ndebug3: mm_request_receive: monitor fd closed\ndebug1: mm_reap: child exited with status 255\ndebug1: do_cleanup\ndebug1: Killing privsep child 74703\ndebug1: audit_event: connection closed without authentication\ndebug3: server_accept_loop: child 74702 for connection from 127.0.0.1 to 127.0.0.1 closed pipe\ndebug1: child_close: enter\ndebug1: child_reap: preauth child 74702 for connection from 127.0.0.1 to 127.0.0.1 exited with status 255\ndebug1: srclimit_penalise: inactive penalty for ipv4 127.0.0.1/32 already exists, 0 seconds remaining\n",
+      "observed_client_children_still_live": [],
+      "peak_client_tree_rss": 12779520,
+      "passed": false,
+      "round": 0
+    }
+  ],
+  "diagnostic_note": "The initial quota assertion assumed server support for FSTAT on an OPENDIR handle. Changed test to continue READDIR on the same handle, which directly verifies preservation of the existing connection."
+}

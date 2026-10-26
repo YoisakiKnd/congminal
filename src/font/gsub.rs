@@ -27,6 +27,8 @@ pub struct Gsub {
     lookups: Vec<u16>,
     /// 每个查找能从哪些字形开始匹配（按字形编号的位图）。绝大多数位置一个查找都匹配不上，先用它排除
     starts: Vec<Vec<u64>>,
+    // 所有索引先销毁，最后归还其请求容量。
+    memory: crate::resources::Lease,
 }
 
 /// 上下文规则里三个部分在表里的位置：(第一个值的偏移, 个数)。
@@ -69,7 +71,8 @@ impl Gsub {
             offset => script + offset as usize,
         };
 
-        let mut lookups = Vec::new();
+        let mut selected = [0u16; 4096];
+        let mut selected_len = 0;
         for i in 0..u16_at(data, lang_sys + 4)? as usize {
             let feature = u16_at(data, lang_sys + 6 + 2 * i)? as usize;
             let record = feature_list + 2 + 6 * feature;
@@ -78,26 +81,59 @@ impl Gsub {
             }
             let table = feature_list + u16_at(data, record + 4)? as usize;
             for j in 0..u16_at(data, table + 2)? as usize {
-                if lookups.len() >= 4096 {
+                if selected_len == selected.len() {
                     return None;
                 }
-                lookups.push(u16_at(data, table + 4 + 2 * j)?);
+                selected[selected_len] = u16_at(data, table + 4 + 2 * j)?;
+                selected_len += 1;
             }
         }
-        lookups.sort_unstable();
-        lookups.dedup();
-        if lookups.is_empty() || lookups.len() > 256 {
+        selected[..selected_len].sort_unstable();
+        let mut count = 0;
+        for i in 0..selected_len {
+            if count == 0 || selected[count - 1] != selected[i] {
+                selected[count] = selected[i];
+                count += 1;
+            }
+        }
+        if count == 0 || count > 256 {
             return None;
         }
-        let mut gsub = Gsub { data: bytes, lookup_list, lookups, starts: Vec::new(), budget: Cell::new(1_000_000) };
-        gsub.starts = gsub.lookups.iter().map(|&lookup| gsub.start_glyphs(lookup).unwrap_or_default()).collect();
+        let memory = face
+            .budget()
+            .lease(
+                crate::resources::Kind::FontOutline,
+                count * (std::mem::size_of::<u16>() + std::mem::size_of::<Vec<u64>>()),
+            )
+            .ok()?;
+        let mut gsub = Gsub {
+            data: bytes,
+            lookup_list,
+            lookups: selected[..count].to_vec(),
+            starts: Vec::with_capacity(count),
+            budget: Cell::new(1_000_000),
+            memory,
+        };
+        let mut bits = [0u64; 1024];
+        let mut len = 0;
+        for i in 0..count {
+            bits[..len].fill(0);
+            len = 0;
+            let bits = if gsub.start_glyphs(gsub.lookups[i], &mut bits, &mut len).is_some() {
+                gsub.memory.resize(gsub.memory.bytes() + len * std::mem::size_of::<u64>()).ok()?;
+                bits[..len].to_vec()
+            } else {
+                Vec::new()
+            };
+            gsub.starts.push(bits);
+        }
         Some(gsub)
     }
 
     /// 一个查找的所有子表里，第一个字的 Coverage 合起来
-    fn start_glyphs(&self, lookup: u16) -> Option<Vec<u64>> {
+    fn start_glyphs(&self, lookup: u16, bits: &mut [u64; 1024], len: &mut usize) -> Option<()> {
         let data = &*self.data;
-        let mut bits = Vec::new();
+        // 调用者复用已清理的前缀；不为每个查找清零/搬迁整个 8 KiB 数组。
         for (kind, subtable) in self.subtables(lookup)? {
             let table = match (kind, u16_at(data, subtable)?) {
                 (1 | 2 | 4, _) | (5 | 6, 1 | 2) => subtable + u16_at(data, subtable + 2)? as usize,
@@ -124,14 +160,12 @@ impl Gsub {
                     return false;
                 }
                 let (word, bit) = (glyph as usize / 64, glyph % 64);
-                if bits.len() <= word {
-                    bits.resize(word + 1, 0);
-                }
+                *len = (*len).max(word + 1);
                 bits[word] |= 1 << bit;
                 true
             })?;
         }
-        Some(bits)
+        Some(())
     }
 
     /// 查找的子表：(类型, 偏移)，扩展类型已经展开
@@ -215,8 +249,11 @@ impl Gsub {
         if count == 0 || glyphs.len() + count > MAX_GLYPHS {
             return None;
         }
-        let replacement = (0..count).map(|i| u16_at(data, sequence + 2 + 2 * i)).collect::<Option<Vec<u16>>>()?;
-        glyphs.splice(at..at + 1, replacement);
+        let mut replacement = [0u16; MAX_GLYPHS];
+        for (i, value) in replacement[..count].iter_mut().enumerate() {
+            *value = u16_at(data, sequence + 2 + 2 * i)?;
+        }
+        glyphs.splice(at..at + 1, replacement[..count].iter().copied());
         Some(count)
     }
 
@@ -359,7 +396,11 @@ impl Gsub {
             return None;
         }
         // input 里每个字现在的位置（前面的查找可能改变字数，后面的位置跟着移动）
-        let mut positions: Vec<usize> = (at..at + parts.input.1).collect();
+        let mut positions = [0usize; 1024];
+        let positions = positions.get_mut(..parts.input.1)?;
+        for (i, position) in positions.iter_mut().enumerate() {
+            *position = at + i;
+        }
         let (records, count) = parts.records;
         self.spend(count * parts.input.1.max(1))?;
         for i in 0..count {
@@ -511,6 +552,86 @@ mod tests {
     const B: u16 = 11;
     const X: u16 = 20;
 
+    #[test]
+    fn parsed_lookup_and_coverage_indices_are_admitted_and_owned_with_the_font() {
+        use crate::resources::{Budget, Scope};
+        let data =
+            super::super::ttf::fixture_tests::fixture_with_table(Some((*b"GSUB", table(1, &[2, 8, 1, X, 1, 1, A]))));
+        let file = data.len() + crate::font::mmap::storage_bytes();
+        for extra in [0, 34] {
+            let pool = Budget::new(file + extra, 0);
+            let _scope = Scope::enter(pool.clone());
+            let face = Face::parse(data.clone().into(), 0).unwrap();
+            let result = Gsub::new(&face, &[b"calt"]);
+            if extra == 0 {
+                assert!(result.is_none());
+                assert_eq!(pool.snapshot().used, file);
+            } else {
+                let gsub = result.unwrap();
+                assert_eq!(pool.snapshot().kinds[11], 34);
+                let mut input = Vec::with_capacity(256);
+                input.push(A);
+                gsub.apply(&mut input);
+                assert_eq!(input, [X]);
+                drop(face);
+                assert_eq!(pool.snapshot().used, file + 34);
+                drop(gsub);
+                assert_eq!(pool.snapshot().used, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn programming_shape_cache_borrows_results_and_rejects_unfunded_work() {
+        use crate::font::Fonts;
+        use crate::resources::{Budget, Kind, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let data =
+            super::super::ttf::fixture_tests::fixture_with_table(Some((*b"GSUB", table(1, &[2, 8, 1, X, 1, 1, 1]))));
+        let face = Face::parse(data.into(), 0).unwrap();
+        let mut fonts = Fonts::outline(face, None, vec![], vec![], 20.0, 1.0, String::new());
+        let baseline = pool.snapshot().used;
+        let occupied = pool.lease(Kind::Canvas, pool.snapshot().limit - baseline).unwrap();
+        assert!(fonts.ligatures("AAA", false).is_empty());
+        assert_eq!(pool.snapshot().used, baseline + occupied.bytes());
+        drop(occupied);
+        let first = fonts.ligatures("AAA", false);
+        assert_eq!(first, [(0, X), (1, X), (2, X)]);
+        let pointer = first.as_ptr();
+        let used = pool.snapshot().used;
+        assert_eq!(fonts.ligatures("AAA", false).as_ptr(), pointer);
+        assert_eq!(pool.snapshot().used, used);
+        // 即使不同原文占用同一个指纹槽，也不能拿它的结果绘制当前输入。
+        use std::hash::Hasher;
+        let mut hash = crate::hash::Fnv::default();
+        hash.write(b"AAA");
+        fonts.shapes[0].insert(
+            hash.finish(),
+            crate::font::Shape { text: "different".into(), changes: vec![(99, 999)] },
+            160,
+        );
+        assert_eq!(fonts.ligatures("AAA", false), [(0, X), (1, X), (2, X)]);
+        assert!(fonts.ligatures(&"A".repeat(1025), false).is_empty());
+        fonts.clear_caches();
+        assert_eq!(pool.snapshot().used, baseline);
+        drop(fonts);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
+    #[test]
+    fn reused_coverage_scratch_does_not_carry_bits_from_the_previous_lookup() {
+        let mut bytes = table(1, &[2, 8, 1, X, 1, 1, 1]);
+        bytes.splice(44..44, [0, 1]); // 同一个 feature 再启用查找 1。
+        bytes[8..10].copy_from_slice(&46u16.to_be_bytes());
+        bytes[40..42].copy_from_slice(&2u16.to_be_bytes());
+        let data = super::super::ttf::fixture_tests::fixture_with_table(Some((*b"GSUB", bytes)));
+        let face = Face::parse(data.into(), 0).unwrap();
+        let gsub = Gsub::new(&face, &[b"calt"]).unwrap();
+        assert_eq!(gsub.starts[0], [1 << 1]);
+        assert_eq!(gsub.starts[1], [1 << A]);
+    }
+
     /// 手工拼一个最小的 GSUB 表，`lookup0` 是放在 58 的查找 0 的子表（查找 1 固定是"A 换成 X"）
     fn table(lookup0_kind: u16, lookup0: &[u16]) -> Vec<u8> {
         let mut words: Vec<u16> = vec![
@@ -560,8 +681,18 @@ mod tests {
 
     fn run(kind: u16, lookup0: &[u16], input: &[u16]) -> Vec<u16> {
         let data = table(kind, lookup0).into();
-        let mut gsub = Gsub { data, lookup_list: 44, lookups: vec![0], starts: vec![], budget: Cell::new(1_000_000) };
-        gsub.starts = vec![gsub.start_glyphs(0).unwrap()];
+        let mut gsub = Gsub {
+            data,
+            lookup_list: 44,
+            lookups: vec![0],
+            starts: vec![],
+            budget: Cell::new(1_000_000),
+            memory: crate::resources::current().lease(crate::resources::Kind::FontOutline, 0).unwrap(),
+        };
+        let mut bits = [0; 1024];
+        let mut len = 0;
+        gsub.start_glyphs(0, &mut bits, &mut len).unwrap();
+        gsub.starts = vec![bits[..len].to_vec()];
         let mut glyphs = input.to_vec();
         gsub.apply(&mut glyphs);
         glyphs

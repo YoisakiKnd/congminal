@@ -1,0 +1,697 @@
+{
+  "scope": "Optional standalone helper, generated private tickets and real OpenSSH askpass with encrypted test keys and isolated loopback sshd. Fixture broker supplies test answers; this is not the application frontend/state worker, password/2FA server, GUI, Windows or fair helper performance validation. No real user SSH files or credentials; records omit prompts, capabilities and answers. 30ms fixture response delay makes short-lived helpers observable.",
+  "source_sha256": {
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/cancellation.rs": "b91c9286f405b8869fd8aa629b738ecee99b251167858d43625084abdad2a36a",
+    "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+    "src/config/profiles.rs": "090d904e5b2b4baf3ce64e7bfe6ae399645dd8a5193be43eba00ddce5c07cd90",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/main.rs": "054dc6af5484a3ba2fedeea69643b4bd1a67aab8ae1a95a6a517b64790f2328b",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+    "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+    "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+    "src/process_launch.rs": "a913cc2da5f27b413fdd6f71064f61ad78bb85dd1c0dc20acfc04729fec8b91a",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/unix.rs": "ea9d1e452189e322c459b20c10e7a244079e8df34aba98812a77b1346e1afd0c",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+    "src/resolve.rs": "1a5a741615b531d6440e407bd46f90895bc67916ebd6b7ec5f9332cd4d249857",
+    "src/resources/budget.rs": "309ff4802bee32fda3e7cf0497a9d4611876cd63abe01355d3c67c06b9bb2ab8",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/resources.rs": "aa299533d3bd5ae7dda2ed798618ff6f7f7319a0b83368a7cbd190918a920a72",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/session.rs": "dc3f4ee4e3a92aebbd5ae7e16ff27089eefc8b375585904653a644e5774c841e",
+    "src/sftp/allocation.rs": "555f3521488b7ca257cbffcbeb1d8ab457d9092df00662553c891eb4943e86e6",
+    "src/sftp/client.rs": "119f08c3c7b53a8871af2533319b8e7c88f7da951eadb725996f0839fa59bab4",
+    "src/sftp/connect.rs": "c584e295da3995d65e13d473666c3ab28779aff268d6e49c196541a15a0c7cac",
+    "src/sftp/files.rs": "4622081057ded39e839b0be66dadc7c7d8e600eb977a42a81327d5bdb591b330",
+    "src/sftp/mod.rs": "50ce9ffff2ce3245d32256f71fda9d0aacea41e0db1135c39344aaa26716395c",
+    "src/sftp/model.rs": "91c83fd80bd48f5b696a0269a9baaed8d5207dfc7a3dd8abb239837fa5b3c1ad",
+    "src/sftp/native.rs": "71132288dad96c4d2c9a8f9b2006166a5371748e8fe33d39693327dbe73ab799",
+    "src/sftp/native_wait.rs": "90b17e9c0fbe2582c40b7170d17bc54d70763f03fdc02af2dddc8c502cba428e",
+    "src/sftp/openssh.rs": "fd8bac6dbbf64ac68d3af184943cb760e84306941d5e3c1187a241aa7a0d7959",
+    "src/sftp/openssh_bench.rs": "bce59c98b15acebc176b38f26847fbb79a750a43160b4b65f037403a207f1946",
+    "src/sftp/operations.rs": "cda190e0ddca16cf262108b0a14484af6d59e793d0c9f06e5a3aa7bc69a3f56b",
+    "src/sftp/secret.rs": "84654f08ff44fc6e80902b6d39e97266bdc218b26fafd97dbf74aa78cd27880f",
+    "src/sftp/transfer.rs": "ef00171c08c25fbba13f373dfbc99567e73b19ee8445fbe373f529942d304637",
+    "src/sftp/wire.rs": "dadc53f2c7b89a9b7d963fe629567df68fa6e9b6de2df801d060be647aeb0348",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/ssh/auth.rs": "248deeb2c5a98f49b8926ceff8dda85f0d6c69f2c11b1d362380e9b0da94e131",
+    "src/ssh/auth_secret.rs": "0ed586f2b119c65a293df2bc2458b77c4b92433a3c2f53360f9e9718545c4793",
+    "src/ssh/auth_ticket.rs": "11972eefee3bc20223ebec8680025e3ecbafeed8bf5ec782b55ca7b4a4895c50",
+    "src/ssh/auth_types.rs": "f928e4f1c068074efe09fbde85331eb855e2161fe07a210fa9b911cbfca7edd9",
+    "src/ssh/auth_wire.rs": "165e4512723b95b946c9afd6ceb2d01e1cbd4dd9bc341dba4e7d90024f36547d",
+    "src/ssh/capture.rs": "f8011982766d13a28843785f1b654f6e5e386ad65b8ef860f0f91d52b2beeae3",
+    "src/ssh/capture_windows.rs": "5bd3120b1e3e65b46f87d1b39f1acdfa0c3133fcd46c4cc0a53a51e9ae6946e8",
+    "src/ssh/capture_windows_input.rs": "8b433b21f2bfc9e8033aa5d489e54cbae5bae46cba61d96e8286db70fe2961cd",
+    "src/ssh/capture_windows_wire.rs": "7ca895a506a9cba83299db1e329d0927286250e16ca414dd9a854cbbdcf6a430",
+    "src/ssh/helper_auth.rs": "6755ea101115b7be16255fbdc1ffa7fa7c415bf9fa27666bdc33e14bde2d1ed7",
+    "src/ssh/helper_main.rs": "9b0325d2c093f56d2a9a1632c2bec2e16fa6cf23a499a4cd972441fd55ac4d3d",
+    "src/ssh/helper_resources.rs": "860c92387c48d34dda1f6f57467e50375ff0f999f03c3d6a5aa80dbc9417e596",
+    "src/ssh/paths.rs": "46918fb4025adc485a9c10caf2e3d32b1af8543db6ba92f4d277ef3f36a66291",
+    "src/ssh/settings.rs": "144cf3d3c3991addfded0b71ca3182a0d580550423a243c7e9985ece7ffb03b6",
+    "src/ssh.rs": "160b6306822b382c6f1260e5ada3be10d481ed22179381eef7cce3ef15cc1ba8",
+    "src/tasks.rs": "caaaaa587537b2bbf8030e15f588c9caf4841a0129c5a31b7a039008373dd61c",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/remote.rs": "aa393538b30473bb696cf331a14a2eb390fb41b2cadca6e15c24a354a9b37708",
+    "src/workspace.rs": "7213a030b04b7e5b9398d98f7043f38a5ad7bfac7eca7ef78d66571f9f9354f0"
+  },
+  "direct": [
+    {
+      "name": "maximum",
+      "exit": 0,
+      "output_bytes": 1023,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    },
+    {
+      "name": "empty",
+      "exit": 0,
+      "output_bytes": 0,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    },
+    {
+      "name": "cancel",
+      "exit": 1,
+      "output_bytes": 0,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    },
+    {
+      "name": "malformed",
+      "exit": 2,
+      "output_bytes": 0,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    },
+    {
+      "name": "closed",
+      "exit": 2,
+      "output_bytes": 0,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    },
+    {
+      "name": "invalid_utf8",
+      "exit": 2,
+      "output_bytes": 0,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    },
+    {
+      "name": "confirmation",
+      "exit": 0,
+      "output_bytes": 3,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 1,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    },
+    {
+      "name": "notice",
+      "exit": 0,
+      "output_bytes": 0,
+      "output_matches": true,
+      "stderr_empty": true,
+      "requests": [
+        {
+          "kind": 2,
+          "prompt_bytes": 8,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "passed": true
+    }
+  ],
+  "ssh": [
+    {
+      "name": "passphrase",
+      "exit": 0,
+      "sftp_v3": true,
+      "response_bytes": 322,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 61,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "samples": [
+        {
+          "ns": 13583,
+          "tree": {
+            "50316": {
+              "rss": 32768,
+              "cpu_ns": 280416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 7662333,
+          "tree": {
+            "50316": {
+              "rss": 3325952,
+              "cpu_ns": 3493333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 15204458,
+          "tree": {
+            "50316": {
+              "rss": 3571712,
+              "cpu_ns": 6001625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 22743000,
+          "tree": {
+            "50316": {
+              "rss": 3604480,
+              "cpu_ns": 6253125,
+              "threads": 1
+            },
+            "50320": {
+              "rss": 1900544,
+              "cpu_ns": 1180291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 30375916,
+          "tree": {
+            "50316": {
+              "rss": 3604480,
+              "cpu_ns": 6253125,
+              "threads": 1
+            },
+            "50320": {
+              "rss": 1900544,
+              "cpu_ns": 1180291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 37966125,
+          "tree": {
+            "50316": {
+              "rss": 3604480,
+              "cpu_ns": 6253125,
+              "threads": 1
+            },
+            "50320": {
+              "rss": 1900544,
+              "cpu_ns": 1180291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 45572375,
+          "tree": {
+            "50316": {
+              "rss": 3604480,
+              "cpu_ns": 6253125,
+              "threads": 1
+            },
+            "50320": {
+              "rss": 1900544,
+              "cpu_ns": 1180291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 53149250,
+          "tree": {
+            "50316": {
+              "rss": 3637248,
+              "cpu_ns": 6297625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 60671416,
+          "tree": {
+            "50316": {
+              "rss": 3637248,
+              "cpu_ns": 6297625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 68192833,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 20731541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 75714208,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 26263791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 83235000,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 36356625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 90754125,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 39122625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 98272666,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 46268041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 105788666,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 60544875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 113310708,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 67836083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 120835250,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 69220958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 128355208,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 76272125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 135874041,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 86274666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 143395291,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 96277833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 150917958,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 104020250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 158433708,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 106278666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 165952166,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 116283000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 173472000,
+          "tree": {
+            "50316": {
+              "rss": 3653632,
+              "cpu_ns": 126973541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 181000416,
+          "tree": {
+            "50316": {
+              "rss": 3768320,
+              "cpu_ns": 129638083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 188564333,
+          "tree": {
+            "50316": {
+              "rss": 4145152,
+              "cpu_ns": 129782958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 196103500,
+          "tree": {
+            "50316": {
+              "rss": 4145152,
+              "cpu_ns": 129792958,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "host_record_bytes": 99,
+      "client_stderr": "",
+      "observed_children_still_live": [],
+      "peak_tree_rss": 5505024,
+      "peak_processes": 2,
+      "passed": true
+    },
+    {
+      "name": "maximum",
+      "exit": 255,
+      "sftp_v3": false,
+      "response_bytes": 0,
+      "requests": [
+        {
+          "kind": 0,
+          "prompt_bytes": 59,
+          "contains_fingerprint": false
+        }
+      ],
+      "fixture_errors": [],
+      "samples": [
+        {
+          "ns": 10042,
+          "tree": {
+            "50323": {
+              "rss": 32768,
+              "cpu_ns": 360250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 5729500,
+          "tree": {
+            "50323": {
+              "rss": 3325952,
+              "cpu_ns": 4746125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13271125,
+          "tree": {
+            "50323": {
+              "rss": 3325952,
+              "cpu_ns": 4746125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 20386167,
+          "tree": {
+            "50323": {
+              "rss": 3604480,
+              "cpu_ns": 8362375,
+              "threads": 1
+            },
+            "50326": {
+              "rss": 524288,
+              "cpu_ns": 97583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 27947584,
+          "tree": {
+            "50323": {
+              "rss": 3604480,
+              "cpu_ns": 8404791,
+              "threads": 1
+            },
+            "50326": {
+              "rss": 1900544,
+              "cpu_ns": 1474958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 35536625,
+          "tree": {
+            "50323": {
+              "rss": 3604480,
+              "cpu_ns": 8404791,
+              "threads": 1
+            },
+            "50326": {
+              "rss": 1900544,
+              "cpu_ns": 1474958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 43125125,
+          "tree": {
+            "50323": {
+              "rss": 3604480,
+              "cpu_ns": 8404791,
+              "threads": 1
+            },
+            "50326": {
+              "rss": 1900544,
+              "cpu_ns": 1474958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 50729875,
+          "tree": {
+            "50323": {
+              "rss": 3604480,
+              "cpu_ns": 8404791,
+              "threads": 1
+            },
+            "50326": {
+              "rss": 1900544,
+              "cpu_ns": 1474958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 58313875,
+          "tree": {
+            "50323": {
+              "rss": 3604480,
+              "cpu_ns": 8404791,
+              "threads": 1
+            },
+            "50326": {
+              "rss": 1900544,
+              "cpu_ns": 1474958,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "host_record_bytes": 99,
+      "client_stderr": "debug1: OpenSSH_10.3p1, LibreSSL 3.3.6\r\ndebug3: Running on Darwin 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:02:57 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T8132 arm64\r\ndebug3: Started with: /usr/bin/ssh -T -s -oForkAfterAuthentication=no -oBatchMode=no -F /private/tmp/cga-o35krcg6/maximum.config -vvv -- fixture sftp\r\ndebug1: Reading configuration data /private/tmp/cga-o35krcg6/maximum.config\r\ndebug1: /private/tmp/cga-o35krcg6/maximum.config line 1: Applying options for fixture\r\ndebug2: resolve_canonicalize: hostname 127.0.0.1 is address\r\ndebug1: Authenticator provider $SSH_SK_PROVIDER did not resolve; disabling\r\ndebug3: channel_clear_timeouts: clearing\r\ndebug3: ssh_connect_direct: entering\r\ndebug1: Connecting to 127.0.0.1 [127.0.0.1] port 62467.\r\ndebug3: set_sock_tos: set socket 3 IP_TOS 0xb8\r\ndebug1: Connection established.\r\ndebug1: loaded pubkey from /private/tmp/cga-o35krcg6/long: ED25519 SHA256:YC7pyR45HDDJSUosWW1J09poURd5y33ZzaoTktAkomE\r\ndebug1: identity file /private/tmp/cga-o35krcg6/long type 2\r\ndebug1: no identity pubkey loaded from /private/tmp/cga-o35krcg6/long\r\ndebug1: Local version string SSH-2.0-OpenSSH_10.3\r\ndebug1: Remote protocol version 2.0, remote software version OpenSSH_10.3\r\ndebug1: compat_banner: match: OpenSSH_10.3 pat OpenSSH* compat 0x04000000\r\ndebug2: fd 3 setting O_NONBLOCK\r\ndebug1: Authenticating to 127.0.0.1:62467 as 'tenonsuzu'\r\ndebug3: put_host_port: [127.0.0.1]:62467\r\ndebug3: record_hostkey: found key type ED25519 in file /private/tmp/cga-o35krcg6/maximum.known:1\r\ndebug3: load_hostkeys_file: loaded 1 keys from [127.0.0.1]:62467\r\ndebug3: order_hostkeyalgs: have matching best-preference key type ssh-ed25519-cert-v01@openssh.com, using HostkeyAlgorithms verbatim\r\ndebug3: send packet: type 20\r\ndebug1: SSH2_MSG_KEXINIT sent\r\ndebug3: receive packet: type 20\r\ndebug1: SSH2_MSG_KEXINIT received\r\ndebug2: local client KEXINIT proposal\r\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,ext-info-c,kex-strict-c-v00@openssh.com\r\ndebug2: host key algorithms: ssh-ed25519-cert-v01@openssh.com,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,sk-ssh-ed25519-cert-v01@openssh.com,sk-ecdsa-sha2-nistp256-cert-v01@openssh.com,webauthn-sk-ecdsa-sha2-nistp256-cert-v01@openssh.com,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,webauthn-sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-512,rsa-sha2-256\r\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr\r\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr\r\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1\r\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1\r\ndebug2: compression ctos: none,zlib@openssh.com\r\ndebug2: compression stoc: none,zlib@openssh.com\r\ndebug2: languages ctos: \r\ndebug2: languages stoc: \r\ndebug2: first_kex_follows 0 \r\ndebug2: reserved 0 \r\ndebug2: peer server KEXINIT proposal\r\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com\r\ndebug2: host key algorithms: ssh-ed25519\r\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr\r\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr\r\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1\r\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1\r\ndebug2: compression ctos: none,zlib@openssh.com\r\ndebug2: compression stoc: none,zlib@openssh.com\r\ndebug2: languages ctos: \r\ndebug2: languages stoc: \r\ndebug2: first_kex_follows 0 \r\ndebug2: reserved 0 \r\ndebug3: kex_choose_conf: will use strict KEX ordering\r\ndebug1: kex: algorithm: mlkem768x25519-sha256\r\ndebug1: kex: host key algorithm: ssh-ed25519\r\ndebug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none\r\ndebug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none\r\ndebug3: send packet: type 30\r\ndebug1: expecting SSH2_MSG_KEX_ECDH_REPLY\r\ndebug3: receive packet: type 31\r\ndebug1: SSH2_MSG_KEX_ECDH_REPLY received\r\ndebug1: Server host key: ssh-ed25519 SHA256:fAhPB9X0hJbiB0sBZGxHfLs4VYusBMvR6TA3qEM8p0s\r\ndebug3: put_host_port: [127.0.0.1]:62467\r\ndebug3: put_host_port: [127.0.0.1]:62467\r\ndebug3: record_hostkey: found key type ED25519 in file /private/tmp/cga-o35krcg6/maximum.known:1\r\ndebug3: load_hostkeys_file: loaded 1 keys from [127.0.0.1]:62467\r\ndebug1: Host '[127.0.0.1]:62467' is known and matches the ED25519 host key.\r\ndebug1: Found key in /private/tmp/cga-o35krcg6/maximum.known:1\r\ndebug3: send packet: type 21\r\ndebug1: ssh_packet_send2_wrapped: resetting send seqnr 3\r\ndebug2: ssh_set_newkeys: mode 1\r\ndebug1: rekey out after 134217728 blocks\r\ndebug1: SSH2_MSG_NEWKEYS sent\r\ndebug1: Sending SSH2_MSG_EXT_INFO\r\ndebug3: send packet: type 7\r\ndebug1: expecting SSH2_MSG_NEWKEYS\r\ndebug3: receive packet: type 21\r\ndebug1: ssh_packet_read_poll2: resetting read seqnr 3\r\ndebug1: SSH2_MSG_NEWKEYS received\r\ndebug2: ssh_set_newkeys: mode 0\r\ndebug1: rekey in after 134217728 blocks\r\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,ext-info-c,kex-strict-c-v00@openssh.com\r\ndebug2: host key algorithms: ssh-ed25519-cert-v01@openssh.com,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,sk-ssh-ed25519-cert-v01@openssh.com,sk-ecdsa-sha2-nistp256-cert-v01@openssh.com,webauthn-sk-ecdsa-sha2-nistp256-cert-v01@openssh.com,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,webauthn-sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-512,rsa-sha2-256\r\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr\r\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr\r\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1\r\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1\r\ndebug2: compression ctos: none,zlib@openssh.com\r\ndebug2: compression stoc: none,zlib@openssh.com\r\ndebug2: languages ctos: \r\ndebug2: languages stoc: \r\ndebug2: first_kex_follows 0 \r\ndebug2: reserved 0 \r\ndebug3: send packet: type 5\r\ndebug3: receive packet: type 7\r\ndebug1: SSH2_MSG_EXT_INFO received\r\ndebug3: kex_input_ext_info: extension server-sig-algs\r\ndebug1: kex_ext_info_client_parse: server-sig-algs=<ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-512,rsa-sha2-256,webauthn-sk-ecdsa-sha2-nistp256@openssh.com>\r\ndebug3: kex_input_ext_info: extension publickey-hostbound@openssh.com\r\ndebug1: kex_ext_info_check_ver: publickey-hostbound@openssh.com=<0>\r\ndebug3: kex_input_ext_info: extension ping@openssh.com\r\ndebug1: kex_ext_info_check_ver: ping@openssh.com=<0>\r\ndebug3: kex_input_ext_info: extension agent-forward\r\ndebug1: kex_ext_info_check_ver: agent-forward=<0>\r\ndebug3: receive packet: type 6\r\ndebug2: service_accept: ssh-userauth\r\ndebug1: SSH2_MSG_SERVICE_ACCEPT received\r\ndebug3: send packet: type 50\r\ndebug3: receive packet: type 7\r\ndebug1: SSH2_MSG_EXT_INFO received\r\ndebug3: kex_input_ext_info: extension server-sig-algs\r\ndebug1: kex_ext_info_client_parse: server-sig-algs=<ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-512,rsa-sha2-256,webauthn-sk-ecdsa-sha2-nistp256@openssh.com>\r\ndebug3: receive packet: type 51\r\ndebug1: Authentications that can continue: publickey\r\ndebug3: start over, passed a different list publickey\r\ndebug3: preferred publickey,keyboard-interactive,password\r\ndebug3: authmethod_lookup publickey\r\ndebug3: remaining preferred: keyboard-interactive,password\r\ndebug3: authmethod_is_enabled publickey\r\ndebug1: Next authentication method: publickey\r\ndebug1: Will attempt key: /private/tmp/cga-o35krcg6/long ED25519 SHA256:YC7pyR45HDDJSUosWW1J09poURd5y33ZzaoTktAkomE explicit\r\ndebug2: pubkey_prepare: done\r\ndebug1: Offering public key: /private/tmp/cga-o35krcg6/long ED25519 SHA256:YC7pyR45HDDJSUosWW1J09poURd5y33ZzaoTktAkomE explicit\r\ndebug3: send packet: type 50\r\ndebug2: we sent a publickey packet, wait for reply\r\ndebug3: receive packet: type 60\r\ndebug1: Server accepts key: /private/tmp/cga-o35krcg6/long ED25519 SHA256:YC7pyR45HDDJSUosWW1J09poURd5y33ZzaoTktAkomE explicit\r\ndebug3: sign_and_send_pubkey: using publickey-hostbound-v00@openssh.com with ED25519 SHA256:YC7pyR45HDDJSUosWW1J09poURd5y33ZzaoTktAkomE\r\ndebug3: sign_and_send_pubkey: signing using ssh-ed25519 SHA256:YC7pyR45HDDJSUosWW1J09poURd5y33ZzaoTktAkomE\r\ndebug1: read_passphrase: requested to askpass\r\ndebug2: no passphrase given, try next key\r\ndebug2: we did not send a packet, disable method\r\ndebug1: No more authentication methods to try.\r\ntenonsuzu@127.0.0.1: Permission denied (publickey).\r\n",
+      "observed_children_still_live": [],
+      "peak_tree_rss": 5505024,
+      "peak_processes": 2,
+      "passed": false
+    }
+  ],
+  "build": {
+    "exit": 0,
+    "stdout": "",
+    "stderr": "    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n"
+  },
+  "helper_bytes": 567688,
+  "sampler": "libproc \u6bcf 5 ms\uff1bMach \u65f6\u95f4\u57fa\u51c6 125/3\uff1b\u8fdb\u7a0b\u6811\u6700\u591a 64 \u9879",
+  "fixture_decryption": {
+    "host": true,
+    "client": true,
+    "long": true
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "scenario": "CGEventPostToPid Cmd+T to own GUI child PID followed by normal terminate",
+  "tab_creation_observed": false,
+  "children_before_and_after_input": 3,
+  "saved_tab_count": 3,
+  "gui_exit": 0,
+  "normal_quit_ms": 95.594,
+  "conclusion": "targeted keyboard injection did not create a tab; do not treat this attempt as native dirty-layout flush validation; cause not determined"
+}

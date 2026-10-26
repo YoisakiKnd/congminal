@@ -182,16 +182,47 @@ unsafe fn rect_to_screen(window: Id, rect: NSRect) -> NSRect {
     }
 }
 
-/// NSString（或 NSAttributedString）转成 Rust 字符串
-unsafe fn string_from(obj: Id) -> String {
+/// 先查 UTF-8 字节数再创建应用副本；保留内嵌 NUL，不走 C 字符串截断。
+/// AppKit 自己的对象/编码缓存不属于这项应用分配上限。
+unsafe fn string_from(obj: Id, limit: usize) -> Option<String> {
+    unsafe { with_string(obj, limit, str::to_owned) }
+}
+
+unsafe fn with_string<T>(obj: Id, limit: usize, consume: impl FnOnce(&str) -> T) -> Option<T> {
     unsafe {
         if obj.is_null() {
-            return String::new();
+            return None;
         }
         let attributed: i8 = msg![obj, "isKindOfClass:", class(c"NSAttributedString") => Id; i8];
         let string: Id = if attributed != 0 { msg![obj, "string"; Id] } else { obj };
-        let utf8: *const c_char = msg![string, "UTF8String"; *const c_char];
-        if utf8.is_null() { String::new() } else { CStr::from_ptr(utf8).to_string_lossy().into_owned() }
+        if string.is_null() {
+            return None;
+        }
+        let policy = super::ClipboardRead { limit, strict_unicode: true };
+        // UTF-8 字节数至少等于 UTF-16 单元数；明显超限时无需请求 UTF-8 编码。
+        let units: usize = msg![string, "length"; usize];
+        if units > policy.limit() {
+            return None;
+        }
+        let bytes: usize = msg![string, "lengthOfBytesUsingEncoding:", 4usize => usize; usize];
+        if bytes > policy.limit() {
+            return None;
+        }
+        let utf8: *const u8 = msg![string, "UTF8String"; *const u8];
+        if utf8.is_null() {
+            return None;
+        }
+        std::str::from_utf8(std::slice::from_raw_parts(utf8, bytes)).ok().map(consume)
+    }
+}
+
+fn clear_text(mut text: String) {
+    wipe_text(&mut text);
+}
+fn wipe_text(text: &mut str) {
+    // 清理尚未交给 App 的应用自有副本；不承诺清理系统输入法对象。
+    for byte in unsafe { text.as_bytes_mut() } {
+        unsafe { std::ptr::write_volatile(byte, 0) };
     }
 }
 
@@ -295,6 +326,9 @@ impl Window {
             msg![view, "release"; ()];
             msg![view, "setWantsLayer:", 1i8 => i8; ()];
             msg![window, "makeFirstResponder:", view => Id; i8];
+            // Cmd+Q、Dock 退出也先返回 Rust 事件循环，执行布局保存及 PTY 清理。
+            msg![app, "setDelegate:", view => Id; ()];
+            msg![window,"setDelegate:",view=>Id;()];
             // 没按键时的鼠标移动默认不发，程序开了 1003 模式时要用
             msg![window, "setAcceptsMouseMovedEvents:", 1i8 => i8; ()];
             let protocol = objc_getProtocol(c"NSTextInputClient".as_ptr());
@@ -379,6 +413,12 @@ impl Window {
     /// 等到至少一个事件，把排队的事件处理完，然后检查尺寸、重画
     unsafe fn pump(&mut self, app: &mut dyn App, distant_future: Id, distant_past: Id) -> bool {
         unsafe {
+            if !self.observe_focus(app)
+                || !protected_window::sync(self.view, self.focused, app)
+                || !protected_window::drain(self.view, self.focused, app)
+            {
+                return false;
+            }
             // 没有截止时间就一直等到有事件
             let mut until = match app.deadline() {
                 Some(deadline) => {
@@ -387,18 +427,23 @@ impl Window {
                 }
                 None => distant_future,
             };
+            let started = std::time::Instant::now();
+            let mut events = 0usize;
             loop {
                 let event: Id = msg![self.app, "nextEventMatchingMask:untilDate:inMode:dequeue:",
                     u64::MAX => u64, until => Id, NSDefaultRunLoopMode => Id, 1i8 => i8; Id];
                 if event.is_null() {
                     break;
                 }
+                if !self.observe_focus(app) || !protected_window::sync(self.view, self.focused, app) {
+                    return false;
+                }
                 // 第一个事件到了之后，剩下的只取已经排队的，不再等待
                 until = distant_past;
 
                 let kind: usize = msg![event, "type"; usize];
                 if kind == NS_EVENT_TYPE_APPLICATION_DEFINED {
-                    if !app.event(Event::Wake) {
+                    if !app.event(Event::Wake) || !protected_window::sync(self.view, self.focused, app) {
                         return false;
                     }
                 } else {
@@ -406,12 +451,32 @@ impl Window {
                     msg![self.app, "sendEvent:", event => Id; ()];
                 }
                 while let Some(e) = IME.with(|s| s.borrow_mut().events.pop_front()) {
-                    if !app.event(e) {
+                    if !protected_window::plain_event(self.view, e, app)
+                        || !protected_window::sync(self.view, self.focused, app)
+                    {
                         return false;
                     }
                 }
+                if !self.observe_focus(app)
+                    || !protected_window::sync(self.view, self.focused, app)
+                    || !protected_window::drain(self.view, self.focused, app)
+                {
+                    return false;
+                }
+                events += 1;
+                if protected_window::managed(self.view)
+                    && (events >= 64 || started.elapsed() >= std::time::Duration::from_millis(2))
+                {
+                    break;
+                }
             }
             if !app.tick() {
+                return false;
+            }
+            if !self.observe_focus(app)
+                || !protected_window::sync(self.view, self.focused, app)
+                || !protected_window::drain(self.view, self.focused, app)
+            {
                 return false;
             }
             msg![self.app, "updateWindows"; ()];
@@ -422,12 +487,8 @@ impl Window {
             if visible == 0 && minimized == 0 && !app.event(Event::CloseRequested) {
                 return false;
             }
-            let focused = msg![self.window, "isKeyWindow"; i8] != 0;
-            if focused != self.focused {
-                self.focused = focused;
-                if !app.event(Event::Focus(focused)) {
-                    return false;
-                }
+            if !self.observe_focus(app) || !protected_window::sync(self.view, self.focused, app) {
+                return false;
             }
 
             let frame = view_frame(self.view);
@@ -456,11 +517,31 @@ impl Window {
                 match request {
                     ClipboardRequest::Copy(text) => {
                         msg![pasteboard, "clearContents"; isize];
-                        msg![pasteboard, "setString:forType:", nsstring(&text) => Id, NSPasteboardTypeString => Id; i8];
+                        let copied = msg![pasteboard, "setString:forType:", nsstring(&text) => Id, NSPasteboardTypeString => Id; i8];
+                        if copied == 0 && !app.event(Event::CopyFailed) {
+                            return false;
+                        }
                     }
-                    ClipboardRequest::Paste => {
+                    ClipboardRequest::Paste(mut request) => {
+                        let policy = request.policy();
                         let text: Id = msg![pasteboard, "stringForType:", NSPasteboardTypeString => Id; Id];
-                        if !text.is_null() && !app.event(Event::Paste(string_from(text))) {
+                        let units = if text.is_null() { 0 } else { msg![text, "length"; usize] };
+                        let bytes = if text.is_null() || units > policy.limit() {
+                            0
+                        } else {
+                            msg![text,"lengthOfBytesUsingEncoding:",4usize => usize;usize]
+                        };
+                        let text = if text.is_null() || units > policy.limit() || bytes > policy.limit() {
+                            None
+                        } else {
+                            let pointer: *const u8 = msg![text,"UTF8String";*const u8];
+                            if pointer.is_null() {
+                                None
+                            } else {
+                                request.utf8(std::slice::from_raw_parts(pointer, bytes))
+                            }
+                        };
+                        if !app.event(request.finish(text)) || !protected_window::sync(self.view, self.focused, app) {
                             return false;
                         }
                     }
@@ -469,6 +550,20 @@ impl Window {
             self.update_ime_position(app.ime_cursor_area());
             true
         }
+    }
+
+    unsafe fn observe_focus(&mut self, app: &mut dyn App) -> bool {
+        let focused = unsafe { msg![self.window,"isKeyWindow";i8] } != 0;
+        if focused != self.focused {
+            if !focused {
+                protected_window::blur(self.view);
+            }
+            self.focused = focused;
+            if !app.event(Event::Focus(focused)) {
+                return false;
+            }
+        }
+        true
     }
 
     /// 告诉输入法光标在屏幕上的位置（它会把候选词窗口放在下面）
@@ -483,6 +578,9 @@ impl Window {
             };
             let screen = rect_to_screen(self.window, rect);
             IME.with(|s| s.borrow_mut().cursor_rect = screen);
+            if let protected_window::Lookup::Active(handle) = protected_window::lookup(self.view) {
+                handle.set_cursor(screen);
+            }
         }
     }
 
@@ -522,6 +620,9 @@ impl Window {
 impl Drop for Window {
     fn drop(&mut self) {
         unsafe {
+            protected_window::reset(self.view);
+            msg![self.app, "setDelegate:", NIL => Id; ()];
+            msg![self.window,"setDelegate:",NIL=>Id;()];
             CGColorSpaceRelease(self.color_space);
             msg![self.window, "close"; ()];
             msg![self.window, "release"; ()];
@@ -596,8 +697,8 @@ fn named_key(code: u16) -> Option<Key> {
 struct ImeState {
     /// 交给 App 的事件
     events: VecDeque<Event>,
-    /// 正在输入、还没上屏的文字
-    marked: String,
+    /// Cocoa 只需要组合范围，保留 UTF-16 长度而不另存一份明文。
+    marked_utf16: usize,
     /// 正在 keyDown: 里调用 interpretKeyEvents:
     in_key_down: bool,
     /// 这次按键开始时输入法是否已经在输入中
@@ -612,10 +713,18 @@ struct ImeState {
     cursor_rect: NSRect,
 }
 
+impl ImeState {
+    fn clear_pending(&mut self) {
+        if let Some(text) = self.pending_text.take() {
+            clear_text(text);
+        }
+    }
+}
+
 thread_local! {
     static IME: RefCell<ImeState> = const { RefCell::new(ImeState {
         events: VecDeque::new(),
-        marked: String::new(),
+        marked_utf16: 0,
         in_key_down: false,
         composing_at_start: false,
         consumed: false,
@@ -650,9 +759,13 @@ unsafe fn register_view_class() -> Id {
             (c"scrollWheel:", scroll_wheel as *const c_void, c"v@:@"),
             (c"copy:", copy as *const c_void, c"v@:@"),
             (c"paste:", paste as *const c_void, c"v@:@"),
+            (c"applicationShouldTerminate:", should_terminate as *const c_void, c"Q@:@"),
             (c"resetCursorRects", reset_cursor_rects as *const c_void, c"v@:"),
             (c"acceptsFirstResponder", accepts_first_responder as *const c_void, c"c@:"),
             (c"keyDown:", key_down as *const c_void, c"v@:@"),
+            (c"inputContext", protected_window::input_context as *const c_void, c"@@:"),
+            (c"windowDidResignKey:", protected_window::resigned as *const c_void, c"v@:@"),
+            (c"windowDidBecomeKey:", protected_window::became as *const c_void, c"v@:@"),
             (c"insertText:replacementRange:", insert_text as *const c_void, c"v@:@{_NSRange=QQ}"),
             (
                 c"setMarkedText:selectedRange:replacementRange:",
@@ -680,13 +793,29 @@ unsafe fn register_view_class() -> Id {
         for &(name, imp, types) in methods {
             class_addMethod(cls, sel_registerName(name.as_ptr()), imp, types.as_ptr());
         }
-        let protocol = objc_getProtocol(c"NSTextInputClient".as_ptr());
-        if !protocol.is_null() {
-            class_addProtocol(cls, protocol);
+        for name in [c"NSTextInputClient", c"NSWindowDelegate", c"NSApplicationDelegate"] {
+            let protocol = objc_getProtocol(name.as_ptr());
+            if !protocol.is_null() {
+                class_addProtocol(cls, protocol);
+            }
         }
         objc_registerClassPair(cls);
         cls
     }
+}
+
+extern "C" fn should_terminate(_: Id, _: Sel, _: Id) -> usize {
+    crate::term::trace(format_args!("收到系统退出请求，交由 Rust 关闭路径处理"));
+    let reply = defer_termination();
+    // Dock/AppleEvent 可能在 nextEvent 内回调，必须叫醒正在等待 NSEvent 的循环。
+    Waker.wake();
+    reply
+}
+fn defer_termination() -> usize {
+    push_event(Event::CloseRequested);
+    // 当前应用使用自己的事件循环；Later 会进入 AppKit 的嵌套等待，Rust 无法继续。
+    // 取消 AppKit 的直接终止，由 CloseRequested 让 Rust 返回 main 完成保存并退出。
+    0 // NSTerminateCancel
 }
 
 fn push_event(event: Event) {
@@ -797,12 +926,18 @@ extern "C" fn scroll_wheel(this: Id, _: Sel, event: Id) {
 }
 
 /// "编辑"菜单的复制（Cmd+C）
-extern "C" fn copy(_: Id, _: Sel, _: Id) {
+extern "C" fn copy(this: Id, _: Sel, _: Id) {
+    if protected_window::managed(this) {
+        return;
+    }
     push_event(Event::Copy);
 }
 
 /// "编辑"菜单的粘贴（Cmd+V）
-extern "C" fn paste(_: Id, _: Sel, _: Id) {
+extern "C" fn paste(this: Id, _: Sel, _: Id) {
+    if protected_window::paste(this) {
+        return;
+    }
     push_event(Event::PasteRequest);
 }
 
@@ -818,8 +953,11 @@ extern "C" fn reset_cursor_rects(this: Id, _: Sel) {
 extern "C" fn key_down(this: Id, _: Sel, event: Id) {
     unsafe {
         let flags: usize = msg![event, "modifierFlags"; usize];
+        if protected_window::key_down(this, event, flags) {
+            return;
+        }
         let code: u16 = msg![event, "keyCode"; u16];
-        let composing = IME.with(|s| !s.borrow().marked.is_empty());
+        let composing = IME.with(|s| s.borrow().marked_utf16 != 0);
         // 没在输入拼音时，功能键、Ctrl/Option 组合键直接按终端规则处理，不经过输入法
         if !composing && (named_key(code).is_some() || flags & (NS_CONTROL | NS_COMMAND) != 0 || option_is_alt(flags)) {
             key_events(event, flags).into_iter().for_each(push_event);
@@ -832,7 +970,7 @@ extern "C" fn key_down(this: Id, _: Sel, event: Id) {
             s.composing_at_start = composing;
             s.consumed = false;
             s.command = false;
-            s.pending_text = None;
+            s.clear_pending();
         });
         // 交给输入法。返回值表示输入法（或系统按键绑定）接手了这个键；
         // 它的结果（setMarkedText / insertText）可能就在这次调用里回调，也可能稍后异步到达。
@@ -844,12 +982,16 @@ extern "C" fn key_down(this: Id, _: Sel, event: Id) {
             (s.consumed, s.command, s.pending_text.take())
         });
         crate::term::trace(format_args!(
-            "输入法 keyDown: keyCode={code} 有输入上下文={} handled={handled} 拼音中={composing} \
-             consumed={consumed} command={command} pending={pending:?}",
-            !context.is_null()
+            "输入法 keyDown: 有输入上下文={} handled={handled} 拼音中={composing} \
+             consumed={consumed} command={command} 有待交接文字={}",
+            !context.is_null(),
+            pending.is_some()
         ));
 
         if consumed || composing {
+            if let Some(text) = pending {
+                clear_text(text);
+            }
             return;
         }
         match pending {
@@ -863,13 +1005,33 @@ extern "C" fn key_down(this: Id, _: Sel, event: Id) {
     }
 }
 
-extern "C" fn insert_text(_: Id, _: Sel, text: Id, _: NSRange) {
-    let text = unsafe { string_from(text) };
+/// 拒绝整次超限/无效输入，同时阻止 keyDown 回落为普通按键输入。
+fn reject_ime_text() {
+    IME.with(|state| {
+        let mut state = state.borrow_mut();
+        state.consumed = true;
+        state.marked_utf16 = 0;
+        state.clear_pending();
+        state.events.push_back(Event::Preedit(String::new()));
+    });
+    wake_if_async();
+}
+
+extern "C" fn insert_text(this: Id, _: Sel, text: Id, _: NSRange) {
+    if protected_window::managed(this) {
+        return;
+    }
+    // 下一回调已取代旧暂存；先释放旧副本，避免两份最大输入重叠。
+    IME.with(|state| state.borrow_mut().clear_pending());
+    let Some(text) = (unsafe { string_from(text, super::CLIPBOARD_LIMIT) }) else {
+        reject_ime_text();
+        return;
+    };
     let in_key_down = IME.with(|s| {
         let mut s = s.borrow_mut();
-        crate::term::trace(format_args!("输入法 insertText: {text:?} 在keyDown中={}", s.in_key_down));
-        if !s.marked.is_empty() {
-            s.marked.clear();
+        crate::term::trace(format_args!("输入法提交文字，在keyDown中={}", s.in_key_down));
+        if s.marked_utf16 != 0 {
+            s.marked_utf16 = 0;
             s.events.push_back(Event::Preedit(String::new()));
         }
         if s.in_key_down && !s.composing_at_start {
@@ -886,13 +1048,20 @@ extern "C" fn insert_text(_: Id, _: Sel, text: Id, _: NSRange) {
     }
 }
 
-extern "C" fn set_marked_text(_: Id, _: Sel, text: Id, _: NSRange, _: NSRange) {
-    let text = unsafe { string_from(text) };
+extern "C" fn set_marked_text(this: Id, _: Sel, text: Id, _: NSRange, _: NSRange) {
+    if protected_window::managed(this) {
+        return;
+    }
+    IME.with(|state| state.borrow_mut().clear_pending());
+    let Some(text) = (unsafe { string_from(text, crate::search::QUERY_LIMIT) }) else {
+        reject_ime_text();
+        return;
+    };
     IME.with(|s| {
         let mut s = s.borrow_mut();
-        crate::term::trace(format_args!("输入法 setMarkedText: {text:?} 在keyDown中={}", s.in_key_down));
+        crate::term::trace(format_args!("输入法更新组合，在keyDown中={}", s.in_key_down));
         s.consumed = true;
-        s.marked = text.clone();
+        s.marked_utf16 = text.encode_utf16().count();
         s.events.push_back(Event::Preedit(text));
     });
     wake_if_async();
@@ -902,8 +1071,8 @@ extern "C" fn unmark_text(_: Id, _: Sel) {
     IME.with(|s| {
         let mut s = s.borrow_mut();
         crate::term::trace(format_args!("输入法 unmarkText"));
-        if !s.marked.is_empty() {
-            s.marked.clear();
+        if s.marked_utf16 != 0 {
+            s.marked_utf16 = 0;
             s.events.push_back(Event::Preedit(String::new()));
         }
     });
@@ -911,16 +1080,16 @@ extern "C" fn unmark_text(_: Id, _: Sel) {
 }
 
 extern "C" fn has_marked_text(_: Id, _: Sel) -> i8 {
-    IME.with(|s| !s.borrow().marked.is_empty()) as i8
+    IME.with(|s| s.borrow().marked_utf16 != 0) as i8
 }
 
 extern "C" fn marked_range(_: Id, _: Sel) -> NSRange {
     IME.with(|s| {
         let s = s.borrow();
-        if s.marked.is_empty() {
+        if s.marked_utf16 == 0 {
             NSRange { location: NOT_FOUND, length: 0 }
         } else {
-            NSRange { location: 0, length: s.marked.encode_utf16().count() }
+            NSRange { location: 0, length: s.marked_utf16 }
         }
     })
 }
@@ -955,3 +1124,112 @@ extern "C" fn do_command(_: Id, _: Sel, command: Sel) {
     crate::term::trace(format_args!("输入法 doCommandBySelector: {}", name.to_string_lossy()));
     IME.with(|s| s.borrow_mut().command = true);
 }
+
+#[cfg(test)]
+mod termination_tests {
+    use super::*;
+    struct Pool(*mut c_void);
+    impl Pool {
+        fn new() -> Self {
+            Self(unsafe { objc_autoreleasePoolPush() })
+        }
+    }
+    impl Drop for Pool {
+        fn drop(&mut self) {
+            unsafe { objc_autoreleasePoolPop(self.0) };
+        }
+    }
+
+    #[test]
+    fn native_strings_preserve_nul_and_admit_exact_utf8_bytes() {
+        let _pool = Pool::new();
+        unsafe {
+            assert!(string_from(NIL, 1023).is_none());
+            assert_eq!(string_from(nsstring(""), 0).as_deref(), Some(""));
+            let text = "x".repeat(1020) + "文";
+            let object = nsstring(&text);
+            assert_eq!(string_from(object, 1023).as_deref(), Some(text.as_str()));
+            assert!(string_from(object, 1022).is_none());
+            assert_eq!(string_from(nsstring("a\0b"), 3).as_deref(), Some("a\0b"));
+            let attributed: Id = msg![class(c"NSAttributedString"), "alloc"; Id];
+            let attributed: Id = msg![attributed, "initWithString:", nsstring("😀中") => Id; Id];
+            let attributed: Id = msg![attributed, "autorelease"; Id];
+            assert_eq!(string_from(attributed, 7).as_deref(), Some("😀中"));
+            assert!(string_from(attributed, 6).is_none());
+            let oversized = "x".repeat(super::super::CLIPBOARD_LIMIT + 1);
+            assert!(string_from(nsstring(&oversized), usize::MAX).is_none());
+        }
+    }
+
+    #[test]
+    fn native_composition_range_and_oversized_callbacks_reject_without_partial_commit() {
+        let _pool = Pool::new();
+        IME.with(|state| {
+            let mut state = state.borrow_mut();
+            state.events.clear();
+            state.marked_utf16 = 0;
+            state.in_key_down = true; // 不在测试线程调用 NSApplication 唤醒路径。
+            state.composing_at_start = false;
+            state.consumed = false;
+            assert!(state.pending_text.is_none());
+        });
+        set_marked_text(
+            NIL,
+            std::ptr::null(),
+            unsafe { nsstring("😀中") },
+            NSRange { location: 0, length: 0 },
+            NSRange { location: 0, length: 0 },
+        );
+        assert_eq!(has_marked_text(NIL, std::ptr::null()), 1);
+        let range = marked_range(NIL, std::ptr::null());
+        assert_eq!((range.location, range.length), (0, 3));
+        IME.with(|state| {
+            let mut state = state.borrow_mut();
+            assert!(matches!(state.events.pop_front(), Some(Event::Preedit(text)) if text == "😀中"));
+        });
+        let large = "界".repeat(crate::search::QUERY_LIMIT / 3 + 1);
+        set_marked_text(
+            NIL,
+            std::ptr::null(),
+            unsafe { nsstring(&large) },
+            NSRange { location: 0, length: 0 },
+            NSRange { location: 0, length: 0 },
+        );
+        assert_eq!(has_marked_text(NIL, std::ptr::null()), 0);
+        let range = marked_range(NIL, std::ptr::null());
+        assert_eq!((range.location, range.length), (NOT_FOUND, 0));
+        IME.with(|state| {
+            let mut state = state.borrow_mut();
+            assert!(state.consumed);
+            assert!(matches!(state.events.pop_front(), Some(Event::Preedit(text)) if text.is_empty()));
+            state.consumed = false;
+        });
+        insert_text(NIL, std::ptr::null(), unsafe { nsstring("待替换") }, NSRange { location: 0, length: 0 });
+        let large = "x".repeat(super::super::CLIPBOARD_LIMIT + 1);
+        insert_text(NIL, std::ptr::null(), unsafe { nsstring(&large) }, NSRange { location: 0, length: 0 });
+        IME.with(|state| {
+            let mut state = state.borrow_mut();
+            assert!(state.consumed);
+            assert!(state.pending_text.is_none());
+            assert!(matches!(state.events.pop_front(), Some(Event::Preedit(text)) if text.is_empty()));
+            assert!(state.events.is_empty());
+            state.in_key_down = false;
+            state.consumed = false;
+        });
+    }
+
+    #[test]
+    fn termination_is_deferred_to_the_rust_close_path() {
+        IME.with(|state| state.borrow_mut().events.clear());
+        assert_eq!(defer_termination(), 0);
+        IME.with(|state| {
+            let mut state = state.borrow_mut();
+            assert!(matches!(state.events.pop_front(), Some(Event::CloseRequested)));
+            assert!(state.events.is_empty());
+        });
+    }
+}
+
+mod protected_ime;
+
+mod protected_window;

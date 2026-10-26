@@ -180,30 +180,33 @@ impl Morx {
         let actions = body + u32_at(data, body + 16)? as usize;
         let components = body + u32_at(data, body + 20)? as usize;
         let ligatures = body + u32_at(data, body + 24)? as usize;
-        let mut stack: Vec<usize> = Vec::new();
+        let mut stack = [0usize; MAX_COMPONENTS];
+        let mut stack_len = 0;
         self.drive(&table, 6, glyphs, |glyphs, i, entry| {
             let flags = u16_at(data, entry + 2)?;
             if flags & SET_COMPONENT != 0 {
                 // "不前进"时同一个位置不重复压栈
-                if stack.last() == Some(&i) {
-                    stack.pop();
+                if stack[..stack_len].last() == Some(&i) {
+                    stack_len -= 1;
                 }
-                if stack.len() == MAX_COMPONENTS {
-                    stack.remove(0);
+                if stack_len == MAX_COMPONENTS {
+                    stack.copy_within(1..stack_len, 0);
+                    stack_len -= 1;
                 }
-                stack.push(i);
+                stack[stack_len] = i;
+                stack_len += 1;
             }
             // 文本结尾不执行连字（和 HarfBuzz 一致）
-            if flags & PERFORM_ACTION == 0 || stack.is_empty() || i >= glyphs.len() {
+            if flags & PERFORM_ACTION == 0 || stack_len == 0 || i >= glyphs.len() {
                 return Some(());
             }
             let mut action_at = actions + 4 * u16_at(data, entry + 4)? as usize;
-            let mut cursor = stack.len();
+            let mut cursor = stack_len;
             let mut index: u32 = 0;
             loop {
                 let Some(next) = cursor.checked_sub(1) else {
                     // 栈空了：字体有问题，清空重来
-                    stack.clear();
+                    stack_len = 0;
                     break;
                 };
                 cursor = next;
@@ -219,8 +222,9 @@ impl Morx {
                 if action & (LIG_STORE | LIG_LAST) != 0 {
                     glyphs[position] = u16_at(data, ligatures + 2 * index as usize)?;
                     // 这个组件后面压进去的组件都被合并了
-                    while stack.len() > cursor + 1 {
-                        let removed = stack.pop()?;
+                    while stack_len > cursor + 1 {
+                        stack_len -= 1;
+                        let removed = stack[stack_len];
                         glyphs[removed] = DELETED;
                     }
                 }

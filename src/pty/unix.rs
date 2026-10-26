@@ -7,8 +7,10 @@
 //!    → 接到 stdin/stdout/stderr → `execve` 启动 shell。父进程关掉自己手里的从设备
 //! 4. 父进程读写主设备，就等于在和 shell 的终端交互
 
-use super::flow::{AsyncWriter, READ_CHUNK};
-use super::{Command, EventSink, PtyEvent};
+#[cfg(test)]
+use super::Command;
+use super::flow::{AsyncWriter, ByteQueue, INPUT_LIMIT, READ_CHUNK};
+use super::{CommandSource, EventSink, PtyEvent};
 use std::ffi::{CStr, CString, c_char, c_int, c_ulong, c_ushort};
 use std::fs::File;
 use std::io::{self, Read};
@@ -121,7 +123,13 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub fn spawn(command: &Command, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+    pub fn spawn(command: &impl CommandSource, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+        let command = command.view();
+        let pool = crate::resources::current();
+        let waiter = crate::runtime::prepare("pty-waiter", &pool)?;
+        let writer_permit = crate::runtime::prepare("pty-writer", &pool)?;
+        let reader_permit = crate::runtime::prepare("pty-reader", &pool)?;
+        let input_queue = Arc::new(ByteQueue::input(INPUT_LIMIT)?);
         // 1. 打开主设备
         let fd = unsafe { posix_openpt(O_RDWR | O_NOCTTY) };
         if fd < 0 {
@@ -162,12 +170,12 @@ impl Pty {
         // 2. 在 fork 之前准备好子进程要用的所有数据。
         //    fork 之后的子进程里只能调用 async-signal-safe 的函数，不能分配内存。
         let to_c = |s: &[u8]| CString::new(s).map_err(|_| io::Error::other("参数里不能有 NUL 字符"));
-        let shell = to_c(find_shell(command.program.as_deref()).as_os_str().as_bytes())?;
+        let shell = to_c(find_shell(command.program).as_os_str().as_bytes())?;
         let args: Vec<CString> = command.args.iter().map(|a| to_c(a.as_bytes())).collect::<io::Result<_>>()?;
         let mut argv: Vec<*const c_char> = vec![shell.as_ptr()];
         argv.extend(args.iter().map(|a| a.as_ptr()));
         argv.push(std::ptr::null());
-        let env = build_env(&command.env);
+        let env = build_env(command.env);
         let mut envp: Vec<*const c_char> = env.iter().map(|s| s.as_ptr()).collect();
         envp.push(std::ptr::null());
         let cwd = command.working_directory.as_ref().map(|dir| to_c(dir.as_os_str().as_bytes())).transpose()?;
@@ -175,7 +183,8 @@ impl Pty {
         // CLOEXEC 的启动通道：成功 exec 自动关闭；失败写回步骤和 errno。
         let (mut startup, child_startup) = channel()?;
         let (exit_read, exit_write) = channel()?;
-        // 3. fork
+        // 3. fork；与后台原生 Socket 的 CLOEXEC 设置协调，子进程直接 exec/_exit。
+        let launch_guard = crate::process_launch::guard();
         let pid = unsafe { fork() };
         if pid < 0 {
             return Err(os_error("fork"));
@@ -194,6 +203,7 @@ impl Pty {
                 )
             }
         }
+        drop(launch_guard);
         // 父进程不需要从设备。必须关掉，否则 shell 退出后读主设备永远等不到 EOF。
         drop(slave);
 
@@ -228,7 +238,7 @@ impl Pty {
         // waitid 不回收 PID；持锁执行 waitpid 和清除 PID，避免关闭窗口时误杀复用的 PID。
         let exit_sink = sink.clone();
         let child = process.clone();
-        let waiter = std::thread::Builder::new().name("pty-waiter".into()).spawn(move || {
+        let waiter = waiter.spawn(move || {
             #[repr(C, align(16))]
             struct SigInfo([u8; 128]); // Linux 为 128 字节，Darwin 更小；只让系统写入，不解释布局。
             let mut info = SigInfo([0; 128]);
@@ -275,14 +285,14 @@ impl Pty {
         }
         let writer = pty.master.try_clone()?;
         let mut writable = PollFd { fd: writer.as_raw_fd(), events: 4, revents: 0 };
-        pty.writer = Some(AsyncWriter::spawn_with_wait(writer, sink.clone(), move || {
+        pty.writer = Some(AsyncWriter::spawn_reserved(writer_permit, input_queue, writer, sink.clone(), move || {
             // 仅输入管道已满时等待，读端一消费就能继续写。超时用于有界检查关闭。
             unsafe {
                 poll(&mut writable, 1, 50);
             }
         })?);
         let mut reader = pty.master.try_clone()?;
-        std::thread::Builder::new().name("pty-reader".into()).spawn(move || {
+        reader_permit.spawn(move || {
             let mut buf = vec![0u8; READ_CHUNK];
             let mut poll_fds = [
                 PollFd { fd: reader.as_raw_fd(), events: 1, revents: 0 },

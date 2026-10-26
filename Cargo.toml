@@ -1,12 +1,30 @@
 [package]
 name = "congminal"
-version = "0.1.0-alpha.5"
+version = "0.1.0-alpha.6"
 edition = "2024"
 rust-version = "1.88"
+default-run = "congminal"
 description = "一个从零手写的跨平台终端模拟器（学习项目）"
 
-# 当前为空；后续依赖按 docs/dependency-policy.md 评估性能、资源边界与适配方案。
+[features]
+default = []
+# macOS/Linux SFTP 预览入口，显式构建及配置启用；默认本地终端不加载。
+sftp-preview = ["ssh-auth-helper"]
+# M6 受限原生后端；尚未加入默认发布路径，评估见 docs/evaluations/m6-sftp.md。
+sftp-libssh2 = ["dep:libssh2-sys", "dep:libc"]
+# 独立认证 helper 的开发/验收入口，普通构建不产出或启用它。
+ssh-auth-helper = []
+# 本地目录隔离候选的开发/成本入口；不替换正常浏览后端。
+directory-helper = []
+
+[[bin]]
+name = "congminal-ssh-helper"
+path = "src/ssh/helper_main.rs"
+required-features = ["ssh-auth-helper"]
+
 [dependencies]
+libssh2-sys = { version = "=0.3.3", optional = true, default-features = false }
+libc = { version = "=0.2.191", optional = true }
 
 [profile.release]
 debug = 1

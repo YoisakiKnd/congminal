@@ -10,7 +10,17 @@ fn zlib_decompress(data: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 /// 在写出每个块/匹配前检查预算，避免压缩炸弹。PNG 用精确的扫描行大小作为上限。
+#[cfg(test)]
 pub fn zlib_decompress_limited(data: &[u8], limit: usize) -> Result<Vec<u8>, String> {
+    decompress(data, limit, false)
+}
+
+/// PNG 调用者已准入精确扫描行容量，直接准备一次输出，避免末次扩容的旧新缓冲重叠。
+pub(super) fn zlib_decompress_exact(data: &[u8], size: usize) -> Result<Vec<u8>, String> {
+    decompress(data, size, true)
+}
+
+fn decompress(data: &[u8], limit: usize, exact: bool) -> Result<Vec<u8>, String> {
     let (&cmf, &flg) = (data.first().ok_or("zlib 数据为空")?, data.get(1).ok_or("zlib 头不完整")?);
     if cmf >> 4 > 7 || cmf & 0x0F != 8 || (u16::from(cmf) << 8 | u16::from(flg)) % 31 != 0 {
         return Err("不是 zlib 数据".into());
@@ -18,7 +28,12 @@ pub fn zlib_decompress_limited(data: &[u8], limit: usize) -> Result<Vec<u8>, Str
     if flg & 0x20 != 0 {
         return Err("不支持预设字典".into());
     }
-    let mut inflater = Inflater { input: &data[2..], pos: 0, bit_buffer: 0, bit_count: 0, output: Vec::new(), limit };
+    let mut output = Vec::new();
+    if exact {
+        output.try_reserve_exact(limit).map_err(|_| "无法分配解压缓冲区")?;
+        assert!(output.capacity() <= limit);
+    }
+    let mut inflater = Inflater { input: &data[2..], pos: 0, bit_buffer: 0, bit_count: 0, output, limit };
     inflater.run()?;
     // 解码器一次只补足所需位数，不预读下一个字节，所以 pos 就是校验和的位置。
     let checksum_at = 2 + inflater.pos;
@@ -29,6 +44,9 @@ pub fn zlib_decompress_limited(data: &[u8], limit: usize) -> Result<Vec<u8>, Str
     let expected = u32::from_be_bytes(bytes.try_into().unwrap());
     if adler32(&inflater.output) != expected {
         return Err("zlib 校验和不对，数据损坏".into());
+    }
+    if exact && inflater.output.len() != limit {
+        return Err("解压数据长度不匹配".into());
     }
     Ok(inflater.output)
 }
@@ -308,6 +326,20 @@ mod tests {
 #[cfg(test)]
 mod boundary_tests {
     use super::*;
+
+    #[test]
+    fn exact_output_has_one_capacity_and_rejects_both_short_and_long_streams() {
+        let stored = [0x78, 0x01, 1, 5, 0, 0xfa, 0xff, b'h', b'e', b'l', b'l', b'o', 6, 0x2c, 2, 0x15];
+        let repeated = [0x78, 0x9c, 0x4b, 0x4c, 0x4a, 0x4e, 0x44, 0x45, 0, 0x41, 0x7c, 6, 0xe5];
+        for data in [&stored[..], &repeated[..], &include_bytes!("testdata/dynamic.zlib")[..]] {
+            let expected = zlib_decompress(data).unwrap();
+            let output = zlib_decompress_exact(data, expected.len()).unwrap();
+            assert_eq!(output, expected);
+            assert_eq!(output.capacity(), expected.len());
+            assert!(zlib_decompress_exact(data, expected.len() - 1).is_err());
+            assert!(zlib_decompress_exact(data, expected.len() + 1).is_err());
+        }
+    }
 
     #[test]
     fn limits_stored_literals_and_back_references() {

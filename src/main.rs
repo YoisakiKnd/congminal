@@ -22,21 +22,31 @@ mod image;
 mod input;
 mod launcher;
 mod links;
+mod local_directory;
 mod mouse;
 mod notifications;
 mod platform;
+mod process_launch;
 mod pty;
 mod render;
+mod resolve;
 mod resources;
 mod search;
 mod selection;
 mod session;
+// 协议接口还供 helper/互操作验收使用，预览主程序只使用其中一部分。
+mod runtime;
+#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+mod sftp;
 mod shell;
+mod ssh;
 mod tasks;
 mod term;
 mod text;
 mod ui;
 mod vt;
+mod workspace;
 
 use action::{Action, Focus, FocusTarget};
 use config::{Config, FontConfig};
@@ -73,10 +83,13 @@ struct Congminal {
     config_path: Option<PathBuf>,
     scale: f64,
     clipboard_request: Option<ClipboardRequest>,
+    // 窗口级复制代次，不随 PaneState 交换；旧窗格的晚到结果不能覆盖新复制。
+    copy_epoch: u64,
+    copy_exhausted: bool,
     focus: Focus,
     watcher_cancel: Cancellation,
     notify: Notify,
-    font_task: Option<LatestTask<Config, (FontConfig, Fonts)>>,
+    font_task: Option<LatestTask<FontConfig, (FontConfig, Fonts)>>,
     font_deadline: Option<Instant>,
     loaded_font: FontConfig,
     zoom: f32,
@@ -84,13 +97,15 @@ struct Congminal {
     hover: Option<links::Hit>,
     hover_cell: Option<Point>,
     link_click: bool,
-    opener: Option<LatestTask<String, ()>>,
+    opener: Option<LatestTask<links::Url, ()>>,
     system_notifier: Option<LatestTask<notifications::Notice, ()>>,
+    notification_gate: Arc<notifications::SystemGate>,
     notifications: notifications::Center,
     command_view: bool,
     command_selection: bool,
     selected_command: Option<u64>,
     output_copy: Option<shell::CopyOutput>,
+    pane_visible: bool,
     last_draw: Instant,
     dirty: bool,
 }
@@ -112,6 +127,9 @@ impl Congminal {
 
     /// 配置里的问题用黄色文字显示在终端里（GUI 程序的 stderr 用户通常看不到）
     fn show_warnings(&mut self, warnings: &[String]) {
+        self.show_warning_refs(warnings.iter().map(String::as_str));
+    }
+    fn show_warning_refs<'a>(&mut self, warnings: impl IntoIterator<Item = &'a str>) {
         for warning in warnings {
             eprintln!("congminal: {warning}");
             self.session.warning(warning);
@@ -120,7 +138,8 @@ impl Congminal {
     }
 
     fn reload_config(&mut self) {
-        let (config, warnings) = Config::load(self.config_path.as_deref());
+        let (mut config, mut warnings) = Config::load(self.config_path.as_deref());
+        config.admit_connections(&mut warnings);
         let warnings: Vec<String> = warnings.iter().map(|w| format!("配置文件：{w}")).collect();
         self.show_warnings(&warnings);
 
@@ -145,14 +164,34 @@ impl Congminal {
     }
 
     fn resize(&mut self, width: u32, height: u32) -> bool {
-        if !self.framebuffer.resize(width as usize, height as usize) {
-            eprintln!("congminal: 窗口像素超过帧缓冲预算或分配失败：{width}×{height}");
-            return false;
-        }
         let (cols, rows) = self.renderer.grid_size(width as usize, height as usize);
+        let plan = match self.session.prepare_resize(cols, rows) {
+            Ok(plan) => plan,
+            Err(_) => {
+                self.renderer.reclaim_caches();
+                match self.session.prepare_resize(cols, rows) {
+                    Ok(plan) => plan,
+                    Err(e) => {
+                        eprintln!("congminal: 网格/重排准入失败，保留原尺寸：{e}");
+                        return false;
+                    }
+                }
+            }
+        };
+        self.resize_prepared(width, height, plan)
+    }
+
+    fn resize_prepared(&mut self, width: u32, height: u32, plan: session::ResizeRequest) -> bool {
+        if !self.framebuffer.resize(width as usize, height as usize) {
+            self.renderer.reclaim_caches();
+            if !self.framebuffer.resize(width as usize, height as usize) {
+                eprintln!("congminal: 窗口像素超过帧缓冲/共享额度或分配失败：{width}×{height}");
+                return false;
+            }
+        }
         self.hover = None;
         self.hover_cell = None;
-        if let Err(e) = self.session.resize(cols, rows) {
+        if let Err(e) = self.session.commit_resize(plan) {
             eprintln!("调整 PTY 尺寸失败：{e}");
         }
         self.dirty = true;
@@ -192,7 +231,10 @@ impl Congminal {
             Action::OpenLink => self.open_hovered_link(),
             Action::CopyLink => {
                 if let Some(hit) = self.hover_cell.and_then(|point| links::at(&self.session.term, point)) {
-                    self.clipboard_request = Some(ClipboardRequest::Copy(hit.url));
+                    if !self.begin_copy() {
+                        return true;
+                    }
+                    self.queue_copy(Ok(platform::CopyText::from_url(hit.url, self.copy_epoch)));
                 }
             }
             Action::CommandPrevious | Action::CommandNext => {
@@ -221,7 +263,7 @@ impl Congminal {
                 self.notifications.open = true;
             }
             Action::Copy => self.copy(),
-            Action::Paste => self.clipboard_request = Some(ClipboardRequest::Paste),
+            Action::Paste => self.clipboard_request = Some(ClipboardRequest::Paste(Default::default())),
             Action::PageUp => self.session.term.scroll_display(page),
             Action::PageDown => self.session.term.scroll_display(-page),
             Action::HistoryTop => self.session.term.scroll_display(isize::MAX / 2),
@@ -240,7 +282,7 @@ impl Congminal {
                 let tasks = self.font_task.as_ref().map_or(TaskStats::default(), LatestTask::stats);
                 let snapshot = resources::Snapshot::collect(&self.session, &self.renderer, &self.framebuffer, tasks);
                 let extra = format!(
-                    "{} search={} links={} shell={} notifications={} copy={} lost_events={} skipped_system={}",
+                    "{} search={} links={} shell={} notifications={} copy={} lost_events={} lost_commands={} skipped_system={} dropped_local_notices={}",
                     snapshot.describe(),
                     self.search.resource_bytes(),
                     self.session.term.link_bytes(),
@@ -248,7 +290,9 @@ impl Congminal {
                     self.notifications.resource_bytes(),
                     self.output_copy.as_ref().map_or(0, shell::CopyOutput::resource_bytes),
                     self.session.term.shell.lost_events,
-                    self.notifications.dropped_system
+                    self.session.term.shell.lost_commands,
+                    self.notifications.dropped_system + self.notification_gate.skipped(),
+                    self.notifications.dropped_local
                 );
                 self.show_warnings(&[extra]);
             }
@@ -256,6 +300,18 @@ impl Congminal {
                 self.session.term.scroll_to_bottom();
                 self.write_to_pty(text.as_bytes());
             }
+            Action::NewTab
+            | Action::ClosePane
+            | Action::NextTab
+            | Action::PreviousTab
+            | Action::MoveTabLeft
+            | Action::MoveTabRight
+            | Action::SplitRight
+            | Action::SplitDown
+            | Action::NextPane
+            | Action::PreviousPane
+            | Action::ToggleLeftSidebar
+            | Action::ToggleRightSidebar => return false,
             Action::Ignore => {}
             Action::PassThrough => return false,
         }
@@ -265,6 +321,9 @@ impl Congminal {
 
     fn command_output(&mut self, copy: bool) {
         self.output_copy = None;
+        if copy && !self.begin_copy() {
+            return;
+        }
         if self.session.term.is_alt_screen() {
             return;
         }
@@ -279,7 +338,8 @@ impl Congminal {
             self.session.selecting = false;
             self.command_view = true;
             if copy {
-                self.output_copy = Some(shell::CopyOutput::new(&self.session.term, (start, end)));
+                self.output_copy =
+                    Some(shell::CopyOutput::new(&self.session.term, (start, end)).with_epoch(self.copy_epoch));
             }
         } else {
             self.show_warnings(&["没有可靠的命令输出范围；请启用 Shell 集成，重排或备用屏幕会使范围失效".into()]);
@@ -294,7 +354,10 @@ impl Congminal {
             return;
         }
         if self.system_notifier.is_none() {
-            match LatestTask::new_named("system-notification", self.notify.clone(), notifications::send) {
+            let gate = self.notification_gate.clone();
+            match LatestTask::new_named("system-notification", self.notify.clone(), move |notice, cancel| {
+                gate.send(notice, cancel)
+            }) {
                 Ok(task) => self.system_notifier = Some(task),
                 Err(_) => {
                     self.notifications.system_error = true;
@@ -302,8 +365,10 @@ impl Congminal {
                 }
             }
         }
-        if let Some(task) = &self.system_notifier {
-            task.submit(notice);
+        if let Some(task) = &self.system_notifier
+            && task.try_submit(notice).is_err()
+        {
+            self.notifications.system_error = true;
         }
     }
     fn notification_key(&mut self, key: Key, mods: Mods) {
@@ -347,17 +412,17 @@ impl Congminal {
             self.font_deadline = None;
             if self.font_task.is_none() {
                 let scale = self.scale;
-                match LatestTask::new(self.notify.clone(), move |config: Config, cancel| {
+                match LatestTask::new(self.notify.clone(), move |font: FontConfig, cancel| {
                     if cancel.is_cancelled() {
                         return Err("字体加载已取消".into());
                     }
                     let started = Instant::now();
-                    let fonts = Fonts::load(&config.font, scale, config.font_is_customized());
+                    let fonts = Fonts::load(&font, scale, font.families != config::DEFAULT_FONT_FAMILIES);
                     if cancel.is_cancelled() {
                         return Err("字体加载已取消".into());
                     }
                     term::trace(format_args!("后台字体加载用时 {:?}", started.elapsed()));
-                    Ok((config.font, fonts))
+                    Ok((font, fonts))
                 }) {
                     Ok(task) => self.font_task = Some(task),
                     Err(error) => {
@@ -366,18 +431,19 @@ impl Congminal {
                     }
                 }
             }
-            let mut config = self.config.clone();
-            config.font = self.effective_font();
-            self.font_task.as_ref().unwrap().submit(config);
+            let font = self.effective_font();
+            if let Err(error) = self.font_task.as_ref().unwrap().try_submit(font) {
+                self.show_warning_refs([error.message()]);
+            }
         }
         if let Some(result) = self.font_task.as_ref().and_then(LatestTask::take) {
             match result {
-                Ok((font, fonts)) => {
-                    let warnings = fonts.warnings.clone();
+                Ok((font, mut fonts)) => {
+                    let warnings = fonts.take_warnings();
                     self.renderer.replace_fonts(fonts);
                     self.loaded_font = font;
                     self.resize(self.framebuffer.width as u32, self.framebuffer.height as u32);
-                    self.show_warnings(&warnings);
+                    self.show_warning_refs(warnings.iter());
                     term::trace(format_args!("字体提交：{}px", self.loaded_font.size));
                 }
                 Err(error) => self.io_warning(&error),
@@ -395,8 +461,12 @@ impl Congminal {
     }
 
     fn copy(&mut self) {
+        if !self.begin_copy() {
+            return;
+        }
         if self.search.active {
-            self.clipboard_request = Some(ClipboardRequest::Copy(self.search.query.clone()));
+            let text = platform::CopyText::copy(self.search.query(), self.session.term.resource_budget());
+            self.queue_copy(text.map(|text| text.with_epoch(self.copy_epoch)).map_err(|error| error.message()));
             return;
         }
         if self.notifications.open {
@@ -404,13 +474,44 @@ impl Congminal {
         }
         if let Some((start, end)) = self.session.selection.as_ref().and_then(|s| s.range(&self.session.term)) {
             let col = end.col.saturating_add(1).min(self.session.term.row_by_id(end.line).map_or(0, |r| r.cells.len()));
-            self.output_copy = Some(shell::CopyOutput::new(&self.session.term, (start, Point { col, ..end })));
+            self.output_copy = Some(
+                shell::CopyOutput::new(&self.session.term, (start, Point { col, ..end })).with_epoch(self.copy_epoch),
+            );
+        }
+    }
+    fn begin_copy(&mut self) -> bool {
+        self.output_copy = None;
+        self.clipboard_request = None;
+        if self.copy_exhausted {
+            self.show_warning_refs(["复制序号已耗尽，请重启窗口"]);
+            return false;
+        }
+        let Some(epoch) = self.copy_epoch.checked_add(1) else {
+            self.copy_exhausted = true;
+            self.show_warning_refs(["复制序号已耗尽，请重启窗口"]);
+            return false;
+        };
+        self.copy_epoch = epoch;
+        true
+    }
+    fn queue_copy(&mut self, text: Result<platform::CopyText, &'static str>) {
+        self.output_copy = None;
+        self.clipboard_request = None;
+        match text {
+            Ok(text) if !self.copy_exhausted && text.epoch() == self.copy_epoch => {
+                self.clipboard_request = Some(ClipboardRequest::Copy(text));
+            }
+            Ok(_) => {}
+            Err(message) => self.show_warning_refs([message]),
         }
     }
 
     /// 粘贴：换行统一成回车；程序开启了 bracketed paste（2004）时用 ESC[200~ … ESC[201~ 包起来，
     /// 并去掉文字里伪造的结束标记，免得粘贴的内容被当成命令执行
     fn paste(&mut self, text: &str) {
+        self.paste_in(text, self.session.term.resource_budget().clone());
+    }
+    fn paste_in(&mut self, text: &str, pool: Arc<resources::Budget>) {
         if self.notifications.open {
             return;
         }
@@ -425,13 +526,14 @@ impl Congminal {
             return;
         }
         self.session.term.scroll_to_bottom();
-        let text = text.replace("\r\n", "\r").replace('\n', "\r");
-        if self.session.term.modes().bracketed_paste {
-            let text = text.replace("\x1b[201~", "");
-            self.write_to_pty(format!("\x1b[200~{text}\x1b[201~").as_bytes());
-        } else {
-            self.write_to_pty(text.as_bytes());
-        }
+        let text = match platform::paste_bytes(text, self.session.term.modes().bracketed_paste, &pool) {
+            Ok(text) => text,
+            Err(message) => {
+                self.show_warning_refs([message]);
+                return;
+            }
+        };
+        self.write_to_pty(&text);
         self.dirty = true;
     }
 
@@ -456,8 +558,12 @@ impl Congminal {
         // 一次显式点击只发起一次，不为重复点击堆积系统打开请求。
         let opener = self.opener.as_ref().unwrap();
         let stats = opener.stats();
-        if !stats.running && !stats.pending && !stats.result {
-            opener.submit(url);
+        if !stats.running
+            && !stats.pending
+            && !stats.result
+            && let Err(error) = opener.try_submit(url)
+        {
+            self.show_warning_refs([error.message()]);
         }
     }
     fn activate_link(&mut self, button: MouseButton, x: f64, y: f64, mods: Mods) -> bool {
@@ -480,7 +586,13 @@ impl Congminal {
         self.hover_cell = Some(point);
         self.link_click = true;
         if mods.shift {
-            self.clipboard_request = self.hover.as_ref().map(|hit| ClipboardRequest::Copy(hit.url.clone()));
+            if !self.begin_copy() {
+                return true;
+            }
+            if let Some(hit) = &self.hover {
+                let text = platform::CopyText::copy(&hit.url, self.session.term.resource_budget());
+                self.queue_copy(text.map(|text| text.with_epoch(self.copy_epoch)).map_err(|error| error.message()));
+            }
         } else {
             self.open_hovered_link();
         }
@@ -521,7 +633,7 @@ impl Congminal {
         }
     }
     fn search_key(&mut self, key: Key, mods: Mods) {
-        if !self.search.preedit.is_empty() {
+        if !self.search.preedit().is_empty() {
             return;
         }
         match key {
@@ -535,7 +647,7 @@ impl Congminal {
                 let action = self.config.bindings.action(key, mods);
                 match action {
                     Some(Action::Copy) => self.copy(),
-                    Some(Action::Paste) => self.clipboard_request = Some(ClipboardRequest::Paste),
+                    Some(Action::Paste) => self.clipboard_request = Some(ClipboardRequest::Paste(Default::default())),
                     Some(Action::SearchNext | Action::SearchPrevious) => {
                         self.search.navigate(&self.session.term, action == Some(&Action::SearchNext))
                     }
@@ -568,40 +680,33 @@ impl Congminal {
         self.dirty = true;
     }
     fn update_ui(&mut self) {
-        let mut decorations: Vec<_> =
-            self.search.matches().map(|range| ui::Decoration { range, kind: ui::DecorationKind::Match }).collect();
+        let state = self.renderer.ui_state();
+        state.begin_matches(&self.search);
         if let Some(range) = self.search.current() {
-            decorations.push(ui::Decoration { range, kind: ui::DecorationKind::Current });
+            state.decorate(ui::Decoration { range, kind: ui::DecorationKind::Current });
         }
         if let Some(hit) = &self.hover {
-            decorations.push(ui::Decoration { range: hit.range, kind: ui::DecorationKind::Link });
+            state.decorate(ui::Decoration { range: hit.range, kind: ui::DecorationKind::Link });
         }
-        let mut bar = if self.search.active {
-            Some(ui::Bar::search(&self.search, self.session.term.cols()))
+        if self.search.active {
+            state.search(&self.search, self.session.term.cols());
         } else if self.notifications.open {
-            Some(ui::Bar {
-                text: self.notifications.describe(self.config.notifications.muted),
-                caret: None,
-                preedit: None,
-            })
+            state.message(format_args!("{}", self.notifications.description(self.config.notifications.muted)));
         } else if self.command_view {
-            Some(ui::Bar { text: self.session.term.shell.describe(self.selected_command), caret: None, preedit: None })
-        } else {
-            self.hover.as_ref().map(|hit| ui::Bar::link(&hit.url))
-        };
-        if !self.focus.active
-            && let Some(bar) = &mut bar
-        {
-            bar.caret = None;
+            state.message(format_args!("{}", self.session.term.shell.description(self.selected_command)));
+        } else if let Some(hit) = &self.hover {
+            state.message(format_args!("URL: {}", hit.url));
         }
-        self.renderer.set_ui(decorations, bar);
+        if !self.focus.active {
+            state.unfocus();
+        }
     }
 
     fn mouse_down(&mut self, button: MouseButton, x: f64, y: f64) {
         match button {
             MouseButton::Left => {}
             MouseButton::Middle => {
-                self.clipboard_request = Some(ClipboardRequest::Paste);
+                self.clipboard_request = Some(ClipboardRequest::Paste(Default::default()));
                 return;
             }
             MouseButton::Right => return,
@@ -751,7 +856,7 @@ impl App for Congminal {
                     return true;
                 }
                 if self.search.active {
-                    self.search.preedit.clear();
+                    self.search.clear_preedit();
                     self.search.insert(&text, &self.session.term);
                     self.dirty = true;
                     return true;
@@ -802,8 +907,12 @@ impl App for Congminal {
                 self.dirty = true;
             }
             Event::Copy => self.copy(),
-            Event::PasteRequest => self.clipboard_request = Some(ClipboardRequest::Paste),
+            Event::PasteRequest => self.clipboard_request = Some(ClipboardRequest::Paste(Default::default())),
             Event::Paste(text) => self.paste(&text),
+            Event::ManagedPaste(text) => self.paste_in(text.text(), text.budget().clone()),
+            Event::PasteFailed => self.show_warning_refs(["剪贴板无文本、超限、额度不足或读取失败"]),
+            Event::CopyFailed => self.show_warning_refs(["剪贴板复制失败，请重试"]),
+            Event::ProtectedPaste(paste) => drop(paste),
             Event::Preedit(text) => {
                 if self.notifications.open {
                     return true;
@@ -812,16 +921,17 @@ impl App for Congminal {
                 while !text.is_char_boundary(end) {
                     end -= 1;
                 }
-                // 只保留有界的新缓冲，不能 truncate 后继续持有超大输入事件的 capacity。
-                let text = text[..end].to_owned();
+                // 搜索复用已准入缓冲；终端只复制有界片段，不保留超大事件的capacity。
                 if self.search.active {
-                    self.search.preedit = text;
+                    self.search.set_preedit(&text[..end]);
                 } else {
-                    self.session.preedit = text;
+                    self.session.preedit = text[..end].to_owned();
                 }
                 self.dirty = true;
             }
-            Event::Resize { width, height } => return self.resize(width, height),
+            Event::Resize { width, height } => {
+                self.resize(width, height);
+            }
             // 窗口被遮挡后重新露出来：屏幕上的内容已经不可信，整屏重画
             Event::Redraw => {
                 self.renderer.invalidate();
@@ -847,6 +957,7 @@ impl App for Congminal {
             self.hover_cell = None;
         }
         self.dirty |= update.changed;
+        let notice_revision = self.notifications.revision();
         while let Some(event) = self.session.term.shell.take_event() {
             if let Some(notice) = self.notifications.complete(event, &self.config.notifications, self.focus.active) {
                 self.notify_notice(notice);
@@ -858,20 +969,24 @@ impl App for Congminal {
         {
             self.notify_notice(notice);
         }
+        self.dirty |= notice_revision != self.notifications.revision();
         if let Some(result) = self.system_notifier.as_ref().and_then(LatestTask::take) {
             self.system_notifier = None;
             self.notifications.system_error = result.is_err();
             self.dirty = true;
         }
+        if self.output_copy.as_ref().is_some_and(|copy| self.copy_exhausted || copy.epoch() != self.copy_epoch) {
+            self.output_copy = None;
+        }
         if let Some(copy) = &mut self.output_copy {
             match copy.step(&self.session.term) {
                 Ok(Some(text)) => {
-                    self.clipboard_request = Some(ClipboardRequest::Copy(text));
+                    self.queue_copy(Ok(text));
                     self.output_copy = None;
                 }
                 Err(message) => {
                     self.output_copy = None;
-                    self.show_warnings(&[message.into()]);
+                    self.queue_copy(Err(message));
                 }
                 Ok(None) => {}
             }
@@ -890,16 +1005,23 @@ impl App for Congminal {
             self.command_selection = false;
         }
         let current = self.search.current();
-        self.dirty |= self.search.step(&self.session.term);
+        if self.pane_visible {
+            self.dirty |= self.search.step(&self.session.term);
+        }
         if self.search.current() != current
             && let Some((point, _)) = self.search.current()
         {
             self.session.term.reveal_line(point.line);
         }
-        if let Some(Err(error)) = self.opener.as_ref().and_then(LatestTask::take) {
-            self.io_warning(&error);
+        if let Some(result) = self.opener.as_ref().and_then(LatestTask::take) {
+            self.opener = None;
+            if let Err(error) = result {
+                self.io_warning(&error);
+            }
         }
-        self.update_ui();
+        if self.pane_visible {
+            self.update_ui();
+        }
         !update.finished
     }
 
@@ -910,7 +1032,11 @@ impl App for Congminal {
     fn deadline(&self) -> Option<Instant> {
         let draw = self.dirty.then(|| self.next_draw_time());
         let deadline = draw.into_iter().chain(self.font_deadline).min();
-        if self.session.output_pending || self.search.pending() || self.output_copy.is_some() {
+        if self.session.resize_pending()
+            || self.session.output_pending
+            || self.search.pending()
+            || self.output_copy.is_some()
+        {
             Some(Instant::now())
         } else {
             deadline
@@ -937,13 +1063,29 @@ impl App for Congminal {
     }
 
     fn take_clipboard_request(&mut self) -> Option<ClipboardRequest> {
-        self.clipboard_request.take()
+        let request = self.clipboard_request.take();
+        if let Some(ClipboardRequest::Copy(text)) = &request
+            && (self.copy_exhausted || text.epoch() != self.copy_epoch)
+        {
+            return None;
+        }
+        request.map(|request| match request {
+            ClipboardRequest::Paste(request) => {
+                ClipboardRequest::Paste(request.admit(self.session.term.resource_budget()))
+            }
+            request => request,
+        })
     }
 
     fn ime_cursor_area(&self) -> (u32, u32, u32, u32) {
-        self.renderer
+        let (x, y, w, h) = self
+            .renderer
             .bar_cursor_rect(&self.session.term)
-            .unwrap_or_else(|| self.renderer.cursor_rect(&self.session.term))
+            .unwrap_or_else(|| self.renderer.cursor_rect(&self.session.term));
+        // 准备新布局时旧光标可能落在已经缩小的画布之外。
+        let (width, height) = (self.framebuffer.width.max(1) as u32, self.framebuffer.height.max(1) as u32);
+        let (x, y) = (x.min(width - 1), y.min(height - 1));
+        (x, y, w.min(width - x).max(1), h.min(height - y).max(1))
     }
 }
 
@@ -966,9 +1108,19 @@ fn scale_override() -> Option<f64> {
 }
 
 /// 每秒看一眼配置文件的修改时间，变了就通知主线程
-fn watch_config(path: PathBuf, cancel: Cancellation, notify: impl Fn() + Send + 'static) {
-    let modified = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
-    let spawned = std::thread::Builder::new().name("config-watcher".into()).spawn(move || {
+fn watch_config(path: PathBuf, cancel: Cancellation, notify: impl Fn() + Send + 'static) -> std::io::Result<()> {
+    watch_config_with(path, cancel, notify, |path| std::fs::metadata(path).and_then(|m| m.modified()).ok())
+}
+fn watch_config_with(
+    path: PathBuf,
+    cancel: Cancellation,
+    notify: impl Fn() + Send + 'static,
+    mut modified: impl FnMut(&Path) -> Option<std::time::SystemTime> + Send + 'static,
+) -> std::io::Result<()> {
+    crate::runtime::spawn("config-watcher", &resources::current(), move || {
+        if cancel.is_cancelled() {
+            return;
+        }
         let mut last = modified(&path);
         while !cancel.wait(Duration::from_secs(1)) {
             let now = modified(&path);
@@ -977,14 +1129,18 @@ fn watch_config(path: PathBuf, cancel: Cancellation, notify: impl Fn() + Send + 
                 notify();
             }
         }
-    });
-    if let Err(e) = spawned {
-        eprintln!("congminal: 无法监视配置文件：{e}");
-    }
+    })
 }
 
 fn run(config_path: Option<PathBuf>) -> Result<(), String> {
-    let (config, config_warnings) = Config::load(config_path.as_deref());
+    let (mut config, mut config_warnings) = Config::load(config_path.as_deref());
+    resources::initialize(
+        config.memory.managed_mib.saturating_mul(1024 * 1024),
+        config.memory.mapped_font_mib.saturating_mul(1024 * 1024),
+    )
+    .map_err(|error| error.to_string())?;
+    let _runtime_owner = runtime::initialize().map_err(|error| format!("无法创建后台线程回收器：{error}"))?;
+    config.admit_connections(&mut config_warnings);
     let (cols, rows) = (config.window.columns, config.window.rows);
 
     // 加载字体要扫描系统字体目录，只做一次；除非窗口实际所在屏幕的缩放比例和预估的不一样
@@ -1019,10 +1175,12 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
     if let Some(path) = config_path.clone() {
         let changed = config_changed.clone();
         let notify = notify.clone();
-        watch_config(path, watcher_cancel.clone(), move || {
+        if let Err(error) = watch_config(path, watcher_cancel.clone(), move || {
             changed.store(true, Ordering::Release);
             notify();
-        });
+        }) {
+            config_warnings.push(format!("无法监视配置文件：{error}"));
+        }
     }
     platform::set_option_as_alt(config.option_as_alt);
     let loaded_font = config.font.clone();
@@ -1048,21 +1206,31 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         link_click: false,
         opener: None,
         system_notifier: None,
+        notification_gate: Arc::new(notifications::SystemGate::default()),
         notifications: notifications::Center::default(),
         command_view: false,
         command_selection: false,
         selected_command: None,
         output_copy: None,
         clipboard_request: None,
+        copy_epoch: 0,
+        copy_exhausted: false,
         focus: Focus { active: true },
+        pane_visible: true,
         last_draw: Instant::now(),
         dirty: true,
     };
-    let mut warnings: Vec<String> = config_warnings.iter().map(|w| format!("配置文件：{w}")).collect();
-    warnings.extend(app.renderer.warnings().iter().cloned());
-    app.show_warnings(&warnings);
+    {
+        let warnings = app.renderer.take_font_warnings();
+        let config_warnings: Vec<String> = config_warnings.into_iter().map(|w| format!("配置文件：{w}")).collect();
+        app.show_warnings(&config_warnings);
+        app.show_warning_refs(warnings.iter());
+    }
 
-    window.run(&mut app);
+    let mut workspace = workspace::Workspace::new(app)?;
+    window.run(&mut workspace);
+    workspace.finish_persistence();
+    drop(workspace);
     Ok(())
 }
 
@@ -1079,10 +1247,16 @@ const HELP: &str = "congminal：从零手写的终端模拟器
 配置文件默认位置：";
 
 fn main() {
+    // 内部目录协议使用原字节 stdin；在配置、窗口或线程初始化之前分流。
+    #[cfg(all(feature = "directory-helper", unix))]
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(local_directory::isolated::FLAG)) {
+        std::process::exit(local_directory::isolated::child_mode(std::env::args_os().skip(2)));
+    }
     let mut config_path = Config::default_path();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
+            resolve::FLAG => std::process::exit(resolve::child_mode(args)),
             "--print-config" => {
                 print!("{}", config::EXAMPLE);
                 return;
@@ -1093,7 +1267,11 @@ fn main() {
                 return;
             }
             "-V" | "--version" => {
-                println!("congminal {}", env!("CARGO_PKG_VERSION"));
+                println!(
+                    "congminal {}{}",
+                    env!("CARGO_PKG_VERSION"),
+                    if cfg!(all(feature = "sftp-preview", unix)) { " (SFTP preview)" } else { "" }
+                );
                 return;
             }
             "--config" => match args.next() {
@@ -1121,9 +1299,88 @@ fn main() {
 
 #[cfg(all(test, unix))]
 mod integration_tests {
+    #[test]
+    fn configuration_monitor_admission_and_cancel_follow_creator_budget() {
+        let pool = crate::resources::Budget::new(8 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let observed = called.clone();
+        let cancel = crate::tasks::Cancellation::default();
+        cancel.cancel();
+        super::watch_config_with(
+            "unused".into(),
+            cancel,
+            || {},
+            move |_| {
+                called.store(true, std::sync::atomic::Ordering::SeqCst);
+                None
+            },
+        )
+        .unwrap();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while pool.snapshot().managed_workers != 0 {
+            assert!(std::time::Instant::now() < until);
+            std::thread::yield_now();
+        }
+        assert!(!observed.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(pool.snapshot().used, 0);
+        let small = crate::resources::Budget::new(1024, 0);
+        let _scope = crate::resources::Scope::enter(small.clone());
+        assert!(super::watch_config("unused".into(), crate::tasks::Cancellation::default(), || {}).is_err());
+        assert_eq!((small.snapshot().used, small.snapshot().managed_workers), (0, 0));
+    }
+
     use super::*;
 
-    fn app(text: &str) -> Congminal {
+    #[test]
+    fn grid_preflight_denial_keeps_the_previous_canvas_and_terminal_dimensions() {
+        let pool = resources::Budget::new(128 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = resources::Scope::enter(pool.clone());
+        let mut app = app("");
+        let before = (
+            app.framebuffer.width,
+            app.framebuffer.height,
+            app.session.term.cols(),
+            app.session.term.rows(),
+            app.session.term.text_stamp(),
+        );
+        let pixels = app.framebuffer.pixels.clone();
+        let _hold = pool.lease(resources::Kind::Queue, 128 * 1024 * 1024 - pool.snapshot().used).unwrap();
+        assert!(!app.resize(before.0 as u32 + 64, before.1 as u32 + 64));
+        assert!(
+            app.event(Event::Resize { width: before.0 as u32 + 64, height: before.1 as u32 + 64 }),
+            "准入失败不能被平台解释成退出窗口"
+        );
+        assert_eq!(
+            (
+                app.framebuffer.width,
+                app.framebuffer.height,
+                app.session.term.cols(),
+                app.session.term.rows(),
+                app.session.term.text_stamp()
+            ),
+            before
+        );
+        assert_eq!(app.framebuffer.pixels, pixels);
+    }
+
+    #[test]
+    fn ime_rectangle_remains_inside_shrunken_canvas_while_old_grid_is_pending() {
+        let mut app = app("");
+        vt::Parser::new().advance(&mut app.session.term, &vec![b'x'; 500_000]);
+        let old = (app.session.term.cols(), app.session.term.rows());
+        let (w, h) = (app.framebuffer.width as u32 / 2, app.framebuffer.height as u32 / 2);
+        assert!(app.event(Event::Resize { width: w, height: h }));
+        assert!(app.session.resize_pending());
+        assert_eq!((app.session.term.cols(), app.session.term.rows()), old);
+        app.event(Event::Preedit("中文".into()));
+        let (x, y, width, height) = app.ime_cursor_area();
+        assert!(x + width <= w && y + height <= h);
+        assert!(app.draw().is_some());
+        wait_until(&mut app, |a| !a.session.resize_pending());
+    }
+
+    pub(super) fn app(text: &str) -> Congminal {
         let (mut config, warnings) = Config::parse(text);
         assert!(warnings.is_empty(), "{warnings:?}");
         config.shell.program = Some("/bin/sh".into());
@@ -1143,6 +1400,8 @@ mod integration_tests {
             wake_pending: Arc::new(AtomicBool::new(false)),
             last_io_notice: None,
             clipboard_request: None,
+            copy_epoch: 0,
+            copy_exhausted: false,
             focus: Focus { active: true },
             watcher_cancel: Cancellation::default(),
             notify: Arc::new(|| {}),
@@ -1155,11 +1414,13 @@ mod integration_tests {
             link_click: false,
             opener: None,
             system_notifier: None,
+            notification_gate: Arc::new(notifications::SystemGate::default()),
             notifications: notifications::Center::default(),
             command_view: false,
             command_selection: false,
             selected_command: None,
             output_copy: None,
+            pane_visible: true,
             last_draw: Instant::now(),
             dirty: true,
         };
@@ -1170,7 +1431,9 @@ mod integration_tests {
 
     fn screen(app: &Congminal) -> String {
         (0..app.session.term.rows())
-            .flat_map(|row| app.session.term.visible_row(row).cells.iter().map(|c| c.c))
+            .flat_map(|row| app.session.term.visible_row(row).cells.iter())
+            .filter(|cell| !cell.flags.contains(term::Flags::WIDE_SPACER))
+            .map(|cell| cell.c)
             .collect()
     }
 
@@ -1183,6 +1446,46 @@ mod integration_tests {
         }
     }
 
+    #[test]
+    fn copy_pressure_clears_pending_request_but_keeps_already_loaned_payload_paid() {
+        let pool = resources::Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = resources::Scope::enter(pool.clone());
+        let mut app = app("");
+        app.search.open(&app.session.term);
+        app.search.insert("borrowed", &app.session.term);
+        app.copy();
+        let Some(ClipboardRequest::Copy(loaned)) = app.take_clipboard_request() else { panic!("missing copy") };
+        assert_eq!(loaned.as_str(), "borrowed");
+        app.copy();
+        assert!(app.clipboard_request.is_some());
+        app.search.insert(" more", &app.session.term);
+        let hold = pool.lease(resources::Kind::Queue, pool.snapshot().limit - pool.snapshot().used).unwrap();
+        app.copy();
+        assert!(app.clipboard_request.is_none());
+        assert!(screen(&app).contains("复制资源额度不足"));
+        assert_eq!(loaned.as_str(), "borrowed");
+        assert_eq!(pool.snapshot().kinds[resources::Kind::Clipboard as usize], loaned.capacity());
+        drop((hold, app));
+        assert_eq!(pool.snapshot().kinds[resources::Kind::Clipboard as usize], loaned.capacity());
+        drop(loaned);
+        assert_eq!(pool.snapshot().kinds[resources::Kind::Clipboard as usize], 0);
+    }
+    #[test]
+    fn copy_epoch_exhaustion_cancels_requests_without_reusing_an_old_identity() {
+        let mut app = app("");
+        app.search.open(&app.session.term);
+        app.search.insert("last", &app.session.term);
+        app.copy_epoch = u64::MAX - 1;
+        app.copy();
+        let Some(ClipboardRequest::Copy(last)) = app.take_clipboard_request() else { panic!("missing last copy") };
+        assert_eq!(last.epoch(), u64::MAX);
+        app.copy();
+        assert!(app.copy_exhausted && app.clipboard_request.is_none());
+        assert_eq!(app.copy_epoch, u64::MAX);
+        assert!(screen(&app).contains("复制序号已耗尽"));
+        app.queue_copy(Ok(last));
+        assert!(app.take_clipboard_request().is_none());
+    }
     #[test]
     fn command_navigation_copy_notifications_and_focus_use_the_same_session() {
         let mut app = app("");
@@ -1198,7 +1501,7 @@ mod integration_tests {
         app.event(Event::Key { key: Key::F(8), mods: primary });
         wait_until(&mut app, |a| a.output_copy.is_none());
         let Some(ClipboardRequest::Copy(text)) = app.take_clipboard_request() else { panic!("no copy request") };
-        assert_eq!(text, "编译失败\n");
+        assert_eq!(text.as_str(), "编译失败\n");
         app.event(Event::Key { key: Key::F(10), mods: primary });
         assert!(app.notifications.open);
         assert!(app.notifications.describe(false).contains("退出码 7"));
@@ -1247,9 +1550,9 @@ mod integration_tests {
         app.event(Event::Key { key: Key::Char('f'), mods: primary });
         assert!(app.search.active);
         app.event(Event::Preedit("界".repeat(100_000)));
-        assert!(app.search.preedit.capacity() <= search::QUERY_LIMIT);
+        assert!(app.search.preedit_capacity() <= search::QUERY_LIMIT);
         app.event(Event::Preedit("中".into()));
-        assert!(app.search.query.is_empty());
+        assert!(app.search.query().is_empty());
         app.event(Event::Text("中文".into()));
         wait_until(&mut app, |app| !app.search.pending());
         assert_eq!(app.search.matches().count(), 2);
@@ -1265,9 +1568,9 @@ mod integration_tests {
         let search_rect = app.ime_cursor_area();
         assert!(search_rect.1 > app.renderer.cursor_rect(&app.session.term).1);
         app.event(Event::Key { key: Key::Char('c'), mods: primary });
-        assert!(matches!(app.take_clipboard_request(), Some(ClipboardRequest::Copy(s)) if s=="中文"));
+        assert!(matches!(app.take_clipboard_request(), Some(ClipboardRequest::Copy(s)) if s.as_str()=="中文"));
         app.event(Event::Key { key: Key::F(6), mods: Mods::default() });
-        assert_eq!(app.search.query, "中文Z");
+        assert_eq!(app.search.query(), "中文Z");
         assert!(!screen(&app).contains('Z'));
         app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
         app.tick();
@@ -1284,7 +1587,7 @@ mod integration_tests {
         app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: copy });
         app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: copy });
         assert!(
-            matches!(app.take_clipboard_request(),Some(ClipboardRequest::Copy(s)) if s=="https://example.com/real")
+            matches!(app.take_clipboard_request(),Some(ClipboardRequest::Copy(s)) if s.as_str()=="https://example.com/real")
         );
         assert!(app.opener.is_none() && app.session.reported_button.is_none());
         parser.advance(&mut app.session.term, b"\x1b[?1000h\x1b[?1006h");
@@ -1369,7 +1672,7 @@ mod integration_tests {
                 &mut app.session.term,
                 format!("\x1b]8;;https://{cycles}.example/path\x07link\x1b]8;;\x07 new x\r\n").as_bytes(),
             );
-            app.search.query = if cycles % 2 == 0 { "x".into() } else { "missing needle".into() };
+            app.search.replace_query(if cycles % 2 == 0 { "x" } else { "missing needle" }, &app.session.term);
             app.search.open(&app.session.term);
             for _ in 0..8 {
                 let time = Instant::now();

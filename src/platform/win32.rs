@@ -203,6 +203,7 @@ unsafe extern "system" {
 unsafe extern "system" {
     fn GetModuleHandleW(name: *const u16) -> Hinstance;
     fn GlobalAlloc(flags: u32, bytes: usize) -> isize;
+    fn GlobalSize(memory: isize) -> usize;
     fn GlobalLock(memory: isize) -> *mut c_void;
     fn GlobalUnlock(memory: isize) -> i32;
     fn GlobalFree(memory: isize) -> isize;
@@ -360,11 +361,15 @@ impl Window {
             }
             if let Some(request) = app.take_clipboard_request() {
                 match request {
-                    ClipboardRequest::Copy(text) => self.set_clipboard(&text),
-                    ClipboardRequest::Paste => {
-                        if let Some(text) = self.clipboard_text()
-                            && !app.event(Event::Paste(text))
-                        {
+                    ClipboardRequest::Copy(text) => {
+                        if !self.set_clipboard(&text) && !app.event(Event::CopyFailed) {
+                            return;
+                        }
+                    }
+                    ClipboardRequest::Paste(mut request) => {
+                        let text = self.clipboard_text(&mut request);
+                        let event = request.finish(text);
+                        if !app.event(event) {
                             return;
                         }
                     }
@@ -400,44 +405,50 @@ impl Window {
     }
 
     /// 写剪贴板：UTF-16 文字放进一块全局内存交给系统。Windows 的换行习惯是 \r\n。
-    fn set_clipboard(&self, text: &str) {
-        let wide: Vec<u16> = text.replace('\n', "\r\n").encode_utf16().chain(Some(0)).collect();
+    fn set_clipboard(&self, text: &super::CopyText) -> bool {
+        let Ok(wide) = super::clipboard::WideCopy::new(text) else { return false };
         unsafe {
-            let memory = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2);
+            let memory = GlobalAlloc(GMEM_MOVEABLE, wide.data.len() * 2);
             if memory == 0 {
-                return;
+                return false;
             }
             let pointer = GlobalLock(memory).cast::<u16>();
             if pointer.is_null() {
                 GlobalFree(memory);
-                return;
+                return false;
             }
-            std::ptr::copy_nonoverlapping(wide.as_ptr(), pointer, wide.len());
+            std::ptr::copy_nonoverlapping(wide.data.as_ptr(), pointer, wide.data.len());
             GlobalUnlock(memory);
             if OpenClipboard(self.hwnd) == 0 {
                 GlobalFree(memory);
-                return;
+                return false;
             }
             EmptyClipboard();
             // 成功后这块内存归系统所有，不能再释放
-            if SetClipboardData(CF_UNICODETEXT, memory) == 0 {
+            let copied = SetClipboardData(CF_UNICODETEXT, memory) != 0;
+            if !copied {
                 GlobalFree(memory);
             }
             CloseClipboard();
+            copied
         }
     }
 
-    fn clipboard_text(&self) -> Option<String> {
+    fn clipboard_text(&self, request: &mut super::PasteRequest) -> Option<String> {
+        let policy = request.policy();
         unsafe {
             if OpenClipboard(self.hwnd) == 0 {
                 return None;
             }
             let memory = GetClipboardData(CF_UNICODETEXT);
             let pointer = if memory == 0 { null_mut() } else { GlobalLock(memory).cast::<u16>() };
-            let text = (!pointer.is_null()).then(|| {
-                let len = (0..).take_while(|&i| *pointer.add(i) != 0).count();
-                String::from_utf16_lossy(std::slice::from_raw_parts(pointer, len))
-            });
+            let text = if pointer.is_null() {
+                None
+            } else {
+                let units = (GlobalSize(memory) / 2).min(policy.limit() + 1);
+                let data = std::slice::from_raw_parts(pointer, units);
+                data.iter().position(|c| *c == 0).and_then(|len| request.utf16(&data[..len]))
+            };
             if !pointer.is_null() {
                 GlobalUnlock(memory);
             }

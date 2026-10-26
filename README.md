@@ -1,11 +1,17 @@
 # congminal
 
+开发接手入口：[DeepSeek 功能接手 / Codex 内存与性能审查](docs/DEEPSEEK_HANDOFF.md)。交接分支包含当前源码、必要工具和评估证据；请先按文档核对状态，不要把历史记录或旧安装包当作最新实现。
+
 一个从零手写的跨平台终端模拟器（Rust 学习项目）。
 
-**当前无 Rust 第三方依赖**：`Cargo.toml` 的 `[dependencies]` 是空的，现有底层通过系统 API（libc、Xlib、Win32、Cocoa）实现。
+**默认构建不启用 Rust 第三方包**，终端底层通过系统 API（libc、Xlib、Win32、Cocoa）实现。macOS/Linux 可显式构建 `sftp-preview` 并启用配置，接入独立 OpenSSH SFTP 界面，见 [实验预览说明](docs/releases/sftp-preview.md)；原生窗口认证/传输仍待验收，普通 Alpha.6 不包含此功能。`sftp-libssh2` 仅保留原生会话测试依赖，见 [M6 记录](docs/execution-m6.md)。
+
+最新资源进度：会话启动/恢复/重连改为同步借用配置，字体任务只携带字体设置，移除无关配置副本。给定32KiB环境/自定义快捷键负载，启动命令构造从34764B降为零，字体请求从253142B降为148B；后者仍需完整计费。默认601/预览604及helper20项、隔离SSH连接/中断重连与SFTP回归通过，见[分配、成本和边界](docs/evaluations/m4-config-borrow.md)。此前[固定布局快照](docs/evaluations/m4-layout-resources.md)及[线程准入](docs/evaluations/m4-system-threads.md)保持；配置解析/其他元数据、真实窗口及三平台长测继续，既有安装包未更新。
 后续允许引入第三方包或外部程序，但先测量性能与资源影响；不达标时优化、更换或自写适配，见 [依赖与适配策略](docs/dependency-policy.md)。
 
 ## 运行
+
+当前本地体验版为 **0.1.0-alpha.6（macOS Apple 芯片）**，安装、快捷键、SSH 配置和功能范围见 [使用说明](docs/releases/alpha.6.md)。在 Mac 上执行 `bash ci/package-macos.sh`，会离线构建 `.app` 和 ZIP 到 `target/distributions/`；只做本机临时签名，未公证。
 
 ```sh
 cargo run --release
@@ -168,3 +174,21 @@ Maple Mono 不随程序分发，需要另外安装。
 M2 已实现搜索与链接，使用方法、资源边界及剩余验证见 [M2 执行记录](docs/execution-m2.md)。
 
 Shell 集成与命令输出导航已加入：可选 source zsh/Bash 脚本，Primary+↑/↓ 跳命令，Primary+F7/F8 选择/复制输出，Primary+F9 查看状态，Primary+F10 查看通知，Primary+F11 静音。Primary 在 macOS 为 Cmd，其他平台为 Ctrl+Shift。系统通知适配默认关闭，资源边界、启用方式与未验证项目见 [M3 使用说明](docs/execution-m3.md)。
+
+工作区首批功能已接入：Primary+T 新标签，Primary+D / Primary+Enter 左右/上下分屏，Ctrl+Tab 切换标签，Primary+W 关闭窗格，Primary+B/I 切换侧栏。字体和缓存共享，会话最多 8 个，历史共用 64 MiB 配额。首次使用这些功能时启用工作区，普通单终端沿用直接绘制路径。详见 [M4 操作说明](docs/execution-m4.md)。
+
+左栏顶部“本地”提供只读目录浏览、上级、刷新及隐藏文件开关；从配置的工作目录开始，普通文件只选中，不读取正文或执行。单次最多 512 项，达到扫描上限会提示结果可能不完整；详见 [目录侧栏](docs/execution-m4.md#本地目录侧栏)。
+
+左栏“连接”读取命名配置档 `[connections.<id>]`（最多 16 个）；本地配置点击后新建独立标签，SSH 配置通过 OpenSSH 新建独立 PTY，保留终端认证/主机确认，连接页支持取消检查和显式重连；实际认证/活动状态无法可靠观察时显示未知。详见 [配置档说明](docs/execution-m4.md#连接配置档)。
+
+跨运行保存标签、分屏、焦点和侧栏，可设置 `[workspace] restore-layout = true`（默认关闭，下次启动生效）。只保存 UI 元数据，恢复时启动当前配置的 Shell，不保存或重放旧命令与输入。文件为配置旁的 `<配置文件名>.workspace`；资源成本和恢复边界见 [持久化评估](docs/evaluations/m4-layout.md)。
+
+共享资源准入已接入画布扩容峰值、PTY 队列预留、缓存计费、字体文件、主/备用网格、持久历史 cell/行索引、缩放临时工作集和 PNG 解码/返回像素；压力下先清缓存、分片回收非活动历史，仍不足则拒绝缩放并保留原终端。Primary+F12 可查看额度和拒绝次数。默认混合额度 512 MiB、字体映射另限 1024 MiB/128 个；缩放、轮廓/光栅化、GSUB/PSF、缓存桶、目录及配置档已接入；行指纹、连字/Unicode绘制工作集已准入并复用，见[评估](docs/evaluations/m4-render-work.md)；字体发现/读取头部及共享记录已准入，查询复用与成本见[评估](docs/evaluations/m4-font-discovery.md)；轮廓Box、后备列表及说明/警告已接入，见[评估](docs/evaluations/m4-font-metadata.md)；映射Storage/Arc、固定弱缓存及固定错误值已完成本机计费验证，见[评估](docs/evaluations/m4-font-map.md)；搜索/链接高亮与顶部提示栏已准入并复用，见[评估](docs/evaluations/m4-ui-state.md)；搜索查询/预编辑、KMP/检查点和匹配队列也已准入复用，见[评估](docs/evaluations/m4-search-resources.md)；通知Center的固定记录窗口已准入、清空释放，首次及重填成本增加而连续事件持平，见[评估](docs/evaluations/m4-notice-resources.md)；Shell命令/事件和OSC7目录已准入，搜索高亮改为可信切片批量复制，见[评估](docs/evaluations/m4-shell-resources.md)；根预算/同步对象、配置、系统剪贴板内部/原生协议、launcher内部、通知工具/任务及其他界面元数据仍待完整接入，不能把该额度当作完整堆/RSS 上限。[配置与边界](docs/execution-m4-memory.md)。
+
+软换行重排逐段处理，不拼接整份逻辑长行。超过 256 KiB 的主屏宽度重排已接入 UI 分片：旧文本保持可读，准备完成后交换，旧行分批回收；连续缩放只保留最新目标。期间暂停解析 PTY 输出并沿用有界背压，键盘仍可写入 PTY。小网格、高度变化及备用屏幕仍有同步路径；完整回显延迟尚未验收。[流式重排说明](docs/execution-m4-reflow.md)。
+
+输出复制已加入额度交接和窗口代次取消，避免原窗格关闭后提前还票或晚到结果覆盖新复制；额外成本及尚未验收的输入/平台边界见 [复制评估](docs/evaluations/m4-copy-resources.md)。
+
+普通粘贴读取及在途结果已持有额度，发送前转换改为单个缓冲，未改变原窗格归属和认证屏障。性能对照和原生边界见 [粘贴评估](docs/evaluations/m4-paste-resources.md)。
+
+链接目标池和URL文本已先准入，可见检测不再逐格建立临时String，转交复制/打开任务保持票据。性能取舍和launcher剩余边界见 [链接评估](docs/evaluations/m4-link-resources.md)。

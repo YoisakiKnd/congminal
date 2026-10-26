@@ -40,7 +40,27 @@ pub fn extends(sequence: &str, c: char) -> bool {
 }
 
 /// 从 `col` 开始的 emoji 组合序列：(整个序列, 序列后面的第一列)。不是组合序列时返回 None。
+#[cfg(test)]
 pub fn sequence_at(term: &Terminal, row: &Row, col: usize, cols: usize) -> Option<(String, usize)> {
+    let mut sequence = String::with_capacity(workspace_bytes(cols));
+    let end = sequence_into(term, row, col, cols, &mut sequence)?;
+    Some((sequence, end))
+}
+
+/// 一格至多一个基础字符、64字节附加字符和自动补入的VS16；宽格只会降低上界。
+pub(crate) fn workspace_bytes(cols: usize) -> usize {
+    cols.min(4096) * (4 + super::MAX_MARKS_LEN + 3)
+}
+
+/// 仅使用调用者已准入的容量；不足时返回None，不扩容。
+pub(crate) fn sequence_into(
+    term: &Terminal,
+    row: &Row,
+    col: usize,
+    cols: usize,
+    sequence: &mut String,
+) -> Option<usize> {
+    sequence.clear();
     let width = |col: usize| if row.cells[col].flags.contains(Flags::WIDE) { 2 } else { 1 };
     let cell = row.cells.get(col)?;
     // 大多数格子不可能是组合序列的开头，先排除
@@ -48,19 +68,23 @@ pub fn sequence_at(term: &Terminal, row: &Row, col: usize, cols: usize) -> Optio
     if cell.marks == 0 && !is_regional_indicator(cell.c) && !next_is_tone {
         return None;
     }
-    let mut sequence = String::new();
     let mut end = col;
     loop {
         let cell = &row.cells[end];
-        sequence.push(cell.c);
         let marks = term.marks(cell.marks);
+        let variation = cell.flags.contains(Flags::EMOJI) && !marks.starts_with('\u{FE0F}');
+        let extra = cell.c.len_utf8() + marks.len() + if variation { 3 } else { 0 };
+        if extra > sequence.capacity().saturating_sub(sequence.len()) {
+            return None;
+        }
+        sequence.push(cell.c);
         if cell.flags.contains(Flags::EMOJI) && !marks.starts_with('\u{FE0F}') {
             sequence.push('\u{FE0F}');
         }
         sequence.push_str(marks);
         end += width(end);
         match row.cells.get(end) {
-            Some(next) if end < cols && extends(&sequence, next.c) => {}
+            Some(next) if end < cols && extends(sequence, next.c) => {}
             _ => break,
         }
     }
@@ -68,7 +92,7 @@ pub fn sequence_at(term: &Terminal, row: &Row, col: usize, cols: usize) -> Optio
         || sequence.chars().filter(|&c| is_regional_indicator(c)).count() == 2
         || sequence.chars().any(|c| matches!(c, '\u{200D}' | '\u{E0020}'..='\u{E007F}') || is_skin_tone(c))
         || (sequence.contains('\u{20E3}') && sequence.contains('\u{FE0F}'));
-    joined.then_some((sequence, end))
+    joined.then_some(end)
 }
 
 #[cfg(test)]
@@ -121,5 +145,39 @@ mod tests {
         // ❤️ 本身不是组合序列
         assert!(sequences("❤\u{FE0F} 👍").is_empty());
         assert_eq!(sequences("❤\u{FE0F}\u{200D}🔥"), [("❤\u{FE0F}\u{200D}🔥".to_string(), 0, 3)]);
+    }
+    #[test]
+    fn caller_capacity_is_never_grown_and_reused_buffer_has_no_stale_prefix() {
+        let family = "👨\u{200D}👩\u{200D}👧";
+        let mut term = Terminal::new(24, 1);
+        Parser::new().advance(&mut term, family.as_bytes());
+        let row = &term.grid()[0];
+        let mut short = String::with_capacity(4);
+        let capacity = short.capacity();
+        assert!(sequence_into(&term, row, 0, 24, &mut short).is_none());
+        assert_eq!(short.capacity(), capacity);
+        let mut output = String::with_capacity(workspace_bytes(24));
+        let capacity = output.capacity();
+        for _ in 0..100 {
+            output.push_str("old");
+            assert_eq!(sequence_into(&term, row, 0, 24, &mut output), Some(6));
+            assert_eq!(output, family);
+            assert_eq!(output.capacity(), capacity);
+        }
+    }
+    #[test]
+    fn long_joined_sequence_is_rejected_as_a_whole_when_capacity_is_insufficient() {
+        let input = std::iter::repeat_n("😀", 180).collect::<Vec<_>>().join("\u{200d}");
+        assert!(input.len() > 1024);
+        let mut term = Terminal::new(400, 1);
+        Parser::new().advance(&mut term, input.as_bytes());
+        let row = &term.grid()[0];
+        let mut short = String::with_capacity(1024);
+        let capacity = short.capacity();
+        assert!(sequence_into(&term, row, 0, 400, &mut short).is_none());
+        assert_eq!(short.capacity(), capacity);
+        let (whole, end) = sequence_at(&term, row, 0, 400).unwrap();
+        assert_eq!(whole, input);
+        assert_eq!(end, 360);
     }
 }

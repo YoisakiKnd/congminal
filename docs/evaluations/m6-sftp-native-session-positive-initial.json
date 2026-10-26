@@ -1,0 +1,1102 @@
+{
+  "scope": "Real feature-gated Rust Session/NativePool over isolated SSH, generated keys, strict host records, 32MiB streaming / 8MiB managed test budget. Test fixture input reservation is included in shared_peak. Not GUI, DNS/config resolution, Windows native runtime, or full heap/RSS verification.",
+  "sampler": "libproc \u6bcf 5 ms\uff1bMach \u65f6\u95f4\u57fa\u51c6 125/3\uff1b\u8fdb\u7a0b\u6811\u6700\u591a 64 \u9879",
+  "source_sha256": {
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+    "src/config/profiles.rs": "090d904e5b2b4baf3ce64e7bfe6ae399645dd8a5193be43eba00ddce5c07cd90",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/main.rs": "63f19bf1c1182b086dc791f7ca82f1e31111c42fa17d71728240f721d5f0b0cd",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+    "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+    "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+    "src/resources/budget.rs": "309ff4802bee32fda3e7cf0497a9d4611876cd63abe01355d3c67c06b9bb2ab8",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/resources.rs": "aa299533d3bd5ae7dda2ed798618ff6f7f7319a0b83368a7cbd190918a920a72",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/session.rs": "dc3f4ee4e3a92aebbd5ae7e16ff27089eefc8b375585904653a644e5774c841e",
+    "src/sftp/allocation.rs": "555f3521488b7ca257cbffcbeb1d8ab457d9092df00662553c891eb4943e86e6",
+    "src/sftp/client.rs": "119f08c3c7b53a8871af2533319b8e7c88f7da951eadb725996f0839fa59bab4",
+    "src/sftp/mod.rs": "50f4852741993f507364ae03b87f2ba4e1b2ad946070f9fea552054e40141c96",
+    "src/sftp/model.rs": "91c83fd80bd48f5b696a0269a9baaed8d5207dfc7a3dd8abb239837fa5b3c1ad",
+    "src/sftp/native.rs": "f38ff2407067a3e9bff7e0baac56d881c0ce066d3586b1aaa4c9e3598ba2f5d9",
+    "src/sftp/native_wait.rs": "959ef1f2e7d1f9c429004f3fdd1191d026f45eaff2210533382fb3fed8e680d4",
+    "src/sftp/operations.rs": "cda190e0ddca16cf262108b0a14484af6d59e793d0c9f06e5a3aa7bc69a3f56b",
+    "src/sftp/transfer.rs": "ef00171c08c25fbba13f373dfbc99567e73b19ee8445fbe373f529942d304637",
+    "src/sftp/wire.rs": "dadc53f2c7b89a9b7d963fe629567df68fa6e9b6de2df801d060be647aeb0348",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/ssh.rs": "1841c29f9995ac15df39b1734a87801445c8881a6975d2dc53b772d1d46e19fc",
+    "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/remote.rs": "aa393538b30473bb696cf331a14a2eb390fb41b2cadca6e15c24a354a9b37708",
+    "src/workspace.rs": "c07031a3b4f61c4f1e8bf8e2a21d4f9c7988e887c4d28351f7d5eb391d595600"
+  },
+  "runs": [
+    {
+      "scenario": "positive",
+      "exit": 101,
+      "log": "\nrunning 1 test\ntest sftp::native::tests::native_isolated_session_validates_hosts_handles_streams_and_cleanup ... \nthread 'sftp::native::tests::native_isolated_session_validates_hosts_handles_streams_and_cleanup' (17340184) panicked at src/sftp/native.rs:732:89:\ncalled `Result::unwrap()` on an `Err` value: HostChanged\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    sftp::native::tests::native_isolated_session_validates_hosts_handles_streams_and_cleanup\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 359 filtered out; finished in 0.02s\n\n",
+      "samples": [
+        {
+          "elapsed_ns": 1427042,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6520832,
+              "cpu_ns": 2857208,
+              "threads": 1
+            },
+            "69030": {
+              "rss": 425984,
+              "cpu_ns": 1089125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 7866708,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6520832,
+              "cpu_ns": 2874833,
+              "threads": 1
+            },
+            "69030": {
+              "rss": 6864896,
+              "cpu_ns": 3248375,
+              "threads": 1
+            },
+            "69032": {
+              "rss": 6733824,
+              "cpu_ns": 2539000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 15502333,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 23119875,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 30741375,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 36658083,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 44261583,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 51863000,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 59470917,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 67087583,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 74706333,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 82293458,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 89889208,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 97456250,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 105070083,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 112671500,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 118906833,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 126515542,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 134115375,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 141867833,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 149460875,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 157057417,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 164659833,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 172251750,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 179892083,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 187698208,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 195429708,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 202269417,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 209897083,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 217543917,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 225160708,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 232820542,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 240487458,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 248146625,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 255357000,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 263079625,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 270734167,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 278414250,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 286070875,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 293719500,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 301419167,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 309101250,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 316777333,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 322006208,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 329727125,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 336644417,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 343011292,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 350056458,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 356491542,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 363074708,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 370694208,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 376272167,
+          "client": {
+            "69031": {
+              "rss": 32768,
+              "cpu_ns": 377416,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 384000708,
+          "client": {
+            "69031": {
+              "rss": 262144,
+              "cpu_ns": 3455250,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 391659042,
+          "client": {
+            "69031": {
+              "rss": 5898240,
+              "cpu_ns": 11009458,
+              "threads": 1
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6537216,
+              "cpu_ns": 2934791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 399398167,
+          "client": {
+            "69031": {
+              "rss": 9093120,
+              "cpu_ns": 15917708,
+              "threads": 2
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6553600,
+              "cpu_ns": 3819333,
+              "threads": 1
+            },
+            "69034": {
+              "rss": 81920,
+              "cpu_ns": 708958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 407021333,
+          "client": {
+            "69031": {
+              "rss": 10780672,
+              "cpu_ns": 18300666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6553600,
+              "cpu_ns": 3841875,
+              "threads": 1
+            },
+            "69034": {
+              "rss": 6848512,
+              "cpu_ns": 6004083,
+              "threads": 1
+            },
+            "69035": {
+              "rss": 32768,
+              "cpu_ns": 453833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 414667458,
+          "client": {
+            "69031": {
+              "rss": 11714560,
+              "cpu_ns": 19660250,
+              "threads": 2
+            }
+          },
+          "server": {
+            "69029": {
+              "rss": 6553600,
+              "cpu_ns": 3841875,
+              "threads": 1
+            },
+            "69034": {
+              "rss": 6864896,
+              "cpu_ns": 6378750,
+              "threads": 1
+            },
+            "69035": {
+              "rss": 6832128,
+              "cpu_ns": 4918666,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "server_log": "debug2: fd 6 setting O_NONBLOCK\ndebug1: Bind to port 56646 on 127.0.0.1.\nServer listening on 127.0.0.1 port 56646.\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug1: Forked child 69030.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 69030 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 56648\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 56648 on 127.0.0.1 port 56646\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 69032\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 532\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\nkex_exchange_identification: Connection closed by remote host [preauth]\nConnection closed by 127.0.0.1 port 56648 [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: mm_request_receive: entering\ndebug3: mm_request_receive: monitor fd closed\ndebug1: mm_reap: child exited with status 255\ndebug1: do_cleanup\ndebug1: Killing privsep child 69032\ndebug1: audit_event: connection closed without authentication\ndebug3: server_accept_loop: child 69030 for connection from 127.0.0.1 to 127.0.0.1 closed pipe\ndebug1: child_close: enter\ndebug1: child_reap: preauth child 69030 for connection from 127.0.0.1 to 127.0.0.1 exited with status 255\nsrclimit_penalise: ipv4: new 127.0.0.1/32 deferred penalty of 1.000 seconds for penalty: connections without attempting authentication\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug1: Forked child 69034.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 69034 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 56649\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 56649 on 127.0.0.1 port 56646\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 69035\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 532\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\ndebug1: Remote protocol version 2.0, remote software version libssh2_1.11.1_DEV [preauth]\ndebug1: compat_banner: no match: libssh2_1.11.1_DEV [preauth]\ndebug3: mm_sshkey_setcompat: entering [preauth]\ndebug3: mm_request_send: entering, type 18 [preauth]\ndebug3: send packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT sent [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 18\ndebug3: mm_answer_setcompat: entering\ndebug2: monitor_read: 18 used once, disabling now\ndebug3: receive packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT received [preauth]\ndebug2: local server KEXINIT proposal [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug2: peer client KEXINIT proposal [preauth]\ndebug2: KEX algorithms: curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1,ext-info-c,kex-strict-c-v00@openssh.com [preauth]\ndebug2: host key algorithms: ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-rsa,ssh-rsa-cert-v01@openssh.com [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: MACs ctos: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: MACs stoc: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: compression ctos: none [preauth]\ndebug2: compression stoc: none [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug3: kex_choose_conf: will use strict KEX ordering [preauth]\ndebug1: kex: algorithm: curve25519-sha256 [preauth]\ndebug1: kex: host key algorithm: ssh-ed25519 [preauth]\ndebug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: expecting SSH2_MSG_KEX_ECDH_INIT [preauth]\ndebug3: receive packet: type 30 [preauth]\ndebug1: SSH2_MSG_KEX_ECDH_INIT received [preauth]\ndebug3: mm_sshkey_sign: entering [preauth]\ndebug3: mm_request_send: entering, type 6 [preauth]\ndebug3: mm_sshkey_sign: waiting for MONITOR_ANS_SIGN [preauth]\ndebug3: mm_request_receive_expect: entering, type 7 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 6\ndebug3: mm_answer_sign: entering\ndebug1: mm_answer_sign: hostkey ssh-ed25519 index 0\ndebug3: mm_answer_sign: ssh-ed25519 KEX signature len=83\ndebug3: mm_request_send: entering, type 7\ndebug2: monitor_read: 6 used once, disabling now\ndebug3: mm_sshkey_sign: ssh-ed25519 signature len=83 [preauth]\ndebug3: send packet: type 31 [preauth]\ndebug3: send packet: type 21 [preauth]\ndebug1: ssh_packet_send2_wrapped: resetting send seqnr 3 [preauth]\ndebug2: ssh_set_newkeys: mode 1 [preauth]\ndebug1: rekey out after 134217728 blocks [preauth]\ndebug1: SSH2_MSG_NEWKEYS sent [preauth]\ndebug1: Sending SSH2_MSG_EXT_INFO [preauth]\ndebug3: send packet: type 7 [preauth]\ndebug1: expecting SSH2_MSG_NEWKEYS [preauth]\ndebug3: receive packet: type 21 [preauth]\ndebug1: ssh_packet_read_poll2: resetting read seqnr 3 [preauth]\ndebug1: SSH2_MSG_NEWKEYS received [preauth]\ndebug2: ssh_set_newkeys: mode 0 [preauth]\ndebug1: rekey in after 134217728 blocks [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug1: KEX done [preauth]\ndebug3: receive packet: type 5 [preauth]\ndebug3: send packet: type 6 [preauth]\nConnection closed by 127.0.0.1 port 56649 [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: mm_request_receive: entering\ndebug3: mm_request_receive: monitor fd closed\ndebug1: mm_reap: child exited with status 255\ndebug1: do_cleanup\ndebug1: Killing privsep child 69035\ndebug1: audit_event: connection closed without authentication\ndebug3: server_accept_loop: child 69034 for connection from 127.0.0.1 to 127.0.0.1 closed pipe\ndebug1: child_close: enter\ndebug1: child_reap: preauth child 69034 for connection from 127.0.0.1 to 127.0.0.1 exited with status 255\ndebug1: srclimit_penalise: inactive penalty for ipv4 127.0.0.1/32 already exists, 0 seconds remaining\n",
+      "observed_client_children_still_live": [],
+      "peak_client_tree_rss": 11714560,
+      "passed": false,
+      "round": 0
+    }
+  ],
+  "diagnostic_note": "Initial Rust wrapper truncated a valid known_hosts key by excluding newline while passing a non-NUL-terminated slice to knownhost_readline. Fixed using bounded NUL-terminated scratch and revalidated with newline/no-newline/CRLF/leading-whitespace/hashed records."
+}

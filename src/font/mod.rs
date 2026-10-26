@@ -6,7 +6,9 @@
 mod color;
 mod discover;
 mod gsub;
+mod metadata;
 mod mmap;
+pub(crate) use metadata::Warnings;
 mod morx;
 mod psf;
 mod raster;
@@ -43,6 +45,7 @@ const EMOJI: &[&str] = &["Noto Color Emoji", "Twemoji Mozilla"];
 
 /// COLR 图层要求"用文字颜色"时用的颜色（字形缓存不区分颜色，先用一个浅灰）
 const COLOR_LAYER_FOREGROUND: u32 = 0xFFD8D8D8;
+pub(crate) const CLUSTER_TEXT_LIMIT: usize = 1024;
 
 static TERMINUS_16: &[u8] = include_bytes!("../../assets/fonts/Terminus16.psf");
 static TERMINUS_BOLD_16: &[u8] = include_bytes!("../../assets/fonts/TerminusBold16.psf");
@@ -72,26 +75,54 @@ pub enum Pixels {
     Color(Vec<u32>),
 }
 
+// 仅生成期间持有，缓存接管后持久 Glyph 不添加额度字段。
+type GlyphBuild = crate::resources::Tracked<Glyph>;
+struct Cluster {
+    text: String,
+    cells: usize,
+    glyph: Option<Glyph>,
+}
+struct Shape {
+    text: String,
+    changes: Vec<(usize, u16)>,
+}
+fn cache_glyph<K: Eq + std::hash::Hash + Copy>(
+    cache: &mut Cache<K, Option<Glyph>>,
+    key: K,
+    glyph: Option<GlyphBuild>,
+    key_cost: usize,
+) {
+    if let Some(glyph) = glyph {
+        let value = glyph.map(Some);
+        let cost = glyph_cost(&value.data) + key_cost;
+        cache.insert_tracked(key, value, cost);
+    } else {
+        cache.insert(key, None, 128 + key_cost);
+    }
+}
+
 pub struct Fonts {
     pub cell_width: usize,
     pub cell_height: usize,
     /// 实际用上的字体，给日志用
-    pub description: String,
+    pub description: metadata::Text,
     /// 需要告诉用户的问题（比如指定的字体找不到）
-    pub warnings: Vec<String>,
+    warnings: Warnings,
     source: Source,
     /// 键：(字符, 粗体, emoji 样式, 可以占几格)
     cache: Cache<(char, bool, bool, u8), Option<Glyph>>,
     /// 组合字符（重音符号等）的字形，键：(字符, 粗体, 基础字符占几格)
     marks: Cache<(char, bool, u8), Option<Glyph>>,
     /// 连字替换的结果（[常规, 粗体]），键：一段文字，值：(第几个字, 换成的字形编号)
-    shapes: [Cache<String, Vec<(usize, u16)>>; 2],
+    shapes: [Cache<u64, Shape>; 2],
     /// 按字形编号取的主字体字形（连字替换出来的），键：(字形编号, 粗体)
     indexed: Cache<(u16, bool), Option<Glyph>>,
     /// emoji 组合序列合成的字形，键：(整个序列, 占几格)
-    clusters: Cache<(String, u8), Option<Glyph>>,
+    clusters: Cache<u64, Cluster>,
 }
 
+// 内置点阵的两个小头部保留内联，避免为低额度降级额外分配 Box；像素/映射不内联。
+#[allow(clippy::large_enum_variant)]
 enum Source {
     /// `top`：行高调大时，点阵字形在格子里往下挪的距离
     Bitmap {
@@ -99,7 +130,7 @@ enum Source {
         bold: psf::Font,
         top: i32,
     },
-    Outline(Box<Outline>),
+    Outline(crate::resources::Tracked<Box<Outline>>),
 }
 
 struct Outline {
@@ -111,7 +142,7 @@ struct Outline {
     fallbacks: Vec<Fallback>,
     emoji: Vec<Fallback>,
     /// emoji 字体的组合规则，和 `emoji` 一一对应，第一次用到时才解析
-    emoji_shapers: Vec<Option<Option<Shaper>>>,
+    emoji_shapers: crate::resources::Tracked<Vec<Option<Option<Shaper>>>>,
     pixel_size: f32,
     baseline: i32,
     cell_height: usize,
@@ -150,6 +181,15 @@ enum Fallback {
 }
 
 impl Fonts {
+    pub fn clear_caches(&mut self) {
+        self.cache.clear();
+        self.marks.clear();
+        self.indexed.clear();
+        self.clusters.clear();
+        for cache in &mut self.shapes {
+            cache.clear();
+        }
+    }
     pub fn cache_bytes(&self) -> usize {
         self.cache.used_bytes()
             + self.marks.used_bytes()
@@ -167,9 +207,10 @@ impl Fonts {
         let scale = if scale.is_finite() { scale.clamp(0.25, 8.0) } else { 1.0 };
         let pixel_size = (config.size * scale as f32).clamp(4.0, 1600.0);
         let line_height = config.line_height;
-        let requested = &config.families;
-        let mut warnings = Vec::new();
-
+        let pool = crate::resources::current();
+        let requested = &config.families[..config.families.len().min(16)];
+        let mut warnings = Warnings::new(&pool);
+        warnings.incomplete = config.families.len() > requested.len();
         let mut library = Library::default();
         let candidates = requested.iter().map(String::as_str).chain(PLATFORM_MONO.iter().copied());
         for (position, name) in candidates.enumerate() {
@@ -180,40 +221,59 @@ impl Fonts {
             let regular = match load_face(&regular_info) {
                 Ok(face) => face,
                 Err(e) => {
-                    warnings.push(format!("无法使用字体 {}：{e}", regular_info.path.display()));
+                    warnings.push_format(format_args!("无法使用字体 {}：{e}", regular_info.path.display()));
                     continue;
                 }
             };
             if position >= requested.len() && warn_missing {
-                warnings.push(format!("没有找到 [font] family 里的字体，改用 {name}"));
+                warnings.push_format(format_args!("没有找到 [font] family 里的字体，改用 {name}"));
             }
             let bold = bold_info.and_then(|info| load_face(&info).ok());
-            // 配置里排在后面的字体 + 系统默认的后备字体
             let fallback_names =
                 requested.iter().skip(position + 1).map(String::as_str).chain(FALLBACK.iter().copied());
-            let fallbacks = fallback_names
-                .filter_map(|name| discover::pick_regular_and_bold(&library.find(name)))
-                .map(|(info, _)| Fallback::Pending(info))
-                .collect();
-            let emoji = EMOJI
-                .iter()
-                .filter_map(|name| discover::pick_regular_and_bold(&library.find(name)))
-                .map(|(info, _)| Fallback::Pending(info))
-                .collect();
-            let description = format!("{}（{}，{pixel_size}px）", name, regular_info.path.display());
-            let mut fonts = Fonts::outline(regular, bold, fallbacks, emoji, pixel_size, line_height, description);
+            let mut fallbacks = metadata::list(&pool);
+            for name in fallback_names {
+                if let Some((info, _)) = discover::pick_regular_and_bold(&library.find(name))
+                    && !metadata::push(&mut fallbacks, Fallback::Pending(info))
+                {
+                    warnings.incomplete = true;
+                }
+            }
+            let mut emoji = metadata::list(&pool);
+            for name in EMOJI {
+                if let Some((info, _)) = discover::pick_regular_and_bold(&library.find(name))
+                    && !metadata::push(&mut emoji, Fallback::Pending(info))
+                {
+                    warnings.incomplete = true;
+                }
+            }
+            let description = metadata::Text::format(
+                &pool,
+                format_args!("{}（{}，{pixel_size}px）", name, regular_info.path.display()),
+            )
+            .unwrap_or_else(|| {
+                warnings.incomplete = true;
+                metadata::Text::Static("轮廓字体（说明不可用）")
+            });
+            let Some(mut fonts) =
+                Fonts::try_outline(regular, bold, fallbacks, emoji, pixel_size, line_height, description)
+            else {
+                warnings.incomplete = true;
+                break;
+            };
+            library.warn(&mut warnings);
             fonts.warnings = warnings;
             if let Source::Outline(outline) = &mut fonts.source
                 && !config.ligatures
             {
-                outline.gsub = None;
-                outline.gsub_bold = None;
+                outline.data.gsub = None;
+                outline.data.gsub_bold = None;
             }
             return fonts;
         }
-
+        library.warn(&mut warnings);
         if warn_missing {
-            warnings.push("没有找到可用的字体，改用内置的点阵字体".into());
+            warnings.push_static("没有找到可用的字体，改用内置的点阵字体");
         }
         let large = scale >= 1.5;
         let (regular, bold) = if large { (TERMINUS_32, TERMINUS_BOLD_32) } else { (TERMINUS_16, TERMINUS_BOLD_16) };
@@ -223,7 +283,7 @@ impl Fonts {
         Fonts {
             cell_width: regular.width,
             cell_height,
-            description: "内置 Terminus 点阵字体".into(),
+            description: metadata::Text::Static("内置 Terminus 点阵字体"),
             warnings,
             source: Source::Bitmap { top: (cell_height as i32 - regular.height as i32) / 2, regular, bold },
             cache: Cache::new(16 * 1024 * 1024, 8192),
@@ -234,6 +294,11 @@ impl Fonts {
         }
     }
 
+    pub(crate) fn take_warnings(&mut self) -> Warnings {
+        self.warnings.take()
+    }
+
+    #[cfg(test)]
     fn outline(
         regular: ttf::Face,
         bold: Option<ttf::Face>,
@@ -243,6 +308,39 @@ impl Fonts {
         line_height: f32,
         description: String,
     ) -> Fonts {
+        let pool = regular.budget().clone();
+        let text = metadata::Text::format(&pool, format_args!("{description}")).unwrap();
+        Self::try_outline(
+            regular,
+            bold,
+            metadata::supplied(fallbacks, &pool),
+            metadata::supplied(emoji, &pool),
+            pixel_size,
+            line_height,
+            text,
+        )
+        .unwrap()
+    }
+
+    fn try_outline(
+        regular: ttf::Face,
+        bold: Option<ttf::Face>,
+        fallbacks: crate::resources::Tracked<Vec<Fallback>>,
+        emoji: crate::resources::Tracked<Vec<Fallback>>,
+        pixel_size: f32,
+        line_height: f32,
+        description: metadata::Text,
+    ) -> Option<Fonts> {
+        let pool = regular.budget();
+        let mut memory = pool.lease(crate::resources::Kind::FontMetadata, std::mem::size_of::<Outline>()).ok()?;
+        let crate::resources::Tracked { data: fallbacks, memory: fallback_memory } = fallbacks;
+        let crate::resources::Tracked { data: emoji, memory: emoji_memory } = emoji;
+        memory.absorb(fallback_memory);
+        memory.absorb(emoji_memory);
+        let emoji_shapers = crate::resources::Tracked::new(
+            Vec::new(),
+            regular.budget().lease(crate::resources::Kind::FontOutline, 0).unwrap(),
+        );
         let scale = pixel_size / regular.units_per_em as f32;
         // 等宽字体里所有字母一样宽，取 M 的宽度作为格子宽度
         let advance = ['M', '0']
@@ -254,30 +352,33 @@ impl Fonts {
         let descent = -(regular.descender as f32) * scale;
         let gap = regular.line_gap.max(0) as f32 * scale;
         let cell_height = ((ascent + descent + gap) * line_height).round().max(1.0);
-        Fonts {
+        Some(Fonts {
             cell_width: (advance as f32 * scale).round().clamp(1.0, 4096.0) as usize,
             cell_height: cell_height.clamp(1.0, 4096.0) as usize,
             description,
-            warnings: Vec::new(),
-            source: Source::Outline(Box::new(Outline {
-                gsub: gsub::Gsub::new(&regular, &[b"calt"]),
-                gsub_bold: bold.as_ref().and_then(|face| gsub::Gsub::new(face, &[b"calt"])),
-                regular,
-                bold,
-                fallbacks,
-                emoji_shapers: Vec::new(),
-                emoji,
-                pixel_size,
-                cell_height: cell_height.clamp(1.0, 4096.0) as usize,
-                // 多出来的行距平分到上下两边
-                baseline: ((cell_height - ascent - descent) / 2.0 + ascent).round() as i32,
-            })),
+            warnings: Warnings::new(pool),
+            source: Source::Outline(crate::resources::Tracked::new(
+                Box::new(Outline {
+                    gsub: gsub::Gsub::new(&regular, &[b"calt"]),
+                    gsub_bold: bold.as_ref().and_then(|face| gsub::Gsub::new(face, &[b"calt"])),
+                    regular,
+                    bold,
+                    fallbacks,
+                    emoji_shapers,
+                    emoji,
+                    pixel_size,
+                    cell_height: cell_height.clamp(1.0, 4096.0) as usize,
+                    // 多出来的行距平分到上下两边
+                    baseline: ((cell_height - ascent - descent) / 2.0 + ascent).round() as i32,
+                }),
+                memory,
+            )),
             cache: Cache::new(16 * 1024 * 1024, 8192),
             marks: Cache::new(4 * 1024 * 1024, 2048),
             shapes: [Cache::new(1024 * 1024, 2048), Cache::new(1024 * 1024, 2048)],
             indexed: Cache::new(4 * 1024 * 1024, 2048),
             clusters: Cache::new(8 * 1024 * 1024, 1024),
-        }
+        })
     }
 
     /// `emoji`：这个字要求彩色 emoji 样式（后面跟了 U+FE0F）。
@@ -289,43 +390,71 @@ impl Fonts {
                 Source::Bitmap { regular, bold: bold_font, top } => {
                     bitmap_glyph(if bold { bold_font } else { regular }, c, *top)
                 }
-                Source::Outline(outline) => outline.glyph(c, bold, emoji, cells * self.cell_width),
+                Source::Outline(outline) => outline.data.glyph(c, bold, emoji, cells * self.cell_width),
             };
-            let cost = glyph_cost(&glyph);
-            self.cache.insert(key, glyph, cost);
+            cache_glyph(&mut self.cache, key, glyph, 0);
         }
         self.cache.get(&key).and_then(Option::as_ref)
     }
 
     /// 编程连字：一段连续的 ASCII 字（不含空格）里哪些要换成别的字形。
     /// 返回 (第几个字, 字形编号)，没有要换的（或者字体没有连字、关掉了连字）时是空的。
-    pub fn ligatures(&mut self, text: &str, bold: bool) -> Vec<(usize, u16)> {
-        // GSUB 的工作量和缓存 key 都不能跟随任意长的输出增长。
+    pub fn ligatures(&mut self, text: &str, bold: bool) -> &[(usize, u16)] {
         if text.len() > 1024 {
-            return Vec::new();
+            return &[];
         }
-        let Source::Outline(outline) = &self.source else { return Vec::new() };
+        let Source::Outline(outline) = &self.source else { return &[] };
         let (face, gsub) = match (&outline.bold, &outline.gsub_bold) {
             (Some(face), gsub) if bold => (face, gsub),
             _ => (&outline.regular, &outline.gsub),
         };
-        let Some(gsub) = gsub else { return Vec::new() };
+        let Some(gsub) = gsub else { return &[] };
         let shapes = &mut self.shapes[bold as usize];
-        if let Some(found) = shapes.get(text) {
-            return found.clone();
+        use std::hash::Hasher;
+        let mut hash = crate::hash::Fnv::default();
+        hash.write(text.as_bytes());
+        let key = hash.finish();
+        // 指纹只决定槽位，命中还逐字比较原文；冲突只替换缓存，不能复用错误的替换。
+        if shapes.get(&key).is_none_or(|shape| shape.text != text) {
+            let mut original = [0u16; 1024];
+            let mut len = 0;
+            for c in text.chars() {
+                original[len] = face.glyph_index(c);
+                len += 1;
+            }
+            let original = &original[..len];
+            // GSUB 扩展最多 256 个，较长输入只会等长替换或收缩。
+            let capacity = len.max(256);
+            let Ok(mut memory) = face.budget().lease(crate::resources::Kind::FontOutline, capacity * 2) else {
+                return &[];
+            };
+            let mut glyphs = Vec::with_capacity(capacity);
+            glyphs.extend_from_slice(original);
+            gsub.apply(&mut glyphs);
+            let count =
+                if glyphs.len() == len { glyphs.iter().zip(original).filter(|(a, b)| a != b).count() } else { 0 };
+            let output_bytes = count * std::mem::size_of::<(usize, u16)>();
+            if memory.resize(capacity * 2 + output_bytes + text.len()).is_err() {
+                return &[];
+            }
+            let mut changed = Vec::with_capacity(count);
+            if glyphs.len() == len {
+                for (i, (&a, &b)) in glyphs.iter().zip(original).enumerate() {
+                    if a != b {
+                        changed.push((i, a));
+                    }
+                }
+            }
+            drop(glyphs);
+            memory.resize(output_bytes + text.len()).unwrap();
+            let cost = 2 * text.len() + output_bytes + 128;
+            shapes.insert_tracked(
+                key,
+                crate::resources::Tracked::new(Shape { text: text.to_string(), changes: changed }, memory),
+                cost,
+            );
         }
-        let original: Vec<u16> = text.chars().map(|c| face.glyph_index(c)).collect();
-        let mut glyphs = original.clone();
-        gsub.apply(&mut glyphs);
-        // 字数变了（多个字合成了一个）就放不进格子，当作没有连字
-        let changed: Vec<(usize, u16)> = if glyphs.len() == original.len() {
-            glyphs.iter().zip(&original).enumerate().filter(|(_, (a, b))| a != b).map(|(i, (&a, _))| (i, a)).collect()
-        } else {
-            Vec::new()
-        };
-        let cost = 2 * text.len() + changed.capacity() * std::mem::size_of::<(usize, u16)>() + 128;
-        shapes.insert(text.to_string(), changed.clone(), cost);
-        changed
+        shapes.get(&key).filter(|shape| shape.text == text).map_or(&[], |shape| shape.changes.as_slice())
     }
 
     /// 按字形编号取主字体里的字形（连字替换出来的字形没有对应的字符）。占一格。
@@ -342,8 +471,7 @@ impl Fonts {
                 }
                 Source::Bitmap { .. } => None,
             };
-            let cost = glyph_cost(&glyph);
-            self.indexed.insert(key, glyph, cost);
+            cache_glyph(&mut self.indexed, key, glyph, 0);
         }
         self.indexed.get(&key).and_then(Option::as_ref)
     }
@@ -351,16 +479,33 @@ impl Fonts {
     /// emoji 组合序列（👨‍👩‍👧、🇨🇳、👍🏽、1️⃣……）合成的一个字形。`cells`：占几格。
     /// emoji 字体没有这个组合时返回 None，调用的地方按单个字符分别画。
     pub fn cluster_glyph(&mut self, sequence: &str, cells: usize) -> Option<&Glyph> {
-        let key = (sequence.to_string(), cells as u8);
-        if !self.clusters.contains_key(&key) {
+        if sequence.len() > CLUSTER_TEXT_LIMIT || cells == 0 || cells > 2 {
+            return None;
+        }
+        use std::hash::Hasher;
+        let mut hash = crate::hash::Fnv::default();
+        hash.write(sequence.as_bytes());
+        hash.write_usize(cells);
+        let key = hash.finish();
+        if self.clusters.get(&key).is_none_or(|entry| entry.text != sequence || entry.cells != cells) {
             let glyph = match &mut self.source {
-                Source::Outline(outline) => outline.cluster_glyph(sequence, cells * self.cell_width),
+                Source::Outline(outline) => outline.data.cluster_glyph(sequence, cells * self.cell_width),
                 Source::Bitmap { .. } => None,
             };
-            let cost = glyph_cost(&glyph) + 2 * sequence.len();
-            self.clusters.insert(key.clone(), glyph, cost);
+            let value = if let Some(mut glyph) = glyph {
+                glyph.memory.resize(glyph.memory.bytes() + sequence.len()).ok()?;
+                glyph.map(|glyph| Cluster { text: sequence.to_string(), cells, glyph: Some(glyph) })
+            } else {
+                let memory = self.clusters.owner().lease(crate::resources::Kind::FontOutline, sequence.len()).ok()?;
+                crate::resources::Tracked::new(Cluster { text: sequence.to_string(), cells, glyph: None }, memory)
+            };
+            let cost = glyph_cost(&value.glyph) + 2 * sequence.len();
+            self.clusters.insert_tracked(key, value, cost);
         }
-        self.clusters.get(&key).and_then(Option::as_ref)
+        self.clusters
+            .get(&key)
+            .filter(|entry| entry.text == sequence && entry.cells == cells)
+            .and_then(|entry| entry.glyph.as_ref())
     }
 
     /// 叠在基础字符上的组合字符（比如 U+0301 重音符号）。`cells`：基础字符占几格。
@@ -373,10 +518,9 @@ impl Fonts {
                     let font = if bold { bold_font } else { regular };
                     if font.has(c) { bitmap_glyph(font, c, *top) } else { None }
                 }
-                Source::Outline(outline) => outline.mark_glyph(c, bold, cells * self.cell_width, self.cell_width),
+                Source::Outline(outline) => outline.data.mark_glyph(c, bold, cells * self.cell_width, self.cell_width),
             };
-            let cost = glyph_cost(&glyph);
-            self.marks.insert(key, glyph, cost);
+            cache_glyph(&mut self.marks, key, glyph, 0);
         }
         self.marks.get(&key).and_then(Option::as_ref)
     }
@@ -384,7 +528,7 @@ impl Fonts {
 
 impl Outline {
     /// `span`：字形可以占的像素宽度
-    fn glyph(&mut self, c: char, bold: bool, emoji: bool, span: usize) -> Option<Glyph> {
+    fn glyph(&mut self, c: char, bold: bool, emoji: bool, span: usize) -> Option<GlyphBuild> {
         if emoji || prefers_emoji(c) {
             for i in 0..self.emoji.len() {
                 load_pending(&mut self.emoji, i, "emoji 字体");
@@ -437,38 +581,45 @@ impl Outline {
     }
 
     /// 把一个轮廓字形画成点阵，放在 `span` 像素宽的范围里水平居中（后备字体的字宽和主字体不一样）
-    fn render(&self, face: &ttf::Face, index: u16, synthetic_bold: bool, span: usize) -> Option<Glyph> {
+    fn render(&self, face: &ttf::Face, index: u16, synthetic_bold: bool, span: usize) -> Option<GlyphBuild> {
         let scale = self.pixel_size / face.units_per_em as f32;
-        let mut bitmap = raster::rasterize(&face.outline(index), scale)?;
+        let mut bitmap = raster::rasterize(&face.outline(index)?, scale, face.budget())?;
         if synthetic_bold {
-            embolden(&mut bitmap);
+            embolden(&mut bitmap)?;
         }
         let span = span as f32;
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span - advance) / 2.0).round() as i32;
-        Some(Glyph {
+        Some(bitmap.map(|bitmap| Glyph {
             left: bitmap.left + shift,
             top: self.baseline + bitmap.top,
             width: bitmap.width,
             height: bitmap.height,
             pixels: Pixels::Alpha(bitmap.alpha),
-        })
+        }))
     }
 
-    fn cluster_glyph(&mut self, sequence: &str, span: usize) -> Option<Glyph> {
+    fn cluster_glyph(&mut self, sequence: &str, span: usize) -> Option<GlyphBuild> {
+        if sequence.len() > 1024 || sequence.chars().count() > 256 {
+            return None;
+        }
         let first = sequence.chars().next()?;
-        self.emoji_shapers.resize_with(self.emoji.len(), || None);
+        self.emoji_shapers.reserve_capacity(self.emoji.len())?;
+        self.emoji_shapers.data.resize_with(self.emoji.len(), || None);
         for i in 0..self.emoji.len() {
             load_pending(&mut self.emoji, i, "emoji 字体");
             let Fallback::Loaded(face) = &self.emoji[i] else { continue };
             if face.glyph_index(first) == 0 {
                 continue;
             }
-            let shaper = self.emoji_shapers[i].get_or_insert_with(|| Shaper::new(face)).as_ref()?;
+            let shaper = self.emoji_shapers.data[i].get_or_insert_with(|| Shaper::new(face)).as_ref()?;
             // 有的字体的组合规则里不写 U+FE0F，带着合不上时去掉再试一次
-            let without_vs: String = sequence.chars().filter(|&c| c != '\u{FE0F}').collect();
+            let _scratch = face.budget().lease(crate::resources::Kind::FontOutline, sequence.len() + 512).ok()?;
+            let mut without_vs = String::with_capacity(sequence.len());
+            without_vs.extend(sequence.chars().filter(|&c| c != '\u{FE0F}'));
             for text in [sequence, &without_vs] {
-                let mut glyphs: Vec<u16> = text.chars().map(|c| face.glyph_index(c)).filter(|&g| g != 0).collect();
+                let mut glyphs = Vec::with_capacity(256);
+                glyphs.extend(text.chars().map(|c| face.glyph_index(c)).filter(|&g| g != 0));
                 shaper.apply(&mut glyphs);
                 if let [single] = glyphs[..] {
                     return self.color_glyph(face, single, span);
@@ -480,7 +631,7 @@ impl Outline {
     }
 
     /// 组合字符。`span`：基础字符占的像素宽度，`cell_width`：一格的宽度
-    fn mark_glyph(&mut self, c: char, bold: bool, span: usize, cell_width: usize) -> Option<Glyph> {
+    fn mark_glyph(&mut self, c: char, bold: bool, span: usize, cell_width: usize) -> Option<GlyphBuild> {
         let synthetic_bold = bold && self.bold.is_none();
         let primary = match &self.bold {
             Some(face) if bold => face,
@@ -504,9 +655,9 @@ impl Outline {
         };
         let index = face.glyph_index(c);
         let scale = self.pixel_size / face.units_per_em as f32;
-        let mut bitmap = raster::rasterize(&face.outline(index), scale)?;
+        let mut bitmap = raster::rasterize(&face.outline(index)?, scale, face.budget())?;
         if synthetic_bold {
-            embolden(&mut bitmap);
+            embolden(&mut bitmap)?;
         }
         let advance = face.advance(index) as f32 * scale;
         let shift = if advance < 1.0 {
@@ -516,17 +667,17 @@ impl Outline {
         } else {
             ((span as f32 - advance) / 2.0).round() as i32
         };
-        Some(Glyph {
+        Some(bitmap.map(|bitmap| Glyph {
             left: bitmap.left + shift,
             top: self.baseline + bitmap.top,
             width: bitmap.width,
             height: bitmap.height,
             pixels: Pixels::Alpha(bitmap.alpha),
-        })
+        }))
     }
 
     /// 彩色字形。字体没有彩色表、或者这个字形没有彩色版本时返回 None。
-    fn color_glyph(&self, face: &ttf::Face, index: u16, span: usize) -> Option<Glyph> {
+    fn color_glyph(&self, face: &ttf::Face, index: u16, span: usize) -> Option<GlyphBuild> {
         let tables = color::ColorTables::new(face)?;
         match tables.glyph(face, index, self.pixel_size)? {
             color::ColorGlyph::Bitmap { image, ppem } => {
@@ -536,30 +687,46 @@ impl Outline {
                     .min(self.cell_height as f32 / image.height as f32);
                 let width = ((image.width as f32 * scale).round() as usize).max(1);
                 let height = ((image.height as f32 * scale).round() as usize).max(1);
-                Some(Glyph {
+                let pixels = image.resize_premultiplied(width, height)?;
+                Some(pixels.map(|pixels| Glyph {
                     left: (span as i32 - width as i32) / 2,
                     top: (self.cell_height as i32 - height as i32) / 2,
                     width,
                     height,
-                    pixels: Pixels::Color(image.resize_premultiplied(width, height)?),
-                })
+                    pixels: Pixels::Color(pixels),
+                }))
             }
             color::ColorGlyph::Layers(layers) => self.layered_glyph(face, index, &layers, span),
         }
     }
 
     /// COLR：每一层是一个普通轮廓，按顺序用各自的颜色叠起来
-    fn layered_glyph(&self, face: &ttf::Face, index: u16, layers: &[(u16, Option<u32>)], span: usize) -> Option<Glyph> {
+    fn layered_glyph(
+        &self,
+        face: &ttf::Face,
+        index: u16,
+        layers: &[(u16, Option<u32>)],
+        span: usize,
+    ) -> Option<GlyphBuild> {
         let scale = self.pixel_size / face.units_per_em as f32;
         if layers.len() > 128 {
             return None;
         }
-        let mut bitmaps = Vec::new();
+        let _layers_memory = face
+            .budget()
+            .lease(
+                crate::resources::Kind::FontRaster,
+                layers.len() * std::mem::size_of::<(crate::resources::Tracked<raster::Bitmap>, u32)>(),
+            )
+            .ok()?;
+        let mut bitmaps = Vec::with_capacity(layers.len());
         let mut total_pixels = 0usize;
         for &(glyph, color) in layers {
-            let Some(bitmap) = raster::rasterize(&face.outline(glyph), scale) else {
+            let segments = face.outline(glyph)?;
+            if segments.is_empty() {
                 continue;
-            };
+            }
+            let bitmap = raster::rasterize(&segments, scale, face.budget())?;
             total_pixels = total_pixels.checked_add(bitmap.alpha.len())?;
             if total_pixels > 1024 * 1024 {
                 return None;
@@ -575,6 +742,7 @@ impl Outline {
         if width.checked_mul(height)? > 1024 * 1024 {
             return None;
         }
+        let mut memory = face.budget().lease(crate::resources::Kind::FontRaster, width * height * 20).ok()?;
         let mut pixels = vec![[0f32; 4]; width * height];
         for (bitmap, color) in &bitmaps {
             let [a, r, g, b] = color.to_be_bytes().map(|v| v as f32 / 255.0);
@@ -597,16 +765,22 @@ impl Outline {
                 }
             }
         }
-        let pixels = pixels
+        let output: Vec<u32> = pixels
             .iter()
             .map(|p| {
                 let [a, r, g, b] = p.map(|v| (v * 255.0).round().clamp(0.0, 255.0) as u32);
                 a << 24 | r << 16 | g << 8 | b
             })
             .collect();
+        drop(pixels);
+        drop(bitmaps);
+        memory.resize(output.capacity() * 4).unwrap();
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span as f32 - advance) / 2.0).round() as i32;
-        Some(Glyph { left: left + shift, top: self.baseline + top, width, height, pixels: Pixels::Color(pixels) })
+        Some(crate::resources::Tracked::new(
+            Glyph { left: left + shift, top: self.baseline + top, width, height, pixels: Pixels::Color(output) },
+            memory,
+        ))
     }
 }
 
@@ -637,9 +811,14 @@ fn prefers_emoji(c: char) -> bool {
 }
 
 /// 没有粗体字体时"伪粗体"：把字形向右多描一个像素
-fn embolden(bitmap: &mut raster::Bitmap) {
+fn embolden(bitmap: &mut crate::resources::Tracked<raster::Bitmap>) -> Option<()> {
     let (w, h) = (bitmap.width, bitmap.height);
-    let mut alpha = vec![0u8; (w + 1) * h];
+    let len = w.checked_add(1)?.checked_mul(h)?;
+    if len > 1024 * 1024 {
+        return None;
+    }
+    bitmap.memory.resize(bitmap.alpha.capacity() + len).ok()?;
+    let mut alpha = vec![0u8; len];
     for y in 0..h {
         for x in 0..=w {
             let here = if x < w { bitmap.alpha[y * w + x] } else { 0 };
@@ -647,40 +826,73 @@ fn embolden(bitmap: &mut raster::Bitmap) {
             alpha[y * (w + 1) + x] = here.max(left);
         }
     }
-    bitmap.width = w + 1;
-    bitmap.alpha = alpha;
+    bitmap.data.width = w + 1;
+    bitmap.data.alpha = alpha;
+    bitmap.memory.resize(bitmap.alpha.capacity()).unwrap();
+    Some(())
 }
 
-fn bitmap_glyph(font: &psf::Font, c: char, top: i32) -> Option<Glyph> {
+fn bitmap_glyph(font: &psf::Font, c: char, top: i32) -> Option<GlyphBuild> {
+    let memory =
+        crate::resources::current().lease(crate::resources::Kind::FontRaster, font.width * font.height).ok()?;
     let bits = font.glyph(c);
-    let alpha = (0..font.height)
-        .flat_map(|y| {
-            (0..font.width)
-                .map(move |x| if bits[y * font.bytes_per_row + x / 8] & (0x80 >> (x % 8)) != 0 { 255 } else { 0 })
-        })
-        .collect();
-    Some(Glyph { left: 0, top, width: font.width, height: font.height, pixels: Pixels::Alpha(alpha) })
+    let mut alpha = vec![0; font.width * font.height];
+    for y in 0..font.height {
+        for x in 0..font.width {
+            alpha[y * font.width + x] =
+                if bits[y * font.bytes_per_row + x / 8] & (0x80 >> (x % 8)) != 0 { 255 } else { 0 };
+        }
+    }
+    Some(crate::resources::Tracked::new(
+        Glyph { left: 0, top, width: font.width, height: font.height, pixels: Pixels::Alpha(alpha) },
+        memory,
+    ))
 }
 
 /// 共享映射的所有权会随 Face、整形器和彩色字体表一起保留，热加载后自动释放。
-fn load_face(info: &FaceInfo) -> Result<ttf::Face, String> {
-    ttf::Face::parse(mmap::map(&info.path).map_err(|e| e.to_string())?, info.index)
+#[derive(Debug)]
+enum LoadError {
+    File(mmap::Error),
+    Face(ttf::Error),
+}
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::File(e) => std::fmt::Display::fmt(e, f),
+            Self::Face(e) => std::fmt::Display::fmt(e, f),
+        }
+    }
+}
+fn load_face(info: &FaceInfo) -> Result<ttf::Face, LoadError> {
+    ttf::Face::parse(mmap::map(&info.path).map_err(LoadError::File)?, info.index).map_err(LoadError::Face)
 }
 
 /// 系统字体列表，第一次按名字查找时才扫描
 #[derive(Default)]
 struct Library {
-    faces: Option<Vec<FaceInfo>>,
+    faces: Option<discover::Catalog>,
+    limited: bool,
 }
 
 impl Library {
-    fn find(&mut self, name: &str) -> Vec<FaceInfo> {
-        let lower = name.to_lowercase();
-        if [".ttf", ".ttc", ".otf"].iter().any(|ext| lower.ends_with(ext)) {
-            return discover::read_file(std::path::Path::new(name));
+    fn find(&mut self, name: &str) -> discover::Catalog {
+        let path = std::path::Path::new(name);
+        let result = if path
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| ["ttf", "ttc", "otf"].iter().any(|e| s.eq_ignore_ascii_case(e)))
+        {
+            discover::read_file(path)
+        } else {
+            self.faces.get_or_insert_with(discover::scan).matching(name)
+        };
+        self.limited |= result.limited;
+        result
+    }
+    fn warn(&self, warnings: &mut Warnings) {
+        if self.limited {
+            warnings.push_static("字体发现因额度或读取上限不完整，部分字体可能不可用");
         }
-        let faces = self.faces.get_or_insert_with(discover::scan);
-        faces.iter().filter(|f| f.families.iter().any(|family| family.to_lowercase() == lower)).cloned().collect()
     }
 }
 
@@ -689,7 +901,33 @@ mod tests {
     use super::*;
 
     fn face_info(path: &str) -> FaceInfo {
-        FaceInfo { path: path.into(), index: 0, families: vec![], weight: 400, italic: false }
+        FaceInfo::new(std::path::Path::new(path), 0, vec![], 400, false, &crate::resources::current()).unwrap()
+    }
+
+    #[test]
+    fn embolden_admits_old_and_new_pixels_and_failure_preserves_the_bitmap() {
+        use crate::resources::{Budget, Kind, Tracked};
+        for limit in [13, 14] {
+            let pool = Budget::new(limit, 0);
+            let mut bitmap = Tracked::new(
+                raster::Bitmap { left: -1, top: -2, width: 3, height: 2, alpha: vec![10, 20, 30, 40, 50, 60] },
+                pool.lease(Kind::FontRaster, 6).unwrap(),
+            );
+            if limit == 13 {
+                assert!(embolden(&mut bitmap).is_none());
+                assert_eq!(bitmap.width, 3);
+                assert_eq!(bitmap.alpha, [10, 20, 30, 40, 50, 60]);
+                assert_eq!(pool.snapshot().used, 6);
+            } else {
+                embolden(&mut bitmap).unwrap();
+                assert_eq!(bitmap.width, 4);
+                assert_eq!(bitmap.alpha, [10, 20, 30, 30, 40, 50, 60, 60]);
+                assert_eq!(pool.snapshot().used, 8);
+                assert_eq!(pool.snapshot().peak, 14);
+            }
+            drop(bitmap);
+            assert_eq!(pool.snapshot().used, 0);
+        }
     }
 
     /// 只在本地运行：CONGMINAL_TEST_LIGATURE_FONT 指向一个有编程连字的字体（比如 Maple Mono）
@@ -699,7 +937,7 @@ mod tests {
         let regular = load_face(&face_info(&path)).unwrap();
         let mut fonts = Fonts::outline(regular, None, vec![], vec![], 16.0, 1.0, String::new());
         // -> 两个字都换成连起来的样子，字数不变
-        let arrow = fonts.ligatures("->", false);
+        let arrow = fonts.ligatures("->", false).to_vec();
         assert_eq!(arrow.iter().map(|&(i, _)| i).collect::<Vec<_>>(), [0, 1]);
         assert!(fonts.ligatures("a=>b", false).len() >= 2);
         assert!(fonts.ligatures("abc", false).is_empty());
@@ -733,7 +971,10 @@ mod tests {
             gsub_bold: None,
             fallbacks: vec![],
             emoji: vec![Fallback::Loaded(load_face(&face_info(&path)).unwrap())],
-            emoji_shapers: vec![],
+            emoji_shapers: crate::resources::Tracked::new(
+                Vec::new(),
+                crate::resources::current().lease(crate::resources::Kind::FontOutline, 0).unwrap(),
+            ),
             pixel_size: 32.0,
             baseline: 26,
             cell_height: 40,
@@ -778,7 +1019,10 @@ mod tests {
             gsub_bold: None,
             fallbacks: vec![],
             emoji: vec![],
-            emoji_shapers: vec![],
+            emoji_shapers: crate::resources::Tracked::new(
+                Vec::new(),
+                crate::resources::current().lease(crate::resources::Kind::FontOutline, 0).unwrap(),
+            ),
             pixel_size: 48.0,
             baseline: 40,
             cell_height: 60,

@@ -1,0 +1,3424 @@
+{
+  "scope": "Same successful 512-entry local directory model, hidden entries included, all raw names/types/labels and sorted completeness compared. Direct scan versus one supervised same-binary process per query, existing binary pipe/cancel/cleanup adapter, no GUI/SSH or pool integration. Both retain one prewarmed expected listing outside timing. Two process trials per mode warm up; five alternating measured pairs, 50 queries per trial after two unmeasured queries. Generated private files, no payload read. Parent and owned child RSS separately sampled every5ms; sums may double-count shared pages and miss short helper peaks. Per-PID observed CPU maxima are a lower bound over whole trial including harness/setup, NOT full CPU accounting or isolated query CPU. Direct scan lacks process cancellation and is not a fault-equivalent alternative. No native window, whole-process requested-byte proof, stuck kernel filesystem, Windows runtime, long run or default adoption claim.",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "source_sha256": {
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/cancellation.rs": "b91c9286f405b8869fd8aa629b738ecee99b251167858d43625084abdad2a36a",
+    "src/config/mod.rs": "f30394c8b2d3f321f4110f60b8c2498fa4d27e365bb4272476585a6361a90ac5",
+    "src/config/profiles.rs": "090d904e5b2b4baf3ce64e7bfe6ae399645dd8a5193be43eba00ddce5c07cd90",
+    "src/config/sftp.rs": "02c1d9e3872ad3b38204743ba0350569b9f2e91e94fc0c870bc72d54806d8e3a",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/local_directory/isolated.rs": "9c073fbf3503f369a20d25fe3eb329ed6dce2a50fd2fa9e75460650b9940e615",
+    "src/local_directory/isolated_tests.rs": "8861061dc820b3fcb2f53406811fabd50311c4a6b1c3d8d7a5592a4d022b5200",
+    "src/local_directory.rs": "54216019f83026d8f6f76998472bbe76dc7594929b54b76f5102757df44567b3",
+    "src/main.rs": "7f55eff80016714f6757885da0f408194c8ad21d61c412db44fe80560190d37c",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/notifications.rs": "3e18cbcc8ed25a8885106d553e575a5374f9710f6d00399634b1829db3451076",
+    "src/platform/clipboard.rs": "6bf54bc8f4e06e43f92285e62e190437cfc950a182155086ad907cea64e217bb",
+    "src/platform/macos/protected_ime.rs": "22c48f9994ef49c8e519bc4f26f4558a69d089db245690176d5a6768f9a3fad4",
+    "src/platform/macos/protected_window.rs": "57414cf5875693a9a166a5a5cdd596c0f51cb1e43bb240a06732433e95865bf0",
+    "src/platform/macos.rs": "ce10881032e3dfd20772863f29ee316dbb1ae3e44ff76bf79ddd9b60eff21714",
+    "src/platform/mod.rs": "b1dd951961cb0a3673cc05ac43e8ae94865bab01b2a7b42b8cba270e39237bdc",
+    "src/platform/protected_input.rs": "af1331afa2253d7d7bfca25e0692ffbc42ed29d67979c04888fffc0498043dcc",
+    "src/platform/win32.rs": "0f30be5246d4e7943fa0fda872ae962c5581ec26563466bcd9ba13c76f8a6d00",
+    "src/platform/x11.rs": "0755fe507711d31d3a3417022a102253dadea02b2ddd6e36e8b721d71b4e4a30",
+    "src/process_launch.rs": "a913cc2da5f27b413fdd6f71064f61ad78bb85dd1c0dc20acfc04729fec8b91a",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/unix.rs": "ea9d1e452189e322c459b20c10e7a244079e8df34aba98812a77b1346e1afd0c",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/render.rs": "1ed9f92504b50280173273e12cc7e094a45ba492fba6cd09ec1274f811dd158a",
+    "src/resolve.rs": "1a5a741615b531d6440e407bd46f90895bc67916ebd6b7ec5f9332cd4d249857",
+    "src/resources/budget.rs": "14815f18be7c742051616475b50d90c5cc0fdcb8a3ff53ab1372a34f18f557cc",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/resources.rs": "c428cb389eca8bc2d18ea3b742c0601f26b01e83f73c46d4f164290a4f31f2c6",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/session.rs": "dc3f4ee4e3a92aebbd5ae7e16ff27089eefc8b375585904653a644e5774c841e",
+    "src/sftp/allocation.rs": "555f3521488b7ca257cbffcbeb1d8ab457d9092df00662553c891eb4943e86e6",
+    "src/sftp/client.rs": "0cd4cdc7558e6347c1c753fdfe4825ee87366d1c6fd3a9f310615d126a6ba4aa",
+    "src/sftp/connect.rs": "c584e295da3995d65e13d473666c3ab28779aff268d6e49c196541a15a0c7cac",
+    "src/sftp/executor.rs": "9e60dfcff12487b187e9fe3da14e2bf432863a17403678da5547e07625d3cf80",
+    "src/sftp/files.rs": "4622081057ded39e839b0be66dadc7c7d8e600eb977a42a81327d5bdb591b330",
+    "src/sftp/local_transfer.rs": "0fa9d27e0fee4e2dfe1d338272207819bbb7dead5eddffba285e5fef841cfc6c",
+    "src/sftp/mod.rs": "e97ee96a671b69906516da6fc25e2848e188729b3938c5f5dc72b5c730738440",
+    "src/sftp/model.rs": "ee2edee9d3ba58ea8e2133b2f44354d74db0ad6301f34b38d404405673dc300b",
+    "src/sftp/native.rs": "71132288dad96c4d2c9a8f9b2006166a5371748e8fe33d39693327dbe73ab799",
+    "src/sftp/native_wait.rs": "90b17e9c0fbe2582c40b7170d17bc54d70763f03fdc02af2dddc8c502cba428e",
+    "src/sftp/openssh.rs": "99d265b6cbbc2cbc9ccf2626c72723d2cfa177f1738a7008e5210ca87aa9ba74",
+    "src/sftp/openssh_auth.rs": "2e7e0e7a37b4fcbf4179fa64c93e3abc1e2a50bcdd61b7a2e11d280d725835b0",
+    "src/sftp/openssh_auth_bench.rs": "deee7610a6c99d34938f4d6056272c45f2bedc6dec5590eefcfc3ea866c03092",
+    "src/sftp/openssh_bench.rs": "bce59c98b15acebc176b38f26847fbb79a750a43160b4b65f037403a207f1946",
+    "src/sftp/operations.rs": "ee70e6a21786ad5eea767d8e9943feb2e6603d65df9011bc14c06b78c9bdd086",
+    "src/sftp/secret.rs": "84654f08ff44fc6e80902b6d39e97266bdc218b26fafd97dbf74aa78cd27880f",
+    "src/sftp/service.rs": "3ab2fc72b5ed7fee09ea69a0eb7b5937795e17c4e9d263bcb1dfb88306397d74",
+    "src/sftp/service_cost.rs": "0fd8dbe237a63a844425e9abbbd16757ada049c557c6e9d3e5a6e391752950db",
+    "src/sftp/service_prepare_tests.rs": "842382cdd1b5f684b44de3d55c87ee22490c6094206b1c63de5fb2e28fef87c3",
+    "src/sftp/transfer.rs": "d72c846dd13f54b61566d152434dab599eb723aeae82fe49aec2b6d6b1c6485e",
+    "src/sftp/transfer_state.rs": "5e07bb0265a1b04a1da555ccb499f4b235afaca5cb9f65c6343640cba026178e",
+    "src/sftp/wire.rs": "dadc53f2c7b89a9b7d963fe629567df68fa6e9b6de2df801d060be647aeb0348",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/ssh/auth.rs": "a570837f890cb1310bedb126b375e40511f8241564731ca85838e4f4ddbbaf00",
+    "src/ssh/auth_controller.rs": "3677b4108bc7d84759dca35f15ed563f01471790089c78821a644b8b319b20ee",
+    "src/ssh/auth_editor.rs": "5d4181cb1cc7889ef7f15fcf2ac36964220d31db7ebdf9d529a1fa5a8005a810",
+    "src/ssh/auth_identity.rs": "842e1593cba082f107ad0a2ef7a9aff35637b6d03fd8046a6f4d96ae5e206c53",
+    "src/ssh/auth_ipc.rs": "1c5821426a8acd4b219e53f3a74b7ef1c575e260d2f502f59c4bee3c833010e6",
+    "src/ssh/auth_secret.rs": "0ed586f2b119c65a293df2bc2458b77c4b92433a3c2f53360f9e9718545c4793",
+    "src/ssh/auth_ticket.rs": "3504a06cf7ae118b8575718b3be0d8473386df4a05b317bc6b229d20d723d2ba",
+    "src/ssh/auth_types.rs": "e075dddf27cb14ebec7d873ffec7982402e8b788504cbee89d947a97a8a4cb99",
+    "src/ssh/auth_view.rs": "1e482ec3d84e5554e118b8a8c8cea9aadabbbf7ffccccbc0b3ab437fae6af0c8",
+    "src/ssh/auth_viewport.rs": "f992e5dd9d650c2380ec4634140cc282f734902ac21ec15a847d0291a3fc4efa",
+    "src/ssh/auth_wire.rs": "d46618815214e20d499f0c2e04cf10c78d6497752d82bd0b52efe1e56d905a1c",
+    "src/ssh/capture.rs": "f929655c4727e65b8deb20744877a9f6cc5fbae8bcd126cb5f561552bd649177",
+    "src/ssh/capture_windows.rs": "5bd3120b1e3e65b46f87d1b39f1acdfa0c3133fcd46c4cc0a53a51e9ae6946e8",
+    "src/ssh/capture_windows_input.rs": "8b433b21f2bfc9e8033aa5d489e54cbae5bae46cba61d96e8286db70fe2961cd",
+    "src/ssh/capture_windows_wire.rs": "7ca895a506a9cba83299db1e329d0927286250e16ca414dd9a854cbbdcf6a430",
+    "src/ssh/helper_auth.rs": "6755ea101115b7be16255fbdc1ffa7fa7c415bf9fa27666bdc33e14bde2d1ed7",
+    "src/ssh/helper_main.rs": "906a6faf33bcd4dec5af575da022a8f657a89b9b06ea4cea78de130bd8666825",
+    "src/ssh/helper_resources.rs": "860c92387c48d34dda1f6f57467e50375ff0f999f03c3d6a5aa80dbc9417e596",
+    "src/ssh/paths.rs": "46918fb4025adc485a9c10caf2e3d32b1af8543db6ba92f4d277ef3f36a66291",
+    "src/ssh/settings.rs": "144cf3d3c3991addfded0b71ca3182a0d580550423a243c7e9985ece7ffb03b6",
+    "src/ssh.rs": "01caa7a53b261bb390ff06d76dc6afd13d89f8032f71d95e33108729ae592c41",
+    "src/tasks.rs": "caaaaa587537b2bbf8030e15f588c9caf4841a0129c5a31b7a039008373dd61c",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/workspace/authentication.rs": "0d25408c7ba6e36807e59a81791817f557773c035b402de8adafb0cb1c48db2a",
+    "src/workspace/files.rs": "1147b7a92b7ebaae02717f884deaaf4a70580f1db7c1e6d0feb8c30e5772f415",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/local_picker.rs": "c7de285b83113319b28159bd9f7b3c0790c87a1d9507285816bc35ca35c7543e",
+    "src/workspace/remote.rs": "aa393538b30473bb696cf331a14a2eb390fb41b2cadca6e15c24a354a9b37708",
+    "src/workspace/remote_files.rs": "2f1dd569ff850b624b11724fe5db2bb0f97896df32d5cfec4251469bfa7538aa",
+    "src/workspace/remote_transfer_tests.rs": "ef922f3339e88f996c02af367c58d1e6cf812c12a0e446361cfb38a9dfd4cc03",
+    "src/workspace/remote_transfers.rs": "e728dcb2d2248b14b5c9f148fe7b2bc407a1dce7c4883e6d66aa23f8c3bf226e",
+    "src/workspace/sftp_entry.rs": "244f72f1d9c379f21493adfa9fa9434860d5d52fb38162d6ec69a552205218b9",
+    "src/workspace/transfer_exit.rs": "1502a7cd21d714d8fa18b2d585b997136d82a2ad389b0d1671f95b451fe2edd0",
+    "src/workspace/transfer_list.rs": "7bcc289dc4367624684ab5dacbe8268522ca7762a4c14ae5198e2f7c0dcac5f8",
+    "src/workspace/transfer_notifications.rs": "5fc2e8a7464a0736d138f4eb41268dfd4c674491d2e13085be21e81e7c1eca15",
+    "src/workspace/transfer_paths.rs": "68aa0b8bfed313c108dbbecfc7c9f15356ac8b10246c90466930aed7f93d41f5",
+    "src/workspace/transfer_prepare.rs": "b7cf2b10226d70d954f7f61f007d3c4d3f41fc67fd08fd0c540ffed5b759a302",
+    "src/workspace/transfer_review.rs": "06e9f8c4fe43614d940ddeb15916299a4b2b19e5ff710248ac892a89156351ae",
+    "src/workspace.rs": "dfeba0dc5a5af9ec445082b202af222ef43fc77d13f4e3674114d1fd6de1e1c9"
+  },
+  "tool_sha256": "c2eb9fda19cd2ae27db3880396c9e11edcf9409ea9af6e22b956684678148607",
+  "manifests_sha256": {
+    "Cargo.toml": "a281633c6818415b883d6a270460c8adf2fa330ab61ba6e80c6d71c51700057f",
+    "Cargo.lock": "64b3ce5d9fd19cff67ac760518d0111933b8f01710b72a37691c8bacb3b62449"
+  },
+  "adopted": false,
+  "rustc": {
+    "command": [
+      "rustc",
+      "-Vv"
+    ],
+    "exit": 0,
+    "stdout": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+    "stderr": ""
+  },
+  "helper_build": {
+    "command": [
+      "cargo",
+      "build",
+      "--offline",
+      "--release",
+      "--bin",
+      "congminal"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n"
+  },
+  "helper": {
+    "bytes": 2165176,
+    "sha256": "a9de01884370f788e40a108ad3b5f11c597859305cc25371b95809f756d1d763"
+  },
+  "test_build": {
+    "exit": 0,
+    "stderr": "   Compiling congminal v0.1.0-alpha.6 (/Users/tenonsuzu/Documents/Codes/congminal)\n    Finished `release` profile [optimized + debuginfo] target(s) in 10.45s\n",
+    "diagnostics": []
+  },
+  "unit": {
+    "command": [
+      "/Users/tenonsuzu/Documents/Codes/congminal/target/release/deps/congminal-e61cdb5cfd25840e",
+      "local_directory::",
+      "--nocapture",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "stdout": "\nrunning 8 tests\ntest local_directory::display_tests::names_escape_control_invalid_utf8_and_bidi_without_losing_original_bytes ... ok\ntest local_directory::isolated::tests::actual_helper_preserves_metadata_matches_direct_reader_and_five_paired_costs ... ignored, requires explicitly built production binary in CONGMINAL_DIRECTORY_HELPER; real private filesystem/process test\ntest local_directory::isolated::tests::cancellation_and_budget_refusal_do_not_construct_or_spawn_a_command ... ok\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... ignored, isolated process/RSS cost fixture; selected by tools/check_local_directory.py\ntest local_directory::isolated::tests::maximum_protocol_is_funded_and_error_frames_are_structured_without_partial_success ... ok\ntest local_directory::isolated::tests::partial_progress_does_not_restart_the_whole_response_deadline ... ok\ntest local_directory::isolated::tests::raw_directory_protocol_roundtrips_and_rejects_truncation_trailing_bounds_names_and_order ... ok\ntest local_directory::isolated::tests::stalled_owned_children_are_cancelled_or_timed_out_and_reaped_before_credit_returns ... ok\n\ntest result: ok. 6 passed; 0 failed; 2 ignored; 0 measured; 556 filtered out; finished in 0.44s\n\n",
+    "stderr": "DIRECTORY_STOP cancelled=true elapsed_ns=6033167 reaped=true final=0\nDIRECTORY_STOP cancelled=false elapsed_ns=249830500 reaped=true final=0\n"
+  },
+  "actual_helper": {
+    "exit": 0,
+    "stdout": "\nrunning 1 test\ntest local_directory::isolated::tests::actual_helper_preserves_metadata_matches_direct_reader_and_five_paired_costs ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.28s\n\n",
+    "stderr": "DIRECTORY_ISOLATED round=0 isolated_ns=183000667 direct_ns=632834 peak=3424583 final=0\nDIRECTORY_ISOLATED round=1 isolated_ns=10541791 direct_ns=473000 peak=3480361 final=0\nDIRECTORY_ISOLATED round=2 isolated_ns=9670750 direct_ns=432042 peak=3480361 final=0\nDIRECTORY_ISOLATED round=3 isolated_ns=5991083 direct_ns=398084 peak=3480361 final=0\nDIRECTORY_ISOLATED round=4 isolated_ns=5010000 direct_ns=353875 peak=3480361 final=0\nDIRECTORY_ISOLATED round=5 isolated_ns=6042458 direct_ns=335625 peak=3480361 final=0\nDIRECTORY_ISOLATED round=6 isolated_ns=4417791 direct_ns=317292 peak=3480361 final=0\n"
+  },
+  "same_process_pairs": [
+    {
+      "round": 0,
+      "isolated_ns": 183000667,
+      "direct_ns": 632834,
+      "budget_peak": 3424583
+    },
+    {
+      "round": 1,
+      "isolated_ns": 10541791,
+      "direct_ns": 473000,
+      "budget_peak": 3480361
+    },
+    {
+      "round": 2,
+      "isolated_ns": 9670750,
+      "direct_ns": 432042,
+      "budget_peak": 3480361
+    },
+    {
+      "round": 3,
+      "isolated_ns": 5991083,
+      "direct_ns": 398084,
+      "budget_peak": 3480361
+    },
+    {
+      "round": 4,
+      "isolated_ns": 5010000,
+      "direct_ns": 353875,
+      "budget_peak": 3480361
+    },
+    {
+      "round": 5,
+      "isolated_ns": 6042458,
+      "direct_ns": 335625,
+      "budget_peak": 3480361
+    },
+    {
+      "round": 6,
+      "isolated_ns": 4417791,
+      "direct_ns": 317292,
+      "budget_peak": 3480361
+    }
+  ],
+  "sampler": "libproc \u6bcf 5 ms\uff1bMach \u65f6\u95f4\u57fa\u51c6 125/3\uff1b\u8fdb\u7a0b\u6811\u6700\u591a 64 \u9879",
+  "sampler_tool_sha256": "01273a44a261a12de5900ab009f9c527aafc287eaa6051eeb15616491c0eaea2",
+  "warmups": [
+    {
+      "mode": "direct",
+      "samples": [
+        {
+          "ns": 11712735416,
+          "tree": {
+            "16122": {
+              "rss": 475136,
+              "cpu_ns": 401875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11720155791,
+          "tree": {
+            "16122": {
+              "rss": 8404992,
+              "cpu_ns": 7661166,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11727621000,
+          "tree": {
+            "16122": {
+              "rss": 8404992,
+              "cpu_ns": 15102333,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11734818125,
+          "tree": {
+            "16122": {
+              "rss": 8404992,
+              "cpu_ns": 22334625,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11742357250,
+          "tree": {
+            "16122": {
+              "rss": 8798208,
+              "cpu_ns": 29839666,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11749890916,
+          "tree": {
+            "16122": {
+              "rss": 8847360,
+              "cpu_ns": 37395666,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11757415375,
+          "tree": {
+            "16122": {
+              "rss": 8847360,
+              "cpu_ns": 44928166,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 11737428250,
+        "end": 11747440333
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=direct\nDIRECTORY_BATCH_END mode=direct\nDIRECTORY_BATCH mode=direct count=50 entries=512 total_ns=10015666 peak=3201748 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.04s\n\n",
+      "total_ns": 10015666,
+      "budget_peak": 3201748,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 1,
+      "parent_rss_peak_observed": 8798208,
+      "children_rss_peak_observed": null,
+      "tree_rss_peak_observed": 8798208,
+      "max_simultaneous_children_observed": 0,
+      "whole_trial_sampled_cpu_ns_lower_bound": 44928166
+    },
+    {
+      "mode": "isolated",
+      "samples": [
+        {
+          "ns": 11766710750,
+          "tree": {
+            "16123": {
+              "rss": 475136,
+              "cpu_ns": 427750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11774267416,
+          "tree": {
+            "16123": {
+              "rss": 8404992,
+              "cpu_ns": 7778041,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11781791833,
+          "tree": {
+            "16123": {
+              "rss": 8404992,
+              "cpu_ns": 15303250,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11789314541,
+          "tree": {
+            "16123": {
+              "rss": 8880128,
+              "cpu_ns": 22411541,
+              "threads": 2
+            },
+            "16124": {
+              "rss": 114688,
+              "cpu_ns": 400791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11796861291,
+          "tree": {
+            "16123": {
+              "rss": 9109504,
+              "cpu_ns": 22936333,
+              "threads": 2
+            },
+            "16126": {
+              "rss": 671744,
+              "cpu_ns": 185291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11804410625,
+          "tree": {
+            "16123": {
+              "rss": 9125888,
+              "cpu_ns": 23342250,
+              "threads": 2
+            },
+            "16128": {
+              "rss": 7487488,
+              "cpu_ns": 2191916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11811966833,
+          "tree": {
+            "16123": {
+              "rss": 9142272,
+              "cpu_ns": 23866125,
+              "threads": 2
+            },
+            "16131": {
+              "rss": 6979584,
+              "cpu_ns": 1814333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11818155166,
+          "tree": {
+            "16123": {
+              "rss": 9142272,
+              "cpu_ns": 24392791,
+              "threads": 2
+            },
+            "16134": {
+              "rss": 720896,
+              "cpu_ns": 187458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11825710083,
+          "tree": {
+            "16123": {
+              "rss": 9158656,
+              "cpu_ns": 25072833,
+              "threads": 2
+            },
+            "16136": {
+              "rss": 32768,
+              "cpu_ns": 20833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11833274625,
+          "tree": {
+            "16123": {
+              "rss": 9175040,
+              "cpu_ns": 25451916,
+              "threads": 2
+            },
+            "16138": {
+              "rss": 6864896,
+              "cpu_ns": 1889125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11840816875,
+          "tree": {
+            "16123": {
+              "rss": 9175040,
+              "cpu_ns": 25952041,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11848351083,
+          "tree": {
+            "16123": {
+              "rss": 9175040,
+              "cpu_ns": 26413500,
+              "threads": 2
+            },
+            "16143": {
+              "rss": 7536640,
+              "cpu_ns": 2028333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11855994250,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 26948333,
+              "threads": 2
+            },
+            "16146": {
+              "rss": 5488640,
+              "cpu_ns": 1477583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11863545416,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 27463000,
+              "threads": 2
+            },
+            "16149": {
+              "rss": 1474560,
+              "cpu_ns": 1091541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11871097125,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 27969750,
+              "threads": 2
+            },
+            "16152": {
+              "rss": 327680,
+              "cpu_ns": 788750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11877630208,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 28314125,
+              "threads": 2
+            },
+            "16154": {
+              "rss": 7536640,
+              "cpu_ns": 2078541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11884386083,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 28810125,
+              "threads": 2
+            },
+            "16157": {
+              "rss": 409600,
+              "cpu_ns": 961791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11891930875,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 29377583,
+              "threads": 2
+            },
+            "16160": {
+              "rss": 180224,
+              "cpu_ns": 610250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11899477458,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 29783166,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11907009666,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 30363250,
+              "threads": 2
+            },
+            "16165": {
+              "rss": 3948544,
+              "cpu_ns": 1229083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11914549500,
+          "tree": {
+            "16123": {
+              "rss": 9191424,
+              "cpu_ns": 30889000,
+              "threads": 2
+            },
+            "16168": {
+              "rss": 491520,
+              "cpu_ns": 992125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11922084125,
+          "tree": {
+            "16123": {
+              "rss": 9207808,
+              "cpu_ns": 31456875,
+              "threads": 2
+            },
+            "16171": {
+              "rss": 131072,
+              "cpu_ns": 367916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11929624791,
+          "tree": {
+            "16123": {
+              "rss": 9207808,
+              "cpu_ns": 31979458,
+              "threads": 2
+            },
+            "16174": {
+              "rss": 671744,
+              "cpu_ns": 159333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11937178208,
+          "tree": {
+            "16123": {
+              "rss": 9224192,
+              "cpu_ns": 34995791,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11944702250,
+          "tree": {
+            "16123": {
+              "rss": 9224192,
+              "cpu_ns": 42517458,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 11796510750,
+        "end": 11934416708
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=isolated\nDIRECTORY_BATCH_END mode=isolated\nDIRECTORY_BATCH mode=isolated count=50 entries=512 total_ns=137904209 peak=3480404 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.18s\n\n",
+      "total_ns": 137904209,
+      "budget_peak": 3480404,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 19,
+      "parent_rss_peak_observed": 9207808,
+      "children_rss_peak_observed": 7536640,
+      "tree_rss_peak_observed": 16728064,
+      "max_simultaneous_children_observed": 1,
+      "whole_trial_sampled_cpu_ns_lower_bound": 60992451
+    },
+    {
+      "mode": "direct",
+      "samples": [
+        {
+          "ns": 11953822208,
+          "tree": {
+            "16176": {
+              "rss": 245760,
+              "cpu_ns": 347541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11961311208,
+          "tree": {
+            "16176": {
+              "rss": 8404992,
+              "cpu_ns": 7123125,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11968836000,
+          "tree": {
+            "16176": {
+              "rss": 8404992,
+              "cpu_ns": 14639208,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11976359375,
+          "tree": {
+            "16176": {
+              "rss": 8404992,
+              "cpu_ns": 22170208,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11983881458,
+          "tree": {
+            "16176": {
+              "rss": 8814592,
+              "cpu_ns": 29705833,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 11991400666,
+          "tree": {
+            "16176": {
+              "rss": 8847360,
+              "cpu_ns": 37219750,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 11977501208,
+        "end": 11987697083
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=direct\nDIRECTORY_BATCH_END mode=direct\nDIRECTORY_BATCH mode=direct count=50 entries=512 total_ns=10195292 peak=3201748 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.04s\n\n",
+      "total_ns": 10195292,
+      "budget_peak": 3201748,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 1,
+      "parent_rss_peak_observed": 8814592,
+      "children_rss_peak_observed": null,
+      "tree_rss_peak_observed": 8814592,
+      "max_simultaneous_children_observed": 0,
+      "whole_trial_sampled_cpu_ns_lower_bound": 37219750
+    },
+    {
+      "mode": "isolated",
+      "samples": [
+        {
+          "ns": 12000696291,
+          "tree": {
+            "16177": {
+              "rss": 475136,
+              "cpu_ns": 426166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12008189041,
+          "tree": {
+            "16177": {
+              "rss": 8372224,
+              "cpu_ns": 7899708,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12015711166,
+          "tree": {
+            "16177": {
+              "rss": 8372224,
+              "cpu_ns": 15434125,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12023236625,
+          "tree": {
+            "16177": {
+              "rss": 8863744,
+              "cpu_ns": 22588666,
+              "threads": 2
+            },
+            "16178": {
+              "rss": 114688,
+              "cpu_ns": 339625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12030789375,
+          "tree": {
+            "16177": {
+              "rss": 9060352,
+              "cpu_ns": 22963500,
+              "threads": 2
+            },
+            "16180": {
+              "rss": 7569408,
+              "cpu_ns": 2157541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12038334541,
+          "tree": {
+            "16177": {
+              "rss": 9076736,
+              "cpu_ns": 23460291,
+              "threads": 2
+            },
+            "16183": {
+              "rss": 6373376,
+              "cpu_ns": 1711041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12045873791,
+          "tree": {
+            "16177": {
+              "rss": 9076736,
+              "cpu_ns": 23973875,
+              "threads": 2
+            },
+            "16186": {
+              "rss": 5505024,
+              "cpu_ns": 1490208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12051789791,
+          "tree": {
+            "16177": {
+              "rss": 9076736,
+              "cpu_ns": 24357750,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12059338458,
+          "tree": {
+            "16177": {
+              "rss": 9093120,
+              "cpu_ns": 24811375,
+              "threads": 2
+            },
+            "16191": {
+              "rss": 7553024,
+              "cpu_ns": 1991458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12066880000,
+          "tree": {
+            "16177": {
+              "rss": 9109504,
+              "cpu_ns": 25318875,
+              "threads": 2
+            },
+            "16194": {
+              "rss": 6750208,
+              "cpu_ns": 1744625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12072588250,
+          "tree": {
+            "16177": {
+              "rss": 9142272,
+              "cpu_ns": 25661041,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12077626000,
+          "tree": {
+            "16177": {
+              "rss": 9142272,
+              "cpu_ns": 26010416,
+              "threads": 2
+            },
+            "16198": {
+              "rss": 7536640,
+              "cpu_ns": 2045083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12084029708,
+          "tree": {
+            "16177": {
+              "rss": 9142272,
+              "cpu_ns": 26568416,
+              "threads": 2
+            },
+            "16201": {
+              "rss": 180224,
+              "cpu_ns": 514875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12091576333,
+          "tree": {
+            "16177": {
+              "rss": 9158656,
+              "cpu_ns": 27101083,
+              "threads": 2
+            },
+            "16204": {
+              "rss": 114688,
+              "cpu_ns": 213000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12099120166,
+          "tree": {
+            "16177": {
+              "rss": 9158656,
+              "cpu_ns": 27604708,
+              "threads": 2
+            },
+            "16207": {
+              "rss": 475136,
+              "cpu_ns": 55708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12105248541,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 27958166,
+              "threads": 2
+            },
+            "16209": {
+              "rss": 966656,
+              "cpu_ns": 980541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12110471416,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 28281458,
+              "threads": 2
+            },
+            "16211": {
+              "rss": 3997696,
+              "cpu_ns": 1180750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12118005750,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 28772208,
+              "threads": 2
+            },
+            "16214": {
+              "rss": 1327104,
+              "cpu_ns": 1064208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12125544750,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 29379041,
+              "threads": 2
+            },
+            "16217": {
+              "rss": 180224,
+              "cpu_ns": 483500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12130624833,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 29724083,
+              "threads": 2
+            },
+            "16219": {
+              "rss": 147456,
+              "cpu_ns": 358166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12138155958,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 30230916,
+              "threads": 2
+            },
+            "16222": {
+              "rss": 114688,
+              "cpu_ns": 255875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12144288500,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 30571083,
+              "threads": 2
+            },
+            "16224": {
+              "rss": 5406720,
+              "cpu_ns": 1323416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12151829166,
+          "tree": {
+            "16177": {
+              "rss": 9175040,
+              "cpu_ns": 31101000,
+              "threads": 2
+            },
+            "16227": {
+              "rss": 1441792,
+              "cpu_ns": 1097583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12159004708,
+          "tree": {
+            "16177": {
+              "rss": 9207808,
+              "cpu_ns": 32036791,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12166536083,
+          "tree": {
+            "16177": {
+              "rss": 9224192,
+              "cpu_ns": 39553250,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 12028482708,
+        "end": 12158518333
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=isolated\nDIRECTORY_BATCH_END mode=isolated\nDIRECTORY_BATCH mode=isolated count=50 entries=512 total_ns=130030417 peak=3480404 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.17s\n\n",
+      "total_ns": 130030417,
+      "budget_peak": 3480404,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 19,
+      "parent_rss_peak_observed": 9175040,
+      "children_rss_peak_observed": 7569408,
+      "tree_rss_peak_observed": 16678912,
+      "max_simultaneous_children_observed": 1,
+      "whole_trial_sampled_cpu_ns_lower_bound": 58560453
+    }
+  ],
+  "runs": [
+    {
+      "mode": "direct",
+      "samples": [
+        {
+          "ns": 12175705166,
+          "tree": {
+            "16230": {
+              "rss": 393216,
+              "cpu_ns": 367416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12183259875,
+          "tree": {
+            "16230": {
+              "rss": 8388608,
+              "cpu_ns": 7243041,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12190794166,
+          "tree": {
+            "16230": {
+              "rss": 8388608,
+              "cpu_ns": 14821041,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12198322666,
+          "tree": {
+            "16230": {
+              "rss": 8650752,
+              "cpu_ns": 22345375,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12205845208,
+          "tree": {
+            "16230": {
+              "rss": 8830976,
+              "cpu_ns": 29828083,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12213365625,
+          "tree": {
+            "16230": {
+              "rss": 8847360,
+              "cpu_ns": 37393250,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 12198745583,
+        "end": 12208700041
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=direct\nDIRECTORY_BATCH_END mode=direct\nDIRECTORY_BATCH mode=direct count=50 entries=512 total_ns=9949625 peak=3201748 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.04s\n\n",
+      "total_ns": 9949625,
+      "budget_peak": 3201748,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 1,
+      "parent_rss_peak_observed": 8830976,
+      "children_rss_peak_observed": null,
+      "tree_rss_peak_observed": 8830976,
+      "max_simultaneous_children_observed": 0,
+      "whole_trial_sampled_cpu_ns_lower_bound": 37393250,
+      "pair": 0
+    },
+    {
+      "mode": "isolated",
+      "samples": [
+        {
+          "ns": 12222461291,
+          "tree": {
+            "16231": {
+              "rss": 475136,
+              "cpu_ns": 387250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12229932583,
+          "tree": {
+            "16231": {
+              "rss": 8404992,
+              "cpu_ns": 7831208,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12235086541,
+          "tree": {
+            "16231": {
+              "rss": 8404992,
+              "cpu_ns": 12993750,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12242631750,
+          "tree": {
+            "16231": {
+              "rss": 8404992,
+              "cpu_ns": 20527458,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12250235666,
+          "tree": {
+            "16231": {
+              "rss": 9093120,
+              "cpu_ns": 22983083,
+              "threads": 2
+            },
+            "16233": {
+              "rss": 475136,
+              "cpu_ns": 94375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12257809083,
+          "tree": {
+            "16231": {
+              "rss": 9109504,
+              "cpu_ns": 23257375,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12265363458,
+          "tree": {
+            "16231": {
+              "rss": 9109504,
+              "cpu_ns": 23785291,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12272934166,
+          "tree": {
+            "16231": {
+              "rss": 9125888,
+              "cpu_ns": 24289625,
+              "threads": 2
+            },
+            "16239": {
+              "rss": 376832,
+              "cpu_ns": 1099625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12280534291,
+          "tree": {
+            "16231": {
+              "rss": 9125888,
+              "cpu_ns": 24787791,
+              "threads": 2
+            },
+            "16241": {
+              "rss": 376832,
+              "cpu_ns": 907166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12288084916,
+          "tree": {
+            "16231": {
+              "rss": 9142272,
+              "cpu_ns": 25249916,
+              "threads": 2
+            },
+            "16244": {
+              "rss": 0,
+              "cpu_ns": 0,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12295642583,
+          "tree": {
+            "16231": {
+              "rss": 9158656,
+              "cpu_ns": 25733541,
+              "threads": 2
+            },
+            "16246": {
+              "rss": 7421952,
+              "cpu_ns": 1939708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12301482041,
+          "tree": {
+            "16231": {
+              "rss": 9158656,
+              "cpu_ns": 26266000,
+              "threads": 2
+            },
+            "16249": {
+              "rss": 32768,
+              "cpu_ns": 13166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12309034250,
+          "tree": {
+            "16231": {
+              "rss": 9207808,
+              "cpu_ns": 26670708,
+              "threads": 2
+            },
+            "16251": {
+              "rss": 7503872,
+              "cpu_ns": 2019625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12316578333,
+          "tree": {
+            "16231": {
+              "rss": 9207808,
+              "cpu_ns": 27218416,
+              "threads": 2
+            },
+            "16254": {
+              "rss": 5521408,
+              "cpu_ns": 1524041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12324130208,
+          "tree": {
+            "16231": {
+              "rss": 9224192,
+              "cpu_ns": 27756250,
+              "threads": 2
+            },
+            "16257": {
+              "rss": 393216,
+              "cpu_ns": 853083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12331671041,
+          "tree": {
+            "16231": {
+              "rss": 9224192,
+              "cpu_ns": 28258250,
+              "threads": 2
+            },
+            "16260": {
+              "rss": 180224,
+              "cpu_ns": 669916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12339230125,
+          "tree": {
+            "16231": {
+              "rss": 9224192,
+              "cpu_ns": 28642458,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12346547333,
+          "tree": {
+            "16231": {
+              "rss": 9224192,
+              "cpu_ns": 29156458,
+              "threads": 2
+            },
+            "16265": {
+              "rss": 475136,
+              "cpu_ns": 909541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12354086625,
+          "tree": {
+            "16231": {
+              "rss": 9224192,
+              "cpu_ns": 29679625,
+              "threads": 2
+            },
+            "16268": {
+              "rss": 180224,
+              "cpu_ns": 693000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12359595041,
+          "tree": {
+            "16231": {
+              "rss": 9224192,
+              "cpu_ns": 30027333,
+              "threads": 2
+            },
+            "16270": {
+              "rss": 376832,
+              "cpu_ns": 909500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12364889041,
+          "tree": {
+            "16231": {
+              "rss": 9224192,
+              "cpu_ns": 30367208,
+              "threads": 2
+            },
+            "16272": {
+              "rss": 376832,
+              "cpu_ns": 859750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12372425541,
+          "tree": {
+            "16231": {
+              "rss": 9240576,
+              "cpu_ns": 30898125,
+              "threads": 2
+            },
+            "16276": {
+              "rss": 114688,
+              "cpu_ns": 218500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12377905375,
+          "tree": {
+            "16231": {
+              "rss": 9240576,
+              "cpu_ns": 31243708,
+              "threads": 2
+            },
+            "16278": {
+              "rss": 147456,
+              "cpu_ns": 329625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12385455125,
+          "tree": {
+            "16231": {
+              "rss": 9240576,
+              "cpu_ns": 31731083,
+              "threads": 2
+            },
+            "16281": {
+              "rss": 32768,
+              "cpu_ns": 1958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12393002000,
+          "tree": {
+            "16231": {
+              "rss": 9240576,
+              "cpu_ns": 32152166,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12399522250,
+          "tree": {
+            "16231": {
+              "rss": 9273344,
+              "cpu_ns": 33622125,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12407058000,
+          "tree": {
+            "16231": {
+              "rss": 9273344,
+              "cpu_ns": 41116125,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 12255108458,
+        "end": 12398428250
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=isolated\nDIRECTORY_BATCH_END mode=isolated\nDIRECTORY_BATCH mode=isolated count=50 entries=512 total_ns=143325208 peak=3480404 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.18s\n\n",
+      "total_ns": 143325208,
+      "budget_peak": 3480404,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 20,
+      "parent_rss_peak_observed": 9240576,
+      "children_rss_peak_observed": 7503872,
+      "tree_rss_peak_observed": 16711680,
+      "max_simultaneous_children_observed": 1,
+      "whole_trial_sampled_cpu_ns_lower_bound": 54158704,
+      "pair": 0
+    },
+    {
+      "mode": "isolated",
+      "samples": [
+        {
+          "ns": 12416197666,
+          "tree": {
+            "16286": {
+              "rss": 475136,
+              "cpu_ns": 378750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12422731708,
+          "tree": {
+            "16286": {
+              "rss": 8388608,
+              "cpu_ns": 6287791,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12430274458,
+          "tree": {
+            "16286": {
+              "rss": 8388608,
+              "cpu_ns": 13832166,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12437803708,
+          "tree": {
+            "16286": {
+              "rss": 8388608,
+              "cpu_ns": 21362750,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12445328833,
+          "tree": {
+            "16286": {
+              "rss": 9093120,
+              "cpu_ns": 23282625,
+              "threads": 2
+            },
+            "16289": {
+              "rss": 114688,
+              "cpu_ns": 271250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12451766208,
+          "tree": {
+            "16286": {
+              "rss": 9093120,
+              "cpu_ns": 23614333,
+              "threads": 2
+            },
+            "16291": {
+              "rss": 4096000,
+              "cpu_ns": 1295916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12459320916,
+          "tree": {
+            "16286": {
+              "rss": 9109504,
+              "cpu_ns": 24139291,
+              "threads": 2
+            },
+            "16294": {
+              "rss": 1048576,
+              "cpu_ns": 1031333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12466868125,
+          "tree": {
+            "16286": {
+              "rss": 9109504,
+              "cpu_ns": 24657791,
+              "threads": 2
+            },
+            "16297": {
+              "rss": 180224,
+              "cpu_ns": 706125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12474404708,
+          "tree": {
+            "16286": {
+              "rss": 9125888,
+              "cpu_ns": 25159625,
+              "threads": 2
+            },
+            "16300": {
+              "rss": 180224,
+              "cpu_ns": 497875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12481942583,
+          "tree": {
+            "16286": {
+              "rss": 9158656,
+              "cpu_ns": 25557333,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12489469083,
+          "tree": {
+            "16286": {
+              "rss": 9158656,
+              "cpu_ns": 26168791,
+              "threads": 2
+            },
+            "16305": {
+              "rss": 163840,
+              "cpu_ns": 389500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12495279583,
+          "tree": {
+            "16286": {
+              "rss": 9158656,
+              "cpu_ns": 26500416,
+              "threads": 2
+            },
+            "16307": {
+              "rss": 901120,
+              "cpu_ns": 1069583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12500419041,
+          "tree": {
+            "16286": {
+              "rss": 9191424,
+              "cpu_ns": 26849875,
+              "threads": 2
+            },
+            "16309": {
+              "rss": 409600,
+              "cpu_ns": 923791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12507961833,
+          "tree": {
+            "16286": {
+              "rss": 9191424,
+              "cpu_ns": 27359416,
+              "threads": 2
+            },
+            "16312": {
+              "rss": 180224,
+              "cpu_ns": 552541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12515504125,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 27872791,
+              "threads": 2
+            },
+            "16315": {
+              "rss": 147456,
+              "cpu_ns": 300375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12522084833,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 28238833,
+              "threads": 2
+            },
+            "16317": {
+              "rss": 4915200,
+              "cpu_ns": 1427125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12527625875,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 28588500,
+              "threads": 2
+            },
+            "16319": {
+              "rss": 5505024,
+              "cpu_ns": 1485791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12534813333,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 29090208,
+              "threads": 2
+            },
+            "16322": {
+              "rss": 376832,
+              "cpu_ns": 879875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12542361791,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 29605875,
+              "threads": 2
+            },
+            "16325": {
+              "rss": 180224,
+              "cpu_ns": 516708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12549898375,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 30150625,
+              "threads": 2
+            },
+            "16328": {
+              "rss": 655360,
+              "cpu_ns": 95791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12557441583,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 30617458,
+              "threads": 2
+            },
+            "16330": {
+              "rss": 7536640,
+              "cpu_ns": 2077208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12564989291,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 31158833,
+              "threads": 2
+            },
+            "16333": {
+              "rss": 6979584,
+              "cpu_ns": 1839916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12572529666,
+          "tree": {
+            "16286": {
+              "rss": 9207808,
+              "cpu_ns": 31696541,
+              "threads": 2
+            },
+            "16336": {
+              "rss": 5619712,
+              "cpu_ns": 1459875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12580069958,
+          "tree": {
+            "16286": {
+              "rss": 9240576,
+              "cpu_ns": 33616791,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12587602916,
+          "tree": {
+            "16286": {
+              "rss": 9240576,
+              "cpu_ns": 41164416,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 12444940583,
+        "end": 12578569208
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=isolated\nDIRECTORY_BATCH_END mode=isolated\nDIRECTORY_BATCH mode=isolated count=50 entries=512 total_ns=133623708 peak=3480404 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.17s\n\n",
+      "total_ns": 133623708,
+      "budget_peak": 3480404,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 19,
+      "parent_rss_peak_observed": 9207808,
+      "children_rss_peak_observed": 7536640,
+      "tree_rss_peak_observed": 16744448,
+      "max_simultaneous_children_observed": 1,
+      "whole_trial_sampled_cpu_ns_lower_bound": 57984994,
+      "pair": 1
+    },
+    {
+      "mode": "direct",
+      "samples": [
+        {
+          "ns": 12596762125,
+          "tree": {
+            "16339": {
+              "rss": 524288,
+              "cpu_ns": 427333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12604260750,
+          "tree": {
+            "16339": {
+              "rss": 8404992,
+              "cpu_ns": 7882375,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12610963500,
+          "tree": {
+            "16339": {
+              "rss": 8404992,
+              "cpu_ns": 14575458,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12618486166,
+          "tree": {
+            "16339": {
+              "rss": 8404992,
+              "cpu_ns": 22093625,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12626006958,
+          "tree": {
+            "16339": {
+              "rss": 8798208,
+              "cpu_ns": 29627208,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12633534500,
+          "tree": {
+            "16339": {
+              "rss": 8830976,
+              "cpu_ns": 37178791,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12641079916,
+          "tree": {}
+        }
+      ],
+      "phases": {
+        "start": 12619871416,
+        "end": 12630039833
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=direct\nDIRECTORY_BATCH_END mode=direct\nDIRECTORY_BATCH mode=direct count=50 entries=512 total_ns=10170000 peak=3201748 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.04s\n\n",
+      "total_ns": 10170000,
+      "budget_peak": 3201748,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 1,
+      "parent_rss_peak_observed": 8798208,
+      "children_rss_peak_observed": null,
+      "tree_rss_peak_observed": 8798208,
+      "max_simultaneous_children_observed": 0,
+      "whole_trial_sampled_cpu_ns_lower_bound": 37178791,
+      "pair": 1
+    },
+    {
+      "mode": "direct",
+      "samples": [
+        {
+          "ns": 12648817708,
+          "tree": {
+            "16340": {
+              "rss": 409600,
+              "cpu_ns": 413250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12656415541,
+          "tree": {
+            "16340": {
+              "rss": 8404992,
+              "cpu_ns": 7949666,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12663952125,
+          "tree": {
+            "16340": {
+              "rss": 8404992,
+              "cpu_ns": 15473208,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12671480125,
+          "tree": {
+            "16340": {
+              "rss": 8404992,
+              "cpu_ns": 23012708,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12679032208,
+          "tree": {
+            "16340": {
+              "rss": 8830976,
+              "cpu_ns": 30537541,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12686554375,
+          "tree": {
+            "16340": {
+              "rss": 8863744,
+              "cpu_ns": 38079666,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 12672593500,
+        "end": 12682787541
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=direct\nDIRECTORY_BATCH_END mode=direct\nDIRECTORY_BATCH mode=direct count=50 entries=512 total_ns=10196458 peak=3201748 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.04s\n\n",
+      "total_ns": 10196458,
+      "budget_peak": 3201748,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 1,
+      "parent_rss_peak_observed": 8830976,
+      "children_rss_peak_observed": null,
+      "tree_rss_peak_observed": 8830976,
+      "max_simultaneous_children_observed": 0,
+      "whole_trial_sampled_cpu_ns_lower_bound": 38079666,
+      "pair": 2
+    },
+    {
+      "mode": "isolated",
+      "samples": [
+        {
+          "ns": 12695581875,
+          "tree": {
+            "16341": {
+              "rss": 475136,
+              "cpu_ns": 390458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12702835166,
+          "tree": {
+            "16341": {
+              "rss": 8404992,
+              "cpu_ns": 6930000,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12710363791,
+          "tree": {
+            "16341": {
+              "rss": 8404992,
+              "cpu_ns": 14449541,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12717890958,
+          "tree": {
+            "16341": {
+              "rss": 8404992,
+              "cpu_ns": 21994583,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12725423375,
+          "tree": {
+            "16341": {
+              "rss": 9093120,
+              "cpu_ns": 23205333,
+              "threads": 2
+            },
+            "16344": {
+              "rss": 180224,
+              "cpu_ns": 572708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12732971208,
+          "tree": {
+            "16341": {
+              "rss": 9109504,
+              "cpu_ns": 23689791,
+              "threads": 2
+            },
+            "16347": {
+              "rss": 0,
+              "cpu_ns": 0,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12740519083,
+          "tree": {
+            "16341": {
+              "rss": 9109504,
+              "cpu_ns": 24134916,
+              "threads": 2
+            },
+            "16349": {
+              "rss": 6340608,
+              "cpu_ns": 1776041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12748062708,
+          "tree": {
+            "16341": {
+              "rss": 9109504,
+              "cpu_ns": 24687708,
+              "threads": 2
+            },
+            "16352": {
+              "rss": 1458176,
+              "cpu_ns": 1112958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12755607375,
+          "tree": {
+            "16341": {
+              "rss": 9125888,
+              "cpu_ns": 25215708,
+              "threads": 2
+            },
+            "16355": {
+              "rss": 180224,
+              "cpu_ns": 545958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12761275041,
+          "tree": {
+            "16341": {
+              "rss": 9125888,
+              "cpu_ns": 25461750,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12768803750,
+          "tree": {
+            "16341": {
+              "rss": 9142272,
+              "cpu_ns": 25911375,
+              "threads": 2
+            },
+            "16359": {
+              "rss": 7389184,
+              "cpu_ns": 2005041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12776345750,
+          "tree": {
+            "16341": {
+              "rss": 9158656,
+              "cpu_ns": 26444458,
+              "threads": 2
+            },
+            "16362": {
+              "rss": 6389760,
+              "cpu_ns": 1666166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12783884791,
+          "tree": {
+            "16341": {
+              "rss": 9175040,
+              "cpu_ns": 26964666,
+              "threads": 2
+            },
+            "16365": {
+              "rss": 5488640,
+              "cpu_ns": 1375416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12791431708,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 27499791,
+              "threads": 2
+            },
+            "16368": {
+              "rss": 1982464,
+              "cpu_ns": 1159791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12798970583,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 28024625,
+              "threads": 2
+            },
+            "16371": {
+              "rss": 393216,
+              "cpu_ns": 898750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12806510583,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 28543416,
+              "threads": 2
+            },
+            "16374": {
+              "rss": 180224,
+              "cpu_ns": 667583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12812049000,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 28923375,
+              "threads": 2
+            },
+            "16376": {
+              "rss": 376832,
+              "cpu_ns": 863541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12818157208,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 29293291,
+              "threads": 2
+            },
+            "16378": {
+              "rss": 5750784,
+              "cpu_ns": 1555500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12825698458,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 29812125,
+              "threads": 2
+            },
+            "16381": {
+              "rss": 4833280,
+              "cpu_ns": 1295375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12833241500,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 30336000,
+              "threads": 2
+            },
+            "16384": {
+              "rss": 376832,
+              "cpu_ns": 903875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12840787708,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 30854000,
+              "threads": 2
+            },
+            "16387": {
+              "rss": 147456,
+              "cpu_ns": 310375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12848323791,
+          "tree": {
+            "16341": {
+              "rss": 9191424,
+              "cpu_ns": 31373666,
+              "threads": 2
+            },
+            "16390": {
+              "rss": 32768,
+              "cpu_ns": 11166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12855865958,
+          "tree": {
+            "16341": {
+              "rss": 9207808,
+              "cpu_ns": 31756000,
+              "threads": 2
+            },
+            "16392": {
+              "rss": 180224,
+              "cpu_ns": 704708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12863406750,
+          "tree": {
+            "16341": {
+              "rss": 9240576,
+              "cpu_ns": 35194625,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12870937125,
+          "tree": {
+            "16341": {
+              "rss": 9240576,
+              "cpu_ns": 42732875,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 12724677458,
+        "end": 12860225083
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=isolated\nDIRECTORY_BATCH_END mode=isolated\nDIRECTORY_BATCH mode=isolated count=50 entries=512 total_ns=135544000 peak=3480404 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.17s\n\n",
+      "total_ns": 135544000,
+      "budget_peak": 3480404,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 19,
+      "parent_rss_peak_observed": 9207808,
+      "children_rss_peak_observed": 7389184,
+      "tree_rss_peak_observed": 16531456,
+      "max_simultaneous_children_observed": 1,
+      "whole_trial_sampled_cpu_ns_lower_bound": 60157827,
+      "pair": 2
+    },
+    {
+      "mode": "isolated",
+      "samples": [
+        {
+          "ns": 12880012583,
+          "tree": {
+            "16394": {
+              "rss": 475136,
+              "cpu_ns": 376416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12887207916,
+          "tree": {
+            "16394": {
+              "rss": 8388608,
+              "cpu_ns": 6851041,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12894288250,
+          "tree": {
+            "16394": {
+              "rss": 8388608,
+              "cpu_ns": 13915458,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12901746833,
+          "tree": {
+            "16394": {
+              "rss": 8388608,
+              "cpu_ns": 21389916,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12909280208,
+          "tree": {
+            "16394": {
+              "rss": 9076736,
+              "cpu_ns": 23232666,
+              "threads": 2
+            },
+            "16397": {
+              "rss": 131072,
+              "cpu_ns": 362666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12916823833,
+          "tree": {
+            "16394": {
+              "rss": 9076736,
+              "cpu_ns": 23765958,
+              "threads": 2
+            },
+            "16400": {
+              "rss": 655360,
+              "cpu_ns": 94083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12924360750,
+          "tree": {
+            "16394": {
+              "rss": 9093120,
+              "cpu_ns": 24180708,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 12930525666,
+          "tree": {
+            "16394": {
+              "rss": 9093120,
+              "cpu_ns": 24667291,
+              "threads": 2
+            },
+            "16405": {
+              "rss": 180224,
+              "cpu_ns": 519250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12938073791,
+          "tree": {
+            "16394": {
+              "rss": 9142272,
+              "cpu_ns": 25219125,
+              "threads": 2
+            },
+            "16408": {
+              "rss": 114688,
+              "cpu_ns": 271750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12945609791,
+          "tree": {
+            "16394": {
+              "rss": 9142272,
+              "cpu_ns": 25747000,
+              "threads": 2
+            },
+            "16411": {
+              "rss": 32768,
+              "cpu_ns": 12708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12951480666,
+          "tree": {
+            "16394": {
+              "rss": 9142272,
+              "cpu_ns": 26078875,
+              "threads": 2
+            },
+            "16413": {
+              "rss": 180224,
+              "cpu_ns": 652166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12959027833,
+          "tree": {
+            "16394": {
+              "rss": 9142272,
+              "cpu_ns": 26586708,
+              "threads": 2
+            },
+            "16416": {
+              "rss": 671744,
+              "cpu_ns": 166625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12966567416,
+          "tree": {
+            "16394": {
+              "rss": 9175040,
+              "cpu_ns": 27035333,
+              "threads": 2
+            },
+            "16419": {
+              "rss": 0,
+              "cpu_ns": 0,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12974110958,
+          "tree": {
+            "16394": {
+              "rss": 9175040,
+              "cpu_ns": 27461000,
+              "threads": 2
+            },
+            "16421": {
+              "rss": 7700480,
+              "cpu_ns": 2133666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12981652541,
+          "tree": {
+            "16394": {
+              "rss": 9175040,
+              "cpu_ns": 27983250,
+              "threads": 2
+            },
+            "16424": {
+              "rss": 6209536,
+              "cpu_ns": 1727750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12989190666,
+          "tree": {
+            "16394": {
+              "rss": 9175040,
+              "cpu_ns": 28492875,
+              "threads": 2
+            },
+            "16427": {
+              "rss": 4538368,
+              "cpu_ns": 1291000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12996728250,
+          "tree": {
+            "16394": {
+              "rss": 9175040,
+              "cpu_ns": 29003291,
+              "threads": 2
+            },
+            "16430": {
+              "rss": 475136,
+              "cpu_ns": 976375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13004263375,
+          "tree": {
+            "16394": {
+              "rss": 9191424,
+              "cpu_ns": 29511041,
+              "threads": 2
+            },
+            "16433": {
+              "rss": 180224,
+              "cpu_ns": 674958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13009789416,
+          "tree": {
+            "16394": {
+              "rss": 9191424,
+              "cpu_ns": 29846916,
+              "threads": 2
+            },
+            "16435": {
+              "rss": 409600,
+              "cpu_ns": 941791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13015056416,
+          "tree": {
+            "16394": {
+              "rss": 9207808,
+              "cpu_ns": 30252541,
+              "threads": 2
+            },
+            "16437": {
+              "rss": 393216,
+              "cpu_ns": 901625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13022599958,
+          "tree": {
+            "16394": {
+              "rss": 9207808,
+              "cpu_ns": 30795958,
+              "threads": 2
+            },
+            "16440": {
+              "rss": 180224,
+              "cpu_ns": 592916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13028213958,
+          "tree": {
+            "16394": {
+              "rss": 9224192,
+              "cpu_ns": 31149916,
+              "threads": 2
+            },
+            "16442": {
+              "rss": 475136,
+              "cpu_ns": 987708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13033440625,
+          "tree": {
+            "16394": {
+              "rss": 9224192,
+              "cpu_ns": 31519541,
+              "threads": 2
+            },
+            "16444": {
+              "rss": 393216,
+              "cpu_ns": 906666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13040983208,
+          "tree": {
+            "16394": {
+              "rss": 9240576,
+              "cpu_ns": 32768166,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13048506916,
+          "tree": {
+            "16394": {
+              "rss": 9256960,
+              "cpu_ns": 40282500,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 12908767458,
+        "end": 13040194791
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=isolated\nDIRECTORY_BATCH_END mode=isolated\nDIRECTORY_BATCH mode=isolated count=50 entries=512 total_ns=131420959 peak=3480404 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.17s\n\n",
+      "total_ns": 131420959,
+      "budget_peak": 3480404,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 19,
+      "parent_rss_peak_observed": 9224192,
+      "children_rss_peak_observed": 7700480,
+      "tree_rss_peak_observed": 16875520,
+      "max_simultaneous_children_observed": 1,
+      "whole_trial_sampled_cpu_ns_lower_bound": 53496203,
+      "pair": 3
+    },
+    {
+      "mode": "direct",
+      "samples": [
+        {
+          "ns": 13057713708,
+          "tree": {
+            "16447": {
+              "rss": 475136,
+              "cpu_ns": 409041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13065278166,
+          "tree": {
+            "16447": {
+              "rss": 8388608,
+              "cpu_ns": 7948666,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13072809583,
+          "tree": {
+            "16447": {
+              "rss": 8388608,
+              "cpu_ns": 15465708,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13080341416,
+          "tree": {
+            "16447": {
+              "rss": 8749056,
+              "cpu_ns": 22974083,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13087868875,
+          "tree": {
+            "16447": {
+              "rss": 8830976,
+              "cpu_ns": 30547125,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13095391833,
+          "tree": {
+            "16447": {
+              "rss": 8847360,
+              "cpu_ns": 38051500,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13101477750,
+          "tree": {}
+        }
+      ],
+      "phases": {
+        "start": 13080295791,
+        "end": 13090513708
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=direct\nDIRECTORY_BATCH_END mode=direct\nDIRECTORY_BATCH mode=direct count=50 entries=512 total_ns=10218375 peak=3201748 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.04s\n\n",
+      "total_ns": 10218375,
+      "budget_peak": 3201748,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 2,
+      "parent_rss_peak_observed": 8830976,
+      "children_rss_peak_observed": null,
+      "tree_rss_peak_observed": 8830976,
+      "max_simultaneous_children_observed": 0,
+      "whole_trial_sampled_cpu_ns_lower_bound": 38051500,
+      "pair": 3
+    },
+    {
+      "mode": "direct",
+      "samples": [
+        {
+          "ns": 13110665375,
+          "tree": {
+            "16448": {
+              "rss": 393216,
+              "cpu_ns": 383708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13118214375,
+          "tree": {
+            "16448": {
+              "rss": 8372224,
+              "cpu_ns": 7206625,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13125739958,
+          "tree": {
+            "16448": {
+              "rss": 8372224,
+              "cpu_ns": 14722041,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13133275958,
+          "tree": {
+            "16448": {
+              "rss": 8503296,
+              "cpu_ns": 22287958,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13140804541,
+          "tree": {
+            "16448": {
+              "rss": 8814592,
+              "cpu_ns": 29784375,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13148325625,
+          "tree": {
+            "16448": {
+              "rss": 8847360,
+              "cpu_ns": 37318375,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 13133799750,
+        "end": 13143745583
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=direct\nDIRECTORY_BATCH_END mode=direct\nDIRECTORY_BATCH mode=direct count=50 entries=512 total_ns=9943708 peak=3201748 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.04s\n\n",
+      "total_ns": 9943708,
+      "budget_peak": 3201748,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 1,
+      "parent_rss_peak_observed": 8814592,
+      "children_rss_peak_observed": null,
+      "tree_rss_peak_observed": 8814592,
+      "max_simultaneous_children_observed": 0,
+      "whole_trial_sampled_cpu_ns_lower_bound": 37318375,
+      "pair": 4
+    },
+    {
+      "mode": "isolated",
+      "samples": [
+        {
+          "ns": 13157375666,
+          "tree": {
+            "16449": {
+              "rss": 442368,
+              "cpu_ns": 387333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13164915666,
+          "tree": {
+            "16449": {
+              "rss": 8404992,
+              "cpu_ns": 7888333,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13172442375,
+          "tree": {
+            "16449": {
+              "rss": 8404992,
+              "cpu_ns": 15389666,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13179968250,
+          "tree": {
+            "16449": {
+              "rss": 8912896,
+              "cpu_ns": 22151708,
+              "threads": 2
+            },
+            "16450": {
+              "rss": 180224,
+              "cpu_ns": 758041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13187505875,
+          "tree": {
+            "16449": {
+              "rss": 9109504,
+              "cpu_ns": 22669541,
+              "threads": 2
+            },
+            "16453": {
+              "rss": 0,
+              "cpu_ns": 0,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13195054208,
+          "tree": {
+            "16449": {
+              "rss": 9109504,
+              "cpu_ns": 23112666,
+              "threads": 2
+            }
+          }
+        },
+        {
+          "ns": 13201746500,
+          "tree": {
+            "16449": {
+              "rss": 9125888,
+              "cpu_ns": 23578291,
+              "threads": 2
+            },
+            "16458": {
+              "rss": 1409024,
+              "cpu_ns": 1144458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13209296666,
+          "tree": {
+            "16449": {
+              "rss": 9142272,
+              "cpu_ns": 24092333,
+              "threads": 2
+            },
+            "16461": {
+              "rss": 180224,
+              "cpu_ns": 599041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13216852708,
+          "tree": {
+            "16449": {
+              "rss": 9158656,
+              "cpu_ns": 24652041,
+              "threads": 2
+            },
+            "16464": {
+              "rss": 32768,
+              "cpu_ns": 10625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13224410625,
+          "tree": {
+            "16449": {
+              "rss": 9158656,
+              "cpu_ns": 25125041,
+              "threads": 2
+            },
+            "16466": {
+              "rss": 163840,
+              "cpu_ns": 419041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13231961625,
+          "tree": {
+            "16449": {
+              "rss": 9175040,
+              "cpu_ns": 25552875,
+              "threads": 2
+            },
+            "16469": {
+              "rss": 0,
+              "cpu_ns": 0,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13239502833,
+          "tree": {
+            "16449": {
+              "rss": 9175040,
+              "cpu_ns": 26006000,
+              "threads": 2
+            },
+            "16471": {
+              "rss": 7405568,
+              "cpu_ns": 1966166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13247043250,
+          "tree": {
+            "16449": {
+              "rss": 9191424,
+              "cpu_ns": 26528000,
+              "threads": 2
+            },
+            "16474": {
+              "rss": 5505024,
+              "cpu_ns": 1468583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13254594416,
+          "tree": {
+            "16449": {
+              "rss": 9191424,
+              "cpu_ns": 27061875,
+              "threads": 2
+            },
+            "16477": {
+              "rss": 1146880,
+              "cpu_ns": 1054875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13262143916,
+          "tree": {
+            "16449": {
+              "rss": 9191424,
+              "cpu_ns": 27604125,
+              "threads": 2
+            },
+            "16480": {
+              "rss": 327680,
+              "cpu_ns": 799250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13269686500,
+          "tree": {
+            "16449": {
+              "rss": 9191424,
+              "cpu_ns": 28129666,
+              "threads": 2
+            },
+            "16483": {
+              "rss": 131072,
+              "cpu_ns": 407791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13277246250,
+          "tree": {
+            "16449": {
+              "rss": 9191424,
+              "cpu_ns": 28668041,
+              "threads": 2
+            },
+            "16485": {
+              "rss": 294912,
+              "cpu_ns": 41833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13284816208,
+          "tree": {
+            "16449": {
+              "rss": 9191424,
+              "cpu_ns": 29020458,
+              "threads": 2
+            },
+            "16487": {
+              "rss": 7536640,
+              "cpu_ns": 2172541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13291231041,
+          "tree": {
+            "16449": {
+              "rss": 9191424,
+              "cpu_ns": 29700916,
+              "threads": 2
+            },
+            "16490": {
+              "rss": 81920,
+              "cpu_ns": 19291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13297436375,
+          "tree": {
+            "16449": {
+              "rss": 9207808,
+              "cpu_ns": 30066375,
+              "threads": 2
+            },
+            "16492": {
+              "rss": 540672,
+              "cpu_ns": 983541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13304983083,
+          "tree": {
+            "16449": {
+              "rss": 9207808,
+              "cpu_ns": 30619666,
+              "threads": 2
+            },
+            "16495": {
+              "rss": 180224,
+              "cpu_ns": 707125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13310482750,
+          "tree": {
+            "16449": {
+              "rss": 9207808,
+              "cpu_ns": 30972333,
+              "threads": 2
+            },
+            "16497": {
+              "rss": 1474560,
+              "cpu_ns": 1063375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13315619125,
+          "tree": {
+            "16449": {
+              "rss": 9224192,
+              "cpu_ns": 31325708,
+              "threads": 2
+            },
+            "16499": {
+              "rss": 1163264,
+              "cpu_ns": 1055083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13320770125,
+          "tree": {
+            "16449": {
+              "rss": 9224192,
+              "cpu_ns": 31686041,
+              "threads": 2
+            },
+            "16501": {
+              "rss": 393216,
+              "cpu_ns": 884416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 13326097791,
+          "tree": {
+            "16449": {
+              "rss": 9256960,
+              "cpu_ns": 35560083,
+              "threads": 2
+            }
+          }
+        }
+      ],
+      "phases": {
+        "start": 13184740166,
+        "end": 13322306416
+      },
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest local_directory::isolated::tests::isolated_directory_batch_cost ... DIRECTORY_BATCH_START mode=isolated\nDIRECTORY_BATCH_END mode=isolated\nDIRECTORY_BATCH mode=isolated count=50 entries=512 total_ns=137553541 peak=3480404 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 563 filtered out; finished in 0.17s\n\n",
+      "total_ns": 137553541,
+      "budget_peak": 3480404,
+      "count": 50,
+      "entries": 512,
+      "phase_samples": 20,
+      "parent_rss_peak_observed": 9224192,
+      "children_rss_peak_observed": 7536640,
+      "tree_rss_peak_observed": 16728064,
+      "max_simultaneous_children_observed": 1,
+      "whole_trial_sampled_cpu_ns_lower_bound": 51115159,
+      "pair": 4
+    }
+  ],
+  "paired_summary": {
+    "added_ns_per_query": {
+      "median": 2506950.84,
+      "minimum": 2424051.68,
+      "maximum": 2667511.66
+    },
+    "relative_percent": {
+      "median": 1229.324359498171,
+      "minimum": 1186.1238602028209,
+      "maximum": 1340.5086422855134
+    }
+  },
+  "pairs": [
+    {
+      "pair": 0,
+      "added_ns_per_query": 2667511.66,
+      "relative_percent": 1340.5086422855134
+    },
+    {
+      "pair": 1,
+      "added_ns_per_query": 2469074.16,
+      "relative_percent": 1213.900766961652
+    },
+    {
+      "pair": 2,
+      "added_ns_per_query": 2506950.84,
+      "relative_percent": 1229.324359498171
+    },
+    {
+      "pair": 3,
+      "added_ns_per_query": 2424051.68,
+      "relative_percent": 1186.1238602028209
+    },
+    {
+      "pair": 4,
+      "added_ns_per_query": 2552196.66,
+      "relative_percent": 1283.3224085019392
+    }
+  ],
+  "passed": true
+}

@@ -1,0 +1,254 @@
+{
+  "method": "bounded profiles conversion after common TOML root parsed; excludes existing common TOML parser allocations; four fixtures incl 16 maximal local and SSH metadata; Rust requested allocation, overlap, final return; 1000 immutable clones allocate zero; timing separate uninstrumented build, five rounds, 1000 parse/drop or 100000 clone/drop per fixture, no concurrent performance jobs",
+  "source_sha256": {
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/session.rs": "91e53e58e0705ce496fd64b254deeccdeda26e913a01283af7ea2120bec719d1",
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+    "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+    "src/workspace.rs": "542931d1318f7f7093bdbede4b44e42f774e9d32e255b8de9fa1f75c8faeb4a3",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/main.rs": "4d2462a336b0ac1ca1874b1253a2de2220fddf265a8f75c8f5c9b77b170ba2d3",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/resources.rs": "aa299533d3bd5ae7dda2ed798618ff6f7f7319a0b83368a7cbd190918a920a72",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/profiles.rs": "b3018e8dd7db75915e3703c25ed4f262259ad213fa4c551546d45fa53b8bab00",
+    "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/resources/budget.rs": "8669adbee8cf331bc50cd811d4467ac25e9dce0e3a5ee5e26476a583efc90d2d",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+    "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2"
+  },
+  "test_injection": "\n#[cfg(test)] mod profiles_measure {\nuse super::*;\n#[test]fn measure_profiles(){\n let mode=std::env::var(\"PROFILES_MODE\").unwrap();\n for (name,count,large,ssh) in [(\"empty\",0,false,false),(\"one_local\",1,false,false),(\"max16_local\",16,true,false),(\"max16_ssh\",16,true,true)] {\n let mut text=String::new();\n for i in 0..count {let n=if large{128}else{12};let p=if large{4096}else{16};let id=format!(\"p{i:02}{}\",\"i\".repeat(61));text+=&format!(\"[connections.{id}]\\nkind='{}'\\nname='{}'\\ngroup='{}'\\nprogram='{}'\\n\",if ssh{\"ssh\"}else{\"local\"},\"n\".repeat(n),\"g\".repeat(n),\"p\".repeat(p));\n if ssh {text+=&format!(\"host='{}'\\nuser='{}'\\nport=65535\\nidentity-file='{}'\\n\",\"h\".repeat(if large{255}else{12}),\"u\".repeat(n),\"k\".repeat(p));}\n else {text+=&format!(\"working-directory='{}'\\nargs=['{}','{}']\\n\",\"d\".repeat(p),\"a\".repeat(p),\"b\".repeat(p));}\n }\n let root=crate::config::toml::parse(&text).unwrap();let pool=Budget::new(2*WORK_BYTES,0);let _=pool.snapshot();let _=std::thread::current();let mut warnings=Vec::new();\n if mode==\"probe\" {\n crate::png_meter::start();let profiles=Profiles::parse(&root,&pool,&mut warnings);let(live,peak)=crate::png_meter::peek();let snap=pool.snapshot();assert!(warnings.is_empty());assert_eq!(profiles.len(),count);assert!(peak>=0 && peak as usize<=snap.peak);assert!(live>=0 && live as usize<=snap.used);drop(profiles);let(final_bytes,_)=crate::png_meter::stop();assert_eq!(final_bytes,0);assert_eq!(pool.snapshot().used,0);\n eprintln!(\"PROFILES_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"live_requested\\\":{live},\\\"peak_requested\\\":{peak},\\\"retained_loan\\\":{},\\\"peak_loan\\\":{},\\\"final_requested\\\":0,\\\"final_loan\\\":0}}\",snap.used,snap.peak);\n let profiles=Profiles::parse(&root,&pool,&mut warnings);crate::png_meter::start();for _ in 0..1000{std::hint::black_box(profiles.clone());}let(live,peak)=crate::png_meter::stop();assert_eq!((live,peak),(0,0));\n }else {\n let n=1000;let start=std::time::Instant::now();for _ in 0..n{drop(Profiles::parse(&root,&pool,&mut warnings));}let parse_ns=start.elapsed().as_nanos()/n;\n let profiles=Profiles::parse(&root,&pool,&mut warnings);let n=100000;let start=std::time::Instant::now();for _ in 0..n{std::hint::black_box(profiles.clone());}let clone_ns=start.elapsed().as_nanos()/n;\n eprintln!(\"PROFILES_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"parse_drop_ns\\\":{parse_ns},\\\"clone_drop_ns\\\":{clone_ns}}}\");\n }\n }\n}}\n",
+  "allocator_injection": "\n#[cfg(test)]\nmod png_meter {\n use std::{alloc::{GlobalAlloc,Layout,System},cell::Cell};\n thread_local! {static ON:Cell<bool>=const{Cell::new(false)};static LIVE:Cell<isize>=const{Cell::new(0)};static PEAK:Cell<isize>=const{Cell::new(0)};}\n fn count(n:isize){let _=ON.try_with(|v|if v.get(){LIVE.with(|l|{let n=l.get()+n;l.set(n);PEAK.with(|p|p.set(p.get().max(n)))})});}\n struct Meter;\n unsafe impl GlobalAlloc for Meter{\n  unsafe fn alloc(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn alloc_zeroed(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc_zeroed(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn dealloc(&self,p:*mut u8,l:Layout){unsafe{System.dealloc(p,l)};count(-(l.size()as isize));}\n  unsafe fn realloc(&self,p:*mut u8,l:Layout,n:usize)->*mut u8{count(n as isize);let p=unsafe{System.realloc(p,l,n)};count(-((if p.is_null(){n}else{l.size()})as isize));p}\n }\n #[global_allocator]static ALLOC:Meter=Meter;\n pub fn start(){LIVE.with(|v|v.set(0));PEAK.with(|v|v.set(0));ON.with(|v|v.set(true));}\n pub fn peek()->(isize,isize){(LIVE.with(Cell::get),PEAK.with(Cell::get))} pub fn stop()->(isize,isize){ON.with(|v|v.set(false));(LIVE.with(Cell::get),PEAK.with(Cell::get))}\n}\n",
+  "runs": [
+    {
+      "samples": [
+        {
+          "name": "empty",
+          "parse_drop_ns": 17,
+          "clone_drop_ns": 0
+        },
+        {
+          "name": "one_local",
+          "parse_drop_ns": 806,
+          "clone_drop_ns": 5
+        },
+        {
+          "name": "max16_local",
+          "parse_drop_ns": 102020,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_ssh",
+          "parse_drop_ns": 83803,
+          "clone_drop_ns": 3
+        }
+      ],
+      "log": "\nrunning 1 test\ntest config::profiles::profiles_measure::measure_profiles ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.19s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPROFILES_SAMPLE {\"name\":\"empty\",\"parse_drop_ns\":17,\"clone_drop_ns\":0}\nPROFILES_SAMPLE {\"name\":\"one_local\",\"parse_drop_ns\":806,\"clone_drop_ns\":5}\nPROFILES_SAMPLE {\"name\":\"max16_local\",\"parse_drop_ns\":102020,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_ssh\",\"parse_drop_ns\":83803,\"clone_drop_ns\":3}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "empty",
+          "parse_drop_ns": 2,
+          "clone_drop_ns": 0
+        },
+        {
+          "name": "one_local",
+          "parse_drop_ns": 358,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_local",
+          "parse_drop_ns": 82230,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_ssh",
+          "parse_drop_ns": 84355,
+          "clone_drop_ns": 3
+        }
+      ],
+      "log": "\nrunning 1 test\ntest config::profiles::profiles_measure::measure_profiles ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.17s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPROFILES_SAMPLE {\"name\":\"empty\",\"parse_drop_ns\":2,\"clone_drop_ns\":0}\nPROFILES_SAMPLE {\"name\":\"one_local\",\"parse_drop_ns\":358,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_local\",\"parse_drop_ns\":82230,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_ssh\",\"parse_drop_ns\":84355,\"clone_drop_ns\":3}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "empty",
+          "parse_drop_ns": 2,
+          "clone_drop_ns": 0
+        },
+        {
+          "name": "one_local",
+          "parse_drop_ns": 383,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_local",
+          "parse_drop_ns": 80947,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_ssh",
+          "parse_drop_ns": 83141,
+          "clone_drop_ns": 3
+        }
+      ],
+      "log": "\nrunning 1 test\ntest config::profiles::profiles_measure::measure_profiles ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.17s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPROFILES_SAMPLE {\"name\":\"empty\",\"parse_drop_ns\":2,\"clone_drop_ns\":0}\nPROFILES_SAMPLE {\"name\":\"one_local\",\"parse_drop_ns\":383,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_local\",\"parse_drop_ns\":80947,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_ssh\",\"parse_drop_ns\":83141,\"clone_drop_ns\":3}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "empty",
+          "parse_drop_ns": 2,
+          "clone_drop_ns": 0
+        },
+        {
+          "name": "one_local",
+          "parse_drop_ns": 363,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_local",
+          "parse_drop_ns": 81143,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_ssh",
+          "parse_drop_ns": 83360,
+          "clone_drop_ns": 3
+        }
+      ],
+      "log": "\nrunning 1 test\ntest config::profiles::profiles_measure::measure_profiles ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.17s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPROFILES_SAMPLE {\"name\":\"empty\",\"parse_drop_ns\":2,\"clone_drop_ns\":0}\nPROFILES_SAMPLE {\"name\":\"one_local\",\"parse_drop_ns\":363,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_local\",\"parse_drop_ns\":81143,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_ssh\",\"parse_drop_ns\":83360,\"clone_drop_ns\":3}\n"
+    },
+    {
+      "samples": [
+        {
+          "name": "empty",
+          "parse_drop_ns": 2,
+          "clone_drop_ns": 0
+        },
+        {
+          "name": "one_local",
+          "parse_drop_ns": 354,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_local",
+          "parse_drop_ns": 80830,
+          "clone_drop_ns": 3
+        },
+        {
+          "name": "max16_ssh",
+          "parse_drop_ns": 83564,
+          "clone_drop_ns": 3
+        }
+      ],
+      "log": "\nrunning 1 test\ntest config::profiles::profiles_measure::measure_profiles ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.17s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPROFILES_SAMPLE {\"name\":\"empty\",\"parse_drop_ns\":2,\"clone_drop_ns\":0}\nPROFILES_SAMPLE {\"name\":\"one_local\",\"parse_drop_ns\":354,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_local\",\"parse_drop_ns\":80830,\"clone_drop_ns\":3}\nPROFILES_SAMPLE {\"name\":\"max16_ssh\",\"parse_drop_ns\":83564,\"clone_drop_ns\":3}\n"
+    }
+  ],
+  "allocation": {
+    "samples": [
+      {
+        "name": "empty",
+        "live_requested": 0,
+        "peak_requested": 0,
+        "retained_loan": 0,
+        "peak_loan": 0,
+        "final_requested": 0,
+        "final_loan": 0
+      },
+      {
+        "name": "one_local",
+        "live_requested": 448,
+        "peak_requested": 448,
+        "retained_loan": 496,
+        "peak_loan": 524288,
+        "final_requested": 0,
+        "final_loan": 0
+      },
+      {
+        "name": "max16_local",
+        "live_requested": 271040,
+        "peak_requested": 271040,
+        "retained_loan": 271088,
+        "peak_loan": 524288,
+        "final_requested": 0,
+        "final_loan": 0
+      },
+      {
+        "name": "max16_ssh",
+        "live_requested": 145328,
+        "peak_requested": 145328,
+        "retained_loan": 145376,
+        "peak_loan": 524288,
+        "final_requested": 0,
+        "final_loan": 0
+      }
+    ],
+    "log": "\nrunning 1 test\ntest config::profiles::profiles_measure::measure_profiles ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 324 filtered out; finished in 0.00s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPROFILES_SAMPLE {\"name\":\"empty\",\"live_requested\":0,\"peak_requested\":0,\"retained_loan\":0,\"peak_loan\":0,\"final_requested\":0,\"final_loan\":0}\nPROFILES_SAMPLE {\"name\":\"one_local\",\"live_requested\":448,\"peak_requested\":448,\"retained_loan\":496,\"peak_loan\":524288,\"final_requested\":0,\"final_loan\":0}\nPROFILES_SAMPLE {\"name\":\"max16_local\",\"live_requested\":271040,\"peak_requested\":271040,\"retained_loan\":271088,\"peak_loan\":524288,\"final_requested\":0,\"final_loan\":0}\nPROFILES_SAMPLE {\"name\":\"max16_ssh\",\"live_requested\":145328,\"peak_requested\":145328,\"retained_loan\":145376,\"peak_loan\":524288,\"final_requested\":0,\"final_loan\":0}\n"
+  },
+  "median": {
+    "empty": {
+      "parse_drop_ns": 2,
+      "clone_drop_ns": 0
+    },
+    "one_local": {
+      "parse_drop_ns": 363,
+      "clone_drop_ns": 3
+    },
+    "max16_local": {
+      "parse_drop_ns": 81143,
+      "clone_drop_ns": 3
+    },
+    "max16_ssh": {
+      "parse_drop_ns": 83564,
+      "clone_drop_ns": 3
+    }
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "method": "offline release; 6 balanced off/on pairs; 1000 keyboard events per sample; P95/P99 per-run then median; 5 ms and tick outside timing to drain PTY; 8-tab parse/encode 10000 times; 6 real-PTY restore runs; total restore excludes initial driver/font construction; final run without other cargo jobs",
+  "source_sha256": {
+    "src/workspace.rs": "54b0cc0e075712b5ef28c79341e586e0e69b65041d259e2e5009324cc9a19213",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/config/mod.rs": "248a71f51005e9f80aa9f07eb1b10ccc52b7c419ed0b71e97fc92d742962c4c9",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/main.rs": "cfbce8f3c70caf2386ca578be04d446684f34c5ab7c14ef437cfaa993ae6bce2"
+  },
+  "records": [
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 0,
+      "mode": "off",
+      "p50_ns": 42,
+      "p95_ns": 167,
+      "p99_ns": 1875
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 0,
+      "mode": "on",
+      "p50_ns": 42,
+      "p95_ns": 125,
+      "p99_ns": 1458
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 1,
+      "mode": "on",
+      "p50_ns": 42,
+      "p95_ns": 84,
+      "p99_ns": 1167
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 1,
+      "mode": "off",
+      "p50_ns": 42,
+      "p95_ns": 125,
+      "p99_ns": 1708
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 2,
+      "mode": "off",
+      "p50_ns": 42,
+      "p95_ns": 125,
+      "p99_ns": 1583
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 2,
+      "mode": "on",
+      "p50_ns": 42,
+      "p95_ns": 84,
+      "p99_ns": 1292
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 3,
+      "mode": "on",
+      "p50_ns": 42,
+      "p95_ns": 125,
+      "p99_ns": 1292
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 3,
+      "mode": "off",
+      "p50_ns": 42,
+      "p95_ns": 125,
+      "p99_ns": 2000
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 4,
+      "mode": "off",
+      "p50_ns": 42,
+      "p95_ns": 167,
+      "p99_ns": 1583
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 4,
+      "mode": "on",
+      "p50_ns": 42,
+      "p95_ns": 125,
+      "p99_ns": 1250
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 5,
+      "mode": "on",
+      "p50_ns": 125,
+      "p95_ns": 250,
+      "p99_ns": 2334
+    },
+    {
+      "kind": "LAYOUT_INPUT",
+      "round": 5,
+      "mode": "off",
+      "p50_ns": 42,
+      "p95_ns": 84,
+      "p99_ns": 833
+    },
+    {
+      "kind": "LAYOUT_FORMAT",
+      "panes": 8,
+      "bytes": 131,
+      "roundtrip_mean_ns": 545
+    },
+    {
+      "kind": "LAYOUT_RESTORE",
+      "round": 0,
+      "panes": 8,
+      "total_us": 9777,
+      "ticks": 298,
+      "spawn_tick_p50_us": 1091,
+      "spawn_tick_max_us": 2492
+    },
+    {
+      "kind": "LAYOUT_RESTORE",
+      "round": 1,
+      "panes": 8,
+      "total_us": 9723,
+      "ticks": 282,
+      "spawn_tick_p50_us": 1373,
+      "spawn_tick_max_us": 1753
+    },
+    {
+      "kind": "LAYOUT_RESTORE",
+      "round": 2,
+      "panes": 8,
+      "total_us": 9491,
+      "ticks": 205,
+      "spawn_tick_p50_us": 1257,
+      "spawn_tick_max_us": 1741
+    },
+    {
+      "kind": "LAYOUT_RESTORE",
+      "round": 3,
+      "panes": 8,
+      "total_us": 10314,
+      "ticks": 169,
+      "spawn_tick_p50_us": 1201,
+      "spawn_tick_max_us": 2659
+    },
+    {
+      "kind": "LAYOUT_RESTORE",
+      "round": 4,
+      "panes": 8,
+      "total_us": 10953,
+      "ticks": 295,
+      "spawn_tick_p50_us": 1211,
+      "spawn_tick_max_us": 2235
+    },
+    {
+      "kind": "LAYOUT_RESTORE",
+      "round": 5,
+      "panes": 8,
+      "total_us": 10788,
+      "ticks": 308,
+      "spawn_tick_p50_us": 1225,
+      "spawn_tick_max_us": 2180
+    }
+  ],
+  "summary": {
+    "off": {
+      "p50_ns": 42.0,
+      "p95_ns": 125.0,
+      "p99_ns": 1645.5
+    },
+    "on": {
+      "p50_ns": 42.0,
+      "p95_ns": 125.0,
+      "p99_ns": 1292.0
+    },
+    "restore": {
+      "total_us": 10045.5,
+      "spawn_tick_p50_us": 1218.0,
+      "spawn_tick_max_us": 2207.5,
+      "max_spawn_tick_us": 2659
+    }
+  }
+}

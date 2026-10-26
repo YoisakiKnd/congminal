@@ -8,14 +8,17 @@ mod compose;
 mod compose_table;
 mod emoji;
 mod grid;
+mod memory;
+pub(crate) use memory::{ResizeJob, ResizePlan};
 mod reflow;
 #[cfg(test)]
 mod regression;
 mod width;
 mod width_table;
 
-pub use compose::compose_all;
-pub use emoji::sequence_at as emoji_sequence_at;
+pub(crate) use compose::compose_borrowed;
+pub(crate) use emoji::{sequence_into as emoji_sequence_into, workspace_bytes as emoji_work_bytes};
+pub(crate) use grid::grid_reservation;
 pub use grid::{Cell, Color, Flags, Grid, History, Row};
 pub use width::char_width;
 
@@ -205,6 +208,8 @@ pub struct Terminal {
     title: Option<String>,
     /// 需要回写给 PTY 的应答（比如光标位置报告）
     response: Vec<u8>,
+    // 所有网格缓冲销毁后归还。预留覆盖保留容量，非实际预分配。
+    grid_memory: crate::resources::Lease,
 }
 
 impl Terminal {
@@ -247,19 +252,32 @@ impl Terminal {
         let marks = self.marks.capacity() * std::mem::size_of::<String>()
             + self.marks.iter().map(String::capacity).sum::<usize>()
             + self.mark_ids.keys().map(String::capacity).sum::<usize>();
-        (self.grid.allocated_bytes() + self.alt_grid.allocated_bytes(), self.history.used_bytes(), marks)
+        (self.grid.allocated_bytes() + self.alt_grid.allocated_bytes(), self.history.allocated_bytes(), marks)
     }
 
+    #[cfg(test)]
     pub fn new(cols: usize, rows: usize) -> Terminal {
+        Self::try_new(cols, rows).expect("测试网格额度")
+    }
+
+    pub fn try_new(cols: usize, rows: usize) -> Result<Terminal, crate::resources::Denied> {
         let (cols, rows) = grid_dimensions(cols, rows);
+        let memory =
+            crate::resources::current().lease(crate::resources::Kind::Grid, grid::grid_reservation(cols, rows))?;
+        let history = History::with_budget(DEFAULT_SCROLLBACK, memory.budget().clone());
+        Ok(Self::with_storage(Grid::new(cols, rows), Grid::new(cols, rows), history, memory))
+    }
+
+    fn with_storage(grid: Grid, alt_grid: Grid, history: History, grid_memory: crate::resources::Lease) -> Terminal {
+        let (cols, rows) = (grid.cols(), grid.rows());
         Terminal {
             shell: crate::shell::Shell::default(),
             text_epoch: 1,
             text_revision: 0,
             links: crate::links::Links::default(),
-            grid: Grid::new(cols, rows),
-            alt_grid: Grid::new(cols, rows),
-            history: History::new(DEFAULT_SCROLLBACK),
+            grid,
+            alt_grid,
+            history,
             display_offset: 0,
             alt_active: false,
             cursor: Cursor { row: 0, col: 0, template: Cell::default(), pending_wrap: false },
@@ -278,6 +296,7 @@ impl Terminal {
             default_cursor_shape: CursorShape::Block,
             title: None,
             response: Vec::new(),
+            grid_memory,
         }
     }
 
@@ -308,6 +327,17 @@ impl Terminal {
 
     // ---- 回滚 ----
 
+    pub fn finish_session(&mut self) {
+        self.shell.disconnect();
+        self.modes.mouse = MouseMode::Off;
+        self.modes.focus_events = false;
+        self.modes.synchronized = false;
+        self.modes.cursor_visible = false;
+    }
+    pub fn set_history_byte_limit(&mut self, bytes: usize) {
+        self.history.set_byte_limit(bytes);
+        self.display_offset = self.display_offset.min(self.history.len());
+    }
     pub fn set_scrollback_limit(&mut self, lines: usize) {
         self.history.set_limit(lines);
         self.display_offset = self.display_offset.min(self.history.len());
@@ -315,6 +345,31 @@ impl Terminal {
 
     pub fn history(&self) -> &History {
         &self.history
+    }
+    pub(crate) fn reconcile_history_memory(&mut self) {
+        self.history.reconcile_memory();
+    }
+    pub(crate) fn retry_history_growth(&mut self) {
+        self.history.retry_growth();
+    }
+    /// 丢弃非活动会话的最旧历史；调用方跳过重排作业，避免使只读源反复失效。
+    pub(crate) fn reclaim_history(&mut self, wanted: usize, cell_budget: usize) -> (usize, bool) {
+        let before = self.history.reserved_bytes();
+        let old_len = self.history.len();
+        self.history.reconcile_memory();
+        let mut work = 0;
+        while work < cell_budget.max(1) && before.saturating_sub(self.history.reserved_bytes()) < wanted {
+            let Some(cells) = self.history.retire_row() else { break };
+            work += cells;
+        }
+        let changed = self.history.len() != old_len;
+        if changed {
+            self.text_revision = self.text_revision.wrapping_add(1);
+            self.display_offset = self.display_offset.min(self.history.len());
+            self.shell.prune(self.history.dropped());
+            self.prune_links();
+        }
+        (before.saturating_sub(self.history.reserved_bytes()), changed)
     }
 
     pub fn is_alt_screen(&self) -> bool {
@@ -389,7 +444,19 @@ impl Terminal {
         std::mem::take(&mut self.response)
     }
 
+    #[cfg(test)]
     pub fn resize(&mut self, cols: usize, rows: usize) {
+        let plan = self.prepare_resize(cols, rows).expect("测试缩放额度");
+        self.commit_resize(plan);
+    }
+
+    fn resize_admitted(
+        &mut self,
+        cols: usize,
+        rows: usize,
+        reuse: Option<bool>,
+        funding: &mut crate::resources::Lease,
+    ) {
         let (cols, rows) = grid_dimensions(cols, rows);
         if cols == self.cols() && rows == self.rows() {
             return;
@@ -401,14 +468,14 @@ impl Terminal {
         let mut pending_wrap = false;
         // 宽度变了：主屏幕连同回滚历史一起重新折行（备用屏幕上的程序会自己重画，不用管）
         if cols != self.cols() && !self.alt_active {
-            pending_wrap = self.reflow(cols);
+            pending_wrap = self.reflow(cols, reuse, funding);
         }
         // 变矮时把光标上方的内容往上推，保证光标所在的行仍然可见；推出去的行进入回滚历史
         if self.cursor.row >= rows {
             let shift = self.cursor.row + 1 - rows;
             for row in self.grid.take_top_rows(shift) {
                 if !self.alt_active {
-                    self.history.push(row);
+                    self.history.push_funded(row, funding);
                 }
             }
             self.cursor.row -= shift;
@@ -440,17 +507,19 @@ impl Terminal {
     }
 
     /// 按新宽度重新折行，行数不变。返回光标是否处于"写满一行、等下一个字再换行"的状态。
-    fn reflow(&mut self, cols: usize) -> bool {
+    fn reflow(&mut self, cols: usize, reuse: Option<bool>, funding: &mut crate::resources::Lease) -> bool {
         let rows = self.rows();
         let screen_start = self.history.len();
-        let mut all = self.history.take_rows();
+        let (mut all, memory) = self.history.take_rows().into_parts();
+        funding.absorb_from(memory);
+        all.reserve_exact(self.grid.rows());
         all.extend(self.grid.take_rows());
         let cursor = reflow::CursorPos {
             row: screen_start + self.cursor.row,
             col: self.cursor.col,
             pending_wrap: self.cursor.pending_wrap,
         };
-        let result = reflow::reflow(all, screen_start, cursor, cols);
+        let result = reflow::reflow_with_hint(all, screen_start, cursor, cols, self.history.byte_limit(), reuse);
         self.history.discard(result.discarded);
 
         // 屏幕从原来屏幕第一行的内容开始；光标被挤到屏幕外面时，把上面的行推进历史
@@ -462,9 +531,7 @@ impl Terminal {
         let mut new_rows = result.rows;
         let mut screen: Vec<Row> = new_rows.drain(top..).take(rows).collect();
         screen.resize_with(rows, || Row::new(cols));
-        for row in new_rows {
-            self.history.push(row);
-        }
+        self.history.replace_rows_funded(new_rows, funding);
         self.grid.set_rows(screen, cols);
         self.cursor.row = cursor_row - top;
         self.cursor.col = cursor_col;
@@ -1145,18 +1212,27 @@ impl Terminal {
     }
 
     fn reset(&mut self) {
-        let (cols, rows) = (self.cols(), self.rows());
         let default_cursor_shape = self.default_cursor_shape;
         let scrollback = self.history.limit();
+        let history_bytes = self.history.byte_limit();
         let epoch = self.text_epoch.wrapping_add(1);
         let mut shell = std::mem::take(&mut self.shell);
         shell.invalidate_positions();
         shell.disconnect();
-        *self = Terminal::new(cols, rows);
+        // RIS 复位复用已经准入的两个网格，不在压力下重新申请一整套。
+        let mut grid = std::mem::replace(&mut self.grid, Grid::new(0, 0));
+        let mut alt = std::mem::replace(&mut self.alt_grid, Grid::new(0, 0));
+        grid.clear(Cell::default());
+        alt.clear(Cell::default());
+        let history = History::with_budget(scrollback, self.grid_memory.budget().clone());
+        let empty = self.grid_memory.budget().lease(crate::resources::Kind::Grid, 0).unwrap();
+        let memory = std::mem::replace(&mut self.grid_memory, empty);
+        *self = Self::with_storage(grid, alt, history, memory);
         self.shell = shell;
         self.text_epoch = epoch;
         self.default_cursor_shape = default_cursor_shape;
         self.history.set_limit(scrollback);
+        self.history.set_byte_limit(history_bytes);
     }
 
     /// DECSTR：软复位，不清屏
@@ -1175,7 +1251,7 @@ impl Terminal {
 
 impl Perform for Terminal {
     fn osc_overflow(&mut self) {
-        self.shell.directory = None;
+        self.shell.clear_directory();
         self.finish_link_run();
         self.cursor.template.flags.set_link(0);
     }
@@ -1345,8 +1421,7 @@ impl Perform for Terminal {
         match params {
             [b"7", parts @ ..] if !self.alt_active => {
                 // OSC parser 已限制整帧为 4 KiB；分号也是 URI 路径的一部分。
-                let uri = parts.iter().map(|p| std::str::from_utf8(p)).collect::<Result<Vec<_>, _>>();
-                self.shell.directory = uri.ok().and_then(|parts| crate::shell::Directory::parse(&parts.join(";")));
+                self.shell.set_directory(parts);
             }
             [b"133", parts @ ..] if !self.alt_active => {
                 let point = crate::selection::Point {
@@ -1365,16 +1440,18 @@ impl Perform for Terminal {
                 let id = if len == 0 || len > crate::links::URL_LIMIT {
                     0
                 } else {
-                    let mut bytes = Vec::with_capacity(len);
+                    let mut bytes = [0u8; crate::links::URL_LIMIT];
+                    let mut length = 0;
                     for (i, part) in uri.iter().enumerate() {
                         if i > 0 {
-                            bytes.push(b';');
+                            bytes[length] = b';';
+                            length += 1;
                         }
-                        bytes.extend_from_slice(part);
+                        bytes[length..length + part.len()].copy_from_slice(part);
+                        length += part.len();
                     }
-                    std::str::from_utf8(&bytes)
+                    std::str::from_utf8(&bytes[..length])
                         .ok()
-                        .map(|s| s.to_string())
                         .map_or(0, |url| self.links.insert(url, self.text_bounds().2))
                 };
                 self.cursor.template.flags.set_link(id);
@@ -1884,5 +1961,33 @@ mod tests {
         t.resize(5, 2);
         assert_eq!(screen(&t), ["3", "4"]);
         assert_eq!(t.cursor_position(), (1, 1));
+    }
+}
+
+#[cfg(test)]
+mod workspace_reflow_bench {
+    use super::*;
+    #[test]
+    #[ignore = "手动 64MiB 历史重排前后对照"]
+    fn bench_reflow_workspace_history() {
+        let mut term = Terminal::new(80, 24);
+        term.set_scrollback_limit(1_000_000);
+        crate::vt::Parser::new().advance(&mut term, format!("{}\r\n", "x".repeat(79)).repeat(50000).as_bytes());
+        let mut samples = Vec::new();
+        let start = std::time::Instant::now();
+        for i in 0..20 {
+            let time = std::time::Instant::now();
+            term.resize(if i % 2 == 0 { 79 } else { 80 }, 24);
+            samples.push(time.elapsed().as_micros());
+        }
+        samples.sort_unstable();
+        eprintln!(
+            "REFLOW history={}B p50={}us p95={}us max={}us total={}ms",
+            term.history().used_bytes(),
+            samples[9],
+            samples[18],
+            samples[19],
+            start.elapsed().as_millis()
+        );
     }
 }

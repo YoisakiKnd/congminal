@@ -1,0 +1,721 @@
+{
+  "method": "seven fixed PNG inputs; input file bytes excluded; allocation probe counts Rust requested bytes and realloc old/new overlap; timing uses separate uninstrumented copies, decode plus image destruction, five balanced pairs; no concurrent performance jobs",
+  "source_sha256": {
+    "before": {
+      "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+      "src/session.rs": "91e53e58e0705ce496fd64b254deeccdeda26e913a01283af7ea2120bec719d1",
+      "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+      "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+      "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+      "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+      "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+      "src/render.rs": "9e1e0deda0e0ebbf653a0cf422a3d8a94169fa291e67e90daebeb854b8772daf",
+      "src/workspace.rs": "44f054f33aaf0d270f1a29ec6d58613a6aef60931a31df70be896131cc279139",
+      "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+      "src/main.rs": "764443cbaf6e1fb887924031893c576d06c59774d18ce1cea6e0cf7d906fda7d",
+      "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+      "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+      "src/resources.rs": "4f3da6d94927a4680d9e3c5b8ff892fafcf047e630f58232bc18b888a8eaa9c8",
+      "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+      "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+      "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+      "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+      "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+      "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+      "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+      "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+      "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+      "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+      "src/config/mod.rs": "bc164e408efe7f828d070307fde38cd14d14b00586f539630e7018012672c5b2",
+      "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+      "src/resources/budget.rs": "ef1b277767f2cb6bbd25102d23a7c01b435d070db29700bf252a4761cbeceb7d",
+      "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+      "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+      "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+      "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+      "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+      "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+      "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+      "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+      "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+      "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+      "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+      "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+      "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+      "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+      "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+      "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+      "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+      "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+      "src/image/inflate.rs": "a139a42ec071a56c075546b8e08516416eef0d8d386c8c6106715f5aef4aa392",
+      "src/image/mod.rs": "108b26f31eec7e3f56a0da5fab894c598e23d7e0671819ea61d5aadcc96d8ebc",
+      "src/image/png.rs": "16d2fbbe72f7d8ab067183f24406922c3ce73dc5cdb763df0b2540989e9111d9",
+      "src/font/psf.rs": "541f5897259e0da176f8783f7befaa380ae92373de9ef82a7b0c16891f14a3c9",
+      "src/font/cache.rs": "5502dce2b1d726128bce1f53aaae0f2da395643cfe6a024f18e2241c425ef033",
+      "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+      "src/font/color.rs": "732de0224d71fc1b3b7b76bb7d897a39eab96975c2d84b5f69899e0b0eefc803",
+      "src/font/gsub.rs": "7ed0fda273e1e25d14fce626fb266549ffb98c0081e48fba05655059dace0f28",
+      "src/font/mod.rs": "8cc77fe536e9e1ce4c00a46abc01a6e183e9a3fecb566a3d17fe23c0f27fee34",
+      "src/font/mmap.rs": "abf5db0f94dbee529d1581ae393ff6245960210af2e41ee89ed068753ff26aee",
+      "src/font/ttf.rs": "cd1acc2b3ed55db094b0b0fecd52be4e49883be4dd011fac4f5cdcfaf4639390",
+      "src/font/raster.rs": "a94481158a2eb575c5124e774ad2b342c322891b46b695dee9e8c78958738d46",
+      "src/font/morx.rs": "22cc7ffd21132c73107ffb413af3c123fa208b5ac6ce681353fc03c01150b2af"
+    },
+    "after": {
+      "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+      "src/session.rs": "91e53e58e0705ce496fd64b254deeccdeda26e913a01283af7ea2120bec719d1",
+      "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+      "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+      "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+      "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+      "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+      "src/render.rs": "9e1e0deda0e0ebbf653a0cf422a3d8a94169fa291e67e90daebeb854b8772daf",
+      "src/workspace.rs": "44f054f33aaf0d270f1a29ec6d58613a6aef60931a31df70be896131cc279139",
+      "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+      "src/main.rs": "764443cbaf6e1fb887924031893c576d06c59774d18ce1cea6e0cf7d906fda7d",
+      "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+      "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+      "src/resources.rs": "4f3da6d94927a4680d9e3c5b8ff892fafcf047e630f58232bc18b888a8eaa9c8",
+      "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+      "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+      "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+      "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+      "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+      "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+      "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+      "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+      "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+      "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+      "src/config/mod.rs": "bc164e408efe7f828d070307fde38cd14d14b00586f539630e7018012672c5b2",
+      "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+      "src/resources/budget.rs": "0dcb337e244cd8243d1af5c3271a79d2fca6034b649be5ac06c9e006821d2799",
+      "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+      "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+      "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+      "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+      "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+      "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+      "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+      "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+      "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+      "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+      "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+      "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+      "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+      "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+      "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+      "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+      "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+      "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+      "src/image/inflate.rs": "a139a42ec071a56c075546b8e08516416eef0d8d386c8c6106715f5aef4aa392",
+      "src/image/mod.rs": "ae15b07c1ae0b3d1b2aae71b449c95bca8328dbf31d7f729b9cbe73da24fb241",
+      "src/image/png.rs": "8d77b9d34db8baa06cb6ec68ccb667d18069331b8ab93d40c7e394d48205ade0",
+      "src/font/psf.rs": "541f5897259e0da176f8783f7befaa380ae92373de9ef82a7b0c16891f14a3c9",
+      "src/font/cache.rs": "5502dce2b1d726128bce1f53aaae0f2da395643cfe6a024f18e2241c425ef033",
+      "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+      "src/font/color.rs": "732de0224d71fc1b3b7b76bb7d897a39eab96975c2d84b5f69899e0b0eefc803",
+      "src/font/gsub.rs": "7ed0fda273e1e25d14fce626fb266549ffb98c0081e48fba05655059dace0f28",
+      "src/font/mod.rs": "8cc77fe536e9e1ce4c00a46abc01a6e183e9a3fecb566a3d17fe23c0f27fee34",
+      "src/font/mmap.rs": "abf5db0f94dbee529d1581ae393ff6245960210af2e41ee89ed068753ff26aee",
+      "src/font/ttf.rs": "cd1acc2b3ed55db094b0b0fecd52be4e49883be4dd011fac4f5cdcfaf4639390",
+      "src/font/raster.rs": "a94481158a2eb575c5124e774ad2b342c322891b46b695dee9e8c78958738d46",
+      "src/font/morx.rs": "22cc7ffd21132c73107ffb413af3c123fa208b5ac6ce681353fc03c01150b2af"
+    }
+  },
+  "fixtures": {
+    "rgba8": {
+      "sha256": "dffbb39643c56126ca866bbe72094e6c59bad2b6382c3758052c40703cb9d45e",
+      "bytes": 2529
+    },
+    "palette4": {
+      "sha256": "a864aee2ca9a3e2be8c48b4a2db084d07834e08d3721a2f55d36db1670347abf",
+      "bytes": 391
+    },
+    "rgb16_interlaced": {
+      "sha256": "8adf1e4f8df5ca2112f868434b7d5d0d0633c270ca5ea697dc9988bcf9235fe2",
+      "bytes": 5094
+    },
+    "rgba16_max": {
+      "sha256": "02b54cea1aa9362ff628efc20b886fc579da5e185e2da54de3dd97b94c1e7b2e",
+      "bytes": 54015
+    },
+    "rgba8_noise": {
+      "sha256": "e18c0a7a1e3588cfe6760b1fa0fc58fee0655d5b9f6df1e34498ffd69d266ae7",
+      "bytes": 4196671
+    },
+    "rgba8_fragmented": {
+      "sha256": "20c39bdc5573c6dfe12a78e829c65c65a227d1a4f27c607c37c5c65d5f859521",
+      "bytes": 4208959
+    },
+    "rgba16_adam7": {
+      "sha256": "2309450a331b4a0d2800a45f4574a0cad1049ca2c70a594d60b9d5533f15c7d5",
+      "bytes": 12796
+    }
+  },
+  "test_injection": "\n#[cfg(test)]\nmod measured_png_workload {\n use super::*;\n #[test]\n fn measure_png_workload() {\n  let dir=std::env::var(\"PNG_FIXTURES\").unwrap();\n  let mode=std::env::var(\"PNG_MODE\").unwrap();\n  let label=std::env::var(\"PNG_LABEL\").unwrap();\n  for name in [\"rgba8\",\"palette4\",\"rgb16_interlaced\",\"rgba16_max\",\"rgba8_noise\",\"rgba8_fragmented\",\"rgba16_adam7\"] {\n   let data=std::fs::read(format!(\"{dir}/{name}.png\")).unwrap();\n   let pool=crate::resources::Budget::new(usize::MAX,0);\n   let _scope=crate::resources::Scope::enter(pool.clone());\n   if mode==\"probe\" {\n    crate::png_meter::start();\n    let image=decode(&data).unwrap();\n    let (live,peak)=crate::png_meter::stop();\n    let rgba=image.rgba.len();\n    let checksum=image.rgba.iter().fold(0xcbf29ce484222325u64,|v,&b|(v^b as u64).wrapping_mul(0x100000001b3));\n    let returned=pool.snapshot().used;\n    if label==\"after\" { assert_eq!(returned,image.rgba.capacity());assert!(peak>=0 && peak as usize<=pool.snapshot().peak); }\n    let admitted_peak=pool.snapshot().peak;\n    drop(image);assert_eq!(pool.snapshot().used,0);\n    eprintln!(\"PNG_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"rgba_bytes\\\":{rgba},\\\"live_requested_bytes\\\":{live},\\\"peak_requested_bytes\\\":{peak},\\\"ledger_returned_bytes\\\":{returned},\\\"ledger_peak_bytes\\\":{admitted_peak},\\\"checksum\\\":{checksum}}}\");\n   } else {\n    drop(decode(&data).unwrap());\n    let n=if data.len()<10000 {100} else {3};\n    let n=if name==\"rgba16_max\"||name==\"rgba16_adam7\" {3}else{n};\n    let start=std::time::Instant::now();\n    for _ in 0..n {let image=decode(&data).unwrap();std::hint::black_box(&image.rgba);drop(image);}\n    eprintln!(\"PNG_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"decode_drop_ns\\\":{},\\\"n\\\":{n}}}\",start.elapsed().as_nanos()/n);\n   }\n  }\n }\n}\n",
+  "allocator_injection": "\n#[cfg(test)]\nmod png_meter {\n use std::{alloc::{GlobalAlloc,Layout,System},cell::Cell};\n thread_local! {static ON:Cell<bool>=const{Cell::new(false)};static LIVE:Cell<isize>=const{Cell::new(0)};static PEAK:Cell<isize>=const{Cell::new(0)};}\n fn count(n:isize){let _=ON.try_with(|v|if v.get(){LIVE.with(|l|{let n=l.get()+n;l.set(n);PEAK.with(|p|p.set(p.get().max(n)))})});}\n struct Meter;\n unsafe impl GlobalAlloc for Meter{\n  unsafe fn alloc(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn alloc_zeroed(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc_zeroed(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn dealloc(&self,p:*mut u8,l:Layout){unsafe{System.dealloc(p,l)};count(-(l.size()as isize));}\n  unsafe fn realloc(&self,p:*mut u8,l:Layout,n:usize)->*mut u8{count(n as isize);let p=unsafe{System.realloc(p,l,n)};count(-((if p.is_null(){n}else{l.size()})as isize));p}\n }\n #[global_allocator]static ALLOC:Meter=Meter;\n pub fn start(){LIVE.with(|v|v.set(0));PEAK.with(|v|v.set(0));ON.with(|v|v.set(true));}\n pub fn stop()->(isize,isize){ON.with(|v|v.set(false));(LIVE.with(Cell::get),PEAK.with(Cell::get))}\n}\n",
+  "allocation": {
+    "before": {
+      "samples": [
+        {
+          "name": "rgba8",
+          "rgba_bytes": 3404,
+          "live_requested_bytes": 3404,
+          "peak_requested_bytes": 12626,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "checksum": 3471812447806383607
+        },
+        {
+          "name": "palette4",
+          "rgba_bytes": 3404,
+          "live_requested_bytes": 3404,
+          "peak_requested_bytes": 4547,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "checksum": 103376938945855298
+        },
+        {
+          "name": "rgb16_interlaced",
+          "rgba_bytes": 3404,
+          "live_requested_bytes": 3404,
+          "peak_requested_bytes": 15971,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "checksum": 9879674528769490390
+        },
+        {
+          "name": "rgba16_max",
+          "rgba_bytes": 16777216,
+          "live_requested_bytes": 16777216,
+          "peak_requested_bytes": 83942086,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "checksum": 15090516563257860901
+        },
+        {
+          "name": "rgba8_noise",
+          "rgba_bytes": 4194304,
+          "live_requested_bytes": 4194304,
+          "peak_requested_bytes": 16780550,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "checksum": 11411076967314594189
+        },
+        {
+          "name": "rgba8_fragmented",
+          "rgba_bytes": 4194304,
+          "live_requested_bytes": 4194304,
+          "peak_requested_bytes": 20972544,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "checksum": 11411076967314594189
+        },
+        {
+          "name": "rgba16_adam7",
+          "rgba_bytes": 4194304,
+          "live_requested_bytes": 4194304,
+          "peak_requested_bytes": 16792852,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "checksum": 280146640006947621
+        }
+      ],
+      "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 0.32s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"rgba_bytes\":3404,\"live_requested_bytes\":3404,\"peak_requested_bytes\":12626,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"checksum\":3471812447806383607}\nPNG_SAMPLE {\"name\":\"palette4\",\"rgba_bytes\":3404,\"live_requested_bytes\":3404,\"peak_requested_bytes\":4547,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"checksum\":103376938945855298}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"rgba_bytes\":3404,\"live_requested_bytes\":3404,\"peak_requested_bytes\":15971,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"checksum\":9879674528769490390}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"rgba_bytes\":16777216,\"live_requested_bytes\":16777216,\"peak_requested_bytes\":83942086,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"checksum\":15090516563257860901}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"rgba_bytes\":4194304,\"live_requested_bytes\":4194304,\"peak_requested_bytes\":16780550,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"checksum\":11411076967314594189}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"rgba_bytes\":4194304,\"live_requested_bytes\":4194304,\"peak_requested_bytes\":20972544,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"checksum\":11411076967314594189}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"rgba_bytes\":4194304,\"live_requested_bytes\":4194304,\"peak_requested_bytes\":16792852,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"checksum\":280146640006947621}\n"
+    },
+    "after": {
+      "samples": [
+        {
+          "name": "rgba8",
+          "rgba_bytes": 3404,
+          "live_requested_bytes": 3468,
+          "peak_requested_bytes": 6895,
+          "ledger_returned_bytes": 3404,
+          "ledger_peak_bytes": 14354,
+          "checksum": 3471812447806383607
+        },
+        {
+          "name": "palette4",
+          "rgba_bytes": 3404,
+          "live_requested_bytes": 3468,
+          "peak_requested_bytes": 3928,
+          "ledger_returned_bytes": 3404,
+          "ledger_peak_bytes": 8420,
+          "checksum": 103376938945855298
+        },
+        {
+          "name": "rgb16_interlaced",
+          "rgba_bytes": 3404,
+          "live_requested_bytes": 3468,
+          "peak_requested_bytes": 10125,
+          "ledger_returned_bytes": 3404,
+          "ledger_peak_bytes": 17800,
+          "checksum": 9879674528769490390
+        },
+        {
+          "name": "rgba16_max",
+          "rgba_bytes": 16777216,
+          "live_requested_bytes": 16777280,
+          "peak_requested_bytes": 67111890,
+          "ledger_returned_bytes": 16777216,
+          "ledger_peak_bytes": 83894272,
+          "checksum": 15090516563257860901
+        },
+        {
+          "name": "rgba8_noise",
+          "rgba_bytes": 4194304,
+          "live_requested_bytes": 4194368,
+          "peak_requested_bytes": 8389696,
+          "ledger_returned_bytes": 4194304,
+          "ledger_peak_bytes": 12589056,
+          "checksum": 11411076967314594189
+        },
+        {
+          "name": "rgba8_fragmented",
+          "rgba_bytes": 4194304,
+          "live_requested_bytes": 4194368,
+          "peak_requested_bytes": 12586310,
+          "ledger_returned_bytes": 4194304,
+          "ledger_peak_bytes": 16785670,
+          "checksum": 11411076967314594189
+        },
+        {
+          "name": "rgba16_adam7",
+          "rgba_bytes": 4194304,
+          "live_requested_bytes": 4194368,
+          "peak_requested_bytes": 16780177,
+          "ledger_returned_bytes": 4194304,
+          "ledger_peak_bytes": 20979456,
+          "checksum": 280146640006947621
+        }
+      ],
+      "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 286 filtered out; finished in 0.26s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"rgba_bytes\":3404,\"live_requested_bytes\":3468,\"peak_requested_bytes\":6895,\"ledger_returned_bytes\":3404,\"ledger_peak_bytes\":14354,\"checksum\":3471812447806383607}\nPNG_SAMPLE {\"name\":\"palette4\",\"rgba_bytes\":3404,\"live_requested_bytes\":3468,\"peak_requested_bytes\":3928,\"ledger_returned_bytes\":3404,\"ledger_peak_bytes\":8420,\"checksum\":103376938945855298}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"rgba_bytes\":3404,\"live_requested_bytes\":3468,\"peak_requested_bytes\":10125,\"ledger_returned_bytes\":3404,\"ledger_peak_bytes\":17800,\"checksum\":9879674528769490390}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"rgba_bytes\":16777216,\"live_requested_bytes\":16777280,\"peak_requested_bytes\":67111890,\"ledger_returned_bytes\":16777216,\"ledger_peak_bytes\":83894272,\"checksum\":15090516563257860901}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"rgba_bytes\":4194304,\"live_requested_bytes\":4194368,\"peak_requested_bytes\":8389696,\"ledger_returned_bytes\":4194304,\"ledger_peak_bytes\":12589056,\"checksum\":11411076967314594189}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"rgba_bytes\":4194304,\"live_requested_bytes\":4194368,\"peak_requested_bytes\":12586310,\"ledger_returned_bytes\":4194304,\"ledger_peak_bytes\":16785670,\"checksum\":11411076967314594189}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"rgba_bytes\":4194304,\"live_requested_bytes\":4194368,\"peak_requested_bytes\":16780177,\"ledger_returned_bytes\":4194304,\"ledger_peak_bytes\":20979456,\"checksum\":280146640006947621}\n"
+    }
+  },
+  "runs": {
+    "before": [
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 97818,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 16740,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 150832,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 135990930,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 29292541,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 29783000,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 49915555,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 1.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":97818,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":16740,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":150832,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":135990930,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":29292541,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":29783000,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":49915555,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 76533,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12986,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 147781,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 135909194,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 29324361,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 30007736,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 50380555,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 1.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":76533,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12986,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":147781,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":135909194,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":29324361,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":30007736,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":50380555,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 76234,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12840,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 145565,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 136389402,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 29310472,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 29674139,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 50510194,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 1.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":76234,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12840,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":145565,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":136389402,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":29310472,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":29674139,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":50510194,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 78299,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12879,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 145750,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 135936013,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 29242166,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 29626291,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 50736694,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 1.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":78299,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12879,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":145750,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":135936013,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":29242166,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":29626291,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":50736694,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 76165,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12834,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 147949,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 137139791,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 29340819,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 30109055,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 49783889,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 280 filtered out; finished in 1.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":76165,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12834,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":147949,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":137139791,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":29340819,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":30109055,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":49783889,\"n\":3}\n"
+      }
+    ],
+    "after": [
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 97664,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 14178,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 140690,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 96357528,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 24502180,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 24530375,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 45519333,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 286 filtered out; finished in 0.80s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":97664,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":14178,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":140690,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":96357528,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":24502180,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":24530375,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":45519333,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 76072,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12803,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 145155,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 96112916,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 24579000,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 24515708,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 45512944,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 286 filtered out; finished in 0.79s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":76072,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12803,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":145155,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":96112916,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":24579000,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":24515708,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":45512944,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 76502,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12329,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 143075,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 95590833,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 24470777,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 24647236,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 44912333,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 286 filtered out; finished in 0.79s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":76502,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12329,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":143075,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":95590833,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":24470777,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":24647236,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":44912333,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 77159,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12255,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 144632,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 95737166,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 24502500,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 24506986,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 45419111,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 286 filtered out; finished in 0.79s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":77159,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12255,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":144632,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":95737166,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":24502500,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":24506986,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":45419111,\"n\":3}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "rgba8",
+            "decode_drop_ns": 75292,
+            "n": 100
+          },
+          {
+            "name": "palette4",
+            "decode_drop_ns": 12049,
+            "n": 100
+          },
+          {
+            "name": "rgb16_interlaced",
+            "decode_drop_ns": 142805,
+            "n": 100
+          },
+          {
+            "name": "rgba16_max",
+            "decode_drop_ns": 95454916,
+            "n": 3
+          },
+          {
+            "name": "rgba8_noise",
+            "decode_drop_ns": 24577194,
+            "n": 3
+          },
+          {
+            "name": "rgba8_fragmented",
+            "decode_drop_ns": 24514777,
+            "n": 3
+          },
+          {
+            "name": "rgba16_adam7",
+            "decode_drop_ns": 45488819,
+            "n": 3
+          }
+        ],
+        "log": "\nrunning 1 test\ntest image::png::measured_png_workload::measure_png_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 286 filtered out; finished in 0.79s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nPNG_SAMPLE {\"name\":\"rgba8\",\"decode_drop_ns\":75292,\"n\":100}\nPNG_SAMPLE {\"name\":\"palette4\",\"decode_drop_ns\":12049,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgb16_interlaced\",\"decode_drop_ns\":142805,\"n\":100}\nPNG_SAMPLE {\"name\":\"rgba16_max\",\"decode_drop_ns\":95454916,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_noise\",\"decode_drop_ns\":24577194,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba8_fragmented\",\"decode_drop_ns\":24514777,\"n\":3}\nPNG_SAMPLE {\"name\":\"rgba16_adam7\",\"decode_drop_ns\":45488819,\"n\":3}\n"
+      }
+    ]
+  },
+  "median": {
+    "before": {
+      "rgba8": 76533,
+      "palette4": 12879,
+      "rgb16_interlaced": 147781,
+      "rgba16_max": 135990930,
+      "rgba8_noise": 29310472,
+      "rgba8_fragmented": 29783000,
+      "rgba16_adam7": 50380555
+    },
+    "after": {
+      "rgba8": 76502,
+      "palette4": 12329,
+      "rgb16_interlaced": 143075,
+      "rgba16_max": 95737166,
+      "rgba8_noise": 24502500,
+      "rgba8_fragmented": 24515708,
+      "rgba16_adam7": 45488819
+    }
+  }
+}

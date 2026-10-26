@@ -1,0 +1,20 @@
+{
+  "scope": "Unsandboxed native filesystem byte-name probe, exclusive generated temporary directory, ASCII/UTF8 controls, no SSH/user data",
+  "platform": "macOS-27.0.1-arm64-arm-64bit",
+  "cases": [
+    {
+      "name_hex": "72656d6f74652d6173636969",
+      "created": true
+    },
+    {
+      "name_hex": "72656d6f74652de69687",
+      "created": true
+    },
+    {
+      "name_hex": "72656d6f7465203b2428292dff",
+      "created": false,
+      "errno": 92,
+      "error": "Illegal byte sequence"
+    }
+  ]
+}

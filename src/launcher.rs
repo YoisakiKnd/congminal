@@ -1,7 +1,7 @@
 //! 显式用户动作的桌面 URL 适配。调用在有界工作线程中，参数不经过 shell。
 use crate::tasks::Cancellation;
 
-pub fn open(url: String, cancel: &Cancellation) -> Result<(), String> {
+pub fn open(url: crate::links::Url, cancel: &Cancellation) -> Result<(), String> {
     if !crate::links::valid_url(&url) {
         return Err("只支持不超过 2 KiB 的 HTTP/HTTPS 链接".into());
     }

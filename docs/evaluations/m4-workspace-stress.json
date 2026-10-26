@@ -1,0 +1,373 @@
+{
+  "seconds": 61.504,
+  "status": 0,
+  "samples": [
+    {
+      "t": 0.0,
+      "rss": 32768,
+      "cpu_ns": 837,
+      "threads": 1
+    },
+    {
+      "t": 1.01,
+      "rss": 112525312,
+      "cpu_ns": 2987804,
+      "threads": 14
+    },
+    {
+      "t": 2.02,
+      "rss": 112590848,
+      "cpu_ns": 29521093,
+      "threads": 14
+    },
+    {
+      "t": 3.03,
+      "rss": 112590848,
+      "cpu_ns": 56121049,
+      "threads": 14
+    },
+    {
+      "t": 4.04,
+      "rss": 112590848,
+      "cpu_ns": 82768637,
+      "threads": 14
+    },
+    {
+      "t": 5.05,
+      "rss": 112590848,
+      "cpu_ns": 109382510,
+      "threads": 14
+    },
+    {
+      "t": 6.055,
+      "rss": 112590848,
+      "cpu_ns": 135899862,
+      "threads": 14
+    },
+    {
+      "t": 7.06,
+      "rss": 112590848,
+      "cpu_ns": 162441592,
+      "threads": 14
+    },
+    {
+      "t": 8.07,
+      "rss": 112590848,
+      "cpu_ns": 189041036,
+      "threads": 14
+    },
+    {
+      "t": 9.078,
+      "rss": 112590848,
+      "cpu_ns": 215610978,
+      "threads": 14
+    },
+    {
+      "t": 10.088,
+      "rss": 112590848,
+      "cpu_ns": 242159071,
+      "threads": 14
+    },
+    {
+      "t": 11.089,
+      "rss": 112590848,
+      "cpu_ns": 268503021,
+      "threads": 14
+    },
+    {
+      "t": 12.099,
+      "rss": 112590848,
+      "cpu_ns": 295074178,
+      "threads": 14
+    },
+    {
+      "t": 13.109,
+      "rss": 112590848,
+      "cpu_ns": 321591532,
+      "threads": 14
+    },
+    {
+      "t": 14.115,
+      "rss": 112590848,
+      "cpu_ns": 348123693,
+      "threads": 14
+    },
+    {
+      "t": 15.125,
+      "rss": 112590848,
+      "cpu_ns": 374686080,
+      "threads": 14
+    },
+    {
+      "t": 16.135,
+      "rss": 112590848,
+      "cpu_ns": 401253608,
+      "threads": 14
+    },
+    {
+      "t": 17.145,
+      "rss": 112590848,
+      "cpu_ns": 427803306,
+      "threads": 14
+    },
+    {
+      "t": 18.156,
+      "rss": 112590848,
+      "cpu_ns": 454403716,
+      "threads": 14
+    },
+    {
+      "t": 19.166,
+      "rss": 112590848,
+      "cpu_ns": 481060280,
+      "threads": 14
+    },
+    {
+      "t": 20.173,
+      "rss": 112590848,
+      "cpu_ns": 507593367,
+      "threads": 14
+    },
+    {
+      "t": 21.183,
+      "rss": 112590848,
+      "cpu_ns": 534207532,
+      "threads": 14
+    },
+    {
+      "t": 22.19,
+      "rss": 112590848,
+      "cpu_ns": 560728677,
+      "threads": 14
+    },
+    {
+      "t": 23.2,
+      "rss": 112590848,
+      "cpu_ns": 587299388,
+      "threads": 14
+    },
+    {
+      "t": 24.202,
+      "rss": 112590848,
+      "cpu_ns": 613615589,
+      "threads": 14
+    },
+    {
+      "t": 25.212,
+      "rss": 112590848,
+      "cpu_ns": 640254923,
+      "threads": 14
+    },
+    {
+      "t": 26.222,
+      "rss": 112590848,
+      "cpu_ns": 666828989,
+      "threads": 14
+    },
+    {
+      "t": 27.233,
+      "rss": 112590848,
+      "cpu_ns": 693465790,
+      "threads": 14
+    },
+    {
+      "t": 28.243,
+      "rss": 112590848,
+      "cpu_ns": 720090200,
+      "threads": 14
+    },
+    {
+      "t": 29.25,
+      "rss": 112590848,
+      "cpu_ns": 746646946,
+      "threads": 14
+    },
+    {
+      "t": 30.256,
+      "rss": 112590848,
+      "cpu_ns": 773188652,
+      "threads": 14
+    },
+    {
+      "t": 31.266,
+      "rss": 112590848,
+      "cpu_ns": 799764669,
+      "threads": 14
+    },
+    {
+      "t": 32.276,
+      "rss": 112590848,
+      "cpu_ns": 826294711,
+      "threads": 14
+    },
+    {
+      "t": 33.286,
+      "rss": 112590848,
+      "cpu_ns": 852808407,
+      "threads": 15
+    },
+    {
+      "t": 34.296,
+      "rss": 112590848,
+      "cpu_ns": 879335011,
+      "threads": 14
+    },
+    {
+      "t": 35.297,
+      "rss": 112590848,
+      "cpu_ns": 905719280,
+      "threads": 14
+    },
+    {
+      "t": 36.307,
+      "rss": 112590848,
+      "cpu_ns": 932255095,
+      "threads": 14
+    },
+    {
+      "t": 37.313,
+      "rss": 112590848,
+      "cpu_ns": 958793002,
+      "threads": 14
+    },
+    {
+      "t": 38.323,
+      "rss": 112590848,
+      "cpu_ns": 985370612,
+      "threads": 14
+    },
+    {
+      "t": 39.331,
+      "rss": 112590848,
+      "cpu_ns": 1011754396,
+      "threads": 14
+    },
+    {
+      "t": 40.341,
+      "rss": 112590848,
+      "cpu_ns": 1038305271,
+      "threads": 14
+    },
+    {
+      "t": 41.344,
+      "rss": 112590848,
+      "cpu_ns": 1064540358,
+      "threads": 14
+    },
+    {
+      "t": 42.354,
+      "rss": 112590848,
+      "cpu_ns": 1091087243,
+      "threads": 14
+    },
+    {
+      "t": 43.357,
+      "rss": 112590848,
+      "cpu_ns": 1117471232,
+      "threads": 14
+    },
+    {
+      "t": 44.363,
+      "rss": 112590848,
+      "cpu_ns": 1143981902,
+      "threads": 14
+    },
+    {
+      "t": 45.373,
+      "rss": 112590848,
+      "cpu_ns": 1170634534,
+      "threads": 14
+    },
+    {
+      "t": 46.383,
+      "rss": 112590848,
+      "cpu_ns": 1197286679,
+      "threads": 14
+    },
+    {
+      "t": 47.393,
+      "rss": 115605504,
+      "cpu_ns": 1223619622,
+      "threads": 14
+    },
+    {
+      "t": 48.396,
+      "rss": 115605504,
+      "cpu_ns": 1249873641,
+      "threads": 14
+    },
+    {
+      "t": 49.406,
+      "rss": 115605504,
+      "cpu_ns": 1276367925,
+      "threads": 14
+    },
+    {
+      "t": 50.41,
+      "rss": 115605504,
+      "cpu_ns": 1302778463,
+      "threads": 14
+    },
+    {
+      "t": 51.42,
+      "rss": 115605504,
+      "cpu_ns": 1329323292,
+      "threads": 14
+    },
+    {
+      "t": 52.43,
+      "rss": 115605504,
+      "cpu_ns": 1355858487,
+      "threads": 14
+    },
+    {
+      "t": 53.433,
+      "rss": 115605504,
+      "cpu_ns": 1382194347,
+      "threads": 14
+    },
+    {
+      "t": 54.443,
+      "rss": 115605504,
+      "cpu_ns": 1408713278,
+      "threads": 14
+    },
+    {
+      "t": 55.453,
+      "rss": 115605504,
+      "cpu_ns": 1435273732,
+      "threads": 14
+    },
+    {
+      "t": 56.456,
+      "rss": 115605504,
+      "cpu_ns": 1461703678,
+      "threads": 14
+    },
+    {
+      "t": 57.464,
+      "rss": 115605504,
+      "cpu_ns": 1488183336,
+      "threads": 14
+    },
+    {
+      "t": 58.474,
+      "rss": 115605504,
+      "cpu_ns": 1514777915,
+      "threads": 14
+    },
+    {
+      "t": 59.484,
+      "rss": 115605504,
+      "cpu_ns": 1541272911,
+      "threads": 14
+    },
+    {
+      "t": 60.494,
+      "rss": 115605504,
+      "cpu_ns": 1567833049,
+      "threads": 14
+    }
+  ],
+  "log": "   Compiling congminal v0.1.0-alpha.5 (/Users/tenonsuzu/Documents/Codes/congminal)\n    Finished `release` profile [optimized + debuginfo] target(s) in 3.59s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n\nrunning 1 test\ntest workspace::tests::stress_workspace_sessions ... M4STRESS t=5 cycles=103229 panes=4 history=53280000 canvases=6498304 max_tick_us=19 max_key_us=21\nM4STRESS t=10 cycles=206618 panes=4 history=53280000 canvases=6498304 max_tick_us=19 max_key_us=21\nM4STRESS t=15 cycles=309454 panes=4 history=53280000 canvases=6472064 max_tick_us=19 max_key_us=21\nM4STRESS t=20 cycles=413064 panes=4 history=53280000 canvases=6498304 max_tick_us=19 max_key_us=21\nM4STRESS t=25 cycles=516370 panes=4 history=53280000 canvases=6498304 max_tick_us=24 max_key_us=21\nM4STRESS t=30 cycles=619835 panes=4 history=53280000 canvases=6498304 max_tick_us=24 max_key_us=21\nM4STRESS t=35 cycles=723082 panes=4 history=53280000 canvases=6498304 max_tick_us=24 max_key_us=21\nM4STRESS t=40 cycles=825906 panes=4 history=53280000 canvases=6498304 max_tick_us=44 max_key_us=21\nM4STRESS t=45 cycles=929304 panes=4 history=53280000 canvases=6498304 max_tick_us=44 max_key_us=21\nM4STRESS t=50 cycles=1031732 panes=4 history=53280000 canvases=6498304 max_tick_us=44 max_key_us=21\nM4STRESS t=55 cycles=1134726 panes=4 history=53280000 canvases=6498304 max_tick_us=44 max_key_us=21\nM4STRESS done cycles=1237650 max_tick_us=44 max_key_us=21\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 197 filtered out; finished in 60.10s\n\n"
+}
