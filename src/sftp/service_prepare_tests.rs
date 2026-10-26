@@ -167,3 +167,51 @@ fn local_inspection_rejects_links_directories_missing_and_relative_sources() {
     drop((service, profiles));
     assert_eq!(parent.snapshot().kinds[Kind::Sftp as usize], 0);
 }
+
+#[test]
+fn mutations_reject_invalid_names_and_same_paths_before_queueing() {
+    let parent = Budget::new(32 * 1024 * 1024, 0);
+    let _scope = Scope::enter(parent.clone());
+    let mut service = Service::new(&parent, Arc::new(|| {})).unwrap();
+    let profiles = profiles();
+    let owner = Owner { session: 1, generation: 1 };
+    let paths = Paths {
+        configuration: Config::None,
+        helper: Path::new("/not-a-helper"),
+        temporary: Path::new("/not-an-endpoint"),
+    };
+    let timeout = Duration::from_secs(10);
+    // 名称规则与目录读取一致：绝对路径、末段非空、不是 `.`/`..`、不超过 1024 字节。
+    for remote in [b"relative".as_slice(), b"/", b"/file/", b"/a/..", b"/a/.", b"/nul\0"] {
+        assert_eq!(
+            service.mkdir(owner, profiles.clone(), 0, paths, remote, timeout).err(),
+            Some(Failure::Invalid),
+            "{:?}",
+            String::from_utf8_lossy(remote)
+        );
+    }
+    let long = [b"/".as_slice(), &[b'a'; 1025]].concat();
+    assert_eq!(service.mkdir(owner, profiles.clone(), 0, paths, &long, timeout).err(), Some(Failure::Invalid));
+    // 重命名拒绝同一路径与非绝对目标；删除同样要求绝对路径。
+    assert_eq!(service.rename(owner, profiles.clone(), 0, paths, b"/a", b"/a", timeout).err(), Some(Failure::Invalid));
+    assert_eq!(service.rename(owner, profiles.clone(), 0, paths, b"/a", b"rel", timeout).err(), Some(Failure::Invalid));
+    assert_eq!(service.remove(owner, profiles.clone(), 0, paths, b"rel", false, timeout).err(), Some(Failure::Invalid));
+    // 会话/代次为零、零超时与非绝对辅助程序同样在排队前拒绝。
+    assert_eq!(
+        service.mkdir(Owner { session: 0, generation: 1 }, profiles.clone(), 0, paths, b"/a", timeout).err(),
+        Some(Failure::Invalid)
+    );
+    assert_eq!(service.mkdir(owner, profiles.clone(), 0, paths, b"/a", Duration::ZERO).err(), Some(Failure::Invalid));
+    assert_eq!(
+        service.mkdir(owner, profiles.clone(), 0, Paths { helper: Path::new("rel"), ..paths }, b"/a", timeout).err(),
+        Some(Failure::Invalid)
+    );
+    // 合法请求只排队，不触网；取消后不留下在途任务，额度归零。
+    let (ticket, authentication) = service.mkdir(owner, profiles.clone(), 0, paths, b"/new", timeout).unwrap();
+    service.cancel(ticket);
+    drop(authentication);
+    service.shutdown();
+    wait(|| service.poll_shutdown() == Shutdown::Complete(Cleanup::Confirmed));
+    drop((service, profiles));
+    assert_eq!(parent.snapshot().kinds[crate::resources::Kind::Sftp as usize], 0);
+}

@@ -1681,6 +1681,11 @@ impl Workspace {
                 self.driver.event(Event::Focus(self.terminal_focused()));
             }
             Event::Key { key, mods } => {
+                // SFTP 名称输入与删除确认独占键盘：名称和确认键都不能送到远端终端。
+                #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+                if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
+                    return self.sftp_capture_key(key);
+                }
                 if self.window_focus
                     && !self.composing()
                     && action_is_resources(&self.driver.config.bindings, key, mods)
@@ -1710,11 +1715,19 @@ impl Workspace {
                 }
             }
             Event::Text(text) => {
+                #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+                if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
+                    return self.sftp_capture_text(&text);
+                }
                 if !self.panes[self.loaded].ended || self.driver.search.active {
                     self.driver.event(Event::Text(text));
                 }
             }
             Event::Preedit(text) => {
+                #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+                if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
+                    return self.sftp_capture_preedit(&text);
+                }
                 if !self.panes[self.loaded].ended || self.driver.search.active {
                     self.driver.event(Event::Preedit(text));
                 }
@@ -1802,10 +1815,13 @@ impl Workspace {
                             self.chrome_dirty = true;
                         } else if self.left_page == LeftPage::Files {
                             #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
-                            if self
-                                .sftp_click(row, ((x as usize - self.left_rect.x) * 3 / self.left_rect.w.max(1)).min(2))
                             {
-                                return true;
+                                // 操作行有六个按钮槽位，其余行沿用三列；列号按行换算后交给面板。
+                                let slots = if row == 3 { 6 } else { 3 };
+                                let column = (x as usize - self.left_rect.x) * slots / self.left_rect.w.max(1);
+                                if self.sftp_click(row, column.min(slots - 1)) {
+                                    return true;
+                                }
                             }
                             let notify = self.driver.notify.clone();
                             if row == 1 {
