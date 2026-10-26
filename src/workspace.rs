@@ -2946,6 +2946,14 @@ program="/definitely/missing/congminal-shell"
         let diff = app.git.diff.as_ref().unwrap();
         assert!(diff.text.contains("+changed"), "{}", diff.text);
         assert!(app.git.diff_open);
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_DIFF_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
         // “返回”回到列表，diff 释放但快照保留。
         click(&mut app, 2 * (r.w / 3) + 4, 1);
         assert!(!app.git.diff_open);

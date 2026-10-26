@@ -9,7 +9,7 @@
 | 动作 | `Action::ShowGitPanel`（配置名 `show-git-panel`） |
 | 默认绑定 | `Primary+G`（macOS 为 Cmd+G，其他平台为 Ctrl+Shift+G） |
 | 右栏页签 | `状态` / `Git`，点击行 0 左半/右半切换 |
-| 按钮行（行 1） | 列表页：`刷新`、`打开差异`；diff 页：`返回`、`暂存侧`/`工作区侧` |
+| 按钮行（行 1） | 列表页：`刷新`、`打开差异`；diff 页：`刷新`、`暂存侧`↔`工作区`（同一按钮切换）、`返回` |
 | 关闭 | 关闭右栏（`Primary+B` 或点击 `状态` 页）即取消任务并释放快照 |
 
 `[git]` 段（见 `assets/congminal.example.toml`）：
@@ -71,7 +71,7 @@ cargo test config::           # [git] 解析与越界（24 项）
 
 覆盖：分支/分离/未出生/裸仓库识别、子目录解析到仓库根、改名记录、控制字符与非法 UTF-8 路径转义、条目上限截断、非仓库/缺程序/额度不足、diff 行索引与截断、两侧 diff、取消与超时后子进程回收（unix 伪造 git 脚本）、面板打开→查询→打开 diff→返回→切页→关栏的完整路径（含 `bytes()` 归零）、缺程序与停用配置的失败路径。
 
-手工验证：`CONGMINAL_GIT_PREVIEW_PATH=/tmp/x.ppm cargo test git_panel` 会导出一帧 PPM，用于检查右栏排版（本机 Linux 已核对）。
+手工验证：`CONGMINAL_GIT_PREVIEW_PATH=/tmp/list.ppm CONGMINAL_GIT_DIFF_PREVIEW_PATH=/tmp/diff.ppm cargo test git_panel` 会导出列表页与 diff 页各一帧 PPM（1200x700），用于检查右栏排版；两帧已在 Linux 本机核对。
 
 ## 已知限制与未验收项
 
@@ -80,4 +80,5 @@ cargo test config::           # [git] 解析与越界（24 项）
 - 子模块内部改动只按父仓库的 ` M` 记录显示，未递归进入子模块。
 - shell 未发 OSC 7 时回退到配置的 `working_directory` 或进程当前目录，可能与终端里的实际目录不同（普通交互 shell 都会发 OSC 7）。
 - 只在 Linux 本机验证；macOS/Windows 未运行，交叉编译不算真机验证。
+- diff 长行（如 `diff --git a/… b/…`）超出右栏宽度时按列裁切，未折行，也没有横向滚动；折行会改变行号与滚动映射，留到下一步统一处理。
 - 大仓库（10 万级条目）与网络文件系统的刷新成本未实测，`max-files`/4 MiB 截断路径已测但真实大仓库延迟未采样。
