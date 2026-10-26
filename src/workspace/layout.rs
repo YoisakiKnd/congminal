@@ -5,7 +5,7 @@ use crate::session::Notify;
 use std::fmt::Write as _;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -472,6 +472,12 @@ impl IoPaths {
         if !parent.is_dir() {
             self.temporary.clear();
             for component in parent.components() {
+                // Windows 的盘符前缀（`C:`）不是目录，单独 create_dir 会报拒绝访问；
+                // 它只能和后面的根一起拼成 `C:\`。Unix 的根 `/` 已存在，按 AlreadyExists 跳过。
+                if matches!(component, Component::Prefix(_)) {
+                    self.temporary.push(component.as_os_str());
+                    continue;
+                }
                 self.temporary.push(component.as_os_str());
                 match std::fs::create_dir(&self.temporary) {
                     Ok(()) => {}
