@@ -378,7 +378,12 @@ mod tests {
         assert_eq!(other.snapshot().used, 0);
         drop(browser);
         released(&pool);
-        assert_eq!(pool.snapshot().managed_workers, 0);
+        // 字节先归还、工作线程随后退出，两者不同步：给回收一个期限再断言。
+        let until = Instant::now() + Duration::from_secs(3);
+        while pool.snapshot().managed_workers != 0 {
+            assert!(Instant::now() < until, "工作线程未在期限内回收");
+            std::thread::yield_now();
+        }
     }
     #[test]
     fn failed_read_keeps_its_funded_target_for_an_explicit_retry() {
