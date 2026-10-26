@@ -2886,6 +2886,9 @@ program="/definitely/missing/congminal-shell"
             assert!(status.success(), "git {args:?}");
         };
         git(&["init", "-q", "."]);
+        // 仓库级身份：CI 主机名不带点，git 无法自动推断邮箱，面板里的 commit 会失败。
+        git(&["config", "user.name", "t"]);
+        git(&["config", "user.email", "t@t"]);
         std::fs::write(repo.join("tracked.txt"), b"one\n").unwrap();
         git(&["add", "tracked.txt"]);
         git(&["commit", "-qm", "init"]);
@@ -2908,7 +2911,8 @@ program="/definitely/missing/congminal-shell"
         assert!(app.right && app.git.page == git_panel::Page::Git);
         wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
         let snapshot = app.git.snapshot.as_ref().unwrap();
-        assert_eq!(snapshot.root, repo);
+        // macOS 的临时目录是 /var → /private/var 的符号链接，git 报告的是解析后的路径。
+        assert_eq!(snapshot.root, repo.canonicalize().unwrap());
         assert_eq!(snapshot.counts.unstaged, 1);
         assert_eq!(snapshot.counts.untracked, 1);
         assert_eq!(snapshot.counts.staged, 0);
