@@ -38,6 +38,10 @@ impl Fixture {
     }
     fn repo(&self) -> &Self {
         self.git(&["init", "-q", "."]);
+        // 产品代码的 `git commit` 只带 LC_ALL 等环境变量，身份必须来自仓库配置，
+        // 否则宿主机没配全局 user.name 时写操作测试会随环境漂移。
+        self.git(&["config", "user.name", "t"]);
+        self.git(&["config", "user.email", "t@t"]);
         std::fs::write(self.0.join("committed.txt"), b"one\n").unwrap();
         std::fs::write(self.0.join("modified.txt"), b"two\n").unwrap();
         self.git(&["add", "committed.txt", "modified.txt"]);
@@ -365,4 +369,125 @@ fn truncated_status_output_is_marked_incomplete() {
     assert!(malformed.limited);
     assert_eq!(malformed.entries.len(), 1);
     assert!(malformed.entries[0].source.is_none());
+}
+
+fn run_write(pool: &Arc<Budget>, dir: &Path, op: WriteOp) -> Result<(), Error> {
+    let request = WriteRequest::new(1, 1, dir, op, &base_limits(), pool).unwrap();
+    write(request, &Cancellation::default()).result
+}
+
+#[test]
+fn stage_and_unstage_move_an_entry_between_the_sides() {
+    let fixture = Fixture::new("write-stage");
+    fixture.repo();
+    std::fs::write(fixture.path().join("new.txt"), b"new\n").unwrap();
+    let pool = pool();
+    let path = OsString::from("new.txt");
+    let snapshot = read_status(&pool, fixture.path());
+    assert!(snapshot.entries.iter().any(|entry| entry.path == path && entry.untracked()));
+    drop(snapshot);
+    run_write(&pool, fixture.path(), WriteOp::Stage { paths: vec![path.clone()], count: 1 }).unwrap();
+    let staged = read_status(&pool, fixture.path());
+    assert!(staged.entries.iter().any(|entry| entry.path == path && entry.fully_staged()), "{:?}", staged);
+    drop(staged);
+    run_write(&pool, fixture.path(), WriteOp::Unstage { paths: vec![path.clone()], count: 1, unborn: false }).unwrap();
+    let back = read_status(&pool, fixture.path());
+    assert!(back.entries.iter().any(|entry| entry.path == path && entry.untracked()));
+    drop(back);
+    wait_released(&pool);
+}
+
+#[test]
+fn unstage_works_before_the_first_commit() {
+    let fixture = Fixture::new("write-unborn");
+    fixture.repo();
+    // 再造一个未出生 HEAD 的仓库：还没有任何提交时 `restore --staged` 没有 HEAD 可回退。
+    let fresh = Fixture::new("write-unborn-fresh");
+    fresh.git(&["init", "-q", "."]);
+    std::fs::write(fresh.path().join("first.txt"), b"one\n").unwrap();
+    let pool = pool();
+    let path = OsString::from("first.txt");
+    let snapshot = read_status(&pool, fresh.path());
+    assert!(snapshot.head.unborn(), "{:?}", snapshot.head);
+    drop(snapshot);
+    run_write(&pool, fresh.path(), WriteOp::Stage { paths: vec![path.clone()], count: 1 }).unwrap();
+    let staged = read_status(&pool, fresh.path());
+    assert!(staged.entries.iter().any(|entry| entry.path == path && entry.fully_staged()));
+    drop(staged);
+    run_write(&pool, fresh.path(), WriteOp::Unstage { paths: vec![path.clone()], count: 1, unborn: true }).unwrap();
+    let back = read_status(&pool, fresh.path());
+    assert!(back.entries.iter().any(|entry| entry.path == path && entry.untracked()));
+    drop(back);
+    wait_released(&pool);
+}
+
+#[test]
+fn commit_records_the_message_and_empties_the_index() {
+    let fixture = Fixture::new("write-commit");
+    fixture.repo();
+    std::fs::write(fixture.path().join("new.txt"), b"new\n").unwrap();
+    let pool = pool();
+    let path = OsString::from("new.txt");
+    run_write(&pool, fixture.path(), WriteOp::Stage { paths: vec![path], count: 1 }).unwrap();
+    run_write(&pool, fixture.path(), WriteOp::Commit { message: "第一个提交".into() }).unwrap();
+    let log = fixture.git(&["log", "-1", "--pretty=%s"]);
+    assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "第一个提交");
+    let snapshot = read_status(&pool, fixture.path());
+    assert!(snapshot.entries.is_empty(), "{:?}", snapshot);
+    drop(snapshot);
+    wait_released(&pool);
+}
+
+#[test]
+fn commit_failures_are_reported_instead_of_silently_accepted() {
+    let fixture = Fixture::new("write-commit-error");
+    fixture.repo();
+    let pool = pool();
+    // 空白提交信息：git 自己会拒绝，界面必须拿到错误而不是成功。
+    let error = run_write(&pool, fixture.path(), WriteOp::Commit { message: "   ".into() }).unwrap_err();
+    assert!(matches!(error, Error::Failed(_)), "{error:?}");
+    // 不在仓库里：分类成 NotRepository，提示可读。
+    let outside = Fixture::new("write-outside");
+    let error = run_write(&pool, outside.path(), WriteOp::Commit { message: "x".into() }).unwrap_err();
+    assert!(matches!(error, Error::NotRepository), "{error:?}");
+    wait_released(&pool);
+}
+
+#[test]
+fn cancelled_write_never_starts_git() {
+    let fixture = Fixture::new("write-cancel");
+    fixture.repo();
+    std::fs::write(fixture.path().join("new.txt"), b"new\n").unwrap();
+    let pool = pool();
+    let cancel = Cancellation::default();
+    cancel.cancel();
+    let path = OsString::from("new.txt");
+    let request = WriteRequest::new(
+        1,
+        1,
+        fixture.path(),
+        WriteOp::Stage { paths: vec![path.clone()], count: 1 },
+        &base_limits(),
+        &pool,
+    )
+    .unwrap();
+    assert!(matches!(write(request, &cancel).result, Err(Error::Cancelled)));
+    let snapshot = read_status(&pool, fixture.path());
+    assert!(snapshot.entries.iter().any(|entry| entry.path == path && entry.untracked()));
+    drop(snapshot);
+    wait_released(&pool);
+}
+
+#[test]
+fn write_is_refused_when_the_budget_is_exhausted() {
+    let fixture = Fixture::new("write-budget");
+    fixture.repo();
+    let pool = Budget::new(4096, 0);
+    // 先占住绝大部分额度，剩下的不够一次写请求的准入。
+    let held = pool.lease(Kind::Git, 4000).unwrap();
+    let request =
+        WriteRequest::new(1, 1, fixture.path(), WriteOp::Commit { message: "x".into() }, &base_limits(), &pool);
+    assert!(matches!(request, Err(Error::Budget)));
+    drop(held);
+    assert_eq!(pool.snapshot().used, 0);
 }

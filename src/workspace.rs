@@ -1688,6 +1688,12 @@ impl Workspace {
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_key(key, mods);
                 }
+                // Git 提交输入打开时吃掉键盘，字符不会进入终端。
+                if self.git.capturing() && self.right && self.right_page == RightPage::Git {
+                    self.git.capture_key(key, mods, self.driver.notify.clone());
+                    self.chrome_dirty = true;
+                    return true;
+                }
                 if self.window_focus
                     && !self.composing()
                     && action_is_resources(&self.driver.config.bindings, key, mods)
@@ -1721,6 +1727,11 @@ impl Workspace {
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_text(&text);
                 }
+                if self.git.capturing() && self.right && self.right_page == RightPage::Git {
+                    self.git.capture_text(&text);
+                    self.chrome_dirty = true;
+                    return true;
+                }
                 if !self.panes[self.loaded].ended || self.driver.search.active {
                     self.driver.event(Event::Text(text));
                 }
@@ -1729,6 +1740,11 @@ impl Workspace {
                 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_preedit(&text);
+                }
+                if self.git.capturing() && self.right && self.right_page == RightPage::Git {
+                    self.git.capture_preedit(&text);
+                    self.chrome_dirty = true;
+                    return true;
                 }
                 if !self.panes[self.loaded].ended || self.driver.search.active {
                     self.driver.event(Event::Preedit(text));
@@ -1801,7 +1817,14 @@ impl Workspace {
                     }
                     if self.right_rect.contains(x, y) {
                         let row = (y as usize - self.right_rect.y) / h;
-                        let third = ((x as usize - self.right_rect.x) * 3 / self.right_rect.w.max(1)).min(2);
+                        // 第 0 行是三页页签；Git 页按钮行按当帧按钮数等分，其余页按三列。
+                        let columns = match (row, self.right_page) {
+                            (0, _) => 3,
+                            (1, RightPage::Git) => self.git.button_count(),
+                            _ => 3,
+                        };
+                        let third =
+                            ((x as usize - self.right_rect.x) * columns / self.right_rect.w.max(1)).min(columns - 1);
                         self.chrome_dirty |= self.right_click(row, third);
                         return true;
                     }
@@ -3079,6 +3102,10 @@ program="/definitely/missing/congminal-shell"
             .position(|entry| entry.path.as_os_str() == "tracked.txt")
             .unwrap();
         click(&mut app, 6, git_row(index));
+        assert_eq!(app.git.selected, Some(index));
+        assert!(!app.git.diff_open);
+        // 选中只是高亮；“差异”按钮才真正打开这一条的 diff。
+        click(&mut app, r.w / 4 + 4, 1);
         wait(&mut app, |a| a.git.diff.is_some() || a.git.diff_error.is_some());
         let diff = app.git.diff.as_ref().unwrap();
         assert!(diff.text.contains("+changed"), "{}", diff.text);
@@ -3113,6 +3140,82 @@ program="/definitely/missing/congminal-shell"
         assert_eq!(app.git.bytes(), 0);
         assert!(app.git.snapshot.is_none());
     }
+    #[test]
+    fn git_panel_stages_and_commits_through_the_sidebar() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        // 按钮四列等分：刷新 / 差异 / 暂存 / 提交。
+        let slot = |index: usize| index * (r.w / 4) + 4;
+        let index = app
+            .git
+            .snapshot
+            .as_ref()
+            .unwrap()
+            .entries
+            .iter()
+            .position(|entry| entry.path.as_os_str() == "new file.txt")
+            .unwrap();
+        click(&mut app, 6, git_row(index));
+        assert_eq!(app.git.view(6).buttons[2], "暂存");
+        click(&mut app, slot(2), 1);
+        wait(&mut app, |a| {
+            a.git.snapshot.as_ref().is_some_and(|snapshot| {
+                snapshot.entries.iter().any(|entry| entry.path.as_os_str() == "new file.txt" && entry.fully_staged())
+            })
+        });
+        assert!(app.git.write_note.as_deref().is_some_and(|note| note.contains("已暂存")), "{:?}", app.git.write_note);
+        // 已经全部进入索引的条目：同一个按钮变成“取消暂存”。
+        assert_eq!(app.git.view(6).buttons[2], "取消暂存");
+        // 打开提交输入，输入法结果与按键都由面板吃掉，不进入终端。
+        click(&mut app, slot(3), 1);
+        assert!(app.git.capturing());
+        // 输入打开时按钮只有两列：右半是“取消”，点它就放弃这次提交。
+        click(&mut app, r.w / 2 + 4, 1);
+        assert!(!app.git.capturing());
+        assert!(app.git.write_note.is_none());
+        click(&mut app, slot(3), 1);
+        assert!(app.git.capturing());
+        assert!(app.event(Event::Text("提交自右栏".into())));
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_COMMIT_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        assert!(app.event(Event::Key { key: Key::Enter, mods: Mods::default() }));
+        assert!(!app.git.capturing());
+        // 提交后这个文件不再出现在状态里；夹具里另一个改动仍在，所以只看这一条。
+        wait(&mut app, |a| {
+            a.git
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.entries.iter().all(|entry| entry.path.as_os_str() != "new file.txt"))
+        });
+        let log =
+            std::process::Command::new("git").arg("-C").arg(&repo).args(["log", "-1", "--pretty=%s"]).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "提交自右栏");
+        // 关闭右栏：写任务已结束，快照与票据全部归还。
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
+        assert!(app.git.write_note.is_none());
+    }
+
     #[test]
     fn git_panel_reports_missing_tool_and_disabled_config_without_starting_work() {
         let dir = git_fixture();
