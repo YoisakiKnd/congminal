@@ -472,13 +472,13 @@ impl IoPaths {
         if !parent.is_dir() {
             self.temporary.clear();
             for component in parent.components() {
-                // Windows 的盘符前缀（`C:`）不是目录，单独 create_dir 会报拒绝访问；
-                // 它只能和后面的根一起拼成 `C:\`。Unix 的根 `/` 已存在，按 AlreadyExists 跳过。
-                if matches!(component, Component::Prefix(_)) {
-                    self.temporary.push(component.as_os_str());
+                // 只有普通分量才需要创建：Windows 的盘符前缀（`C:`）单独 create_dir 会报拒绝访问，
+                // 盘符根（`C:\`）与 Unix 的 `/` 也创建不了（前者在 Windows 上返回拒绝访问而不是已存在），
+                // `.` 与 `..` 同样必然存在。这些分量只拼进路径，不调用 create_dir。
+                self.temporary.push(component.as_os_str());
+                if !matches!(component, Component::Normal(_)) {
                     continue;
                 }
-                self.temporary.push(component.as_os_str());
                 match std::fs::create_dir(&self.temporary) {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && self.temporary.is_dir() => {}
