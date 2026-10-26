@@ -185,6 +185,8 @@ Shell 集成与命令输出导航已加入：可选 source zsh/Bash 脚本，Pri
 
 右栏“Git”页显示活动窗格目录对应仓库的分支、暂存/未暂存/未跟踪条目与受限 diff（Primary+G 打开；只读，不执行任何写仓库命令）。远程会话、暂存/提交/推送与远程监控尚未接入，限额与未验收项见 [Git 面板说明](docs/design-git-panel.md)。
 
+右栏“监控”页显示本机 CPU、内存、磁盘占用与最近 5 分钟趋势（Primary+M 打开；后台 1 Hz 采样，磁盘单独降频到 10 s）。窗口失焦或切走页签即暂停采样，关闭右栏释放历史与额度；远程主机监控、分核 CPU、网络速率与阈值告警尚未接入，成本与未验收项见 [监控评估](docs/evaluations/m7-monitor.md)。
+
 共享资源准入已接入画布扩容峰值、PTY 队列预留、缓存计费、字体文件、主/备用网格、持久历史 cell/行索引、缩放临时工作集和 PNG 解码/返回像素；压力下先清缓存、分片回收非活动历史，仍不足则拒绝缩放并保留原终端。Primary+F12 可查看额度和拒绝次数。默认混合额度 512 MiB、字体映射另限 1024 MiB/128 个；缩放、轮廓/光栅化、GSUB/PSF、缓存桶、目录及配置档已接入；行指纹、连字/Unicode绘制工作集已准入并复用，见[评估](docs/evaluations/m4-render-work.md)；字体发现/读取头部及共享记录已准入，查询复用与成本见[评估](docs/evaluations/m4-font-discovery.md)；轮廓Box、后备列表及说明/警告已接入，见[评估](docs/evaluations/m4-font-metadata.md)；映射Storage/Arc、固定弱缓存及固定错误值已完成本机计费验证，见[评估](docs/evaluations/m4-font-map.md)；搜索/链接高亮与顶部提示栏已准入并复用，见[评估](docs/evaluations/m4-ui-state.md)；搜索查询/预编辑、KMP/检查点和匹配队列也已准入复用，见[评估](docs/evaluations/m4-search-resources.md)；通知Center的固定记录窗口已准入、清空释放，首次及重填成本增加而连续事件持平，见[评估](docs/evaluations/m4-notice-resources.md)；Shell命令/事件和OSC7目录已准入，搜索高亮改为可信切片批量复制，见[评估](docs/evaluations/m4-shell-resources.md)；根预算/同步对象、配置、系统剪贴板内部/原生协议、launcher内部、通知工具/任务及其他界面元数据仍待完整接入，不能把该额度当作完整堆/RSS 上限。[配置与边界](docs/execution-m4-memory.md)。
 
 软换行重排逐段处理，不拼接整份逻辑长行。超过 256 KiB 的主屏宽度重排已接入 UI 分片：旧文本保持可读，准备完成后交换，旧行分批回收；连续缩放只保留最新目标。期间暂停解析 PTY 输出并沿用有界背压，键盘仍可写入 PTY。小网格、高度变化及备用屏幕仍有同步路径；完整回显延迟尚未验收。[流式重排说明](docs/execution-m4-reflow.md)。
