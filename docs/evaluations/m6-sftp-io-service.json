@@ -1,0 +1,7332 @@
+{
+  "scope": "Real typed Service directory request -> fixed executor -> deferred Front publication -> private IPC/helper/OpenSSH -> SFTP listing -> explicit transport/endpoint cleanup -> worker/reaper join and held-result parent-credit release. Generated encrypted keys and private loopback sshd only; fixture main thread supplies bounded answers. Eight auth/cancel/host-key/wait cases, 1.5s answer wait with 1s network timeout. No Workspace/GUI, native IME, transfer jobs, Windows, same-workload performance or idle-cost claim.",
+  "source_sha256": {
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/cancellation.rs": "b91c9286f405b8869fd8aa629b738ecee99b251167858d43625084abdad2a36a",
+    "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+    "src/config/profiles.rs": "090d904e5b2b4baf3ce64e7bfe6ae399645dd8a5193be43eba00ddce5c07cd90",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/main.rs": "01c9165faea2f1284b29489e25365127439f2cb3e5a56eed4cbbff104ddb8691",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/platform/clipboard.rs": "bbe5c391137500510dc3800bdef8d28a927d279e4c9cbc3891001850b5ffecc1",
+    "src/platform/macos/protected_ime.rs": "22c48f9994ef49c8e519bc4f26f4558a69d089db245690176d5a6768f9a3fad4",
+    "src/platform/macos/protected_window.rs": "2becc13770f7582f823b16e55bdcd90d9c920eea3448180bc46ac2b658d81b82",
+    "src/platform/macos.rs": "ce10881032e3dfd20772863f29ee316dbb1ae3e44ff76bf79ddd9b60eff21714",
+    "src/platform/mod.rs": "b1dd951961cb0a3673cc05ac43e8ae94865bab01b2a7b42b8cba270e39237bdc",
+    "src/platform/protected_input.rs": "4ef20494b498460f21567baf01861439f04973c55b636846c6c7a9155a585b34",
+    "src/platform/win32.rs": "0f30be5246d4e7943fa0fda872ae962c5581ec26563466bcd9ba13c76f8a6d00",
+    "src/platform/x11.rs": "0755fe507711d31d3a3417022a102253dadea02b2ddd6e36e8b721d71b4e4a30",
+    "src/process_launch.rs": "a913cc2da5f27b413fdd6f71064f61ad78bb85dd1c0dc20acfc04729fec8b91a",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/unix.rs": "ea9d1e452189e322c459b20c10e7a244079e8df34aba98812a77b1346e1afd0c",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/render.rs": "42af74c92d471be41af110bcbaa6267f7f4276fe8c7ca37b040750da938f83b1",
+    "src/resolve.rs": "1a5a741615b531d6440e407bd46f90895bc67916ebd6b7ec5f9332cd4d249857",
+    "src/resources/budget.rs": "14815f18be7c742051616475b50d90c5cc0fdcb8a3ff53ab1372a34f18f557cc",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/resources.rs": "688a9fffae32862f4d09f8625fc29b2d63652a988e35c85e1cd25bbe27b57b9f",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/session.rs": "dc3f4ee4e3a92aebbd5ae7e16ff27089eefc8b375585904653a644e5774c841e",
+    "src/sftp/allocation.rs": "555f3521488b7ca257cbffcbeb1d8ab457d9092df00662553c891eb4943e86e6",
+    "src/sftp/client.rs": "0cd4cdc7558e6347c1c753fdfe4825ee87366d1c6fd3a9f310615d126a6ba4aa",
+    "src/sftp/connect.rs": "c584e295da3995d65e13d473666c3ab28779aff268d6e49c196541a15a0c7cac",
+    "src/sftp/executor.rs": "2357f9ad99eedd1527a28db1845f40be9fa9258daa5da0867350106bce1fe654",
+    "src/sftp/files.rs": "4622081057ded39e839b0be66dadc7c7d8e600eb977a42a81327d5bdb591b330",
+    "src/sftp/local_transfer.rs": "1ae7dbbb41b40fe69f2fbaa109dcdaf0854e6f447fc92b56591768f0984add65",
+    "src/sftp/mod.rs": "45a8261358c07899ef7c0d2fc16d9ebdf0cd42493cc82b37075f2bfdd4df5a3d",
+    "src/sftp/model.rs": "99eec45e96220789c7d6d6871bf066740bbbdf23fcf67fa145e636f8c12638b5",
+    "src/sftp/native.rs": "71132288dad96c4d2c9a8f9b2006166a5371748e8fe33d39693327dbe73ab799",
+    "src/sftp/native_wait.rs": "90b17e9c0fbe2582c40b7170d17bc54d70763f03fdc02af2dddc8c502cba428e",
+    "src/sftp/openssh.rs": "bb8afa636f7a70afc3d84c17d70221956d2361512e0c09fff64ed15beae05f86",
+    "src/sftp/openssh_auth.rs": "cb58521a8da6576555462fab5329675e2b607b6427b5e31d1f01ac210242ce08",
+    "src/sftp/openssh_auth_bench.rs": "deee7610a6c99d34938f4d6056272c45f2bedc6dec5590eefcfc3ea866c03092",
+    "src/sftp/openssh_bench.rs": "bce59c98b15acebc176b38f26847fbb79a750a43160b4b65f037403a207f1946",
+    "src/sftp/operations.rs": "cda190e0ddca16cf262108b0a14484af6d59e793d0c9f06e5a3aa7bc69a3f56b",
+    "src/sftp/secret.rs": "84654f08ff44fc6e80902b6d39e97266bdc218b26fafd97dbf74aa78cd27880f",
+    "src/sftp/service.rs": "6b352adc0f4d4fa65150ba850dd7e84cf3ac74927dfc89f50c690809be118495",
+    "src/sftp/transfer.rs": "d72c846dd13f54b61566d152434dab599eb723aeae82fe49aec2b6d6b1c6485e",
+    "src/sftp/transfer_state.rs": "b6b6f7a0ebb4ed3794e9a730cee167fa6a49e41eef0272732950e7e878099e4a",
+    "src/sftp/wire.rs": "dadc53f2c7b89a9b7d963fe629567df68fa6e9b6de2df801d060be647aeb0348",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/ssh/auth.rs": "a570837f890cb1310bedb126b375e40511f8241564731ca85838e4f4ddbbaf00",
+    "src/ssh/auth_controller.rs": "3677b4108bc7d84759dca35f15ed563f01471790089c78821a644b8b319b20ee",
+    "src/ssh/auth_editor.rs": "f1a9aac7aa75d674612a997fbf57f825b4d30c3df496d8c434db12d4dc6447b4",
+    "src/ssh/auth_identity.rs": "842e1593cba082f107ad0a2ef7a9aff35637b6d03fd8046a6f4d96ae5e206c53",
+    "src/ssh/auth_ipc.rs": "1c5821426a8acd4b219e53f3a74b7ef1c575e260d2f502f59c4bee3c833010e6",
+    "src/ssh/auth_secret.rs": "0ed586f2b119c65a293df2bc2458b77c4b92433a3c2f53360f9e9718545c4793",
+    "src/ssh/auth_ticket.rs": "3504a06cf7ae118b8575718b3be0d8473386df4a05b317bc6b229d20d723d2ba",
+    "src/ssh/auth_types.rs": "e075dddf27cb14ebec7d873ffec7982402e8b788504cbee89d947a97a8a4cb99",
+    "src/ssh/auth_view.rs": "1e482ec3d84e5554e118b8a8c8cea9aadabbbf7ffccccbc0b3ab437fae6af0c8",
+    "src/ssh/auth_viewport.rs": "f992e5dd9d650c2380ec4634140cc282f734902ac21ec15a847d0291a3fc4efa",
+    "src/ssh/auth_wire.rs": "d46618815214e20d499f0c2e04cf10c78d6497752d82bd0b52efe1e56d905a1c",
+    "src/ssh/capture.rs": "f929655c4727e65b8deb20744877a9f6cc5fbae8bcd126cb5f561552bd649177",
+    "src/ssh/capture_windows.rs": "5bd3120b1e3e65b46f87d1b39f1acdfa0c3133fcd46c4cc0a53a51e9ae6946e8",
+    "src/ssh/capture_windows_input.rs": "8b433b21f2bfc9e8033aa5d489e54cbae5bae46cba61d96e8286db70fe2961cd",
+    "src/ssh/capture_windows_wire.rs": "7ca895a506a9cba83299db1e329d0927286250e16ca414dd9a854cbbdcf6a430",
+    "src/ssh/helper_auth.rs": "6755ea101115b7be16255fbdc1ffa7fa7c415bf9fa27666bdc33e14bde2d1ed7",
+    "src/ssh/helper_main.rs": "906a6faf33bcd4dec5af575da022a8f657a89b9b06ea4cea78de130bd8666825",
+    "src/ssh/helper_resources.rs": "860c92387c48d34dda1f6f57467e50375ff0f999f03c3d6a5aa80dbc9417e596",
+    "src/ssh/paths.rs": "46918fb4025adc485a9c10caf2e3d32b1af8543db6ba92f4d277ef3f36a66291",
+    "src/ssh/settings.rs": "144cf3d3c3991addfded0b71ca3182a0d580550423a243c7e9985ece7ffb03b6",
+    "src/ssh.rs": "160b6306822b382c6f1260e5ada3be10d481ed22179381eef7cce3ef15cc1ba8",
+    "src/tasks.rs": "caaaaa587537b2bbf8030e15f588c9caf4841a0129c5a31b7a039008373dd61c",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/workspace/authentication.rs": "3601061af760b854241b3cf81958254be43894b4a236e4321898001e7c4f04a2",
+    "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/remote.rs": "aa393538b30473bb696cf331a14a2eb390fb41b2cadca6e15c24a354a9b37708",
+    "src/workspace/remote_files.rs": "45301d4cee2c42ce2a315cd5ff8242f2d3e22c6df51981375fbca29a50512fe2",
+    "src/workspace.rs": "94fc3b467a951c06eccb717dda99f69de4d4fe96ed44b35696494eb83af38ec5"
+  },
+  "cases": [
+    {
+      "name": "passphrase",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 0.35s\n\nSFTP_SERVICE_RESULT scenario=passphrase requests=1 peak=8358699 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 10250,
+          "tree": {
+            "52233": {
+              "rss": 32768,
+              "cpu_ns": 289208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 7676208,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 3626708,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 15264625,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 3711666,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 22806333,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 3786833,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 30335875,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 3880333,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 37868791,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 3960083,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 45402541,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4061000,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 52935541,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4168916,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 60471541,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4253958,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 68017000,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4333541,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 75556375,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4429916,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 83110958,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4489041,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 90689666,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4608166,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 98244750,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4680250,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 105835250,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4730791,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 113426791,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4813250,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 121020333,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 4905791,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 128608583,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5024916,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 134719666,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5094416,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 139865416,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5162375,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 146628875,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5237375,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 152910625,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5316166,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 32768,
+              "cpu_ns": 23375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 160461166,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5359375,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 1916928,
+              "cpu_ns": 5122416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 168022916,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5407250,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3342336,
+              "cpu_ns": 6698833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 175593875,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5448625,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3457024,
+              "cpu_ns": 7291208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 181585000,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5470416,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3538944,
+              "cpu_ns": 9213041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 188120541,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5521833,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3604480,
+              "cpu_ns": 11039000,
+              "threads": 1
+            },
+            "52238": {
+              "rss": 1884160,
+              "cpu_ns": 1789375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 193258750,
+          "tree": {
+            "52233": {
+              "rss": 9666560,
+              "cpu_ns": 5591666,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3604480,
+              "cpu_ns": 11039000,
+              "threads": 1
+            },
+            "52238": {
+              "rss": 1884160,
+              "cpu_ns": 1789375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 199709000,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5668583,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3637248,
+              "cpu_ns": 11096791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 206965833,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5691416,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3637248,
+              "cpu_ns": 21047833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 214497750,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5713791,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 29315625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 222032125,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5735083,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 36856291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 229564250,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5753125,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 45800458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 237097625,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5776375,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 46320916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 244628041,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5795291,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 55804416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 252154041,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5813833,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 65805791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 259684166,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5831375,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 75809833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 267214125,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5851375,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 77381958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 274745125,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5875000,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 85811250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 282271916,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5893500,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 95812208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 289800875,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5914333,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 105817208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 297332125,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5936875,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 112254583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 304864375,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5960875,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 115820583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 312392500,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 5985958,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 125821250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 318081375,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 6001125,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 125821250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 323763000,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 6015875,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 135824416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 331292291,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 6036000,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3653632,
+              "cpu_ns": 145828791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 338842500,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 6092958,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 3768320,
+              "cpu_ns": 149044791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 344702166,
+          "tree": {
+            "52233": {
+              "rss": 9682944,
+              "cpu_ns": 6150083,
+              "threads": 5
+            },
+            "52235": {
+              "rss": 4145152,
+              "cpu_ns": 149184583,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 99,
+      "requests": 1,
+      "managed_peak": 8358699,
+      "passed": true
+    },
+    {
+      "name": "maximum",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 0.17s\n\nSFTP_SERVICE_RESULT scenario=maximum requests=1 peak=8358696 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 8000,
+          "tree": {
+            "52243": {
+              "rss": 32768,
+              "cpu_ns": 282458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 7585584,
+          "tree": {
+            "52243": {
+              "rss": 9666560,
+              "cpu_ns": 3899541,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 2916352,
+              "cpu_ns": 2770125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 15129917,
+          "tree": {
+            "52243": {
+              "rss": 9666560,
+              "cpu_ns": 3923875,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3440640,
+              "cpu_ns": 3105916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 22692459,
+          "tree": {
+            "52243": {
+              "rss": 9666560,
+              "cpu_ns": 3978166,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3604480,
+              "cpu_ns": 6070458,
+              "threads": 1
+            },
+            "52247": {
+              "rss": 1884160,
+              "cpu_ns": 1297125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 30307584,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4137375,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3637248,
+              "cpu_ns": 6112791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 37840209,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4158666,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3637248,
+              "cpu_ns": 6112791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 45369209,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4177750,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 19737583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 52899167,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4197458,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 26080875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 60428167,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4222958,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 36083666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 65547875,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4241458,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 36083666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 71345375,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4253416,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 46086416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 77375709,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4271458,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 46086416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 84907084,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4297583,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 56089000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 92433209,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4319125,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 66094416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 99963250,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4336916,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 76096875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 107493959,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4360208,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 84213416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 115022125,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4387000,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 84237833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 121079917,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4401916,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 94214541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 127112375,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4425833,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 102791458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 134645834,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4451125,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 104216625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 142177209,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4472916,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 118879333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 148208667,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4493750,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 120371916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 154232792,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4510458,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 128882083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 159284917,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4523416,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3653632,
+              "cpu_ns": 128882083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 166385167,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4583458,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 3768320,
+              "cpu_ns": 137883166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 172368625,
+          "tree": {
+            "52243": {
+              "rss": 9682944,
+              "cpu_ns": 4626958,
+              "threads": 5
+            },
+            "52244": {
+              "rss": 4145152,
+              "cpu_ns": 138018416,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 99,
+      "requests": 1,
+      "managed_peak": 8358696,
+      "passed": true
+    },
+    {
+      "name": "bad_passphrase",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 0.31s\n\nSFTP_SERVICE_RESULT scenario=bad_passphrase requests=2 peak=5220304 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 8625,
+          "tree": {
+            "52250": {
+              "rss": 32768,
+              "cpu_ns": 273583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 7578291,
+          "tree": {
+            "52250": {
+              "rss": 9666560,
+              "cpu_ns": 3777791,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 2916352,
+              "cpu_ns": 2763708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 15132708,
+          "tree": {
+            "52250": {
+              "rss": 9666560,
+              "cpu_ns": 3800333,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3457024,
+              "cpu_ns": 3371333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 21669458,
+          "tree": {
+            "52250": {
+              "rss": 9666560,
+              "cpu_ns": 3833333,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3604480,
+              "cpu_ns": 6026583,
+              "threads": 1
+            },
+            "52254": {
+              "rss": 327680,
+              "cpu_ns": 914666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 29243000,
+          "tree": {
+            "52250": {
+              "rss": 9666560,
+              "cpu_ns": 3909250,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3604480,
+              "cpu_ns": 6026583,
+              "threads": 1
+            },
+            "52254": {
+              "rss": 1884160,
+              "cpu_ns": 1328291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 36834583,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 3986166,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3637248,
+              "cpu_ns": 6064125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 44359791,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4008333,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3637248,
+              "cpu_ns": 16111666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 51886458,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4030250,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 19720291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 59413416,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4056208,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 30117458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 66942250,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4075708,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 36037625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 74470291,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4097208,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 46042000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 82000541,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4118958,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 53790458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 89531875,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4137541,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 57899416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 95478708,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4154458,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 57899416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 103012375,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4182041,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 67677666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 110543458,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4203375,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 77683416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 117363666,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4221833,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 87677958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 122581125,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4236083,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 87677958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 130113750,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4254375,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 97681125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 137640875,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4274791,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 107685291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 143666250,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4290916,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 107685291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 149696750,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4308583,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 117686416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 157227000,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4331041,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 127689166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 163258083,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4345291,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 127689166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 169299750,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4378750,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3653632,
+              "cpu_ns": 137975625,
+              "threads": 1
+            },
+            "52255": {
+              "rss": 1884160,
+              "cpu_ns": 1333833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 176893833,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4514250,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 138034000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 184427208,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4532500,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 138034000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 191955000,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4552500,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 147991791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 197979958,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4569000,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 157992916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 205512875,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4589958,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 157992916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 210987291,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4600250,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 167997166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 216053750,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4618166,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 167997166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 223586416,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4641291,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 177995958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 229612250,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4652625,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 188000000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 235641708,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4675166,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 188000000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 243175833,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4693583,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 197998958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 250701208,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4710833,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 208003083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 258225166,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4728666,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 218005500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 265753541,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4747666,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 218005500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 273282625,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4768333,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 228004583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 279315625,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4786083,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 238007458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 286846333,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4806000,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 248011208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 294378041,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4825583,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 248011208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 300269875,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4843541,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 258012875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 306297166,
+          "tree": {
+            "52250": {
+              "rss": 9682944,
+              "cpu_ns": 4857666,
+              "threads": 5
+            },
+            "52251": {
+              "rss": 3670016,
+              "cpu_ns": 265358208,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 99,
+      "requests": 2,
+      "managed_peak": 5220304,
+      "passed": true
+    },
+    {
+      "name": "cancel",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 0.03s\n\nSFTP_SERVICE_RESULT scenario=cancel requests=1 peak=5219334 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 9167,
+          "tree": {
+            "52256": {
+              "rss": 32768,
+              "cpu_ns": 271875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 5288292,
+          "tree": {
+            "52256": {
+              "rss": 9633792,
+              "cpu_ns": 3782000,
+              "threads": 5
+            },
+            "52257": {
+              "rss": 1916928,
+              "cpu_ns": 1074791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 10392208,
+          "tree": {
+            "52256": {
+              "rss": 9633792,
+              "cpu_ns": 3798125,
+              "threads": 5
+            },
+            "52257": {
+              "rss": 3325952,
+              "cpu_ns": 3051541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 17926958,
+          "tree": {
+            "52256": {
+              "rss": 9633792,
+              "cpu_ns": 3818791,
+              "threads": 5
+            },
+            "52257": {
+              "rss": 3506176,
+              "cpu_ns": 3930875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 25465000,
+          "tree": {
+            "52256": {
+              "rss": 9633792,
+              "cpu_ns": 3857833,
+              "threads": 5
+            },
+            "52257": {
+              "rss": 3604480,
+              "cpu_ns": 5996458,
+              "threads": 1
+            },
+            "52260": {
+              "rss": 1884160,
+              "cpu_ns": 1269875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 33010250,
+          "tree": {
+            "52256": {
+              "rss": 9650176,
+              "cpu_ns": 3958708,
+              "threads": 5
+            },
+            "52257": {
+              "rss": 3604480,
+              "cpu_ns": 5996458,
+              "threads": 1
+            },
+            "52260": {
+              "rss": 1884160,
+              "cpu_ns": 1269875,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 99,
+      "requests": 1,
+      "managed_peak": 5219334,
+      "passed": true
+    },
+    {
+      "name": "task_cancel",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 0.03s\n\nSFTP_SERVICE_RESULT scenario=task_cancel requests=1 peak=5219339 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 8583,
+          "tree": {
+            "52261": {
+              "rss": 32768,
+              "cpu_ns": 291416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 5082791,
+          "tree": {
+            "52261": {
+              "rss": 9650176,
+              "cpu_ns": 3650083,
+              "threads": 5
+            },
+            "52262": {
+              "rss": 1359872,
+              "cpu_ns": 1064041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11399916,
+          "tree": {
+            "52261": {
+              "rss": 9650176,
+              "cpu_ns": 3669583,
+              "threads": 5
+            },
+            "52262": {
+              "rss": 3342336,
+              "cpu_ns": 2924958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 17121333,
+          "tree": {
+            "52261": {
+              "rss": 9650176,
+              "cpu_ns": 3688125,
+              "threads": 5
+            },
+            "52262": {
+              "rss": 3457024,
+              "cpu_ns": 3775500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 22699708,
+          "tree": {
+            "52261": {
+              "rss": 9650176,
+              "cpu_ns": 3741583,
+              "threads": 5
+            },
+            "52262": {
+              "rss": 3604480,
+              "cpu_ns": 5940958,
+              "threads": 1
+            },
+            "52265": {
+              "rss": 1884160,
+              "cpu_ns": 1314000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 29165625,
+          "tree": {
+            "52261": {
+              "rss": 9666560,
+              "cpu_ns": 3927875,
+              "threads": 5
+            }
+          }
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 99,
+      "requests": 1,
+      "managed_peak": 5219339,
+      "passed": true
+    },
+    {
+      "name": "host_accept",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 0.19s\n\nSFTP_SERVICE_RESULT scenario=host_accept requests=2 peak=8358700 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 8541,
+          "tree": {
+            "52266": {
+              "rss": 32768,
+              "cpu_ns": 276458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 5118791,
+          "tree": {
+            "52266": {
+              "rss": 9650176,
+              "cpu_ns": 3743833,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 1916928,
+              "cpu_ns": 1041958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 12661958,
+          "tree": {
+            "52266": {
+              "rss": 9650176,
+              "cpu_ns": 3766833,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3342336,
+              "cpu_ns": 2971208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 20207750,
+          "tree": {
+            "52266": {
+              "rss": 9650176,
+              "cpu_ns": 3801916,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3506176,
+              "cpu_ns": 4148250,
+              "threads": 1
+            },
+            "52270": {
+              "rss": 1884160,
+              "cpu_ns": 1292666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 27781375,
+          "tree": {
+            "52266": {
+              "rss": 9666560,
+              "cpu_ns": 3954083,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3506176,
+              "cpu_ns": 4148250,
+              "threads": 1
+            },
+            "52270": {
+              "rss": 1884160,
+              "cpu_ns": 1292666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 33711333,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4026083,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3620864,
+              "cpu_ns": 6320791,
+              "threads": 1
+            },
+            "52271": {
+              "rss": 606208,
+              "cpu_ns": 987416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 41285083,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4130458,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3620864,
+              "cpu_ns": 6332208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 48894541,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4191750,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3653632,
+              "cpu_ns": 7122541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 56427125,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4211666,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 20080375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 63955250,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4230791,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 26336291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 71484000,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4252041,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 28935000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 79012000,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4277166,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 36339250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 84996625,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4295500,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 46345458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 92532500,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4317708,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 56346666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 97766208,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4330500,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 62536958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 104464250,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4353916,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 62558208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 111995083,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4372833,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 72538416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 118027750,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4391541,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 79757333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 125556250,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4410958,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 88256333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 133080125,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4431708,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 96471000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 140606458,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4452125,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 96471000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 146638250,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4469291,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 106476000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 152660583,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4485541,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 116477083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 160191416,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4509625,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 116477083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 167718916,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4527041,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3670016,
+              "cpu_ns": 126478625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 175232166,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4545750,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3768320,
+              "cpu_ns": 137210208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 181714875,
+          "tree": {
+            "52266": {
+              "rss": 9682944,
+              "cpu_ns": 4626250,
+              "threads": 5
+            },
+            "52267": {
+              "rss": 3833856,
+              "cpu_ns": 137298625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 189250458,
+          "tree": {}
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 99,
+      "requests": 2,
+      "managed_peak": 8358700,
+      "passed": true
+    },
+    {
+      "name": "host_decline",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 0.03s\n\nSFTP_SERVICE_RESULT scenario=host_decline requests=1 peak=5221166 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 9542,
+          "tree": {
+            "52275": {
+              "rss": 32768,
+              "cpu_ns": 295458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 6728959,
+          "tree": {
+            "52275": {
+              "rss": 9633792,
+              "cpu_ns": 3805500,
+              "threads": 5
+            },
+            "52276": {
+              "rss": 2244608,
+              "cpu_ns": 2314916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 14273500,
+          "tree": {
+            "52275": {
+              "rss": 9633792,
+              "cpu_ns": 3828958,
+              "threads": 5
+            },
+            "52276": {
+              "rss": 3342336,
+              "cpu_ns": 3062041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 21828209,
+          "tree": {
+            "52275": {
+              "rss": 9633792,
+              "cpu_ns": 3903333,
+              "threads": 5
+            },
+            "52276": {
+              "rss": 3506176,
+              "cpu_ns": 4221583,
+              "threads": 1
+            },
+            "52279": {
+              "rss": 1884160,
+              "cpu_ns": 1255041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 28746917,
+          "tree": {
+            "52275": {
+              "rss": 9666560,
+              "cpu_ns": 4026750,
+              "threads": 5
+            }
+          }
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 0,
+      "requests": 1,
+      "managed_peak": 5221166,
+      "passed": true
+    },
+    {
+      "name": "wait",
+      "exit": 0,
+      "timed_out": false,
+      "log": "\nrunning 1 test\ntest sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 514 filtered out; finished in 1.70s\n\nSFTP_SERVICE_RESULT scenario=wait requests=1 peak=8358693 final=0 cleanup=ok\n",
+      "samples": [
+        {
+          "ns": 8916,
+          "tree": {
+            "52280": {
+              "rss": 32768,
+              "cpu_ns": 288791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 5204416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 3798041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 1916928,
+              "cpu_ns": 1108833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 11231000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 3821500,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3325952,
+              "cpu_ns": 3007958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 17251916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 3842125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3457024,
+              "cpu_ns": 3890291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 24802541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 3875416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 30886416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 3973291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 38492875,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4074666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 46084958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4174875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 53360958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4253125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 60972833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4327875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 68570250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4405791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 76161500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4470041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 83762000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4568916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 91365541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4662375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 98969375,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4717166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 106570958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4800583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 114143125,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4895083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 121745583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 4963541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 128655708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5039208,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 136222666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5140875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 143184208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5237166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 150741416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5324083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 158301916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5429083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 165873750,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5527833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 173446500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5608666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 181011833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5695875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 188590583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5776083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 195325041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5846166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 200544916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 5919375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 208147375,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6016125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 215528958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6099875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 223189041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6213625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 230890791,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6288333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 237455958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6362416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 244046750,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6454000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 251676833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6543666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 259287250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6618208,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 266825458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6698375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 274473125,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6796541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 279764916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6871625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 287456458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 6967875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 293459541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7048666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 300473000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7151125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 306300208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7205541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 313258708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7315916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 320985708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7412958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 328671708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7508791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 336361625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7601333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 344026375,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7722166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 351712416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7818208,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 359424291,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 7918541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 367095208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8009416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 374773458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8109458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 382455250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8201416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 390146708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8288250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 397818041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8382625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 405492958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8505041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 413164500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8599833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 420851791,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8708291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 428517958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8828708,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 436201500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 8923833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 443872583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9009875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 451546625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9104416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 459235416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9211916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 466902791,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9306250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 474597125,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9398166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 482267541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9496125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 489959500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9606916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 497637666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9699125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 505329500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9798000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 513015250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9888916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 520706000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 9985916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 528380833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10129625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 536049041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10216875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 543712125,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10320291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 551372833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10397708,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 558990000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10493333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 566623541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10578333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 574326291,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10667250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 582026666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10762083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 587372541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10826916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 594369333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 10902375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 602057500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11019083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 609736625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11119583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 617404250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11215500,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 625097416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11322333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 632766916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11432166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 640436041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11543166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 648103250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11637291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 655783625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11739000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 663448125,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11838833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 671114625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 11966250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 678792041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12068000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 686496416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12166625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 694188708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12262625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 701858458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12366250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 709546875,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12458083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 717236250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12567208,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 724934916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12672541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 732450458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12760875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 740361416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12872541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 748036250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 12969791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 755724416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13063250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 763407666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13178500,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 771088041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13285000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 778731458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13393833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 786403416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13511750,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 794090958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13604000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 801754750,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13712750,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 809430458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13818208,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 817108666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 13909708,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 824804791,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14033041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 832494541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14135416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 838882291,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14213958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 844943583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14307791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 852644208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14403250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 858386250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14492125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 863838333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14556625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 871531875,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14654541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 879200416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14748083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 885745875,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14860291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 893419833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 14958291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 901094458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15058958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 908763250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15156000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 916444166,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15263958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 924153166,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15364416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 931832958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15464541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 937634583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15546625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 943563375,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15623666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 951262000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15717833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 958959875,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15830625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 964877458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 15892750,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 972494375,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16023833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 978776833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16112541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 986001041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16211708,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 993518833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16303416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1001201875,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16401416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1008869041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16514791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1016536500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16624000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1024225291,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16718000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1031887416,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16823583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1039557125,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 16949791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1047229916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17046166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1054924208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17143333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1062594250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17252958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1070283583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17344291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1077952458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17435541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1085650666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17555916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1093337666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17657833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1101048666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17744916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1106835958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17802625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1112750375,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17892125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1118351625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 17945458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1125992000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18050750,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1133683625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18150333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1141354458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18247291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1149025541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18355625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1155094583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18439458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1161999750,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18522416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1167254458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18599666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1173199625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18659291,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1180891666,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18789333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1188506083,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18886666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1194636166,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 18992250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1202336166,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19093875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1210014333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19194958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1217699500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19319750,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1225395750,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19419583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1233075208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19519458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1240751291,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19616583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1246375250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19692333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1253424166,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19772625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1260267541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19879458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1266165833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 19939541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1272805750,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20027541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1280367875,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20124000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1285929625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20206375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1291607041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20299583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1299299166,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20390375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1305099333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20481625,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1310434208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20546083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1318116500,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20647541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1325803541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20748166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1333472583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20867666,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1341160250,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 20962541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1348844000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21054791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1355397750,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21153458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1361077458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21232250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1367087125,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21304583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1373222333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21401750,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1378522458,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21457750,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1385313583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21537916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1391386625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21617250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1399058833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21727375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1406726708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21852041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1414399583,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 21944791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1420212041,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22021916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1427646333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22106541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1435327541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22208166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1442822958,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22323708,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1450497333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22436041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1456500208,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22511041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1464170000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22607875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1470284625,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22706166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1477909333,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22799791,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1485600083,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 22906458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1493123000,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 23006958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1500550916,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 23088458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1506836833,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 23177541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1512642541,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 23243958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1518979708,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 23334916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1526647166,
+          "tree": {
+            "52280": {
+              "rss": 9650176,
+              "cpu_ns": 23440916,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6029208,
+              "threads": 1
+            },
+            "52284": {
+              "rss": 1884160,
+              "cpu_ns": 1285250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1534333083,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23641583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3604480,
+              "cpu_ns": 6044208,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1542029333,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23703250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3653632,
+              "cpu_ns": 9096916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1548835666,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23744166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3653632,
+              "cpu_ns": 18594666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1556418916,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23791500,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3653632,
+              "cpu_ns": 19732583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1562434458,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23823041,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3653632,
+              "cpu_ns": 32069166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1569983750,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23862541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 34367666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1577528166,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23891083,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 47732625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1585069291,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23918875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 47732625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1590714958,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23941875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 57735041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1596750083,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23964458,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 65369125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1604284250,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 23987000,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 67736083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1611825541,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24011250,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 77736291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1617857875,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24038583,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 87737583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1625390666,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24061333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 87737583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1632922083,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24083333,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 97739250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1640452250,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24102375,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 109859541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1647983875,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24126541,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 117744458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1655511916,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24149833,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 117744458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1663046375,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24174958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 127742583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1670575375,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24194166,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 137747958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1678105916,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24216958,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 147747875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1685641875,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24240875,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3670016,
+              "cpu_ns": 147747875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1693173791,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24263416,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3784704,
+              "cpu_ns": 161344541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1700701583,
+          "tree": {
+            "52280": {
+              "rss": 9666560,
+              "cpu_ns": 24318125,
+              "threads": 5
+            },
+            "52281": {
+              "rss": 3850240,
+              "cpu_ns": 161440791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "ns": 1708230500,
+          "tree": {}
+        }
+      ],
+      "observed_children_still_live": [],
+      "host_record_bytes": 99,
+      "requests": 1,
+      "managed_peak": 8358693,
+      "passed": true
+    }
+  ],
+  "case": "sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit",
+  "tool_sha256": "8420925a32c2ba546f599450b75016b1e02e9b289d2c4e401d8bc740b9465149",
+  "manifest_sha256": {
+    "Cargo.toml": "ad9ccd2566dd8e46e5ccd7c01fa8e88becdbbcff525a0d933e7d21decaa07adb",
+    "Cargo.lock": "14ce989b53efa4eeef4737d78ce2076f3a33e3bc7a5b557bb749df02628a0721"
+  },
+  "versions": {
+    "rustc": {
+      "exit": 0,
+      "stdout": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1\n",
+      "stderr": ""
+    },
+    "ssh": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "OpenSSH_10.3p1, LibreSSL 3.3.6\n"
+    }
+  },
+  "helper_build": {
+    "exit": 0,
+    "stdout": "",
+    "stderr": "    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n"
+  },
+  "parent_build": {
+    "exit": 0,
+    "stderr": "    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n",
+    "diagnostics": []
+  },
+  "executables": {
+    "target/release/deps/congminal-ed68075d5b1716c8": {
+      "bytes": 6711464,
+      "sha256": "8d698f164ad4c6b038c12970338f938cb1eb0e3f501b1fec0d458e04ca59fc59"
+    },
+    "target/release/congminal-ssh-helper": {
+      "bytes": 571976,
+      "sha256": "a96c3f4d29ef80eef147599bcff47b95150ceae273b584c4955676b61d6d02e0"
+    }
+  },
+  "sampler": "libproc \u6bcf 5 ms\uff1bMach \u65f6\u95f4\u57fa\u51c6 125/3\uff1b\u8fdb\u7a0b\u6811\u6700\u591a 64 \u9879",
+  "fixture_policy": {
+    "per_source_penalties_supported": true,
+    "disabled_only_in_own_fixture": true,
+    "reason": "Expected authentication failures must not penalize later independent cases; application/client policy unchanged."
+  },
+  "server_log": "Server listening on 127.0.0.1 port 51987.\nConnection from 127.0.0.1 port 51989 on 127.0.0.1 port 51987\nkex_exchange_identification: Connection closed by remote host [preauth]\nConnection closed by 127.0.0.1 port 51989 [preauth]\nConnection from 127.0.0.1 port 51990 on 127.0.0.1 port 51987\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51990 ssh2 [preauth]\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nAccepted publickey for tenonsuzu from 127.0.0.1 port 51990 ssh2: ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\nUser child is on pid 52241\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 51990 id 0\nConnection closed by 127.0.0.1 port 51990\nClose session: user tenonsuzu from 127.0.0.1 port 51990 id 0\nTransferred: sent 4300, received 3804 bytes\nClosing connection to 127.0.0.1 port 51990\nConnection from 127.0.0.1 port 51991 on 127.0.0.1 port 51987\nAccepted key ED25519 SHA256:BZf+hQ4rTjG6NWFnkDkocnKUQ5X3sAmYSpkNXQe1syo found at /private/tmp/cgp-6nb0n97l/authorized_keys:2\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51991 ssh2 [preauth]\nAccepted key ED25519 SHA256:BZf+hQ4rTjG6NWFnkDkocnKUQ5X3sAmYSpkNXQe1syo found at /private/tmp/cgp-6nb0n97l/authorized_keys:2\nAccepted publickey for tenonsuzu from 127.0.0.1 port 51991 ssh2: ED25519 SHA256:BZf+hQ4rTjG6NWFnkDkocnKUQ5X3sAmYSpkNXQe1syo\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\nUser child is on pid 52248\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 51991 id 0\nConnection closed by 127.0.0.1 port 51991\nClose session: user tenonsuzu from 127.0.0.1 port 51991 id 0\nTransferred: sent 4300, received 3804 bytes\nClosing connection to 127.0.0.1 port 51991\nConnection from 127.0.0.1 port 51992 on 127.0.0.1 port 51987\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51992 ssh2 [preauth]\nConnection closed by authenticating user tenonsuzu 127.0.0.1 port 51992 [preauth]\nConnection from 127.0.0.1 port 51993 on 127.0.0.1 port 51987\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51993 ssh2 [preauth]\nConnection closed by authenticating user tenonsuzu 127.0.0.1 port 51993 [preauth]\nConnection from 127.0.0.1 port 51994 on 127.0.0.1 port 51987\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51994 ssh2 [preauth]\nConnection closed by authenticating user tenonsuzu 127.0.0.1 port 51994 [preauth]\nConnection from 127.0.0.1 port 51995 on 127.0.0.1 port 51987\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51995 ssh2 [preauth]\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nAccepted publickey for tenonsuzu from 127.0.0.1 port 51995 ssh2: ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\nUser child is on pid 52273\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 51995 id 0\nConnection closed by 127.0.0.1 port 51995\nClose session: user tenonsuzu from 127.0.0.1 port 51995 id 0\nTransferred: sent 4300, received 3804 bytes\nClosing connection to 127.0.0.1 port 51995\nConnection from 127.0.0.1 port 51996 on 127.0.0.1 port 51987\nConnection closed by 127.0.0.1 port 51996 [preauth]\nConnection from 127.0.0.1 port 51997 on 127.0.0.1 port 51987\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nPostponed publickey for tenonsuzu from 127.0.0.1 port 51997 ssh2 [preauth]\nAccepted key ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU found at /private/tmp/cgp-6nb0n97l/authorized_keys:1\nAccepted publickey for tenonsuzu from 127.0.0.1 port 51997 ssh2: ED25519 SHA256:OXKdNg9f1z1dzGjGcrVQcbMgpzKQ1FVsKRPZ5qVP7RU\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\nUser child is on pid 52289\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 51997 id 0\nConnection closed by 127.0.0.1 port 51997\nClose session: user tenonsuzu from 127.0.0.1 port 51997 id 0\nTransferred: sent 4300, received 3804 bytes\nClosing connection to 127.0.0.1 port 51997\n",
+  "source_unchanged": true
+}

@@ -1,5 +1,6 @@
 //! 有界、合作式 KMP 搜索；保留查询长度的坐标窗口，不复制历史或整条逻辑行。
 use crate::{
+    resources::{Kind, Lease, Tracked},
     selection::Point,
     term::Terminal,
     text::{Cursor, Token},
@@ -12,13 +13,14 @@ pub const QUERY_LIMIT: usize = 1024;
 pub const MATCH_LIMIT: usize = 1024;
 pub type Range = (Point, Point);
 
-#[derive(Default)]
 pub struct Search {
     pub active: bool,
-    pub query: String,
+    query: Tracked<String>,
     pub caret: usize,
-    pub preedit: String,
+    preedit: Tracked<String>,
     run: Option<Run>,
+    input_limited: bool,
+    run_limited: bool,
 }
 struct Run {
     epoch: u64,
@@ -28,7 +30,8 @@ struct Run {
     cursor: Cursor,
     matched: usize,
     recent: VecDeque<Range>,
-    checkpoint: Option<(Cursor, usize, VecDeque<Range>)>,
+    checkpoint: Option<(Cursor, usize)>,
+    saved: VecDeque<Range>,
     pub matches: VecDeque<Range>,
     selected: usize,
     done: bool,
@@ -36,8 +39,59 @@ struct Run {
     next_new: bool,
     seek_last: bool,
     before: Option<Point>,
+    memory: Lease,
+}
+impl Default for Search {
+    fn default() -> Self {
+        let pool = crate::resources::current();
+        Self {
+            active: false,
+            query: Tracked::new(String::new(), pool.lease(Kind::Search, 0).unwrap()),
+            caret: 0,
+            preedit: Tracked::new(String::new(), pool.lease(Kind::Search, 0).unwrap()),
+            run: None,
+            input_limited: false,
+            run_limited: false,
+        }
+    }
 }
 impl Search {
+    pub fn limited(&self) -> bool {
+        self.input_limited || self.run_limited
+    }
+    pub fn query(&self) -> &str {
+        &self.query.data
+    }
+    pub fn preedit(&self) -> &str {
+        &self.preedit.data
+    }
+    #[cfg(all(test, unix))]
+    pub(crate) fn preedit_capacity(&self) -> usize {
+        self.preedit.capacity()
+    }
+    pub fn clear_preedit(&mut self) {
+        self.preedit.data.clear();
+    }
+    pub fn set_preedit(&mut self, value: &str) {
+        let mut end = value.len().min(QUERY_LIMIT);
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        if self.preedit.reserve_capacity(end).is_none() {
+            self.preedit.data.clear();
+            self.input_limited = true;
+            return;
+        }
+        self.preedit.data.clear();
+        self.preedit.data.push_str(&value[..end]);
+        self.input_limited = end < value.len();
+    }
+    #[cfg(test)]
+    pub fn replace_query(&mut self, value: &str, term: &Terminal) {
+        self.query.data.clear();
+        self.caret = 0;
+        self.insert(value, term);
+    }
     pub fn open(&mut self, term: &Terminal) {
         self.active = true;
         self.caret = self.query.len();
@@ -45,28 +99,54 @@ impl Search {
     }
     pub fn close(&mut self) {
         self.active = false;
-        self.preedit.clear();
+        self.preedit.data.clear();
         self.run = None;
+        self.input_limited = false;
     }
     pub fn restart(&mut self, term: &Terminal) {
-        self.run = (!self.query.is_empty() && self.active).then(|| Run::new(&self.query, term));
+        self.run_limited = false;
+        if self.query.is_empty() || !self.active {
+            self.run = None;
+            return;
+        }
+        let count = self.query.chars().count();
+        if let Some(run) = &mut self.run
+            && run.can_reuse(count)
+        {
+            run.reset(&self.query.data, term);
+            return;
+        }
+        let replacement = Run::new(&self.query.data, term, self.query.memory.budget());
+        self.run_limited = replacement.is_none();
+        self.run = replacement;
     }
     pub fn insert(&mut self, value: &str, term: &Terminal) {
-        let mut input = String::new();
+        // 有界输入在栈上筛选；保留原take(1024)和控制字符过滤规则，不先建立临时String。
+        let mut input = [0u8; QUERY_LIMIT];
+        let mut len = 0;
+        let mut limited = false;
         for c in value.chars().take(QUERY_LIMIT) {
             if c.is_control() {
                 continue;
             }
-            if self.query.len() + input.len() + c.len_utf8() > QUERY_LIMIT {
+            if self.query.len() + len + c.len_utf8() > QUERY_LIMIT {
+                limited = true;
                 break;
             }
-            input.push(c);
+            len += c.encode_utf8(&mut input[len..]).len();
         }
-        if !input.is_empty() {
-            self.query.insert_str(self.caret, &input);
-            self.caret += input.len();
-            self.restart(term);
+        if len == 0 {
+            self.input_limited = limited;
+            return;
         }
+        if self.query.reserve_capacity(self.query.len() + len).is_none() {
+            self.input_limited = true;
+            return;
+        }
+        self.query.data.insert_str(self.caret, std::str::from_utf8(&input[..len]).unwrap());
+        self.caret += len;
+        self.input_limited = limited;
+        self.restart(term);
     }
     pub fn edit_key(&mut self, key: crate::input::Key, term: &Terminal) -> bool {
         use crate::input::Key;
@@ -79,12 +159,14 @@ impl Search {
             Key::End => self.caret = self.query.len(),
             Key::Backspace if self.caret > 0 => {
                 let at = previous();
-                self.query.replace_range(at..self.caret, "");
+                self.query.data.replace_range(at..self.caret, "");
+                self.input_limited = false;
                 self.caret = at;
                 self.restart(term);
             }
             Key::Delete if self.caret < self.query.len() => {
-                self.query.replace_range(self.caret..next(), "");
+                self.query.data.replace_range(self.caret..next(), "");
+                self.input_limited = false;
                 self.restart(term);
             }
             Key::Backspace | Key::Delete => {}
@@ -95,8 +177,12 @@ impl Search {
     pub fn current(&self) -> Option<Range> {
         self.run.as_ref().and_then(|r| r.matches.get(r.selected).copied())
     }
-    pub fn matches(&self) -> impl Iterator<Item = Range> + '_ {
-        self.run.iter().flat_map(|r| r.matches.iter().copied())
+    #[cfg(test)]
+    pub fn matches(&self) -> impl ExactSizeIterator<Item = Range> + '_ {
+        self.run.as_ref().map(|r| r.matches.iter()).unwrap_or_default().copied()
+    }
+    pub(crate) fn match_slices(&self) -> (&[Range], &[Range]) {
+        self.run.as_ref().map_or((&[], &[]), |r| r.matches.as_slices())
     }
     pub fn pending(&self) -> bool {
         self.run.as_ref().is_some_and(|r| !r.done && !r.paused)
@@ -126,13 +212,13 @@ impl Search {
             run.selected -= 1;
         } else {
             let before = run.matches.front().unwrap().0;
-            let mut previous = Run::new(&self.query, term);
+            run.reset(&self.query.data, term);
+            self.run_limited = false;
             if before > (Point { line: term.text_bounds().0, col: 0 }) {
-                previous.before = Some(before);
+                run.before = Some(before);
             } else {
-                previous.seek_last = true;
+                run.seek_last = true;
             }
-            self.run = Some(previous);
         }
     }
     fn sync(&mut self, term: &Terminal) {
@@ -147,10 +233,11 @@ impl Search {
         let oldest = term.text_bounds().0;
         if run.revision != revision {
             let current = run.matches.get(run.selected).copied();
-            if let Some((cursor, matched, recent)) = &run.checkpoint {
+            if let Some((cursor, matched)) = &run.checkpoint {
                 run.cursor = *cursor;
                 run.matched = *matched;
-                run.recent = recent.clone();
+                run.recent.clear();
+                run.recent.extend(run.saved.iter().copied());
                 run.matches.retain(|range| range.1.line < cursor.point.line);
                 run.done = false;
                 run.paused = false;
@@ -191,7 +278,9 @@ impl Search {
                 break;
             }
             if run.cursor == Cursor::at(screen) {
-                run.checkpoint = Some((run.cursor, run.matched, run.recent.clone()));
+                run.saved.clear();
+                run.saved.extend(run.recent.iter().copied());
+                run.checkpoint = Some((run.cursor, run.matched));
             }
             if run.cursor.point.line >= end {
                 run.done = true;
@@ -256,67 +345,122 @@ impl Search {
         }
         before != (self.current(), self.run.as_ref().map(|r| (r.matches.len(), r.done, r.paused)))
     }
+    #[cfg(test)]
     pub fn status(&self) -> String {
-        let Some(run) = &self.run else {
-            return "查找".into();
-        };
-        format!(
-            "查找 {}/{}{}",
-            if run.matches.is_empty() { 0 } else { run.selected + 1 },
-            run.matches.len(),
-            if run.done {
-                ""
-            } else if run.paused {
-                "+"
-            } else {
-                "…"
+        self.status_display().to_string()
+    }
+    pub fn status_display(&self) -> impl std::fmt::Display + '_ {
+        struct Status<'a>(&'a Search);
+        impl std::fmt::Display for Status<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if self.0.limited() {
+                    return f.write_str("查找 · 资源额度或输入长度不足，请调整后重试");
+                }
+                let Some(run) = &self.0.run else {
+                    return f.write_str("查找");
+                };
+                write!(
+                    f,
+                    "查找 {}/{}{}",
+                    if run.matches.is_empty() { 0 } else { run.selected + 1 },
+                    run.matches.len(),
+                    if run.done {
+                        ""
+                    } else if run.paused {
+                        "+"
+                    } else {
+                        "…"
+                    }
+                )
             }
-        )
+        }
+        Status(self)
     }
     pub fn resource_bytes(&self) -> usize {
-        self.query.capacity()
-            + self.preedit.capacity()
-            + self.run.as_ref().map_or(0, |r| {
-                r.pattern.capacity() * 4
-                    + r.prefix.capacity() * std::mem::size_of::<usize>()
-                    + (r.recent.capacity()
-                        + r.matches.capacity()
-                        + r.checkpoint.as_ref().map_or(0, |(_, _, p)| p.capacity()))
-                        * std::mem::size_of::<Range>()
-            })
+        self.query.capacity() + self.preedit.capacity() + self.run.as_ref().map_or(0, |r| r.memory.bytes())
     }
 }
 impl Run {
-    fn new(query: &str, term: &Terminal) -> Self {
-        let pattern: Vec<_> = query.chars().collect();
-        let mut prefix = vec![0; pattern.len()];
-        for i in 1..pattern.len() {
-            let mut j = prefix[i - 1];
-            while j > 0 && pattern[i] != pattern[j] {
-                j = prefix[j - 1];
+    fn can_reuse(&self, n: usize) -> bool {
+        self.pattern.capacity() >= n
+            && self.prefix.capacity() >= n
+            && self.recent.capacity() >= n
+            && self.saved.capacity() >= n
+    }
+    fn reset(&mut self, query: &str, term: &Terminal) {
+        self.pattern.clear();
+        self.pattern.extend(query.chars());
+        self.prefix.clear();
+        self.prefix.resize(self.pattern.len(), 0);
+        for i in 1..self.pattern.len() {
+            let mut j = self.prefix[i - 1];
+            while j > 0 && self.pattern[i] != self.pattern[j] {
+                j = self.prefix[j - 1];
             }
-            if pattern[i] == pattern[j] {
+            if self.pattern[i] == self.pattern[j] {
                 j += 1;
             }
-            prefix[i] = j;
+            self.prefix[i] = j;
         }
-        Self {
-            epoch: term.text_stamp().0,
-            revision: term.text_stamp().1,
-            cursor: Cursor::at(term.text_bounds().0),
-            recent: VecDeque::with_capacity(pattern.len()),
+        (self.epoch, self.revision) = term.text_stamp();
+        self.cursor = Cursor::at(term.text_bounds().0);
+        self.matched = 0;
+        self.recent.clear();
+        self.saved.clear();
+        self.checkpoint = None;
+        self.matches.clear();
+        self.selected = 0;
+        self.done = false;
+        self.paused = false;
+        self.next_new = false;
+        self.seek_last = false;
+        self.before = None;
+    }
+    fn new(query: &str, term: &Terminal, pool: &std::sync::Arc<crate::resources::Budget>) -> Option<Self> {
+        let n = query.chars().count();
+        if n == 0 || query.len() > QUERY_LIMIT {
+            return None;
+        }
+        // 环形缓冲的分配实现可以按2次幂取整；取整余量也必须在分配前覆盖。
+        let bytes = n * (std::mem::size_of::<char>() + std::mem::size_of::<usize>())
+            + 2 * n.next_power_of_two() * std::mem::size_of::<Range>()
+            + MATCH_LIMIT * std::mem::size_of::<Range>();
+        let mut memory = pool.lease(Kind::Search, bytes).ok()?;
+        let mut pattern = Vec::new();
+        pattern.try_reserve_exact(n).ok()?;
+        let mut prefix = Vec::new();
+        prefix.try_reserve_exact(n).ok()?;
+        let mut recent = VecDeque::new();
+        recent.try_reserve_exact(n).ok()?;
+        let mut saved = VecDeque::new();
+        saved.try_reserve_exact(n).ok()?;
+        let mut matches = VecDeque::new();
+        matches.try_reserve_exact(MATCH_LIMIT).ok()?;
+        let bytes = pattern.capacity() * std::mem::size_of::<char>()
+            + prefix.capacity() * std::mem::size_of::<usize>()
+            + (recent.capacity() + saved.capacity() + matches.capacity()) * std::mem::size_of::<Range>();
+        memory.resize(bytes).ok()?;
+        let mut result = Self {
+            epoch: 0,
+            revision: 0,
             pattern,
             prefix,
+            cursor: Cursor::at(0),
             matched: 0,
+            recent,
+            saved,
             checkpoint: None,
-            matches: VecDeque::with_capacity(MATCH_LIMIT),
+            matches,
             selected: 0,
             done: false,
             paused: false,
             next_new: false,
             seek_last: false,
             before: None,
-        }
+            memory,
+        };
+        result.reset(query, term);
+        Some(result)
     }
 }
 
@@ -334,10 +478,58 @@ mod tests {
         panic!("搜索未收敛");
     }
     fn find(term: &Terminal, query: &str) -> Search {
-        let mut search = Search { query: query.into(), ..Search::default() };
+        let mut search = Search::default();
+        search.insert(query, term);
         search.open(term);
         drain(&mut search, term);
         search
+    }
+    #[test]
+    fn ui_batch_preserves_wrapped_match_order_special_slots_and_denial_clears_old_state() {
+        use crate::{
+            resources::{Budget, Scope},
+            ui::{Decoration, DecorationKind, State},
+        };
+        let pool = Budget::new(2 * 1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let mut term = Terminal::new(120, 24);
+        Parser::new().advance(&mut term, "aaaa\r\n".repeat(400).as_bytes());
+        let mut search = find(&term, "a");
+        assert_eq!(search.matches().len(), MATCH_LIMIT);
+        let run = search.run.as_mut().unwrap();
+        for _ in 0..37 {
+            run.matches.pop_front();
+            let line = run.matches.back().unwrap().1.line + 1;
+            run.matches.push_back((Point { line, col: 0 }, Point { line, col: 1 }));
+        }
+        let (first, second) = search.match_slices();
+        assert!(!first.is_empty() && !second.is_empty());
+        let expected: Vec<_> = search.matches().collect();
+        let mut state = State::default();
+        state.message(format_args!("old status"));
+        state.begin_matches(&search);
+        assert_eq!(state.decorations.iter().map(|d| d.range).collect::<Vec<_>>(), expected);
+        assert!(state.decorations.iter().all(|d| d.kind == DecorationKind::Match));
+        assert!(state.text.is_empty() && state.bar().is_none());
+        let current = Decoration { range: expected[7], kind: DecorationKind::Current };
+        let link = Decoration { range: expected[8], kind: DecorationKind::Link };
+        state.decorate(current.clone());
+        state.decorate(link.clone());
+        assert_eq!(&state.decorations[MATCH_LIMIT..], &[current, link]);
+        state.begin_matches(&search);
+        assert_eq!(state.decorations.len(), MATCH_LIMIT);
+        let capacity = state.decorations.capacity();
+        let empty = Search::default();
+        state.begin_matches(&empty);
+        assert!(state.decorations.is_empty() && state.bar().is_none());
+        assert_eq!(state.decorations.capacity(), capacity);
+        let tiny = Budget::new(0, 0);
+        let _scope = Scope::enter(tiny.clone());
+        let mut refused = State::default();
+        refused.begin_matches(&search);
+        assert!(refused.decorations.is_empty() && refused.text.is_empty());
+        assert!(refused.bar().unwrap().text.contains("资源额度"));
+        assert_eq!(tiny.snapshot().used, 0);
     }
     #[test]
     fn soft_wrap_wide_gap_and_combining_marks_map_to_real_cells() {
@@ -438,7 +630,7 @@ mod tests {
         search.insert("中文e\u{301}", &term);
         search.edit_key(Key::Left, &term);
         search.edit_key(Key::Backspace, &term);
-        assert_eq!(search.query, "中文\u{301}");
+        assert_eq!(search.query(), "中文\u{301}");
         search.insert(&"界".repeat(2000), &term);
         assert!(search.query.len() <= QUERY_LIMIT);
         search.close();
@@ -446,12 +638,97 @@ mod tests {
         assert!(search.resource_bytes() < 4096);
     }
     #[test]
+    fn query_denial_keeps_the_old_query_caret_and_matches_while_preedit_failure_clears() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let mut term = Terminal::new(10, 2);
+        Parser::new().advance(&mut term, b"aaa");
+        let mut search = find(&term, "a");
+        search.set_preedit("x");
+        let used = pool.snapshot().used;
+        let current = search.current();
+        let hold = pool.lease(Kind::Queue, pool.snapshot().limit - used).unwrap();
+        search.insert("b", &term);
+        assert_eq!(search.query(), "a");
+        assert_eq!(search.caret, 1);
+        assert_eq!(search.current(), current);
+        assert!(search.limited());
+        search.set_preedit("more");
+        assert!(search.preedit().is_empty());
+        assert!(search.limited());
+        assert_eq!(pool.snapshot().used, used + hold.bytes());
+        drop(hold);
+        search.insert("b", &term);
+        assert_eq!(search.query(), "ab");
+        assert!(!search.limited());
+        drop((search, term));
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn run_growth_denial_clears_stale_results_and_explicit_retry_recovers() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let mut term = Terminal::new(10, 2);
+        Parser::new().advance(&mut term, b"a ab");
+        let mut search = Search::default();
+        search.insert(&"x".repeat(QUERY_LIMIT), &term);
+        search.replace_query("a", &term);
+        search.open(&term);
+        drain(&mut search, &term);
+        assert_eq!(search.matches().count(), 2);
+        let hold = pool.lease(Kind::Queue, pool.snapshot().limit - pool.snapshot().used).unwrap();
+        search.insert("b", &term);
+        assert_eq!(search.query(), "ab");
+        assert!(search.run.is_none() && !search.pending() && search.current().is_none());
+        assert!(search.status().contains("资源额度"));
+        drop(hold);
+        search.restart(&term);
+        drain(&mut search, &term);
+        assert_eq!(search.matches().count(), 1);
+        assert!(!search.limited());
+        drop((search, term));
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn buffers_stay_with_the_original_budget_and_restart_and_backward_navigation_reuse_them() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let mut term = Terminal::new(10, 2);
+        Parser::new().advance(&mut term, b"aa aa aa");
+        let mut search = find(&term, "aa");
+        let pattern = search.run.as_ref().unwrap().pattern.as_ptr();
+        let original = search.resource_bytes();
+        let other = Budget::new(0, 0);
+        let scope = Scope::enter(other.clone());
+        search.restart(&term);
+        drain(&mut search, &term);
+        search.navigate(&term, false);
+        drain(&mut search, &term);
+        assert_eq!(search.run.as_ref().unwrap().pattern.as_ptr(), pattern);
+        assert_eq!(search.resource_bytes(), original);
+        search.set_preedit(&"界".repeat(100000));
+        assert!(search.preedit.capacity() <= QUERY_LIMIT);
+        assert!(search.preedit().is_char_boundary(search.preedit().len()));
+        assert!(search.limited());
+        assert_eq!(other.snapshot().used, 0);
+        drop(scope);
+        search.close();
+        assert_eq!(search.resource_bytes(), search.query.capacity() + search.preedit.capacity());
+        assert_eq!(pool.snapshot().kinds[Kind::Search as usize], search.resource_bytes());
+        drop((search, term));
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
     #[ignore = "手动 64 MiB 历史搜索/切片开销"]
     fn bench_search_history() {
         let mut term = Terminal::new(120, 40);
         term.set_scrollback_limit(1_000_000);
         Parser::new().advance(&mut term, format!("{}\r\n", "x".repeat(119)).repeat(40_000).as_bytes());
-        let mut search = Search { query: "missing needle".into(), ..Search::default() };
+        let mut search = Search::default();
+        search.insert("missing needle", &term);
         search.open(&term);
         let started = Instant::now();
         let mut slices = Vec::new();

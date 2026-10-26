@@ -7,8 +7,10 @@
 //!
 //! ConPTY 会把 Windows 控制台 API 的调用翻译成 VT 序列，所以我们的解析器可以原样复用。
 
-use super::flow::{AsyncWriter, READ_CHUNK};
-use super::{Command, EventSink, PtyEvent};
+#[cfg(test)]
+use super::Command;
+use super::flow::{AsyncWriter, ByteQueue, INPUT_LIMIT, READ_CHUNK};
+use super::{CommandSource, EventSink, PtyEvent};
 use std::ffi::c_void;
 use std::fs::File;
 use std::io::{self, Read};
@@ -125,7 +127,13 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub fn spawn(command: &Command, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+    pub fn spawn(command: &impl CommandSource, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+        let command = command.view();
+        let pool = crate::resources::current();
+        let reader_permit = crate::runtime::prepare("pty-reader", &pool)?;
+        let waiter_permit = crate::runtime::prepare("pty-waiter", &pool)?;
+        let writer_permit = crate::runtime::prepare("pty-writer", &pool)?;
+        let input_queue = Arc::new(ByteQueue::input(INPUT_LIMIT)?);
         unsafe {
             // 1. 两根管道
             let (mut input_read, mut input_write) = (null_mut(), null_mut());
@@ -182,9 +190,9 @@ impl Pty {
             startup.startup_info.flags = STARTF_USESTDHANDLES;
             startup.attribute_list = list_ptr;
 
-            let mut command_line: Vec<u16> = command_line(command).encode_utf16().chain(Some(0)).collect();
+            let mut command_line: Vec<u16> = command_line(&command).encode_utf16().chain(Some(0)).collect();
             // 有额外的环境变量时自己拼一个环境块，否则继承当前进程的
-            let environment = (!command.env.is_empty()).then(|| environment_block(&command.env));
+            let environment = (!command.env.is_empty()).then(|| environment_block(command.env));
             let directory: Option<Vec<u16>> =
                 command.working_directory.as_ref().map(|dir| dir.as_os_str().encode_wide().chain(Some(0)).collect());
             let mut info: ProcessInformation = std::mem::zeroed();
@@ -207,11 +215,10 @@ impl Pty {
             CloseHandle(info.thread);
             let process = OwnedHandle::from_raw_handle(info.process);
 
-            pty.input = Some(AsyncWriter::spawn(input, sink.clone())?);
             // 4. 读线程：把 shell 输出送出去
             let data_sink = sink.clone();
             let mut output = output;
-            std::thread::Builder::new().name("pty-reader".into()).spawn(move || {
+            reader_permit.spawn(move || {
                 let mut buf = vec![0u8; READ_CHUNK];
                 let mut forward = true;
                 while let Ok(n @ 1..) = output.read(&mut buf) {
@@ -225,7 +232,8 @@ impl Pty {
 
             // 5. 等待线程：shell 退出时通知。ConPTY 下读端不一定会马上收到 EOF，所以单独等进程句柄。
             let console = pty.console.clone();
-            std::thread::Builder::new().name("pty-waiter".into()).spawn(move || {
+            let sink_for_writer = sink.clone();
+            waiter_permit.spawn(move || {
                 let process = process;
                 WaitForSingleObject(process.as_raw_handle(), INFINITE);
                 let mut code = 0;
@@ -234,6 +242,11 @@ impl Pty {
                 console.close();
                 sink(PtyEvent::Exit(code));
             })?;
+
+            // 读端已能排空关闭消息，等待端已拥有进程；最后发布可取消的写端。
+            pty.input = Some(AsyncWriter::spawn_reserved(writer_permit, input_queue, input, sink_for_writer, || {
+                std::thread::park_timeout(std::time::Duration::from_millis(2))
+            })?);
 
             Ok(pty)
         }
@@ -274,10 +287,12 @@ fn coord(cols: u16, rows: u16) -> Coord {
 ///
 /// Windows 把整条命令行作为一个字符串交给新进程，由它自己切分参数，
 /// 所以含空格或引号的参数要按 C 运行库（CommandLineToArgvW）的规则加引号和转义。
-fn command_line(command: &Command) -> String {
-    let program = command.program.clone().or_else(|| std::env::var("COMSPEC").ok()).unwrap_or_else(|| "cmd.exe".into());
+fn command_line(command: &impl CommandSource) -> String {
+    let command = command.view();
+    let fallback = command.program.is_none().then(|| std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()));
+    let program = command.program.or(fallback.as_deref()).unwrap();
     let mut line = String::new();
-    for (i, arg) in std::iter::once(&program).chain(&command.args).enumerate() {
+    for (i, arg) in std::iter::once(program).chain(command.args.iter().map(String::as_str)).enumerate() {
         if i > 0 {
             line.push(' ');
         }

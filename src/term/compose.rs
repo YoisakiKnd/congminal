@@ -32,17 +32,22 @@ pub fn compose(base: char, mark: char) -> Option<char> {
 }
 
 /// 依次把组合字符合进基础字符。返回合成后的字符和合不进去的那些组合字符。
-pub fn compose_all(base: char, marks: &str) -> (char, String) {
+pub(crate) fn compose_borrowed(base: char, marks: &str) -> (char, &str) {
     let mut result = base;
-    let mut rest = String::new();
-    for mark in marks.chars() {
+    for (offset, mark) in marks.char_indices() {
         // 规范合成要求中间没有被跳过的符号挡着；有合不进去的符号之后就不再合了
         match compose(result, mark) {
-            Some(composed) if rest.is_empty() => result = composed,
-            _ => rest.push(mark),
+            Some(composed) => result = composed,
+            _ => return (result, &marks[offset..]),
         }
     }
-    (result, rest)
+    (result, "")
+}
+
+#[cfg(test)]
+fn compose_all(base: char, marks: &str) -> (char, String) {
+    let (base, rest) = compose_borrowed(base, marks);
+    (base, rest.to_owned())
 }
 
 #[cfg(test)]
@@ -67,5 +72,16 @@ mod tests {
     #[test]
     fn leftovers() {
         assert_eq!(compose_all('x', "\u{301}\u{302}"), ('x', "\u{301}\u{302}".to_string()));
+    }
+    #[test]
+    fn borrowed_remainder_keeps_source_bytes_and_stops_after_first_uncomposable_mark() {
+        let marks = "\u{302}\u{2060}\u{301}";
+        let (base, rest) = compose_borrowed('e', marks);
+        assert_eq!((base, rest), ('ê', "\u{2060}\u{301}"));
+        assert_eq!(rest.as_ptr(), marks[2..].as_ptr());
+        for &(base, mark, result) in COMPOSITIONS {
+            let marks = char::from_u32(mark).unwrap().to_string();
+            assert_eq!(compose_borrowed(char::from_u32(base).unwrap(), &marks), (char::from_u32(result).unwrap(), ""));
+        }
     }
 }

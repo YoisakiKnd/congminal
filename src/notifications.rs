@@ -1,5 +1,6 @@
 //! 本地通知中心与按需的系统适配；正文只来自固定模板与数值。
 use crate::{
+    resources::{Kind, Tracked},
     shell::{Completion, Outcome},
     tasks::Cancellation,
 };
@@ -15,11 +16,20 @@ pub struct Settings {
     pub failures: bool,
     pub long_commands: bool,
     pub background: bool,
+    pub transfers: bool,
     pub long_seconds: u64,
 }
 impl Default for Settings {
     fn default() -> Self {
-        Self { muted: false, system: false, failures: true, long_commands: true, background: true, long_seconds: 10 }
+        Self {
+            muted: false,
+            system: false,
+            failures: true,
+            long_commands: true,
+            background: true,
+            transfers: true,
+            long_seconds: 10,
+        }
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,6 +38,48 @@ pub enum Category {
     LongCommand,
     Background,
     SessionEnded,
+    #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+    Transfers(TransferCounts),
+}
+#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TransferResult {
+    Published,
+    Warning,
+    Cancelled,
+    Failed,
+    Uncertain,
+    Interrupted,
+    NotStarted,
+}
+#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TransferCounts {
+    pub published: u16,
+    pub warnings: u16,
+    pub cancelled: u16,
+    pub failed: u16,
+    pub uncertain: u16,
+    pub interrupted: u16,
+    pub not_started: u16,
+}
+#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+impl TransferCounts {
+    pub(crate) fn add(&mut self, result: TransferResult) {
+        let value = match result {
+            TransferResult::Published => &mut self.published,
+            TransferResult::Warning => &mut self.warnings,
+            TransferResult::Cancelled => &mut self.cancelled,
+            TransferResult::Failed => &mut self.failed,
+            TransferResult::Uncertain => &mut self.uncertain,
+            TransferResult::Interrupted => &mut self.interrupted,
+            TransferResult::NotStarted => &mut self.not_started,
+        };
+        *value = value.saturating_add(1);
+    }
+    pub(crate) fn is_empty(self) -> bool {
+        self == Self::default()
+    }
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Notice {
@@ -38,13 +90,17 @@ pub struct Notice {
 }
 impl Notice {
     pub fn text(self) -> String {
-        if self.category == Category::SessionEnded {
-            return "Shell 会话已结束，未推断命令退出状态".into();
-        }
-        format!("命令 #{} · {} · {:.2}s", self.id, self.outcome.describe(), self.elapsed.as_secs_f64())
+        self.to_string()
     }
     // 系统通知永远不包含路径、命令、输出或远程主机名。
     fn system_text(self) -> String {
+        #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+        if let Category::Transfers(c) = self.category {
+            return format!(
+                "SFTP: {} published, {} warnings, {} cancelled, {} failed, {} uncertain, {} interrupted, {} not started",
+                c.published, c.warnings, c.cancelled, c.failed, c.uncertain, c.interrupted, c.not_started
+            );
+        }
         if self.category == Category::SessionEnded {
             return "Shell session ended".into();
         }
@@ -61,18 +117,53 @@ impl Notice {
         )
     }
 }
-#[derive(Default)]
+impl std::fmt::Display for Notice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+        if let Category::Transfers(c) = self.category {
+            return write!(
+                f,
+                "SFTP · 发布{} 警告{} 取消{} 失败{} 不确定{} 中断{} 未开始{}",
+                c.published, c.warnings, c.cancelled, c.failed, c.uncertain, c.interrupted, c.not_started
+            );
+        }
+        if self.category == Category::SessionEnded {
+            return f.write_str("Shell 会话已结束，未推断命令退出状态");
+        }
+        write!(f, "命令 #{} · {} · {:.2}s", self.id, self.outcome, self.elapsed.as_secs_f64())
+    }
+}
 pub struct Center {
-    items: VecDeque<Notice>,
+    items: Tracked<VecDeque<Notice>>,
     last_id: u64,
+    revision: u64,
     last_system: Option<Instant>,
     ended: bool,
     pub open: bool,
     offset: usize,
     pub dropped_system: u64,
     pub system_error: bool,
+    pub dropped_local: u64,
+}
+impl Default for Center {
+    fn default() -> Self {
+        let pool = crate::resources::current();
+        Self {
+            items: Tracked::new(VecDeque::new(), pool.lease(Kind::Notifications, 0).unwrap()),
+            last_id: 0,
+            revision: 0,
+            last_system: None,
+            ended: false,
+            open: false,
+            offset: 0,
+            dropped_system: 0,
+            system_error: false,
+            dropped_local: 0,
+        }
+    }
 }
 impl Center {
+    #[inline]
     pub fn complete(&mut self, event: Completion, settings: &Settings, foreground: bool) -> Option<Notice> {
         if event.id <= self.last_id {
             return None;
@@ -97,8 +188,7 @@ impl Center {
         };
         // 未知状态和中断从不套用成功模板。
         let notice = Notice { id: event.id, elapsed: event.elapsed, outcome: event.outcome, category };
-        self.push(notice);
-        Some(notice)
+        self.push(notice).then_some(notice)
     }
     pub fn ended(&mut self, settings: &Settings, foreground: bool) -> Option<Notice> {
         if self.ended {
@@ -110,15 +200,39 @@ impl Center {
         }
         let notice =
             Notice { id: 0, elapsed: Duration::ZERO, outcome: Outcome::Unknown, category: Category::SessionEnded };
-        self.push(notice);
-        Some(notice)
+        self.push(notice).then_some(notice)
     }
-    fn push(&mut self, notice: Notice) {
-        if self.items.len() == LIMIT {
-            self.items.pop_front();
+    #[inline(always)]
+    fn push(&mut self, notice: Notice) -> bool {
+        self.revision = self.revision.wrapping_add(1);
+        if self.items.capacity() == 0 && !self.prepare() {
+            self.dropped_local = self.dropped_local.saturating_add(1);
+            return false;
         }
-        self.items.push_back(notice);
+        if self.items.len() == LIMIT {
+            self.items.data.pop_front();
+        }
+        self.items.data.push_back(notice);
         self.offset = 0;
+        true
+    }
+    #[cold]
+    #[inline(never)]
+    fn prepare(&mut self) -> bool {
+        let pool = self.items.memory.budget();
+        let built = (|| {
+            let mut memory = pool.lease(Kind::Notifications, LIMIT * std::mem::size_of::<Notice>()).ok()?;
+            let mut items = VecDeque::new();
+            items.try_reserve_exact(LIMIT).ok()?;
+            memory.resize(items.capacity() * std::mem::size_of::<Notice>()).ok()?;
+            Some(Tracked::new(items, memory))
+        })();
+        if let Some(items) = built {
+            self.items = items;
+            true
+        } else {
+            false
+        }
     }
     /// 系统通知最多每 10 秒一次，没有延迟重放队列。
     pub fn allow_system(&mut self, settings: &Settings, busy: bool, now: Instant) -> bool {
@@ -144,21 +258,84 @@ impl Center {
         };
     }
     pub fn clear(&mut self) {
-        self.items.clear();
+        self.revision = self.revision.wrapping_add(1);
+        self.items.data = VecDeque::new();
+        self.items.memory.resize(0).unwrap();
         self.offset = 0;
+        self.dropped_local = 0;
     }
+    #[cfg(all(test, unix))]
     pub fn describe(&self, muted: bool) -> String {
-        let status = if muted { "已静音" } else { "通知" };
-        let item = self.items.iter().rev().nth(self.offset).map(|n| n.text()).unwrap_or_else(|| "暂无通知".into());
-        let error = if self.system_error { " · 系统通知不可用" } else { "" };
-        format!(
-            "{status} {}/{} · {item}{error} | ↑↓浏览 Esc关闭 Del清空",
-            if self.items.is_empty() { 0 } else { self.offset + 1 },
-            self.items.len()
-        )
+        self.description(muted).to_string()
+    }
+    pub fn description(&self, muted: bool) -> impl std::fmt::Display + '_ {
+        struct Description<'a>(&'a Center, bool);
+        impl std::fmt::Display for Description<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let c = self.0;
+                write!(
+                    f,
+                    "{} {}/{} · ",
+                    if self.1 { "已静音" } else { "通知" },
+                    if c.items.is_empty() { 0 } else { c.offset + 1 },
+                    c.items.len()
+                )?;
+                if let Some(n) = c.items.iter().rev().nth(c.offset) {
+                    write!(f, "{n}")?;
+                } else {
+                    f.write_str("暂无通知")?;
+                }
+                if c.system_error {
+                    f.write_str(" · 系统通知不可用")?;
+                }
+                if c.dropped_local > 0 {
+                    write!(f, " · 额度不足丢弃{}", c.dropped_local)?;
+                }
+                f.write_str(" | ↑↓浏览 Esc关闭 Del清空")
+            }
+        }
+        Description(self, muted)
+    }
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+    pub fn recent(&self) -> impl Iterator<Item = String> + '_ {
+        self.items.iter().rev().take(8).map(|notice| notice.text())
     }
     pub fn resource_bytes(&self) -> usize {
         self.items.capacity() * std::mem::size_of::<Notice>()
+    }
+}
+
+/// 工作区共享的系统工具闸门。持锁直到辅助进程退出/取消并回收，竞争者立即丢弃。
+#[derive(Default)]
+pub struct SystemGate {
+    last: std::sync::Mutex<Option<Instant>>,
+    skipped: std::sync::atomic::AtomicU64,
+}
+impl SystemGate {
+    pub fn send(&self, notice: Notice, cancel: &Cancellation) -> Result<(), String> {
+        use std::sync::{TryLockError, atomic::Ordering};
+        let mut guard = match self.last.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::Poisoned(poison)) => poison.into_inner(),
+            Err(TryLockError::WouldBlock) => {
+                self.skipped.fetch_add(1, Ordering::Relaxed);
+                return Ok(());
+            }
+        };
+        if cancel.is_cancelled() {
+            return Ok(());
+        }
+        if guard.is_some_and(|last| last.elapsed() < Duration::from_secs(10)) {
+            self.skipped.fetch_add(1, Ordering::Relaxed);
+            return Ok(());
+        }
+        *guard = Some(Instant::now());
+        send(notice, cancel)
+    }
+    pub fn skipped(&self) -> u64 {
+        self.skipped.load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 
@@ -238,6 +415,37 @@ mod tests {
         Completion { id, elapsed: Duration::from_secs(secs), outcome: code.map_or(Outcome::Unknown, Outcome::Exit) }
     }
     #[test]
+    fn transfer_batches_are_numeric_private_and_separate_from_command_ids() {
+        let mut counts = TransferCounts::default();
+        assert!(counts.is_empty());
+        for result in [
+            TransferResult::Published,
+            TransferResult::Warning,
+            TransferResult::Cancelled,
+            TransferResult::Failed,
+            TransferResult::Uncertain,
+            TransferResult::Interrupted,
+            TransferResult::NotStarted,
+        ] {
+            counts.add(result);
+        }
+        let notice =
+            Notice { id: 1, category: Category::Transfers(counts), elapsed: Duration::ZERO, outcome: Outcome::Unknown };
+        let system = notice.system_text();
+        assert!(system.is_ascii());
+        assert!(system.contains("1 warnings"));
+        assert!(system.contains("1 uncertain"));
+        assert!(!system.contains("Command"));
+        let mut center = Center::default();
+        let settings = Settings { system: true, ..Settings::default() };
+        assert!(center.allow_system(&settings, false, Instant::now()));
+        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_some());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        let (config, warnings) = crate::config::Config::parse("[notifications]\ntransfers=false\n");
+        assert!(warnings.is_empty());
+        assert!(!config.notifications.transfers);
+    }
+    #[test]
     fn categories_dedupe_quiet_short_success_and_unknown_interruption() {
         let mut center = Center::default();
         let settings = Settings::default();
@@ -286,6 +494,85 @@ mod tests {
         center.clear();
         assert!(center.items.is_empty());
     }
+    #[test]
+    fn quota_denied_events_are_visible_but_never_return_a_system_dispatch_or_replay() {
+        use crate::resources::{Budget, Scope};
+        let bytes = LIMIT * std::mem::size_of::<Notice>();
+        let pool = Budget::new(bytes - 1, 0);
+        let _scope = Scope::enter(pool.clone());
+        let settings = Settings { system: true, ..Settings::default() };
+        let mut center = Center::default();
+        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert!(center.items.is_empty());
+        assert_eq!(center.dropped_local, 1);
+        assert_eq!(center.revision(), 1);
+        assert!(center.description(false).to_string().contains("额度不足丢弃1"));
+        assert!(center.ended(&settings, false).is_none());
+        assert_eq!(center.dropped_local, 2);
+        assert_eq!(pool.snapshot().used, 0);
+        center.clear();
+        assert_eq!(center.dropped_local, 0);
+        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert!(center.ended(&settings, false).is_none());
+        assert_eq!(center.dropped_local, 0);
+        let pool = Budget::new(bytes, 0);
+        let _scope = Scope::enter(pool.clone());
+        let mut center = Center::default();
+        let hold = pool.lease(Kind::Queue, bytes).unwrap();
+        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        drop(hold);
+        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert!(center.complete(event(2, Some(7), 1), &settings, true).is_some());
+        assert_eq!(center.items.len(), 1);
+        assert_eq!(pool.snapshot().used, center.resource_bytes());
+        drop(center);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn clear_releases_all_capacity_without_resetting_dedupe_or_system_rate_state() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(65536, 0);
+        let _scope = Scope::enter(pool.clone());
+        let mut center = Center::default();
+        let settings = Settings { system: true, ..Settings::default() };
+        for id in 1..1000 {
+            assert!(center.complete(event(id, Some(7), 1), &settings, true).is_some());
+        }
+        assert_eq!(center.items.len(), LIMIT);
+        assert_eq!(center.items.capacity(), LIMIT);
+        assert_eq!(pool.snapshot().used, LIMIT * std::mem::size_of::<Notice>());
+        let now = Instant::now();
+        assert!(center.allow_system(&settings, false, now));
+        center.clear();
+        assert_eq!(center.items.capacity(), 0);
+        assert_eq!(center.resource_bytes(), 0);
+        assert_eq!(pool.snapshot().used, 0);
+        assert!(!center.allow_system(&settings, false, now + Duration::from_secs(1)));
+        assert!(center.complete(event(999, Some(7), 1), &settings, true).is_none());
+        assert!(center.complete(event(1000, Some(7), 1), &settings, true).is_some());
+        drop(center);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn suppressed_events_do_not_allocate_and_first_admission_uses_the_owners_budget() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(65536, 0);
+        let _scope = Scope::enter(pool.clone());
+        let mut center = Center::default();
+        let mut settings = Settings { muted: true, ..Settings::default() };
+        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert_eq!(center.resource_bytes(), 0);
+        assert_eq!(pool.snapshot().used, 0);
+        let other = Budget::new(0, 0);
+        let scope = Scope::enter(other.clone());
+        settings.muted = false;
+        assert!(center.complete(event(2, Some(7), 1), &settings, true).is_some());
+        assert_eq!(other.snapshot().used, 0);
+        assert_eq!(pool.snapshot().used, center.resource_bytes());
+        drop(scope);
+        drop(center);
+        assert_eq!(pool.snapshot().used, 0);
+    }
     #[cfg(unix)]
     #[test]
     fn missing_failing_and_cancelled_helpers_are_reaped() {
@@ -306,5 +593,22 @@ mod tests {
             outcome: Outcome::Exit(7),
         });
         assert!(format!("{command:?}").contains("failed"));
+    }
+}
+
+#[cfg(test)]
+mod workspace_gate_tests {
+    use super::*;
+    #[test]
+    fn system_tool_gate_skips_parallel_and_recent_requests_without_spawning_helpers() {
+        let gate = SystemGate::default();
+        let notice = Notice { id: 7, category: Category::Failure, elapsed: Duration::ZERO, outcome: Outcome::Exit(7) };
+        let lock = gate.last.lock().unwrap();
+        assert!(gate.send(notice, &Cancellation::default()).is_ok());
+        assert_eq!(gate.skipped(), 1);
+        drop(lock);
+        *gate.last.lock().unwrap() = Some(Instant::now());
+        assert!(gate.send(notice, &Cancellation::default()).is_ok());
+        assert_eq!(gate.skipped(), 2);
     }
 }

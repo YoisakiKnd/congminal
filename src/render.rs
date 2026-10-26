@@ -4,9 +4,13 @@ use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph, Pixels};
 use crate::hash::Fnv;
 use crate::selection::Point;
-use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, compose_all, emoji_sequence_at};
-use crate::ui::{Bar, Decoration, DecorationKind};
+use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, compose_borrowed, emoji_sequence_into};
+#[cfg(test)]
+use crate::ui::Bar;
+use crate::ui::{Decoration, DecorationKind};
 use std::hash::{Hash, Hasher};
+#[path = "render_work.rs"]
+mod work;
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
 const MAX_FRAME_PIXELS: usize = 64 * 1024 * 1024;
@@ -16,15 +20,27 @@ pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
     pub pixels: Vec<u32>,
+    memory: crate::resources::Lease,
 }
 
 impl Framebuffer {
     pub fn new(width: usize, height: usize) -> Framebuffer {
-        let mut framebuffer = Framebuffer { width: 0, height: 0, pixels: Vec::new() };
+        let mut framebuffer = Framebuffer {
+            width: 0,
+            height: 0,
+            pixels: Vec::new(),
+            memory: crate::resources::current().lease(crate::resources::Kind::Canvas, 0).unwrap(),
+        };
         assert!(framebuffer.resize(width, height), "帧缓冲大小超过预算或分配失败");
         framebuffer
     }
 
+    pub fn release(&mut self) {
+        self.width = 0;
+        self.height = 0;
+        self.pixels = Vec::new();
+        self.memory.resize(0).unwrap();
+    }
     pub fn resize(&mut self, width: usize, height: usize) -> bool {
         let Some(count) = width.checked_mul(height) else {
             return false;
@@ -32,8 +48,22 @@ impl Framebuffer {
         if width > MAX_WINDOW_SIDE || height > MAX_WINDOW_SIDE || count > MAX_FRAME_PIXELS {
             return false;
         }
-        if count > self.pixels.capacity() && self.pixels.try_reserve_exact(count - self.pixels.len()).is_err() {
-            return false;
+        if count > self.pixels.capacity() {
+            // 先占新缓冲完整额度，旧缓冲/额度在分配、复制成功前保持有效。
+            let Some(bytes) = count.checked_mul(std::mem::size_of::<u32>()) else { return false };
+            let Ok(mut memory) = self.memory.budget().lease(crate::resources::Kind::Canvas, bytes) else {
+                return false;
+            };
+            let mut pixels = Vec::new();
+            if pixels.try_reserve_exact(count).is_err() {
+                return false;
+            }
+            if memory.resize(pixels.capacity() * std::mem::size_of::<u32>()).is_err() {
+                return false;
+            }
+            pixels.extend_from_slice(&self.pixels);
+            drop(std::mem::replace(&mut self.pixels, pixels));
+            self.memory = memory;
         }
         self.width = width;
         self.height = height;
@@ -52,7 +82,7 @@ impl Framebuffer {
         }
     }
 
-    fn fill_rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {
+    pub(crate) fn fill_rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {
         let x_end = (x + w).min(self.width);
         let y_end = (y + h).min(self.height);
         if x >= x_end {
@@ -67,14 +97,27 @@ impl Framebuffer {
 
 pub struct Renderer {
     fonts: Fonts,
+    generation: u64,
     padding: usize,
     colors: Colors,
     /// 上一帧每一行的指纹，没变的行不重画
-    last_rows: Vec<u64>,
+    last_rows: crate::resources::Tracked<Vec<u64>>,
+    work: work::Work,
     /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
     last_frame: u64,
-    decorations: Vec<Decoration>,
-    bar: Option<Bar>,
+    ui: crate::ui::State,
+}
+
+/// 每个窗格的脏行/装饰状态；字体和缓存留在唯一的 Renderer 中。
+pub struct ViewState {
+    rows: crate::resources::Tracked<Vec<u64>>,
+    frame: u64,
+    ui: crate::ui::State,
+}
+impl Default for ViewState {
+    fn default() -> Self {
+        Self { rows: work::buffer(), frame: 0, ui: crate::ui::State::default() }
+    }
 }
 
 /// 这一帧变化了的区域：从第 y 行像素开始的 height 行（整个宽度）。macOS 的图层只能整张替换，用不到它。
@@ -134,6 +177,13 @@ fn hash<T: Hash>(value: &T) -> u64 {
 }
 
 impl Renderer {
+    pub fn reclaim_caches(&mut self) {
+        self.fonts.clear_caches();
+        work::release(&mut self.last_rows);
+        self.work.release();
+        self.ui.release();
+        self.last_frame = 0;
+    }
     /// `scale` 是屏幕缩放比例
     pub fn new(config: &Config, scale: f64) -> Renderer {
         let started = std::time::Instant::now();
@@ -141,26 +191,150 @@ impl Renderer {
         crate::term::trace(format_args!("字体：{}，加载用时 {:?}", fonts.description, started.elapsed()));
         Renderer {
             fonts,
+            generation: 1,
             padding: (config.window.padding * scale as f32).round() as usize,
             colors: config.colors.clone(),
-            last_rows: Vec::new(),
+            last_rows: work::buffer(),
+            work: work::Work::default(),
             last_frame: 0,
-            decorations: Vec::new(),
-            bar: None,
+            ui: crate::ui::State::default(),
         }
     }
 
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+    pub fn cell_size(&self) -> (usize, usize) {
+        (self.fonts.cell_width, self.fonts.cell_height)
+    }
+    pub fn swap_view(&mut self, view: &mut ViewState) {
+        std::mem::swap(&mut self.last_rows, &mut view.rows);
+        std::mem::swap(&mut self.last_frame, &mut view.frame);
+        std::mem::swap(&mut self.ui, &mut view.ui);
+    }
+    pub fn chrome(&mut self, frame: &mut Framebuffer, bounds: [usize; 4], text: &str, selected: bool) {
+        let [x, y, width, height] = bounds;
+        frame.fill_rect(
+            x,
+            y,
+            width,
+            height,
+            if selected { self.colors.selection_background } else { self.colors.background },
+        );
+        let mut col = x + 3;
+        for c in text.chars().filter(|c| !c.is_control()).take(256) {
+            let cells = char_width(c);
+            if col + cells * self.fonts.cell_width > x + width {
+                break;
+            }
+            if cells > 0 {
+                self.draw_char(frame, col, y, c, Flags::default(), cells, self.colors.foreground);
+                col += cells * self.fonts.cell_width;
+            }
+        }
+    }
+    /// 认证测试视图：显式矩形裁剪、有限字符数，并保留零宽组合符号。
+    #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+    pub(crate) fn auth_text(
+        &mut self,
+        frame: &mut Framebuffer,
+        bounds: [usize; 4],
+        text: &str,
+        selected: bool,
+    ) -> bool {
+        self.auth_text_selection(frame, bounds, text, selected.then_some(0..usize::MAX))
+    }
+    #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+    pub(crate) fn auth_text_selection(
+        &mut self,
+        frame: &mut Framebuffer,
+        bounds: [usize; 4],
+        text: &str,
+        selection: Option<std::ops::Range<usize>>,
+    ) -> bool {
+        let [x, y, width, height] = clipped_bounds(frame, bounds);
+        if width == 0 || height < self.fonts.cell_height {
+            return false;
+        }
+        let selection = selection.map(|s| {
+            (
+                s.start.saturating_mul(self.fonts.cell_width).min(width),
+                s.end.saturating_mul(self.fonts.cell_width).min(width),
+            )
+        });
+        let entire = selection == Some((0, width));
+        frame.fill_rect(
+            x,
+            y,
+            width,
+            height,
+            if entire { self.colors.selection_background } else { self.colors.background },
+        );
+        if let Some((start, end)) = selection.filter(|(start, end)| !entire && end > start) {
+            frame.fill_rect(x + start, y, end - start, height, self.colors.selection_background);
+        }
+        let mut column = x;
+        let mut previous = None;
+        for (index, c) in text.chars().enumerate() {
+            if index == crate::ssh::auth::viewport::LINE_CHAR_LIMIT || c.is_control() {
+                return false;
+            }
+            let cells = char_width(c).min(2);
+            if cells == 0 {
+                if previous.is_none() {
+                    if column + self.fonts.cell_width > x + width {
+                        return false;
+                    }
+                    if let Some(glyph) = self.fonts.glyph('\u{25cc}', false, false, 1) {
+                        blend_auth_glyph(frame, column, y, glyph, self.colors.foreground, [x, y, width, height]);
+                    } else {
+                        return false;
+                    }
+                    previous = Some((column, 1));
+                    column += self.fonts.cell_width;
+                }
+                let (base, cells) = previous.unwrap();
+                if let Some(glyph) = self.fonts.mark_glyph(c, false, cells) {
+                    blend_auth_glyph(frame, base, y, glyph, self.colors.foreground, [x, y, width, height]);
+                } else {
+                    return false;
+                }
+            } else {
+                if column + cells * self.fonts.cell_width > x + width {
+                    return false;
+                }
+                if c.is_whitespace() {
+                    // 空格的无墨迹字形在缓存中可为 None，不能误判为未显示。
+                } else if let Some(glyph) = self.fonts.glyph(c, false, false, cells) {
+                    blend_auth_glyph(frame, column, y, glyph, self.colors.foreground, [x, y, width, height]);
+                } else {
+                    return false;
+                }
+                previous = Some((column, cells));
+                column += cells * self.fonts.cell_width;
+            }
+        }
+        true
+    }
+    #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+    pub(crate) fn auth_caret(&self, frame: &mut Framebuffer, bounds: [usize; 4]) {
+        let [x, y, width, height] = clipped_bounds(frame, bounds);
+        frame.fill_rect(x, y, width.min(2), height, self.colors.cursor);
+    }
+    pub(crate) fn ui_state(&mut self) -> &mut crate::ui::State {
+        &mut self.ui
+    }
+    #[cfg(test)]
     pub fn set_ui(&mut self, decorations: Vec<Decoration>, bar: Option<Bar>) {
-        self.decorations = decorations;
-        self.bar = bar;
+        self.ui.supplied(decorations, bar);
     }
     pub fn bar_cursor_rect(&self, term: &Terminal) -> Option<(u32, u32, u32, u32)> {
-        let col = self.bar.as_ref()?.caret?;
+        let col = self.ui.bar()?.caret?;
         let (x, y) = self.cell_origin(term.rows() - 1, col);
         Some((x as u32, y as u32, self.fonts.cell_width as u32, self.fonts.cell_height as u32))
     }
     pub fn is_bar(&self, term: &Terminal, y: f64) -> bool {
-        self.bar.is_some() && y >= self.cell_origin(term.rows() - 1, 0).1 as f64
+        self.ui.bar().is_some() && y >= self.cell_origin(term.rows() - 1, 0).1 as f64
     }
     fn ui_range(&self, term: &Terminal, row: usize, decoration: &Decoration) -> Option<(usize, usize)> {
         let id = term.line_id(row);
@@ -178,19 +352,21 @@ impl Renderer {
     }
 
     pub fn apply_style(&mut self, config: &Config, scale: f64) {
+        self.generation = self.generation.wrapping_add(1);
         self.padding = (config.window.padding * scale as f32).round() as usize;
         self.colors = config.colors.clone();
         self.invalidate();
     }
 
     pub fn replace_fonts(&mut self, fonts: Fonts) {
+        self.generation = self.generation.wrapping_add(1);
         self.fonts = fonts;
         self.invalidate();
     }
 
     /// 加载字体时遇到的问题
-    pub fn warnings(&self) -> &[String] {
-        &self.fonts.warnings
+    pub fn take_font_warnings(&mut self) -> crate::font::Warnings {
+        self.fonts.take_warnings()
     }
 
     /// 给定窗口像素尺寸，能放下多少列、多少行
@@ -221,7 +397,7 @@ impl Renderer {
 
     /// 下次整屏重画（比如窗口被遮挡后重新露出来，屏幕上的内容已经不可信了）
     pub fn invalidate(&mut self) {
-        self.last_rows.clear();
+        self.last_rows.data.clear();
     }
 
     /// 画一帧。只重画和上一帧不一样的行，返回变化的区域；什么都没变时返回 None。
@@ -267,31 +443,42 @@ impl Renderer {
         // 哪些行要重画：整体状态变了就全部重画，否则只画"指纹"变了的行
         let frame_key =
             hash(&(fb.width, fb.height, rows, cols, term.display_offset(), term.history().len(), default_bg));
-        let keys: Vec<u64> = (0..rows).map(|row| self.row_key(term, row, &cursor, selection)).collect();
-        let full = frame_key != self.last_frame || self.last_rows.len() != rows;
-        let changed: Vec<bool> = (0..rows).map(|row| full || keys[row] != self.last_rows[row]).collect();
-        // 伸出格子的笔画会画到上下相邻的行里（也要擦掉旧的），所以相邻的行也重画
-        let dirty: Vec<bool> =
-            (0..rows).map(|row| changed[row.saturating_sub(1)..(row + 2).min(rows)].contains(&true)).collect();
-        self.last_frame = frame_key;
-        self.last_rows = keys;
+        let indexed = self.work.rows.reserve_capacity(rows).is_some();
+        self.work.rows.data.clear();
+        if indexed {
+            // 数据暂时移出以批量填充，票据继续由Renderer持有；容量已在上方准入。
+            let mut keys = std::mem::take(&mut self.work.rows.data);
+            keys.extend((0..rows).map(|row| self.row_key(term, row, &cursor, selection)));
+            self.work.rows.data = keys;
+        }
+        // 旧/新指纹逐项比较，无需额外changed/dirty数组；笔画越格时仍重画相邻行。
+        // 指纹申请失败则不分配地整屏重画，不能把新像素配上旧指纹而误跳过下一帧。
+        let full = !indexed || frame_key != self.last_frame || self.last_rows.len() != rows;
+        if !full && self.work.rows.data == self.last_rows.data {
+            return None;
+        }
+        self.work.text(cols);
 
         let mut damage: Option<(usize, usize)> = None;
         let mut row = 0;
         while row < rows {
-            if !dirty[row] {
+            if !self.dirty_row(row, rows, full) {
                 row += 1;
                 continue;
             }
             // 连续的一段要重画的行 [start, end)
             let start = row;
-            while row < rows && dirty[row] {
+            while row < rows && self.dirty_row(row, rows, full) {
                 row += 1;
             }
             let end = row;
             // 像素范围。第一行和最后一行把上下的内边距也包进去。
-            let top = if start == 0 { 0 } else { self.cell_origin(start, 0).1 };
-            let bottom = if end == rows { fb.height } else { self.cell_origin(end, 0).1 };
+            // 分片缩放准备期间旧网格仍可见，画布可能已经更小；隐藏行不产生越界 damage。
+            let top = if start == 0 { 0 } else { self.cell_origin(start, 0).1.min(fb.height) };
+            let bottom = if end == rows { fb.height } else { self.cell_origin(end, 0).1.min(fb.height) };
+            if top == bottom {
+                continue;
+            }
             fb.fill_rect(0, top, fb.width, bottom - top, default_bg);
             for r in start..end {
                 self.draw_backgrounds(fb, term, r, &cursor, selection, default_fg, default_bg);
@@ -318,7 +505,17 @@ impl Renderer {
         if !at_bottom && full {
             self.draw_scrollbar(fb, term);
         }
+        if indexed {
+            std::mem::swap(&mut self.last_rows, &mut self.work.rows);
+            self.last_frame = frame_key;
+        } else {
+            self.last_rows.data.clear();
+            self.last_frame = 0;
+        }
         damage.map(|(top, bottom)| Damage { y: top, height: bottom - top })
+    }
+    fn dirty_row(&self, row: usize, rows: usize, full: bool) -> bool {
+        full || (row.saturating_sub(1)..(row + 2).min(rows)).any(|i| self.work.rows[i] != self.last_rows[i])
     }
 
     /// 一行的"指纹"：内容、光标、选区、输入法文字。指纹没变的行不用重画。
@@ -339,13 +536,13 @@ impl Renderer {
             let to = if end.line == id { end.col } else { usize::MAX };
             (from, to).hash(&mut hasher);
         }
-        for decoration in &self.decorations {
+        for decoration in &self.ui.decorations.data {
             if let Some(range) = self.ui_range(term, row, decoration) {
                 (range, decoration.kind).hash(&mut hasher);
             }
         }
         if row + 1 == term.rows() {
-            self.bar.hash(&mut hasher);
+            self.ui.bar().hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -376,7 +573,7 @@ impl Renderer {
                 fb.fill_rect(x, y, self.cell_span(cell), self.fonts.cell_height, bg);
             }
         }
-        for decoration in &self.decorations {
+        for decoration in &self.ui.decorations.data {
             if decoration.kind == DecorationKind::Link {
                 continue;
             }
@@ -417,7 +614,7 @@ impl Renderer {
         let line = term.visible_row(row);
         let id = term.line_id(row);
         let cols = term.cols();
-        let ligatures = self.ligatures(line, row, cols, cursor);
+        self.ligatures(line, row, cols, cursor);
         // emoji 组合序列已经整个画好了的格子，到这一列为止不再画字
         let mut drawn_until = 0;
         for col in 0..cols.min(line.cells.len()) {
@@ -437,9 +634,9 @@ impl Renderer {
                     && !(cursor.visible && row == cursor.row && col + 1 == cursor.col)
             });
             if col >= drawn_until
-                && let Some((sequence, end)) = emoji_sequence_at(term, line, col, cols)
+                && let Some(end) = emoji_sequence_into(term, line, col, cols, &mut self.work.emoji.data)
                 && let Some(glyph) =
-                    self.fonts.cluster_glyph(&sequence, if end - col >= 2 || room_right { 2 } else { 1 })
+                    self.fonts.cluster_glyph(&self.work.emoji.data, if end - col >= 2 || room_right { 2 } else { 1 })
             {
                 // 整个序列合成一个字形，画在开头（最多两格），后面的格子空着
                 blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, fg, clip);
@@ -452,10 +649,10 @@ impl Renderer {
                 let bold = cell.flags.contains(Flags::BOLD);
                 // 带组合字符的先合成（e + ◌́ → é），合不进去的符号叠画在上面
                 let (c, rest) = match cell.marks {
-                    0 => (cell.c, String::new()),
-                    id => compose_all(cell.c, term.marks(id)),
+                    0 => (cell.c, ""),
+                    id => compose_borrowed(cell.c, term.marks(id)),
                 };
-                let glyph = match ligatures.get(col) {
+                let glyph = match self.work.ligatures.get(col) {
                     Some(&Some(index)) => self.fonts.indexed_glyph(index, bold),
                     _ => self.fonts.glyph(c, bold, cell.flags.contains(Flags::EMOJI), cells),
                 };
@@ -475,7 +672,7 @@ impl Renderer {
     }
 
     fn draw_ui_decorations(&self, fb: &mut Framebuffer, term: &Terminal, row: usize) {
-        for decoration in &self.decorations {
+        for decoration in &self.ui.decorations.data {
             if decoration.kind == DecorationKind::Match {
                 continue;
             }
@@ -493,9 +690,16 @@ impl Renderer {
         }
     }
     fn draw_bar(&mut self, fb: &mut Framebuffer, term: &Terminal) {
-        let Some(bar) = self.bar.clone() else {
+        let text = std::mem::take(&mut self.ui.text.data);
+        let Some(mut bar) = self.ui.paint_bar() else {
+            self.ui.text.data = text;
             return;
         };
+        // 仅数据临时移出，票据始终留在ui；limited的静态提示不替换成空缓冲。
+        if bar.text.is_empty() {
+            bar.text = &text;
+        }
+
         let row = term.rows() - 1;
         let (_, y) = self.cell_origin(row, 0);
         fb.fill_rect(0, y, fb.width, fb.height.saturating_sub(y), self.colors.preedit_background);
@@ -539,13 +743,20 @@ impl Renderer {
             let (x, _) = self.cell_origin(row, col.min(term.cols() - 1));
             fb.fill_rect(x, y, 1, self.fonts.cell_height, self.colors.cursor);
         }
+        self.ui.text.data = text;
     }
 
     /// 这一行里要按连字画的格子：第几列换成哪个字形。
     /// 按"连续的 ASCII 符号和字母"分段（空格、粗细变化、光标处断开），每段交给字体做替换。
-    fn ligatures(&mut self, line: &Row, row: usize, cols: usize, cursor: &Cursor) -> Vec<Option<u16>> {
-        let mut result = Vec::new();
-        let mut word = String::new();
+    fn ligatures(&mut self, line: &Row, row: usize, cols: usize, cursor: &Cursor) {
+        self.work.ligatures.data.clear();
+        self.work.word.data.clear();
+        if !self.work.ligatures_ready {
+            return;
+        }
+        self.work.ligatures.data.resize(cols, None);
+        let result = &mut self.work.ligatures.data;
+        let word = &mut self.work.word.data;
         let mut start = 0;
         let mut bold = false;
         for col in 0..=cols.min(line.cells.len()) {
@@ -558,9 +769,10 @@ impl Renderer {
             });
             let same_word = eligible.is_some_and(|cell| word.is_empty() || cell.flags.contains(Flags::BOLD) == bold);
             if !same_word && word.len() >= 2 {
-                for (i, index) in self.fonts.ligatures(&word, bold) {
-                    result.resize(result.len().max(start + i + 1), None);
-                    result[start + i] = Some(index);
+                for &(i, index) in self.fonts.ligatures(word, bold) {
+                    if let Some(slot) = result.get_mut(start + i) {
+                        *slot = Some(index);
+                    }
                 }
             }
             if !same_word {
@@ -574,7 +786,6 @@ impl Renderer {
                 word.push(cell.c);
             }
         }
-        result
     }
 
     fn draw_cursor(&mut self, fb: &mut Framebuffer, term: &Terminal, cursor: &Cursor) {
@@ -728,6 +939,40 @@ impl Renderer {
 
 /// 把字形贴到屏幕上。普通字形按覆盖率混合文字颜色（抗锯齿的边缘是半透明的）；
 /// 彩色字形（emoji）用自己的颜色，按透明度盖在背景上。只画 `clip` 范围内的像素行。
+#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+fn clipped_bounds(frame: &Framebuffer, bounds: [usize; 4]) -> [usize; 4] {
+    let [x, y, width, height] = bounds;
+    let (x, y) = (x.min(frame.width), y.min(frame.height));
+    [x, y, width.min(frame.width - x), height.min(frame.height - y)]
+}
+#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+fn blend_auth_glyph(fb: &mut Framebuffer, base: usize, row: usize, glyph: &Glyph, color: u32, bounds: [usize; 4]) {
+    let [cx, cy, cw, ch] = bounds;
+    let (x, y) = (base as i64 + i64::from(glyph.left), row as i64 + i64::from(glyph.top));
+    let (x0, y0) = (x.max(cx as i64), y.max(cy as i64));
+    let (x1, y1) = ((x + glyph.width as i64).min((cx + cw) as i64), (y + glyph.height as i64).min((cy + ch) as i64));
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+    let width = (x1 - x0) as usize;
+    for py in y0..y1 {
+        let source = (py - y) as usize * glyph.width + (x0 - x) as usize;
+        let target = py as usize * fb.width + x0 as usize;
+        let target = &mut fb.pixels[target..target + width];
+        match &glyph.pixels {
+            Pixels::Alpha(alpha) => {
+                for (pixel, &a) in target.iter_mut().zip(&alpha[source..source + width]) {
+                    *pixel = mix(color, *pixel, u32::from(a));
+                }
+            }
+            Pixels::Color(colors) => {
+                for (pixel, &c) in target.iter_mut().zip(&colors[source..source + width]) {
+                    *pixel = over(c, *pixel);
+                }
+            }
+        }
+    }
+}
 fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32, clip: (usize, usize)) {
     // 先算出字形和画面（以及裁剪范围）重叠的矩形，循环里就不用逐个像素判断越界了
     let x0 = x.max(0);
@@ -866,6 +1111,62 @@ mod bench {
 mod tests {
     use super::*;
     use crate::vt::Parser;
+    #[test]
+    fn authentication_rect_blending_clips_negative_alpha_and_color_glyph_offsets() {
+        let mut frame = Framebuffer::new(8, 8);
+        let alpha = Glyph { left: -2, top: -2, width: 4, height: 4, pixels: Pixels::Alpha(vec![255; 16]) };
+        blend_auth_glyph(&mut frame, 3, 3, &alpha, 0x11aa33, [2, 2, 2, 2]);
+        for y in 0..8 {
+            for x in 0..8 {
+                assert_eq!(
+                    frame.pixels[y * 8 + x],
+                    if (2..4).contains(&x) && (2..4).contains(&y) { 0x11aa33 } else { 0 }
+                );
+            }
+        }
+        let color = Glyph { left: -2, top: -2, width: 4, height: 4, pixels: Pixels::Color(vec![0xffff0000; 16]) };
+        blend_auth_glyph(&mut frame, 3, 3, &color, 0, [3, 3, 1, 1]);
+        for y in 0..8 {
+            for x in 0..8 {
+                let expected = if (x, y) == (3, 3) {
+                    0xff0000
+                } else if (2..4).contains(&x) && (2..4).contains(&y) {
+                    0x11aa33
+                } else {
+                    0
+                };
+                assert_eq!(frame.pixels[y * 8 + x], expected);
+            }
+        }
+    }
+    #[test]
+    fn authentication_text_keeps_combining_marks_and_accepts_blank_ink() {
+        let mut renderer = Renderer::new(&Config::default(), 1.0);
+        let (_, height) = renderer.cell_size();
+        let mut base = Framebuffer::new(160, height + 20);
+        let mut marked = Framebuffer::new(160, height + 20);
+        let bounds = [10, 10, 140, height];
+        assert!(renderer.auth_text(&mut base, bounds, "e ", false));
+        assert!(renderer.auth_text(&mut marked, bounds, "e\u{301} ", false));
+        assert!(base.pixels != marked.pixels, "a combining mark must contribute pixels rather than disappear");
+        assert!(renderer.auth_text(&mut marked, bounds, "\u{301}", false));
+    }
+
+    #[test]
+    fn old_grid_clips_partial_damage_to_a_smaller_canvas_during_resize() {
+        let mut renderer = Renderer::new(&Config::default(), 1.0);
+        let mut term = Terminal::new(80, 24);
+        let mut parser = Parser::new();
+        let (w, h) = renderer.pixel_size(20, 4);
+        let mut fb = Framebuffer::new(w as usize, h as usize);
+        renderer.draw(&term, "", None, true, &mut fb);
+        for row in [1, 4, 12, 24] {
+            parser.advance(&mut term, format!("\x1b[{row};1Hx").as_bytes());
+            if let Some(damage) = renderer.draw(&term, "", None, true, &mut fb) {
+                assert!(damage.y + damage.height <= fb.height);
+            }
+        }
+    }
 
     #[test]
     fn div255_is_exact() {
@@ -952,6 +1253,53 @@ mod tests {
         assert!(renderer.draw(&term, "", None, true, &mut frame).is_none());
     }
 
+    #[test]
+    fn ui_quota_failure_view_swap_and_cache_reclaim_keep_pixels_current() {
+        use crate::resources::{Budget, Kind, Scope};
+        let pool = Budget::new(32 * 1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let mut fresh = Renderer::new(&config, 1.0);
+        let mut term = Terminal::new(30, 6);
+        Parser::new().advance(&mut term, b"old highlight\r\nnext");
+        let (w, h) = renderer.pixel_size(30, 6);
+        let mut frame = Framebuffer::new(w as usize, h as usize);
+        let mut expected = Framebuffer::new(w as usize, h as usize);
+        renderer.set_ui(
+            vec![Decoration {
+                range: (Point { line: 0, col: 0 }, Point { line: 0, col: 3 }),
+                kind: DecorationKind::Current,
+            }],
+            Some(Bar::link("old")),
+        );
+        renderer.draw(&term, "", None, true, &mut frame);
+        let mut view = ViewState::default();
+        let paid = pool.snapshot().kinds[Kind::Ui as usize];
+        assert!(paid > 0);
+        renderer.swap_view(&mut view);
+        assert!(renderer.ui.bar().is_none());
+        assert_eq!(pool.snapshot().kinds[Kind::Ui as usize], paid);
+        renderer.swap_view(&mut view);
+        let hold = pool.lease(Kind::Queue, pool.snapshot().limit - pool.snapshot().used).unwrap();
+        renderer.ui.begin([]);
+        renderer.ui.message(format_args!("{}", "longer than original URL retained capacity"));
+        let diagnostic = renderer.ui.bar().unwrap().text.to_string();
+        drop(hold);
+        fresh.set_ui(vec![], Some(Bar { text: diagnostic, caret: None, preedit: None }));
+        renderer.draw(&term, "", None, true, &mut frame);
+        fresh.draw(&term, "", None, true, &mut expected);
+        assert_eq!(frame.pixels, expected.pixels);
+        renderer.reclaim_caches();
+        assert!(renderer.ui.bar().is_none());
+        renderer.draw(&term, "", None, true, &mut frame);
+        fresh.set_ui(vec![], None);
+        fresh.draw(&term, "", None, true, &mut expected);
+        assert_eq!(frame.pixels, expected.pixels);
+        drop((renderer, fresh, view, term, frame, expected));
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
     /// 分解形式（e + U+0301）和合成好的 é 画出来一样
     #[test]
     fn combining_marks_are_composed() {
@@ -980,5 +1328,61 @@ mod boundary_tests {
         assert!(!framebuffer.resize(usize::MAX, usize::MAX));
         assert!(!framebuffer.resize(MAX_WINDOW_SIDE, MAX_WINDOW_SIDE));
         assert_eq!((framebuffer.width, framebuffer.height, framebuffer.pixels.len()), (2, 2, 4));
+    }
+    #[test]
+    fn shared_limit_includes_growth_peak_and_keeps_old_canvas_on_failure() {
+        let pool = crate::resources::Budget::new(1000, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let mut frame = Framebuffer::new(10, 10);
+        frame.pixels[0] = 0x123456;
+        assert!(!frame.resize(20, 10));
+        assert_eq!((frame.width, frame.height, frame.pixels[0]), (10, 10, 0x123456));
+        assert_eq!(pool.snapshot().used, 400);
+        assert!(frame.resize(15, 10));
+        assert_eq!((pool.snapshot().used, pool.snapshot().peak), (600, 1000));
+        assert!(frame.resize(5, 10));
+        assert_eq!(pool.snapshot().used, 600);
+        frame.release();
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn view_credit_moves_with_rows_and_denied_fingerprints_cannot_hide_changed_pixels() {
+        let pool = crate::resources::Budget::new(128 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let mut term = Terminal::new(12, 4);
+        let mut parser = crate::vt::Parser::new();
+        let (w, h) = renderer.pixel_size(12, 4);
+        let mut frame = Framebuffer::new(w as usize, h as usize);
+        let mut expected = [0; 2];
+        for (index, text) in [b"\x1b[1;1HA", b"\x1b[1;1HB"].into_iter().enumerate() {
+            parser.advance(&mut term, text);
+            renderer.invalidate();
+            renderer.draw(&term, "", None, true, &mut frame);
+            expected[index] = hash(&frame.pixels);
+        }
+        assert_ne!(expected[0], expected[1]);
+        let mut view = ViewState::default();
+        renderer.swap_view(&mut view);
+        assert!(view.rows.memory.bytes() > 0);
+        assert!(view.rows.memory.belongs_to(&pool));
+        let before = pool.snapshot().kinds[crate::resources::Kind::Render as usize];
+        let freed = view.rows.memory.bytes();
+        drop(view);
+        assert_eq!(pool.snapshot().kinds[crate::resources::Kind::Render as usize], before - freed);
+        work::release(&mut renderer.work.rows);
+        let hold = pool.lease(crate::resources::Kind::Queue, pool.snapshot().limit - pool.snapshot().used).unwrap();
+        for (index, text) in [b"\x1b[1;1HA", b"\x1b[1;1HB", b"\x1b[1;1HA"].into_iter().enumerate() {
+            parser.advance(&mut term, text);
+            assert!(renderer.draw(&term, "", None, true, &mut frame).is_some());
+            assert_eq!(hash(&frame.pixels), expected[index % 2]);
+            assert!(renderer.last_rows.is_empty());
+        }
+        drop(hold);
+        assert!(renderer.draw(&term, "", None, true, &mut frame).is_some());
+        assert!(renderer.draw(&term, "", None, true, &mut frame).is_none());
+        drop((renderer, term, frame));
+        assert_eq!(pool.snapshot().kinds[crate::resources::Kind::Render as usize], 0);
     }
 }

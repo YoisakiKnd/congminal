@@ -6,7 +6,7 @@
 #   也可以用 --config <路径> 或环境变量 CONGMINAL_CONFIG 指定。
 #
 # 这份文件里写的都是默认值，只需要保留你想改的部分。
-# 保存后自动生效（字体、主题、颜色、快捷键、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
+# 保存后自动生效（字体、主题、颜色、快捷键、内边距、光标、Option 键）；shell、窗口大小、布局恢复和内存额度在下次启动时生效。
 # 用 congminal --print-config 可以重新打印这份文件。
 
 [font]
@@ -27,6 +27,31 @@ columns = 80
 rows = 24
 # 文字和窗口边缘之间的空白（逻辑像素）
 padding = 4
+
+[workspace]
+# 开启后异步保存/恢复标签、分屏、焦点和侧栏；默认关闭，不增加布局 I/O 或线程。
+# 文件在当前配置旁，名称为 <配置文件名>.workspace（不同配置分别保存）。
+# 只保存 UI 元数据，不含路径、标题、命令、终端文本或输入；恢复时重新启动当前配置的 shell。
+# 若已开始输入/点击则取消迟到的恢复。删除 .workspace 文件即可重置布局。
+restore-layout = false
+
+# SFTP 需 macOS/Linux 的 sftp-preview 构建；普通构建启用会提示不支持。
+# 启用只开放 SSH 会话文件页的“连接”按钮，点击前不创建池、工作器或连接。
+[sftp]
+enabled = false
+# 默认查找主程序旁的 congminal-ssh-helper；密码/私钥正文不要写入配置。
+# helper = "/absolute/path/congminal-ssh-helper"
+# 不写时沿用系统 SSH 配置；以下设置只影响独立 SFTP，不改变终端 ssh 命令。
+# ssh-config = "/absolute/path/ssh_config"
+
+[memory]
+# 共享准入额度，128–4096 MiB；不是完整堆/RSS 上限。下次启动生效。
+# 当前计入：画布容量/扩容峰值、PTY 队列容量预留、字形缓存计费、字体堆回退。
+# 网格容量及缩放临时工作集另作保守预留；额度不足时保留旧尺寸。
+# 持久历史、字体解析/解码临时缓冲和缓存索引尚未完整接入，非完整堆/RSS 上限。
+managed-mib = 512
+# 字体只读映射单独限制地址空间，64–4096 MiB、最多 128 个映射，不计作堆/RSS。
+mapped-font-mib = 1024
 
 [appearance]
 # dark、light、midnight；快捷键 Primary+F6 循环切换（不写回文件）。
@@ -88,9 +113,44 @@ option-as-alt = true
 # 系统适配：macOS osascript / Linux notify-send / Windows PowerShell .NET NotifyIcon。
 # 调用有 5 秒超时、每 10 秒最多一次，失败在通知中心显示；不会发送命令、路径或输出正文。
 [notifications]
+# SFTP 候选入口启用后，控制传输结局通知；不包含文件路径或主机名。
+transfers = true
 muted = false
 system = false
 failures = true
 long-commands = true
 background = true
 long-seconds = 10
+
+# 工作区快捷键（Primary：macOS 为 Cmd，其他为 Ctrl+Shift）：
+# Primary+T=new-tab，Primary+W=close-pane，Ctrl+Tab/Shift+Ctrl+Tab 切换标签。
+# Primary+D=split-right，Primary+Enter=split-down，Ctrl+PageDown=next-pane。
+# Ctrl+PageUp=previous-pane，Ctrl+Shift+PageUp/PageDown 重排标签。
+# Primary+B=toggle-left-sidebar，Primary+I=toggle-right-sidebar。
+# 可在已有 [keybindings] 中覆盖；跨运行保存须启用 [workspace] restore-layout。
+
+# 左栏“连接”页读取命名配置档，最多 16 个；点击本地配置档新建标签。
+# 所有名称/路径/参数有长度上限，不保存密码或私钥正文。
+# 本地 working-directory 使用启动目录相对路径或绝对路径，不展开 ~ 或环境变量。
+# [connections.dev]
+# kind = "local"
+# name = "开发终端"
+# group = "本机"
+# program = "/bin/zsh"
+# args = ["-l"]
+# working-directory = "/absolute/project/path"
+# theme = "midnight" # 关联元数据；按会话应用主题将在美化阶段接入
+#
+# SSH：点击配置档新建 OpenSSH PTY 会话；连接页“重连”使用原会话快照。
+# 工具检查在后台运行；认证/主机确认保留在终端，认证/活动状态无法可靠判断时显示未知。
+# 系统 OpenSSH 为可选外部工具；跨平台真机与长测仍待验收。
+# host 可填写系统 SSH 配置中的明确别名，也可填写主机名/IP，禁止通配符和选项。
+# [connections.build]
+# kind = "ssh"
+# name = "构建主机"
+# group = "远程"
+# host = "build-alias"
+# user = "builder"
+# port = 22
+# identity-file = "/absolute/key/path" # 配置只保存路径，由 OpenSSH 读取密钥
+# program = "/usr/bin/ssh" # 外部后端候选的程序路径

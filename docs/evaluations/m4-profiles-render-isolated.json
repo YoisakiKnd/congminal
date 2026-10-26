@@ -1,0 +1,268 @@
+{
+  "method": "ten balanced pairs of unmodified bench_full_frame only, 30 warmed full/blank/partial frames per run; no other performance jobs",
+  "source_sha256": {
+    "before": {
+      "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+      "src/session.rs": "91e53e58e0705ce496fd64b254deeccdeda26e913a01283af7ea2120bec719d1",
+      "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+      "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+      "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+      "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+      "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+      "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+      "src/workspace.rs": "3fca847cce18ab20551c3371fe9d2894ff8c932afbddf5373e1185e618cba3ff",
+      "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+      "src/main.rs": "764443cbaf6e1fb887924031893c576d06c59774d18ce1cea6e0cf7d906fda7d",
+      "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+      "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+      "src/resources.rs": "e722bc8f912eb3b2da76dda27cc9d2e804085b86bce5725bd0ef53a926ef279b",
+      "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+      "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+      "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+      "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+      "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+      "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+      "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+      "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+      "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+      "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+      "src/config/mod.rs": "bc164e408efe7f828d070307fde38cd14d14b00586f539630e7018012672c5b2",
+      "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+      "src/resources/budget.rs": "95aa7d83fedfca8b4aee70ed63a3b420728db58c099272d9bb28500b72c49c94",
+      "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+      "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+      "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+      "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+      "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+      "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+      "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+      "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+      "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+      "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+      "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+      "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+      "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+      "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+      "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+      "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+      "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+      "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+      "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+      "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+      "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+      "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+      "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+      "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+      "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+      "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+      "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+      "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+      "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+      "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+      "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+      "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+      "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2"
+    },
+    "after": {
+      "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+      "src/session.rs": "91e53e58e0705ce496fd64b254deeccdeda26e913a01283af7ea2120bec719d1",
+      "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+      "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+      "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+      "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+      "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+      "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+      "src/workspace.rs": "542931d1318f7f7093bdbede4b44e42f774e9d32e255b8de9fa1f75c8faeb4a3",
+      "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+      "src/main.rs": "4d2462a336b0ac1ca1874b1253a2de2220fddf265a8f75c8f5c9b77b170ba2d3",
+      "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+      "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+      "src/resources.rs": "aa299533d3bd5ae7dda2ed798618ff6f7f7319a0b83368a7cbd190918a920a72",
+      "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+      "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+      "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+      "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+      "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+      "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+      "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+      "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+      "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+      "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+      "src/config/profiles.rs": "b3018e8dd7db75915e3703c25ed4f262259ad213fa4c551546d45fa53b8bab00",
+      "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+      "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+      "src/resources/budget.rs": "8669adbee8cf331bc50cd811d4467ac25e9dce0e3a5ee5e26476a583efc90d2d",
+      "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+      "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+      "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+      "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+      "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+      "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+      "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+      "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+      "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+      "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+      "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+      "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+      "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+      "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+      "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+      "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+      "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+      "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+      "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+      "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+      "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+      "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+      "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+      "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+      "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+      "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+      "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+      "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+      "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+      "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+      "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+      "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+      "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2"
+    }
+  },
+  "runs": {
+    "before": [
+      {
+        "full_ms": 2.992538,
+        "blank_ms": 0.47835500000000003,
+        "partial_ms": 0.307076,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 2.992538ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 478.355\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 307.076\u00b5s\n"
+      },
+      {
+        "full_ms": 3.029259,
+        "blank_ms": 0.476677,
+        "partial_ms": 0.30949400000000005,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.029259ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 476.677\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 309.494\u00b5s\n"
+      },
+      {
+        "full_ms": 3.105598,
+        "blank_ms": 0.470945,
+        "partial_ms": 0.309376,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.105598ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 470.945\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 309.376\u00b5s\n"
+      },
+      {
+        "full_ms": 3.46024,
+        "blank_ms": 0.5772200000000001,
+        "partial_ms": 0.34563099999999997,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.15s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.46024ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 577.22\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 345.631\u00b5s\n"
+      },
+      {
+        "full_ms": 3.093291,
+        "blank_ms": 0.496091,
+        "partial_ms": 0.31944700000000004,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.093291ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 496.091\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 319.447\u00b5s\n"
+      },
+      {
+        "full_ms": 3.1228,
+        "blank_ms": 0.495068,
+        "partial_ms": 0.327209,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.1228ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 495.068\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 327.209\u00b5s\n"
+      },
+      {
+        "full_ms": 3.166687,
+        "blank_ms": 0.488279,
+        "partial_ms": 0.316983,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.166687ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 488.279\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 316.983\u00b5s\n"
+      },
+      {
+        "full_ms": 3.101658,
+        "blank_ms": 0.5598289999999999,
+        "partial_ms": 0.325563,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.101658ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 559.829\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 325.563\u00b5s\n"
+      },
+      {
+        "full_ms": 2.981637,
+        "blank_ms": 0.47979000000000005,
+        "partial_ms": 0.30758100000000005,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 2.981637ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 479.79\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 307.581\u00b5s\n"
+      },
+      {
+        "full_ms": 2.9984,
+        "blank_ms": 0.47253100000000003,
+        "partial_ms": 0.30851100000000004,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 2.9984ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 472.531\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 308.511\u00b5s\n"
+      }
+    ],
+    "after": [
+      {
+        "full_ms": 3.015033,
+        "blank_ms": 0.475993,
+        "partial_ms": 0.31738299999999997,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.015033ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 475.993\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 317.383\u00b5s\n"
+      },
+      {
+        "full_ms": 3.016611,
+        "blank_ms": 0.494033,
+        "partial_ms": 0.32524000000000003,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.016611ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 494.033\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 325.24\u00b5s\n"
+      },
+      {
+        "full_ms": 3.053188,
+        "blank_ms": 0.5145190000000001,
+        "partial_ms": 0.32089100000000004,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.053188ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 514.519\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 320.891\u00b5s\n"
+      },
+      {
+        "full_ms": 3.170944,
+        "blank_ms": 0.473361,
+        "partial_ms": 0.316181,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.170944ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 473.361\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 316.181\u00b5s\n"
+      },
+      {
+        "full_ms": 3.152676,
+        "blank_ms": 0.492402,
+        "partial_ms": 0.324158,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.152676ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 492.402\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 324.158\u00b5s\n"
+      },
+      {
+        "full_ms": 3.118645,
+        "blank_ms": 0.536159,
+        "partial_ms": 0.340223,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.118645ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 536.159\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 340.223\u00b5s\n"
+      },
+      {
+        "full_ms": 3.057443,
+        "blank_ms": 0.552333,
+        "partial_ms": 0.33643,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.057443ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 552.333\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 336.43\u00b5s\n"
+      },
+      {
+        "full_ms": 3.042886,
+        "blank_ms": 0.488418,
+        "partial_ms": 0.317961,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.042886ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 488.418\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 317.961\u00b5s\n"
+      },
+      {
+        "full_ms": 3.073138,
+        "blank_ms": 0.474926,
+        "partial_ms": 0.312818,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.073138ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 474.926\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 312.818\u00b5s\n"
+      },
+      {
+        "full_ms": 3.046447,
+        "blank_ms": 0.545293,
+        "partial_ms": 0.322087,
+        "log": "\nrunning 1 test\ntest render::bench::bench_full_frame ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 323 filtered out; finished in 0.13s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n3616\u00d72416 \u50cf\u7d20\u3001200\u00d760 \u5b57\u7b26\uff1a\u6574\u5c4f\u91cd\u753b\u6bcf\u5e27 3.046447ms\n\u5168\u662f\u7a7a\u683c\uff1a\u6bcf\u5e27 545.293\u00b5s\n\u53ea\u6539\u4e00\u884c\uff1a\u6bcf\u5e27 322.087\u00b5s\n"
+      }
+    ]
+  },
+  "median": {
+    "before": {
+      "full_ms": 3.0974744999999997,
+      "blank_ms": 0.48403450000000003,
+      "partial_ms": 0.31323850000000003
+    },
+    "after": {
+      "full_ms": 3.0553155,
+      "blank_ms": 0.4932175,
+      "partial_ms": 0.321489
+    }
+  }
+}

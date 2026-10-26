@@ -5,7 +5,8 @@
 //! 规范：<https://www.w3.org/TR/png-3/>
 
 use super::Image;
-use super::inflate::zlib_decompress_limited;
+use super::inflate::zlib_decompress_exact;
+use std::borrow::Cow;
 
 const MAX_PIXELS: usize = 4 * 1024 * 1024;
 const MAX_COMPRESSED: usize = 32 * 1024 * 1024;
@@ -45,14 +46,14 @@ impl Header {
 }
 
 /// 透明度信息（tRNS 块）
-enum Transparency {
+enum Transparency<'a> {
     None,
     /// 灰度图里这个灰度值是透明的
     Gray(u16),
     /// RGB 图里这个颜色是透明的
     Rgb(u16, u16, u16),
     /// 调色板每一项的透明度
-    Palette(Vec<u8>),
+    Palette(&'a [u8]),
 }
 
 pub fn decode(data: &[u8]) -> Result<Image, String> {
@@ -63,9 +64,11 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
         return Err("不是 PNG 图片".into());
     }
     let mut header = None;
-    let mut palette: Vec<[u8; 3]> = Vec::new();
+    let mut palette: &[[u8; 3]] = &[];
     let mut transparency_chunk: Option<&[u8]> = None;
-    let mut compressed = Vec::new();
+    let mut compressed_len = 0usize;
+    let mut idat_count = 0usize;
+    let mut last_idat = &[][..];
 
     // 数据由一个个"块"组成：长度、类型、内容、CRC
     let mut pos = 8usize;
@@ -92,22 +95,19 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
             b"IHDR" if header.is_none() && length == 13 => header = Some(parse_header(body)?),
             b"IHDR" => return Err("PNG IHDR 重复或长度错误".into()),
             b"PLTE" if !saw_data && !body.is_empty() && length <= 768 && length.is_multiple_of(3) => {
-                palette = body.as_chunks::<3>().0.to_vec();
+                palette = body.as_chunks::<3>().0;
             }
             b"PLTE" => return Err("PNG PLTE 无效".into()),
             b"tRNS" if !saw_data && length <= 256 => transparency_chunk = Some(body),
             b"tRNS" => return Err("PNG tRNS 无效".into()),
             b"IDAT" => {
-                if ended_data || length > MAX_COMPRESSED.saturating_sub(compressed.len()) {
+                if ended_data || length > MAX_COMPRESSED.saturating_sub(compressed_len) {
                     return Err("PNG IDAT 不连续或超过预算".into());
                 }
                 saw_data = true;
-                let needed = compressed.len() + length;
-                if needed > compressed.capacity() {
-                    let capacity = needed.max(compressed.capacity().saturating_mul(2)).min(MAX_COMPRESSED);
-                    compressed.try_reserve_exact(capacity - compressed.len()).map_err(|_| "无法分配 PNG 缓冲区")?;
-                }
-                compressed.extend_from_slice(body);
+                compressed_len += length;
+                idat_count += 1;
+                last_idat = body;
             }
             b"IEND" if length == 0 && saw_data => break,
             b"IEND" => return Err("PNG IEND 无效或缺少 IDAT".into()),
@@ -127,7 +127,7 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
             u16::from_be_bytes([t[2], t[3]]),
             u16::from_be_bytes([t[4], t[5]]),
         ),
-        (Some(t), 3) => Transparency::Palette(t.to_vec()),
+        (Some(t), 3) => Transparency::Palette(t),
         _ => Transparency::None,
     };
 
@@ -141,12 +141,37 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
             if w == 0 || h == 0 { 0 } else { (header.stride(w) + 1) * h }
         })
         .sum();
-    let raw = zlib_decompress_limited(&compressed, expected)?;
+    // 首遍仅借用输入并验证；全部大缓冲准入后才分配。DEFLATE 输出精确准备一次，
+    // 4 KiB 覆盖其有固定上限的哈夫曼/码长堆缓冲，不是 RSS 或完整分配器开销。
+    let rgba_len = header.width * header.height * 4;
+    let joined = if idat_count > 1 { compressed_len } else { 0 };
+    let peak = joined + expected + rgba_len + 4096;
+    let mut memory =
+        crate::resources::current().lease(crate::resources::Kind::Image, peak).map_err(|error| error.to_string())?;
+    let compressed = if idat_count == 1 {
+        Cow::Borrowed(last_idat)
+    } else {
+        let mut joined = Vec::new();
+        joined.try_reserve_exact(compressed_len).map_err(|_| "无法分配 PNG 缓冲区")?;
+        assert!(joined.capacity() <= compressed_len);
+        // 已验证且不可变的块；重走偏移拼接 IDAT，不保存随块数增长的索引。
+        let mut cursor = 8;
+        while cursor < pos {
+            let length = u32::from_be_bytes(data[cursor..cursor + 4].try_into().unwrap()) as usize;
+            if &data[cursor + 4..cursor + 8] == b"IDAT" {
+                joined.extend_from_slice(&data[cursor + 8..cursor + 8 + length]);
+            }
+            cursor += length + 12;
+        }
+        Cow::Owned(joined)
+    };
+    let mut raw = zlib_decompress_exact(&compressed, expected)?;
+    assert!(raw.capacity() <= expected);
     if raw.len() != expected {
         return Err("PNG 扫描行大小不匹配".into());
     }
-    let mut image =
-        Image { width: header.width, height: header.height, rgba: vec![0; header.width * header.height * 4] };
+    let mut rgba = vec![0; rgba_len];
+    assert!(rgba.capacity() <= rgba_len);
     let mut offset = 0;
     for &(x0, y0, dx, dy) in passes {
         // 这一遍的子图尺寸。图很小时某些遍可能是空的，空的遍不占数据。
@@ -155,18 +180,24 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
         if width == 0 || height == 0 {
             continue;
         }
-        let rows = unfilter(&raw, &mut offset, &header, width, height)?;
         let stride = header.stride(width);
+        let bytes = (stride + 1) * height;
+        let pass = &mut raw[offset..offset + bytes];
+        unfilter(pass, &header, width, height)?;
+        offset += bytes;
         for y in 0..height {
-            let row = &rows[y * stride..(y + 1) * stride];
+            let row = &pass[y * (stride + 1) + 1..(y + 1) * (stride + 1)];
             for x in 0..width {
-                let rgba = pixel(&header, row, x, &palette, &transparency)?;
+                let color = pixel(&header, row, x, palette, &transparency)?;
                 let i = ((y0 + y * dy) * header.width + x0 + x * dx) * 4;
-                image.rgba[i..i + 4].copy_from_slice(&rgba);
+                rgba[i..i + 4].copy_from_slice(&color);
             }
         }
     }
-    Ok(image)
+    drop(raw);
+    drop(compressed);
+    memory.resize(rgba.capacity()).unwrap();
+    Ok(Image { width: header.width, height: header.height, rgba, _memory: memory })
 }
 
 const fn crc_table() -> [u32; 256] {
@@ -218,18 +249,24 @@ fn parse_header(body: &[u8]) -> Result<Header, String> {
 }
 
 /// 撤销行过滤。每行开头一个字节说明这一行用了哪种过滤（预测方式）。
-fn unfilter(raw: &[u8], offset: &mut usize, header: &Header, width: usize, height: usize) -> Result<Vec<u8>, String> {
+fn unfilter(raw: &mut [u8], header: &Header, width: usize, height: usize) -> Result<(), String> {
     let stride = header.stride(width);
     // 过滤按"像素"对齐，不满一个字节的按一个字节算
     let bpp = header.bits_per_pixel().div_ceil(8);
-    let mut out = vec![0u8; stride * height];
+    if raw.len() != (stride + 1) * height {
+        return Err("图像数据不完整".into());
+    }
     for y in 0..height {
-        let filter = *raw.get(*offset).ok_or("图像数据不完整")?;
-        let line = raw.get(*offset + 1..*offset + 1 + stride).ok_or("图像数据不完整")?;
-        *offset += 1 + stride;
-        let (before, current) = out.split_at_mut(y * stride);
-        let current = &mut current[..stride];
-        let previous = if y > 0 { &before[(y - 1) * stride..] } else { &[][..] };
+        let (before, current) = raw.split_at_mut(y * (stride + 1));
+        let filter = current[0];
+        if filter == 0 {
+            continue;
+        }
+        if filter > 4 {
+            return Err(format!("无效的行过滤类型 {filter}"));
+        }
+        let current = &mut current[1..stride + 1];
+        let previous = if y > 0 { &before[(y - 1) * (stride + 1) + 1..] } else { &[][..] };
         let up = |i: usize| previous.get(i).copied().unwrap_or(0);
         for i in 0..stride {
             let left = if i >= bpp { current[i - bpp] } else { 0 };
@@ -240,12 +277,12 @@ fn unfilter(raw: &[u8], offset: &mut usize, header: &Header, width: usize, heigh
                 2 => up(i),
                 3 => ((left as u16 + up(i) as u16) / 2) as u8,
                 4 => paeth(left, up(i), upper_left),
-                _ => return Err(format!("无效的行过滤类型 {filter}")),
+                _ => unreachable!(),
             };
-            current[i] = line[i].wrapping_add(prediction);
+            current[i] = current[i].wrapping_add(prediction);
         }
     }
-    Ok(out)
+    Ok(())
 }
 
 /// Paeth 预测：左、上、左上三个里，选离"左 + 上 - 左上"最近的那个
@@ -281,7 +318,7 @@ fn pixel(
     row: &[u8],
     x: usize,
     palette: &[[u8; 3]],
-    transparency: &Transparency,
+    transparency: &Transparency<'_>,
 ) -> Result<[u8; 4], String> {
     let depth = header.depth;
     let channels = header.channels();
@@ -412,6 +449,153 @@ mod boundary_tests {
         png.extend(body);
         let crc = crc32(&png[start..]);
         png.extend(crc.to_be_bytes());
+    }
+
+    fn stored_png(width: usize, height: usize, interlaced: bool, raw: &[u8], part: usize) -> Vec<u8> {
+        let mut zlib = vec![0x78, 0x01];
+        for (i, block) in raw.chunks(65535).enumerate() {
+            zlib.push(u8::from((i + 1) * 65535 >= raw.len()));
+            let len = block.len() as u16;
+            zlib.extend(len.to_le_bytes());
+            zlib.extend((!len).to_le_bytes());
+            zlib.extend(block);
+        }
+        let (mut a, mut b) = (1u32, 0u32);
+        for &v in raw {
+            a = (a + u32::from(v)) % 65521;
+            b = (b + a) % 65521;
+        }
+        zlib.extend((b << 16 | a).to_be_bytes());
+        let mut png = SIGNATURE.to_vec();
+        let mut header = (width as u32).to_be_bytes().to_vec();
+        header.extend((height as u32).to_be_bytes());
+        header.extend([8, 6, 0, 0, u8::from(interlaced)]);
+        chunk(b"IHDR", &header, &mut png);
+        for piece in zlib.chunks(part) {
+            chunk(b"IDAT", piece, &mut png);
+        }
+        chunk(b"IEND", &[], &mut png);
+        png
+    }
+
+    #[test]
+    fn decoded_pixels_keep_the_owners_credit_until_the_image_is_dropped() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let image = {
+            let _scope = Scope::enter(pool.clone());
+            decode(include_bytes!("testdata/rgba8.png")).unwrap()
+        };
+        assert_eq!(pool.snapshot().used, image.rgba.capacity());
+        assert_eq!(pool.snapshot().kinds[8], image.rgba.capacity());
+        assert!(pool.snapshot().peak > pool.snapshot().used);
+        drop(image);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
+    #[test]
+    fn shared_denial_happens_before_large_decode_buffers_are_allocated() {
+        use crate::resources::{Budget, Scope};
+        // 能容纳最终像素，但容纳不了同时存活的解压工作集。
+        let pool = Budget::new(37 * 23 * 4, 0);
+        let _scope = Scope::enter(pool.clone());
+        assert!(decode(include_bytes!("testdata/rgba8.png")).err().unwrap().contains("额度"));
+        assert_eq!(pool.snapshot().used, 0);
+        assert_eq!(pool.snapshot().peak, 0);
+        assert_eq!(pool.snapshot().denied, 1);
+    }
+
+    #[test]
+    fn errors_after_admission_release_scratch_without_changing_another_image() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let _scope = Scope::enter(pool.clone());
+        let valid = decode(include_bytes!("testdata/rgba8.png")).unwrap();
+        let before = pool.snapshot().used;
+        for raw in [&[9, 1, 2, 3, 4][..], &[0, 1, 2, 3][..], &[0, 1, 2, 3, 4, 5][..]] {
+            let malformed = stored_png(1, 1, false, raw, 2);
+            assert!(decode(&malformed).is_err());
+            assert_eq!(pool.snapshot().used, before);
+        }
+        drop(valid);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
+    #[test]
+    fn fragmented_idat_matches_borrowed_input_and_never_modifies_source() {
+        let raw: Vec<_> =
+            (0..11).flat_map(|y| std::iter::once(0).chain((0..13 * 4).map(move |x| (x + y) as u8))).collect();
+        let single = stored_png(13, 11, false, &raw, usize::MAX);
+        let expected = decode(&single).unwrap();
+        for part in [1, 2, 7, 128] {
+            let png = stored_png(13, 11, false, &raw, part);
+            let before = png.clone();
+            let actual = decode(&png).unwrap();
+            assert_eq!(actual.rgba, expected.rgba);
+            assert_eq!(png, before);
+        }
+    }
+
+    #[test]
+    fn in_place_filters_preserve_neighbors_for_packed_and_sixteen_bit_rows() {
+        for (depth, color_type) in [(1, 0), (2, 0), (4, 3), (8, 0), (16, 0), (8, 2), (8, 6), (16, 2), (16, 6)] {
+            for width in [1, 2, 13] {
+                let header = Header { width, height: 10, depth, color_type, interlaced: false };
+                let stride = header.stride(width);
+                let bpp = header.bits_per_pixel().div_ceil(8);
+                let original: Vec<_> = (0..stride * 10).map(|i| (i * 73 + i / stride * 41) as u8).collect();
+                let mut encoded = Vec::new();
+                for y in 0..10 {
+                    let filter = (y % 5) as u8;
+                    encoded.push(filter);
+                    for x in 0..stride {
+                        let left = if x >= bpp { original[y * stride + x - bpp] } else { 0 };
+                        let up = if y > 0 { original[(y - 1) * stride + x] } else { 0 };
+                        let corner = if y > 0 && x >= bpp { original[(y - 1) * stride + x - bpp] } else { 0 };
+                        let predicted = match filter {
+                            0 => 0,
+                            1 => left,
+                            2 => up,
+                            3 => ((left as u16 + up as u16) / 2) as u8,
+                            _ => paeth(left, up, corner),
+                        };
+                        encoded.push(original[y * stride + x].wrapping_sub(predicted));
+                    }
+                }
+                unfilter(&mut encoded, &header, width, 10).unwrap();
+                for (y, row) in encoded.chunks(stride + 1).enumerate() {
+                    assert_eq!(&row[1..], &original[y * stride..(y + 1) * stride]);
+                }
+                assert!(unfilter(&mut encoded[..stride], &header, width, 10).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn small_adam7_images_skip_empty_passes_without_reusing_the_previous_pass_row() {
+        for (width, height) in [(1, 1), (1, 9), (9, 1), (2, 3), (7, 9)] {
+            let color = |x: usize, y: usize| [x as u8 * 7, y as u8 * 11, (x + y) as u8, 255];
+            let mut raw = Vec::new();
+            for (x0, y0, dx, dy) in ADAM7 {
+                if x0 >= width || y0 >= height {
+                    continue;
+                }
+                let mut previous = vec![0u8; (width - x0).div_ceil(dx) * 4];
+                for y in (y0..height).step_by(dy) {
+                    raw.push(2);
+                    for (i, x) in (x0..width).step_by(dx).enumerate() {
+                        for (channel, value) in color(x, y).into_iter().enumerate() {
+                            let offset = i * 4 + channel;
+                            raw.push(value.wrapping_sub(previous[offset]));
+                            previous[offset] = value;
+                        }
+                    }
+                }
+            }
+            let image = decode(&stored_png(width, height, true, &raw, 17)).unwrap();
+            let expected: Vec<_> = (0..height).flat_map(|y| (0..width).flat_map(move |x| color(x, y))).collect();
+            assert_eq!(image.rgba, expected);
+        }
     }
 
     #[test]

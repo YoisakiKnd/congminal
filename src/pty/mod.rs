@@ -10,10 +10,13 @@
 
 pub mod flow;
 
+use std::path::Path;
+#[cfg(test)]
 use std::path::PathBuf;
 use std::sync::Arc;
 
-/// 要在伪终端里启动的程序
+/// 测试用拥有命令；生产启动只借用配置，不复制参数/环境。
+#[cfg(test)]
 #[derive(Clone, Debug, Default)]
 pub struct Command {
     /// None 表示用系统默认的 shell
@@ -23,6 +26,34 @@ pub struct Command {
     pub working_directory: Option<PathBuf>,
     /// 额外的环境变量，覆盖继承来的同名变量
     pub env: Vec<(String, String)>,
+}
+
+/// 借用仅持续到同步启动结束；后台工作器不保留配置引用。
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CommandRef<'a> {
+    pub program: Option<&'a str>,
+    pub args: &'a [String],
+    pub working_directory: Option<&'a Path>,
+    pub env: &'a [(String, String)],
+}
+pub trait CommandSource {
+    fn view(&self) -> CommandRef<'_>;
+}
+impl CommandSource for CommandRef<'_> {
+    fn view(&self) -> CommandRef<'_> {
+        *self
+    }
+}
+#[cfg(test)]
+impl CommandSource for Command {
+    fn view(&self) -> CommandRef<'_> {
+        CommandRef {
+            program: self.program.as_deref(),
+            args: &self.args,
+            working_directory: self.working_directory.as_deref(),
+            env: &self.env,
+        }
+    }
 }
 
 pub enum PtyEvent {

@@ -7,15 +7,22 @@ pub mod png;
 pub struct Image {
     pub width: usize,
     pub height: usize,
-    pub rgba: Vec<u8>,
+    rgba: Vec<u8>,
+    // 像素销毁后才归还 PNG 输出额度；缩放生成的最终字形另由缓存计费。
+    _memory: crate::resources::Lease,
 }
 
 impl Image {
+    #[cfg(test)]
+    fn test_image(width: usize, height: usize, rgba: Vec<u8>) -> Self {
+        let memory = crate::resources::current().lease(crate::resources::Kind::Image, rgba.capacity()).unwrap();
+        Self { width, height, rgba, _memory: memory }
+    }
     /// 缩放到 width × height，返回预乘过透明度的像素（0xAARRGGBB）。
     ///
     /// 缩小时用面积平均（每个目标像素取它覆盖的那块源图的平均值，不会有锯齿），放大时用双线性插值。
     /// 先预乘透明度再插值，否则半透明的边缘会混进透明像素的颜色，出现黑边。
-    pub fn resize_premultiplied(&self, width: usize, height: usize) -> Option<Vec<u32>> {
+    pub fn resize_premultiplied(&self, width: usize, height: usize) -> Option<crate::resources::Tracked<Vec<u32>>> {
         if width == 0
             || height == 0
             || self.width == 0
@@ -29,6 +36,12 @@ impl Image {
         {
             return None;
         }
+        let taps = Weights::capacity(self.width, width) + Weights::capacity(self.height, height);
+        let bytes = (width + height + 2) * std::mem::size_of::<usize>()
+            + taps * std::mem::size_of::<(usize, f32)>()
+            + width * std::mem::size_of::<[f32; 4]>()
+            + width * height * std::mem::size_of::<u32>();
+        let mut memory = self._memory.budget().lease(crate::resources::Kind::ImageScale, bytes).ok()?;
         let xs = weights(self.width, width);
         let ys = weights(self.height, height);
         // 只保留一行浮点中间值。极窄长图横向放大时也不分配 width * source_height。
@@ -58,32 +71,58 @@ impl Image {
                 out[y * width + x] = a << 24 | r << 16 | g << 8 | b;
             }
         }
-        Some(out)
+        drop(sums);
+        drop(xs);
+        drop(ys);
+        memory.resize(out.capacity() * std::mem::size_of::<u32>()).unwrap();
+        Some(crate::resources::Tracked::new(out, memory))
     }
 }
 
 /// 每个目标位置由哪些源位置按什么权重混合而成（权重之和为 1）
-fn weights(source: usize, target: usize) -> Vec<Vec<(usize, f32)>> {
+struct Weights {
+    offsets: Vec<usize>,
+    taps: Vec<(usize, f32)>,
+}
+impl Weights {
+    fn capacity(source: usize, target: usize) -> usize {
+        // 缩小的区间至多 source + 2*target 个采样；放大每个位置恰好两个。
+        // 额外槽覆盖 f32 边界舍入，不依靠 Vec 的隐式增长。
+        source + 2 * target + 4
+    }
+    fn iter(&self) -> impl Iterator<Item = &[(usize, f32)]> {
+        self.offsets.windows(2).map(|range| &self.taps[range[0]..range[1]])
+    }
+}
+fn weights(source: usize, target: usize) -> Weights {
     let scale = source as f32 / target as f32;
-    (0..target)
-        .map(|i| {
-            if scale >= 1.0 {
-                // 缩小：目标像素覆盖源图上 [start, end) 这一段，按重叠长度加权
-                let (start, end) = (i as f32 * scale, (i + 1) as f32 * scale);
-                (start.floor() as usize..(end.ceil() as usize).min(source))
-                    .map(|s| (s, ((end.min(s as f32 + 1.0) - start.max(s as f32)) / scale)))
-                    .filter(|&(_, w)| w > 0.0)
-                    .collect()
-            } else {
-                // 放大：取最近的两个源像素线性插值
-                let center = ((i as f32 + 0.5) * scale - 0.5).clamp(0.0, (source - 1) as f32);
-                let left = center.floor() as usize;
-                let t = center - left as f32;
-                let right = (left + 1).min(source - 1);
-                vec![(left, 1.0 - t), (right, t)]
+    let capacity = Weights::capacity(source, target);
+    let mut offsets = Vec::with_capacity(target + 1);
+    let mut taps = Vec::with_capacity(capacity);
+    for i in 0..target {
+        offsets.push(taps.len());
+        if scale >= 1.0 {
+            // 缩小：目标像素覆盖源图上 [start, end) 这一段，按重叠长度加权
+            let (start, end) = (i as f32 * scale, (i + 1) as f32 * scale);
+            for s in start.floor() as usize..(end.ceil() as usize).min(source) {
+                let w = (end.min(s as f32 + 1.0) - start.max(s as f32)) / scale;
+                if w > 0.0 {
+                    assert!(taps.len() < capacity);
+                    taps.push((s, w));
+                }
             }
-        })
-        .collect()
+        } else {
+            // 放大：取最近的两个源像素线性插值
+            let center = ((i as f32 + 0.5) * scale - 0.5).clamp(0.0, (source - 1) as f32);
+            let left = center.floor() as usize;
+            let t = center - left as f32;
+            let right = (left + 1).min(source - 1);
+            assert!(taps.len() + 2 <= capacity);
+            taps.extend([(left, 1.0 - t), (right, t)]);
+        }
+    }
+    offsets.push(taps.len());
+    Weights { offsets, taps }
 }
 
 #[cfg(test)]
@@ -91,27 +130,27 @@ mod tests {
     use super::*;
 
     fn image(width: usize, height: usize, pixels: &[[u8; 4]]) -> Image {
-        Image { width, height, rgba: pixels.concat() }
+        Image::test_image(width, height, pixels.concat())
     }
 
     #[test]
     fn downscale_averages_area() {
         // 2×2 → 1×1：两白两黑平均成灰
         let img = image(2, 2, &[[255, 255, 255, 255], [0, 0, 0, 255], [0, 0, 0, 255], [255, 255, 255, 255]]);
-        assert_eq!(img.resize_premultiplied(1, 1).unwrap(), [0xFF808080]);
+        assert_eq!(img.resize_premultiplied(1, 1).unwrap().as_slice(), [0xFF808080]);
     }
 
     #[test]
     fn transparent_pixels_do_not_darken_edges() {
         // 红色和完全透明的黑色平均：结果是半透明的红（预乘后 R=128），而不是暗红
         let img = image(2, 1, &[[255, 0, 0, 255], [0, 0, 0, 0]]);
-        assert_eq!(img.resize_premultiplied(1, 1).unwrap(), [0x80800000]);
+        assert_eq!(img.resize_premultiplied(1, 1).unwrap().as_slice(), [0x80800000]);
     }
 
     #[test]
     fn same_size_is_identity() {
         let img = image(2, 1, &[[10, 20, 30, 255], [40, 50, 60, 255]]);
-        assert_eq!(img.resize_premultiplied(2, 1).unwrap(), [0xFF0A141E, 0xFF28323C]);
+        assert_eq!(img.resize_premultiplied(2, 1).unwrap().as_slice(), [0xFF0A141E, 0xFF28323C]);
     }
 
     #[test]
@@ -128,8 +167,70 @@ mod tests {
 mod boundary_tests {
     use super::*;
     #[test]
+    fn scaling_uses_the_image_owner_and_keeps_output_credit_after_scratch_drops() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(1024 * 1024, 0);
+        let image = {
+            let _scope = Scope::enter(pool.clone());
+            Image::test_image(2, 2, [20, 40, 60, 255].repeat(4))
+        };
+        let other = Budget::new(1024 * 1024, 0);
+        let _scope = Scope::enter(other.clone());
+        let result = image.resize_premultiplied(32, 32).unwrap();
+        assert_eq!(pool.snapshot().kinds[9], result.capacity() * 4);
+        assert_eq!(pool.snapshot().used, image.rgba.capacity() + result.capacity() * 4);
+        assert!(pool.snapshot().peak > pool.snapshot().used);
+        assert_eq!(other.snapshot().used, 0);
+        drop(image);
+        assert_eq!(pool.snapshot().used, result.capacity() * 4);
+        drop(result);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn a_pool_that_only_fits_output_refuses_the_full_scaling_working_set() {
+        use crate::resources::{Budget, Scope};
+        let pool = Budget::new(4 + 64 * 64 * 4, 0);
+        let _scope = Scope::enter(pool.clone());
+        let image = Image::test_image(1, 1, vec![1, 2, 3, 255]);
+        assert!(image.resize_premultiplied(64, 64).is_none());
+        assert_eq!(image.rgba, [1, 2, 3, 255]);
+        assert_eq!(pool.snapshot().used, 4);
+        assert_eq!(pool.snapshot().denied, 1);
+        let denied = pool.snapshot().denied;
+        assert!(image.resize_premultiplied(usize::MAX, 1).is_none());
+        assert_eq!(pool.snapshot().denied, denied);
+        drop(image);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn flat_weight_tables_match_the_prior_area_and_bilinear_taps_at_size_boundaries() {
+        let sizes = [1, 2, 3, 31, 32, 33, 63, 64, 65, 255, 256, 4096, 16383, 16384];
+        for source in sizes {
+            for target in sizes {
+                let table = weights(source, target);
+                assert_eq!(table.offsets.len(), target + 1);
+                assert!(table.taps.capacity() <= Weights::capacity(source, target));
+                let scale = source as f32 / target as f32;
+                for (i, actual) in table.iter().enumerate() {
+                    if scale >= 1.0 {
+                        let (start, end) = (i as f32 * scale, (i + 1) as f32 * scale);
+                        let expected = (start.floor() as usize..(end.ceil() as usize).min(source))
+                            .map(|s| (s, (end.min(s as f32 + 1.0) - start.max(s as f32)) / scale))
+                            .filter(|&(_, w)| w > 0.0);
+                        assert!(actual.iter().copied().eq(expected), "{source} -> {target}, {i}");
+                    } else {
+                        let center = ((i as f32 + 0.5) * scale - 0.5).clamp(0.0, (source - 1) as f32);
+                        let left = center.floor() as usize;
+                        let t = center - left as f32;
+                        assert_eq!(actual, [(left, 1.0 - t), ((left + 1).min(source - 1), t)]);
+                    }
+                }
+            }
+        }
+    }
+    #[test]
     fn thin_image_scales_without_a_full_height_intermediate() {
-        let image = Image { width: 1, height: 16384, rgba: [10, 20, 30, 255].repeat(16384) };
+        let image = Image::test_image(1, 16384, [10, 20, 30, 255].repeat(16384));
         let resized = image.resize_premultiplied(512, 1).unwrap();
         assert!(resized.iter().all(|&p| p == 0xff0a141e));
         assert!(image.resize_premultiplied(usize::MAX, 2).is_none());

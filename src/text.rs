@@ -4,6 +4,7 @@ use crate::{
     term::{Flags, Row, Terminal},
 };
 
+#[cfg(test)] // 保留独立的逐格语义参照，生产链接检测借用基础字符/附加符号。
 pub fn cell_text(term: &Terminal, row: &Row, col: usize) -> String {
     let cell = &row.cells[col];
     if cell.flags.contains(Flags::WIDE_SPACER) {

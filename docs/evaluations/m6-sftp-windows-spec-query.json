@@ -1,0 +1,2946 @@
+{
+  "scope": "Real feature-gated Rust Session/NativePool over isolated SSH, generated keys, strict host records, 32MiB streaming / 8MiB managed test budget; bounded same-program DNS/cache, numeric dual-stack connection, and Unix supervised OpenSSH -G queries with controlled Include/Match/ProxyJump and Match exec cancellation. Test fixture input reservation is included in shared_peak. Windows capture is unsupported; native C dependencies/runtime there, production user-config integration, GUI, and full heap/RSS remain unverified.",
+  "sampler": "libproc \u6bcf 5 ms\uff1bMach \u65f6\u95f4\u57fa\u51c6 125/3\uff1b\u8fdb\u7a0b\u6811\u6700\u591a 64 \u9879",
+  "source_sha256": {
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/config/mod.rs": "e66ec090db9fb19f856167b3d95f3709737fabfdcb552a57317b016028556282",
+    "src/config/profiles.rs": "090d904e5b2b4baf3ce64e7bfe6ae399645dd8a5193be43eba00ddce5c07cd90",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/font/cache.rs": "f0de317df3c077b76d07005cd65fd621e2ab79a3800e31219a3b158d53f4cf6e",
+    "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/gsub.rs": "024e734c7ffa0e9fe1f019d636c48c7dc27147ed5502b62b95ef15173862d86c",
+    "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+    "src/font/mod.rs": "e91b72de8a4843c8ffeeff8529984cd9509708f3a4c267e41ba5575398e20d53",
+    "src/font/morx.rs": "f8fb4a11d5b23242c8bc6c9cb6b8a6d981775196c35c538c2da308c0e7974fe2",
+    "src/font/psf.rs": "35141ef977611f43fede587a526f075f0f738dd9552ef7dee4490318c2c27f6b",
+    "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+    "src/font/ttf.rs": "a107786f465dcdcc77af197ed066d47a9bb2bdc5eef583cb4805988bb76584b6",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+    "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+    "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/main.rs": "054dc6af5484a3ba2fedeea69643b4bd1a67aab8ae1a95a6a517b64790f2328b",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+    "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+    "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+    "src/process_launch.rs": "81755e67d8099ca6e11b4c9953b7a05303b8a4cbec30b0535d42bc45bf782066",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/unix.rs": "ea9d1e452189e322c459b20c10e7a244079e8df34aba98812a77b1346e1afd0c",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/render.rs": "5a47d756e70a87b3699a3485a924be5bf5ba0046b2a9130c3d97c05438c11c08",
+    "src/resolve.rs": "1a5a741615b531d6440e407bd46f90895bc67916ebd6b7ec5f9332cd4d249857",
+    "src/resources/budget.rs": "309ff4802bee32fda3e7cf0497a9d4611876cd63abe01355d3c67c06b9bb2ab8",
+    "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+    "src/resources.rs": "aa299533d3bd5ae7dda2ed798618ff6f7f7319a0b83368a7cbd190918a920a72",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/session.rs": "dc3f4ee4e3a92aebbd5ae7e16ff27089eefc8b375585904653a644e5774c841e",
+    "src/sftp/allocation.rs": "555f3521488b7ca257cbffcbeb1d8ab457d9092df00662553c891eb4943e86e6",
+    "src/sftp/client.rs": "119f08c3c7b53a8871af2533319b8e7c88f7da951eadb725996f0839fa59bab4",
+    "src/sftp/connect.rs": "c584e295da3995d65e13d473666c3ab28779aff268d6e49c196541a15a0c7cac",
+    "src/sftp/mod.rs": "a47a00c77e2c33ec70515fee66fddab0686ce22a9f7bae1c2da462d108895142",
+    "src/sftp/model.rs": "91c83fd80bd48f5b696a0269a9baaed8d5207dfc7a3dd8abb239837fa5b3c1ad",
+    "src/sftp/native.rs": "80ff85f8b79efff329a607611b922461b3429d8a53f6d222204ec194ab439ad2",
+    "src/sftp/native_wait.rs": "90b17e9c0fbe2582c40b7170d17bc54d70763f03fdc02af2dddc8c502cba428e",
+    "src/sftp/operations.rs": "cda190e0ddca16cf262108b0a14484af6d59e793d0c9f06e5a3aa7bc69a3f56b",
+    "src/sftp/secret.rs": "84654f08ff44fc6e80902b6d39e97266bdc218b26fafd97dbf74aa78cd27880f",
+    "src/sftp/transfer.rs": "ef00171c08c25fbba13f373dfbc99567e73b19ee8445fbe373f529942d304637",
+    "src/sftp/wire.rs": "dadc53f2c7b89a9b7d963fe629567df68fa6e9b6de2df801d060be647aeb0348",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/ssh/capture.rs": "2178e6f7edc25dba21207fee32f9104645d9a6a7ef739e9f8d7e458967dd66ea",
+    "src/ssh/capture_windows.rs": "b34df1a7457748a6a94968929bdd10c1a2ddcf0d057628df9d70cf0661e52981",
+    "src/ssh/capture_windows_wire.rs": "7ca895a506a9cba83299db1e329d0927286250e16ca414dd9a854cbbdcf6a430",
+    "src/ssh/settings.rs": "75da3ed8ba0f8661290f3b845336f91c637a18bd2d5f88b525193910ea52f80b",
+    "src/ssh.rs": "0152c4f0d58040b35e7ed2075f212ea72813f800d3acc023eff7555229fd99b2",
+    "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+    "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+    "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+    "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+    "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+    "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/workspace/files.rs": "9dac1fb7136e25d42c8ad291d39ccf8050a1b29b84a17b0a41dac0183b757945",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/workspace/remote.rs": "aa393538b30473bb696cf331a14a2eb390fb41b2cadca6e15c24a354a9b37708",
+    "src/workspace.rs": "c07031a3b4f61c4f1e8bf8e2a21d4f9c7988e887c4d28351f7d5eb391d595600"
+  },
+  "runs": [
+    {
+      "scenario": "resolved",
+      "client_pid": 33473,
+      "exit": 0,
+      "log": "\nrunning 1 test\ntest sftp::native::tests::native_isolated_session_validates_hosts_handles_streams_and_cleanup ... SFTP_NATIVE_STREAM bytes=33554432 upload_us=213314 download_us=130810 native_peak=385141 shared_peak=7464647 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 380 filtered out; finished in 0.46s\n\n",
+      "samples": [
+        {
+          "elapsed_ns": 3044583,
+          "client": {
+            "33473": {
+              "rss": 655360,
+              "cpu_ns": 1162125,
+              "threads": 1
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6520832,
+              "cpu_ns": 7364166,
+              "threads": 1
+            },
+            "33472": {
+              "rss": 688128,
+              "cpu_ns": 1559708,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 9240375,
+          "client": {
+            "33473": {
+              "rss": 1654784,
+              "cpu_ns": 7319500,
+              "threads": 1
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6520832,
+              "cpu_ns": 7364166,
+              "threads": 1
+            },
+            "33472": {
+              "rss": 5881856,
+              "cpu_ns": 7110375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 15604667,
+          "client": {
+            "33473": {
+              "rss": 8699904,
+              "cpu_ns": 10288375,
+              "threads": 2
+            },
+            "33474": {
+              "rss": 5062656,
+              "cpu_ns": 3386791,
+              "threads": 1
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6520832,
+              "cpu_ns": 7390833,
+              "threads": 1
+            },
+            "33472": {
+              "rss": 6864896,
+              "cpu_ns": 10831125,
+              "threads": 1
+            },
+            "33475": {
+              "rss": 720896,
+              "cpu_ns": 1096625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 22062333,
+          "client": {
+            "33473": {
+              "rss": 8699904,
+              "cpu_ns": 10295666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6520832,
+              "cpu_ns": 7390833,
+              "threads": 1
+            },
+            "33472": {
+              "rss": 6881280,
+              "cpu_ns": 11015666,
+              "threads": 1
+            },
+            "33475": {
+              "rss": 6488064,
+              "cpu_ns": 6556916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 28551208,
+          "client": {
+            "33473": {
+              "rss": 9404416,
+              "cpu_ns": 11609250,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8167208,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 2588672,
+              "cpu_ns": 2451666,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 34951208,
+          "client": {
+            "33473": {
+              "rss": 11042816,
+              "cpu_ns": 13984750,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8245166,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 6864896,
+              "cpu_ns": 5477916,
+              "threads": 1
+            },
+            "33477": {
+              "rss": 425984,
+              "cpu_ns": 1981458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 41429708,
+          "client": {
+            "33473": {
+              "rss": 11567104,
+              "cpu_ns": 15078500,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8245166,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 6881280,
+              "cpu_ns": 5715208,
+              "threads": 1
+            },
+            "33477": {
+              "rss": 6782976,
+              "cpu_ns": 5633125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 47808500,
+          "client": {
+            "33473": {
+              "rss": 12058624,
+              "cpu_ns": 15991708,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8245166,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 6995968,
+              "cpu_ns": 6983416,
+              "threads": 1
+            },
+            "33477": {
+              "rss": 6864896,
+              "cpu_ns": 8876333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 54235583,
+          "client": {
+            "33473": {
+              "rss": 12615680,
+              "cpu_ns": 17247083,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8245166,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7307264,
+              "cpu_ns": 8155625,
+              "threads": 1
+            },
+            "33477": {
+              "rss": 7012352,
+              "cpu_ns": 9442250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 60674250,
+          "client": {
+            "33473": {
+              "rss": 12615680,
+              "cpu_ns": 17247083,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8245166,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7340032,
+              "cpu_ns": 10499916,
+              "threads": 1
+            },
+            "33477": {
+              "rss": 7012352,
+              "cpu_ns": 9572333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 67067875,
+          "client": {
+            "33473": {
+              "rss": 12615680,
+              "cpu_ns": 17300541,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8282666,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7454720,
+              "cpu_ns": 12018833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 73426458,
+          "client": {
+            "33473": {
+              "rss": 12664832,
+              "cpu_ns": 17481958,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6553600,
+              "cpu_ns": 8282666,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2523136,
+              "cpu_ns": 1901916,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2752512,
+              "cpu_ns": 1593416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 79821292,
+          "client": {
+            "33473": {
+              "rss": 12828672,
+              "cpu_ns": 18104666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9181000,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2043333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2965504,
+              "cpu_ns": 2729666,
+              "threads": 1
+            },
+            "33480": {
+              "rss": 360448,
+              "cpu_ns": 1954083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 85313125,
+          "client": {
+            "33473": {
+              "rss": 12828672,
+              "cpu_ns": 18104666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9206833,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2043333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2965504,
+              "cpu_ns": 2729666,
+              "threads": 1
+            },
+            "33480": {
+              "rss": 6832128,
+              "cpu_ns": 6046000,
+              "threads": 1
+            },
+            "33481": {
+              "rss": 442368,
+              "cpu_ns": 209916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 91809250,
+          "client": {
+            "33473": {
+              "rss": 12828672,
+              "cpu_ns": 18104666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9206833,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2043333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2965504,
+              "cpu_ns": 2729666,
+              "threads": 1
+            },
+            "33480": {
+              "rss": 6864896,
+              "cpu_ns": 6329708,
+              "threads": 1
+            },
+            "33481": {
+              "rss": 6389760,
+              "cpu_ns": 5505500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 98263292,
+          "client": {
+            "33473": {
+              "rss": 12828672,
+              "cpu_ns": 18410625,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9206833,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2043333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2965504,
+              "cpu_ns": 2729666,
+              "threads": 1
+            },
+            "33480": {
+              "rss": 6995968,
+              "cpu_ns": 7587125,
+              "threads": 1
+            },
+            "33481": {
+              "rss": 6864896,
+              "cpu_ns": 9633375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 104756167,
+          "client": {
+            "33473": {
+              "rss": 12877824,
+              "cpu_ns": 18792208,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9206833,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2043333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2965504,
+              "cpu_ns": 2729666,
+              "threads": 1
+            },
+            "33480": {
+              "rss": 7307264,
+              "cpu_ns": 8714458,
+              "threads": 1
+            },
+            "33481": {
+              "rss": 7012352,
+              "cpu_ns": 10146458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 111210542,
+          "client": {
+            "33473": {
+              "rss": 12877824,
+              "cpu_ns": 18792208,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9206833,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2043333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2965504,
+              "cpu_ns": 2729666,
+              "threads": 1
+            },
+            "33480": {
+              "rss": 7340032,
+              "cpu_ns": 11160958,
+              "threads": 1
+            },
+            "33481": {
+              "rss": 7012352,
+              "cpu_ns": 10268791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 117677708,
+          "client": {
+            "33473": {
+              "rss": 12877824,
+              "cpu_ns": 18830666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9273625,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2043333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 2965504,
+              "cpu_ns": 2729666,
+              "threads": 1
+            },
+            "33480": {
+              "rss": 7503872,
+              "cpu_ns": 14600583,
+              "threads": 1
+            },
+            "33482": {
+              "rss": 671744,
+              "cpu_ns": 272375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 124213542,
+          "client": {
+            "33473": {
+              "rss": 12877824,
+              "cpu_ns": 19106208,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9273625,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2539520,
+              "cpu_ns": 2093541,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3014656,
+              "cpu_ns": 4062750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 130812875,
+          "client": {
+            "33473": {
+              "rss": 12992512,
+              "cpu_ns": 21673583,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 4767125,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 5565291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 137319375,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 25295833,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 8428916,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 6709000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 144046083,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 29186708,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 12136875,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 7683166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 150522375,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 33033708,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 16011291,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 8678375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 157027042,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 36825666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 19919750,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 9633458,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 163507042,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 40729291,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 23736416,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 10650791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 169924833,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 44763958,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 27719916,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 11682958,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 176257792,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 48723291,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 31711958,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 12745041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 182633333,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 52541041,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 35595583,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 14114041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 189063042,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 56660833,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 39707500,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 15101166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 195483167,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 60685458,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 43644958,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 16106583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 201758917,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 64568541,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 47650291,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 17140416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 208142417,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 68450375,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 51520333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 18191250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 214536667,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 72409875,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 55595041,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 19225750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 220938292,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 76154250,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 59441250,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 20333625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 227418750,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 80084875,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 63299625,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 21307500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 233851083,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 83850833,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2670592,
+              "cpu_ns": 67037916,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 22807791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 240304375,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 87752291,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 71084250,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 23969083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 246776042,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 91810666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 75127500,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 25016000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 253265750,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 95538125,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 78921916,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 26057750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 259774333,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 99528250,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 82941500,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 27087625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 266174917,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 103485666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 86926166,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 28197541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 272596250,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 107485583,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 90931833,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 29345375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 279004875,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 111444000,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 94900750,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 30377333,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 285458250,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 114918000,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 98593041,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 31954791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 292198708,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 118972666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 102606041,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 33075250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 298669167,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 123021458,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 106683458,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 34221750,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 305052667,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 127009625,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 110552791,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 35346875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 311442625,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 130931916,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 114621875,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 36407250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 317862333,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 134916125,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 118702458,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 37511791,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 324510292,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 139127166,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 122731625,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 38687625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 331044375,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 143156166,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 126727416,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 39831250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 337503375,
+          "client": {
+            "33473": {
+              "rss": 13008896,
+              "cpu_ns": 146020666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2752512,
+              "cpu_ns": 129445625,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 41149416,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 343987792,
+          "client": {
+            "33473": {
+              "rss": 13303808,
+              "cpu_ns": 149909083,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2899968,
+              "cpu_ns": 133115833,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 42947583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 350460000,
+          "client": {
+            "33473": {
+              "rss": 13385728,
+              "cpu_ns": 156309166,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 2981888,
+              "cpu_ns": 138862958,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 44063083,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 356937833,
+          "client": {
+            "33473": {
+              "rss": 13533184,
+              "cpu_ns": 162531083,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3014656,
+              "cpu_ns": 144540708,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 45286291,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 363447208,
+          "client": {
+            "33473": {
+              "rss": 13631488,
+              "cpu_ns": 168978500,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3014656,
+              "cpu_ns": 150092208,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 46187625,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 369923750,
+          "client": {
+            "33473": {
+              "rss": 13631488,
+              "cpu_ns": 175341541,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3014656,
+              "cpu_ns": 155669000,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 47082875,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 376385750,
+          "client": {
+            "33473": {
+              "rss": 13647872,
+              "cpu_ns": 181758875,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3031040,
+              "cpu_ns": 161274833,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 47930000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 382772583,
+          "client": {
+            "33473": {
+              "rss": 13647872,
+              "cpu_ns": 188142708,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3031040,
+              "cpu_ns": 166870041,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 48819916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 388523667,
+          "client": {
+            "33473": {
+              "rss": 13664256,
+              "cpu_ns": 193707000,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 171685250,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 49636125,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 394964125,
+          "client": {
+            "33473": {
+              "rss": 13664256,
+              "cpu_ns": 200148666,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 177351833,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 50427166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 400758667,
+          "client": {
+            "33473": {
+              "rss": 13664256,
+              "cpu_ns": 205807041,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 182381041,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 51352375,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 407156250,
+          "client": {
+            "33473": {
+              "rss": 13680640,
+              "cpu_ns": 212188333,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 187919250,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 52232583,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 413532208,
+          "client": {
+            "33473": {
+              "rss": 13680640,
+              "cpu_ns": 218600625,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 193453500,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 53013500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 419916792,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 224838833,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 198978250,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 53894000,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 426455292,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 231204208,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 204643875,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 54821250,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 432940542,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 237615375,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 210075541,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 55629500,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 439341042,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 243939750,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 215587333,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 56564833,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 445725417,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 250337750,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 221089208,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 57397541,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 452112458,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 256565083,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 226627958,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 58217166,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 458596792,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 263042875,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 232210833,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 59050041,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 464983375,
+          "client": {
+            "33473": {
+              "rss": 13697024,
+              "cpu_ns": 269406958,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 237694583,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 59888916,
+              "threads": 1
+            }
+          }
+        },
+        {
+          "elapsed_ns": 471373833,
+          "client": {
+            "33473": {
+              "rss": 13713408,
+              "cpu_ns": 275178166,
+              "threads": 2
+            }
+          },
+          "server": {
+            "33471": {
+              "rss": 6569984,
+              "cpu_ns": 9350083,
+              "threads": 1
+            },
+            "33476": {
+              "rss": 7503872,
+              "cpu_ns": 14542166,
+              "threads": 1
+            },
+            "33478": {
+              "rss": 3047424,
+              "cpu_ns": 242589916,
+              "threads": 1
+            },
+            "33479": {
+              "rss": 3145728,
+              "cpu_ns": 61049750,
+              "threads": 1
+            }
+          }
+        }
+      ],
+      "server_log": "debug2: fd 6 setting O_NONBLOCK\ndebug1: Bind to port 50917 on 127.0.0.1.\nServer listening on 127.0.0.1 port 50917.\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug1: Forked child 33472.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 33472 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 50919\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 50919 on 127.0.0.1 port 50917\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 33475\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 537\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 9 setting O_NONBLOCK\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\nkex_exchange_identification: Connection closed by remote host [preauth]\nConnection closed by 127.0.0.1 port 50919 [preauth]\ndebug1: Forked child 33476.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 9/10\ndebug1: monitor_read_log: child log fd closed\ndebug3: mm_request_receive: entering\ndebug3: mm_request_receive: monitor fd closed\ndebug1: mm_reap: child exited with status 255\ndebug1: do_cleanup\ndebug1: Killing privsep child 33475\ndebug1: audit_event: connection closed without authentication\ndebug3: server_accept_loop: child 33472 for connection from 127.0.0.1 to 127.0.0.1 closed pipe\ndebug1: child_close: enter\ndebug1: child_reap: preauth child 33472 for connection from 127.0.0.1 to 127.0.0.1 exited with status 255\nsrclimit_penalise: ipv4: new 127.0.0.1/32 deferred penalty of 1.000 seconds for penalty: connections without attempting authentication\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 33476 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 50921\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 50921 on 127.0.0.1 port 50917\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 33477\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 537\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\ndebug1: Remote protocol version 2.0, remote software version libssh2_1.11.1_DEV [preauth]\ndebug1: compat_banner: no match: libssh2_1.11.1_DEV [preauth]\ndebug3: mm_sshkey_setcompat: entering [preauth]\ndebug3: mm_request_send: entering, type 18 [preauth]\ndebug3: send packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT sent [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 18\ndebug3: mm_answer_setcompat: entering\ndebug2: monitor_read: 18 used once, disabling now\ndebug3: receive packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT received [preauth]\ndebug2: local server KEXINIT proposal [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug2: peer client KEXINIT proposal [preauth]\ndebug2: KEX algorithms: curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1,ext-info-c,kex-strict-c-v00@openssh.com [preauth]\ndebug2: host key algorithms: ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-rsa,ssh-rsa-cert-v01@openssh.com [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: MACs ctos: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: MACs stoc: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: compression ctos: none [preauth]\ndebug2: compression stoc: none [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug3: kex_choose_conf: will use strict KEX ordering [preauth]\ndebug1: kex: algorithm: curve25519-sha256 [preauth]\ndebug1: kex: host key algorithm: ssh-ed25519 [preauth]\ndebug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: expecting SSH2_MSG_KEX_ECDH_INIT [preauth]\ndebug3: receive packet: type 30 [preauth]\ndebug1: SSH2_MSG_KEX_ECDH_INIT received [preauth]\ndebug3: mm_sshkey_sign: entering [preauth]\ndebug3: mm_request_send: entering, type 6 [preauth]\ndebug3: mm_sshkey_sign: waiting for MONITOR_ANS_SIGN [preauth]\ndebug3: mm_request_receive_expect: entering, type 7 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 6\ndebug3: mm_answer_sign: entering\ndebug1: mm_answer_sign: hostkey ssh-ed25519 index 0\ndebug3: mm_answer_sign: ssh-ed25519 KEX signature len=83\ndebug3: mm_request_send: entering, type 7\ndebug2: monitor_read: 6 used once, disabling now\ndebug3: mm_sshkey_sign: ssh-ed25519 signature len=83 [preauth]\ndebug3: send packet: type 31 [preauth]\ndebug3: send packet: type 21 [preauth]\ndebug1: ssh_packet_send2_wrapped: resetting send seqnr 3 [preauth]\ndebug2: ssh_set_newkeys: mode 1 [preauth]\ndebug1: rekey out after 134217728 blocks [preauth]\ndebug1: SSH2_MSG_NEWKEYS sent [preauth]\ndebug1: Sending SSH2_MSG_EXT_INFO [preauth]\ndebug3: send packet: type 7 [preauth]\ndebug1: expecting SSH2_MSG_NEWKEYS [preauth]\ndebug3: receive packet: type 21 [preauth]\ndebug1: ssh_packet_read_poll2: resetting read seqnr 3 [preauth]\ndebug1: SSH2_MSG_NEWKEYS received [preauth]\ndebug2: ssh_set_newkeys: mode 0 [preauth]\ndebug1: rekey in after 134217728 blocks [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug1: KEX done [preauth]\ndebug3: receive packet: type 5 [preauth]\ndebug3: send packet: type 6 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 0 failures 0 [preauth]\ndebug3: mm_getpwnamallow: entering [preauth]\ndebug3: mm_request_send: entering, type 8 [preauth]\ndebug3: mm_getpwnamallow: waiting for MONITOR_ANS_PWNAM [preauth]\ndebug3: mm_request_receive_expect: entering, type 9 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 8\ndebug3: mm_answer_pwnamallow: entering\ndebug2: parse_server_config_depth: config reprocess config len 537\ndebug3: mm_answer_pwnamallow: sending MONITOR_ANS_PWNAM: 1\ndebug3: mm_request_send: entering, type 9\ndebug2: monitor_read: 8 used once, disabling now\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug2: input_userauth_request: setting up authctxt for tenonsuzu [preauth]\ndebug3: mm_inform_authserv: entering [preauth]\ndebug3: mm_request_send: entering, type 4 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu querying public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDEEVhgrHprZ0JeWXDhbF3ZoERIGXTKcWhVjnjN4Lt47 [preauth]\ndebug1: userauth_pubkey: publickey test pkalg ssh-ed25519 pkblob ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 4\ndebug3: mm_answer_authserv: service=ssh-connection, style=\ndebug2: monitor_read: 4 used once, disabling now\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: matching key found: ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication test: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: send packet: type 60 [preauth]\ndebug2: userauth_pubkey: authenticated 0 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.245ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 1.806ms, delaying 4.439ms (requested 6.245ms) [preauth]\nPostponed publickey for tenonsuzu from 127.0.0.1 port 50921 ssh2 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 1 failures 0 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu attempting public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDEEVhgrHprZ0JeWXDhbF3ZoERIGXTKcWhVjnjN4Lt47 [preauth]\ndebug3: userauth_pubkey: publickey have ssh-ed25519 signature for ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: matching key found: ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: mm_sshkey_verify: entering [preauth]\ndebug3: mm_request_send: entering, type 24 [preauth]\ndebug3: mm_sshkey_verify: waiting for MONITOR_ANS_KEYVERIFY [preauth]\ndebug3: mm_request_receive_expect: entering, type 25 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 24\ndebug3: mm_answer_keyverify: publickey ED25519 signature using ssh-ed25519 verified\ndebug1: auth_activate_options: setting new authentication options\ndebug3: mm_request_send: entering, type 25\nAccepted publickey for tenonsuzu from 127.0.0.1 port 50921 ssh2: ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI\ndebug1: monitor_child_preauth: user tenonsuzu authenticated by privileged process\ndebug3: mm_get_keystate: Waiting for new keys\ndebug3: mm_request_receive_expect: entering, type 26\ndebug3: mm_request_receive: entering\ndebug3: mm_get_keystate: GOT new keys\ndebug1: auth_activate_options: setting new authentication options [preauth]\ndebug2: userauth_pubkey: authenticated 1 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.245ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 2.326ms, delaying 3.919ms (requested 6.245ms) [preauth]\ndebug3: send packet: type 52 [preauth]\ndebug3: mm_request_send: entering, type 26 [preauth]\ndebug3: mm_send_keystate: Finished sending state [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: monitor_child_preauth: preauth child 33477 terminated successfully\ndebug2: server_accept_loop: child 33476 for connection from 127.0.0.1 to 127.0.0.1 auth done\ndebug1: child_close: enter (forcing)\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\ndebug3: BSM audit: typ 0 rc 0 \"successful login tenonsuzu\"\nUser child is on pid 33478\ndebug3: monitor_apply_keystate: packet_set_state\ndebug2: ssh_set_newkeys: mode 0\ndebug1: rekey in after 134217728 blocks\ndebug2: ssh_set_newkeys: mode 1\ndebug1: rekey out after 134217728 blocks\ndebug1: ssh_packet_set_postauth: called\ndebug3: ssh_packet_set_state: done\ndebug3: notify_hostkeys: key 0: ssh-ed25519 SHA256:1tqjXl3gGHgOm6yeNUANp+IgrjzEkwt/coJUwiEPGAs\ndebug3: notify_hostkeys: sent 1 hostkeys\ndebug3: send packet: type 80\ndebug1: active: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug1: Entering interactive session for SSH2.\ndebug1: server_init_dispatch\ndebug3: receive packet: type 90\ndebug1: server_input_channel_open: ctype session rchan 0 win 2097152 max 32768\ndebug1: input_session_request\ndebug1: channel 0: new session [server-session] (inactive timeout: 0)\ndebug2: session_new: allocate (allocated 0 max 10)\ndebug3: session_unused: session id 0 unused\ndebug1: session_new: session 0\ndebug1: session_open: channel 0\ndebug1: session_open: session 0: link with channel 0\ndebug1: server_input_channel_open: confirm session\ndebug3: send packet: type 91\ndebug2: process_output: session QoS is now interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: receive packet: type 98\ndebug1: server_input_channel_req: channel 0 request subsystem reply 1\ndebug1: session_by_channel: session 0 channel 0\ndebug1: session_input_channel_req: session 0 req subsystem\ndebug2: subsystem request for sftp by user tenonsuzu\ndebug1: subsystem: internal-sftp\ndebug2: channel_set_xtype: labeled channel 0 as session:subsystem:sftp (inactive timeout 0)\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 50921 id 0\ndebug3: mm_audit_run_command: entering command internal-sftp\ndebug3: mm_request_send: entering, type 113\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 113\ndebug3: mm_answer_audit_command: entering\ndebug2: fd 14 setting O_NONBLOCK\ndebug2: fd 13 setting O_NONBLOCK\ndebug2: fd 16 setting O_NONBLOCK\ndebug3: send packet: type 99\ndebug2: process_output: session QoS is now non-interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0x00\ndebug2: channel 0: read 34 from efd 16\ndebug3: channel 0: discard efd\ndebug1: fd 7 clearing O_NONBLOCK\ndebug2: fd 8 setting O_NONBLOCK\ndebug1: Forked child 33480.\ndebug1: rexec start in 7 out 7 newsock 7 config_s 8/9\ndebug1: sshd-session version OpenSSH_10.3, LibreSSL 3.3.6\ndebug2: server_accept_loop: child 33480 for connection from 127.0.0.1 to 127.0.0.1 received config\ndebug1: network sockets: 8, 8\ndebug2: fd 8 setting TCP_NODELAY\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: server_process_channel_timeouts: setting 0 timeouts\ndebug3: channel_clear_timeouts: clearing\ndebug3: BSM audit: connection from 127.0.0.1 port 50923\ndebug3: BSM audit: iptype 4 machine ID 0100007f 00000000 00000000 00000000\nConnection from 127.0.0.1 port 50923 on 127.0.0.1 port 50917\ndebug2: fd 8 setting O_NONBLOCK\ndebug2: Network child is on pid 33481\ndebug3: preauth child monitor started\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 51\ndebug1: mm_answer_state: config len 537\ndebug3: mm_request_send: entering, type 52\ndebug3: mm_answer_state: done\ndebug2: monitor_read: 51 used once, disabling now\ndebug1: sshd-auth version OpenSSH_10.3, LibreSSL 3.3.6 [preauth]\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug3: fd 5 is O_NONBLOCK [preauth]\ndebug3: ssh_sandbox_init: preparing Darwin sandbox [preauth]\ndebug3: ssh_sandbox_child: starting Darwin sandbox [preauth]\ndebug1: list_hostkey_types: ssh-ed25519 [preauth]\ndebug1: Local version string SSH-2.0-OpenSSH_10.3 [preauth]\ndebug1: Remote protocol version 2.0, remote software version libssh2_1.11.1_DEV [preauth]\ndebug1: compat_banner: no match: libssh2_1.11.1_DEV [preauth]\ndebug3: mm_sshkey_setcompat: entering [preauth]\ndebug3: mm_request_send: entering, type 18 [preauth]\ndebug3: send packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT sent [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 18\ndebug3: mm_answer_setcompat: entering\ndebug2: monitor_read: 18 used once, disabling now\ndebug3: receive packet: type 20 [preauth]\ndebug1: SSH2_MSG_KEXINIT received [preauth]\ndebug2: local server KEXINIT proposal [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug2: peer client KEXINIT proposal [preauth]\ndebug2: KEX algorithms: curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1,ext-info-c,kex-strict-c-v00@openssh.com [preauth]\ndebug2: host key algorithms: ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,ssh-ed25519,ssh-ed25519-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,ssh-rsa,ssh-rsa-cert-v01@openssh.com [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,rijndael-cbc@lysator.liu.se,aes192-cbc,aes128-cbc,blowfish-cbc,arcfour128,arcfour,cast128-cbc,3des-cbc [preauth]\ndebug2: MACs ctos: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: MACs stoc: hmac-sha2-256,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-512-etm@openssh.com,hmac-sha1,hmac-sha1-etm@openssh.com,hmac-sha1-96,hmac-md5,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com [preauth]\ndebug2: compression ctos: none [preauth]\ndebug2: compression stoc: none [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug3: kex_choose_conf: will use strict KEX ordering [preauth]\ndebug1: kex: algorithm: curve25519-sha256 [preauth]\ndebug1: kex: host key algorithm: ssh-ed25519 [preauth]\ndebug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none [preauth]\ndebug1: expecting SSH2_MSG_KEX_ECDH_INIT [preauth]\ndebug3: receive packet: type 30 [preauth]\ndebug1: SSH2_MSG_KEX_ECDH_INIT received [preauth]\ndebug3: mm_sshkey_sign: entering [preauth]\ndebug3: mm_request_send: entering, type 6 [preauth]\ndebug3: mm_sshkey_sign: waiting for MONITOR_ANS_SIGN [preauth]\ndebug3: mm_request_receive_expect: entering, type 7 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 6\ndebug3: mm_answer_sign: entering\ndebug1: mm_answer_sign: hostkey ssh-ed25519 index 0\ndebug3: mm_answer_sign: ssh-ed25519 KEX signature len=83\ndebug3: mm_request_send: entering, type 7\ndebug2: monitor_read: 6 used once, disabling now\ndebug3: mm_sshkey_sign: ssh-ed25519 signature len=83 [preauth]\ndebug3: send packet: type 31 [preauth]\ndebug3: send packet: type 21 [preauth]\ndebug1: ssh_packet_send2_wrapped: resetting send seqnr 3 [preauth]\ndebug2: ssh_set_newkeys: mode 1 [preauth]\ndebug1: rekey out after 134217728 blocks [preauth]\ndebug1: SSH2_MSG_NEWKEYS sent [preauth]\ndebug1: Sending SSH2_MSG_EXT_INFO [preauth]\ndebug3: send packet: type 7 [preauth]\ndebug1: expecting SSH2_MSG_NEWKEYS [preauth]\ndebug3: receive packet: type 21 [preauth]\ndebug1: ssh_packet_read_poll2: resetting read seqnr 3 [preauth]\ndebug1: SSH2_MSG_NEWKEYS received [preauth]\ndebug2: ssh_set_newkeys: mode 0 [preauth]\ndebug1: rekey in after 134217728 blocks [preauth]\ndebug2: KEX algorithms: mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,ext-info-s,kex-strict-s-v00@openssh.com [preauth]\ndebug2: host key algorithms: ssh-ed25519 [preauth]\ndebug2: ciphers ctos: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: ciphers stoc: chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr [preauth]\ndebug2: MACs ctos: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: MACs stoc: umac-64-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1 [preauth]\ndebug2: compression ctos: none,zlib@openssh.com [preauth]\ndebug2: compression stoc: none,zlib@openssh.com [preauth]\ndebug2: languages ctos:  [preauth]\ndebug2: languages stoc:  [preauth]\ndebug2: first_kex_follows 0  [preauth]\ndebug2: reserved 0  [preauth]\ndebug1: KEX done [preauth]\ndebug3: receive packet: type 5 [preauth]\ndebug3: send packet: type 6 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 0 failures 0 [preauth]\ndebug3: mm_getpwnamallow: entering [preauth]\ndebug3: mm_request_send: entering, type 8 [preauth]\ndebug3: mm_getpwnamallow: waiting for MONITOR_ANS_PWNAM [preauth]\ndebug3: mm_request_receive_expect: entering, type 9 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 8\ndebug3: mm_answer_pwnamallow: entering\ndebug2: parse_server_config_depth: config reprocess config len 537\ndebug3: mm_answer_pwnamallow: sending MONITOR_ANS_PWNAM: 1\ndebug3: mm_request_send: entering, type 9\ndebug2: monitor_read: 8 used once, disabling now\ndebug3: server_process_channel_timeouts: setting 0 timeouts [preauth]\ndebug3: channel_clear_timeouts: clearing [preauth]\ndebug2: input_userauth_request: setting up authctxt for tenonsuzu [preauth]\ndebug3: mm_inform_authserv: entering [preauth]\ndebug3: mm_request_send: entering, type 4 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu querying public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDEEVhgrHprZ0JeWXDhbF3ZoERIGXTKcWhVjnjN4Lt47 [preauth]\ndebug1: userauth_pubkey: publickey test pkalg ssh-ed25519 pkblob ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 4\ndebug3: mm_answer_authserv: service=ssh-connection, style=\ndebug2: monitor_read: 4 used once, disabling now\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: matching key found: ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication test: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: send packet: type 60 [preauth]\ndebug2: userauth_pubkey: authenticated 0 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.245ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 1.911ms, delaying 4.334ms (requested 6.245ms) [preauth]\nPostponed publickey for tenonsuzu from 127.0.0.1 port 50923 ssh2 [preauth]\ndebug3: receive packet: type 50 [preauth]\ndebug1: userauth-request for user tenonsuzu service ssh-connection method publickey [preauth]\ndebug1: attempt 1 failures 0 [preauth]\ndebug2: input_userauth_request: try method publickey [preauth]\ndebug2: userauth_pubkey: valid user tenonsuzu attempting public key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDEEVhgrHprZ0JeWXDhbF3ZoERIGXTKcWhVjnjN4Lt47 [preauth]\ndebug3: userauth_pubkey: publickey have ssh-ed25519 signature for ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI [preauth]\ndebug3: mm_key_allowed: entering [preauth]\ndebug3: mm_request_send: entering, type 22 [preauth]\ndebug3: mm_key_allowed: waiting for MONITOR_ANS_KEYALLOWED [preauth]\ndebug3: mm_request_receive_expect: entering, type 23 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 22\ndebug3: mm_answer_keyallowed: entering\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: restore_uid: (unprivileged)\ndebug1: temporarily_use_uid: 501/20 (e=501/20)\ndebug1: trying public key file /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys\ndebug1: fd 9 clearing O_NONBLOCK\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: matching key found: ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI\ndebug1: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\nAccepted key ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI found at /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1\ndebug2: auth_check_authkeys_file: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys: processed 1/2 lines\ndebug1: restore_uid: (unprivileged)\ndebug3: mm_answer_keyallowed: publickey authentication: ED25519 key is allowed\ndebug3: mm_request_send: entering, type 23\ndebug3: mm_sshkey_verify: entering [preauth]\ndebug3: mm_request_send: entering, type 24 [preauth]\ndebug3: mm_sshkey_verify: waiting for MONITOR_ANS_KEYVERIFY [preauth]\ndebug3: mm_request_receive_expect: entering, type 25 [preauth]\ndebug3: mm_request_receive: entering [preauth]\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 24\ndebug3: mm_answer_keyverify: publickey ED25519 signature using ssh-ed25519 verified\ndebug1: auth_activate_options: setting new authentication options\ndebug3: mm_request_send: entering, type 25\nAccepted publickey for tenonsuzu from 127.0.0.1 port 50923 ssh2: ED25519 SHA256:XNOQPKsyqMeJf8iVtyQj4fkgg+uPXraAoV7iLgU2BuI\ndebug1: monitor_child_preauth: user tenonsuzu authenticated by privileged process\ndebug3: mm_get_keystate: Waiting for new keys\ndebug3: mm_request_receive_expect: entering, type 26\ndebug3: mm_request_receive: entering\ndebug3: mm_get_keystate: GOT new keys\ndebug1: auth_activate_options: setting new authentication options [preauth]\ndebug2: userauth_pubkey: authenticated 1 pkalg ssh-ed25519 [preauth]\ndebug3: user_specific_delay: user specific delay 1.245ms [preauth]\ndebug3: ensure_minimum_time_since: elapsed 2.439ms, delaying 3.806ms (requested 6.245ms) [preauth]\ndebug3: send packet: type 52 [preauth]\ndebug3: mm_request_send: entering, type 26 [preauth]\ndebug3: mm_send_keystate: Finished sending state [preauth]\ndebug1: monitor_read_log: child log fd closed\ndebug3: monitor_child_preauth: preauth child 33481 terminated successfully\ndebug2: server_accept_loop: child 33480 for connection from 127.0.0.1 to 127.0.0.1 auth done\ndebug1: child_close: enter (forcing)\nBSM audit: bsm_audit_session_setup: setaudit_addr failed: Operation not permitted\ndebug3: BSM audit: typ 0 rc 0 \"successful login tenonsuzu\"\nUser child is on pid 33482\ndebug3: monitor_apply_keystate: packet_set_state\ndebug2: ssh_set_newkeys: mode 0\ndebug1: rekey in after 134217728 blocks\ndebug2: ssh_set_newkeys: mode 1\ndebug1: rekey out after 134217728 blocks\ndebug1: ssh_packet_set_postauth: called\ndebug3: ssh_packet_set_state: done\ndebug3: notify_hostkeys: key 0: ssh-ed25519 SHA256:1tqjXl3gGHgOm6yeNUANp+IgrjzEkwt/coJUwiEPGAs\ndebug3: notify_hostkeys: sent 1 hostkeys\ndebug3: send packet: type 80\ndebug1: active: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug3: sending debug message: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-sftp-native-0m59pqat/authorized_keys:1: key options: agent-forwarding port-forwarding pty user-rc x11-forwarding\ndebug3: send packet: type 4\ndebug1: Entering interactive session for SSH2.\ndebug1: server_init_dispatch\ndebug3: receive packet: type 90\ndebug1: server_input_channel_open: ctype session rchan 0 win 2097152 max 32768\ndebug1: input_session_request\ndebug1: channel 0: new session [server-session] (inactive timeout: 0)\ndebug2: session_new: allocate (allocated 0 max 10)\ndebug3: session_unused: session id 0 unused\ndebug1: session_new: session 0\ndebug1: session_open: channel 0\ndebug1: session_open: session 0: link with channel 0\ndebug1: server_input_channel_open: confirm session\ndebug3: send packet: type 91\ndebug2: process_output: session QoS is now interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0xb8\ndebug3: receive packet: type 98\ndebug1: server_input_channel_req: channel 0 request subsystem reply 1\ndebug1: session_by_channel: session 0 channel 0\ndebug1: session_input_channel_req: session 0 req subsystem\ndebug2: subsystem request for sftp by user tenonsuzu\ndebug1: subsystem: internal-sftp\ndebug2: channel_set_xtype: labeled channel 0 as session:subsystem:sftp (inactive timeout 0)\nStarting session: subsystem 'sftp' for tenonsuzu from 127.0.0.1 port 50923 id 0\ndebug3: mm_audit_run_command: entering command internal-sftp\ndebug3: mm_request_send: entering, type 113\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 113\ndebug3: mm_answer_audit_command: entering\ndebug2: fd 14 setting O_NONBLOCK\ndebug2: fd 13 setting O_NONBLOCK\ndebug2: fd 16 setting O_NONBLOCK\ndebug3: send packet: type 99\ndebug2: process_output: session QoS is now non-interactive\ndebug3: set_sock_tos: set socket 8 IP_TOS 0x00\ndebug2: channel 0: read 34 from efd 16\ndebug3: channel 0: discard efd\nConnection closed by 127.0.0.1 port 50923\ndebug1: channel 0: free: server-session, nchannels 1\ndebug3: channel 0: status: The following connections are open:\n  #0 server-session (t4 [session:subsystem:sftp] r0 nm0 i0/0 o0/0 e[ignore]/0 fd 14/13/16 sock -1 cc -1 nc0 io 0x05/0x00 B)\n\nClose session: user tenonsuzu from 127.0.0.1 port 50923 id 0\ndebug3: session_unused: session id 0 unused\ndebug1: do_cleanup\nTransferred: sent 2556, received 2176 bytes\nClosing connection to 127.0.0.1 port 50923\ndebug3: mm_audit_event: entering\ndebug3: mm_request_send: entering, type 112\ndebug3: mm_submit_ess_event entering\ndebug3: mm_request_send: entering, type 212\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 112\ndebug3: mm_answer_audit_event: entering\ndebug3: mm_request_send: entering, type 50\ndebug3: BSM audit: typ 0 rc 0 \"sshd logout tenonsuzu\"\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 212\ndebug3: mm_answer_ess_event entering\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 50\ndebug3: mm_answer_term: tearing down sessions\ndebug2: channel 0: window 1965357 sent adjust 131795\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1965906 sent adjust 131246\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1971471 sent adjust 125681\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: window 1995935 sent adjust 101217\ndebug2: channel 0: rcvd adjust 525012\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: rcvd adjust 540234\ndebug2: channel 0: window 1998779 sent adjust 98373\ndebug2: channel 0: rcvd adjust 540234\nConnection closed by 127.0.0.1 port 50921\ndebug1: channel 0: free: server-session, nchannels 1\ndebug3: channel 0: status: The following connections are open:\n  #0 server-session (t4 [session:subsystem:sftp] r0 nm0 i0/0 o0/0 e[ignore]/0 fd 14/13/16 sock -1 cc -1 nc0 io 0x05/0x00 B)\n\nClose session: user tenonsuzu from 127.0.0.1 port 50921 id 0\ndebug3: session_unused: session id 0 unused\ndebug1: do_cleanup\nTransferred: sent 33681720, received 33698384 bytes\nClosing connection to 127.0.0.1 port 50921\ndebug3: mm_audit_event: entering\ndebug3: mm_request_send: entering, type 112\ndebug3: mm_submit_ess_event entering\ndebug3: mm_request_send: entering, type 212\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 112\ndebug3: mm_answer_audit_event: entering\ndebug3: mm_request_send: entering, type 50\ndebug3: BSM audit: typ 0 rc 0 \"sshd logout tenonsuzu\"\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 212\ndebug3: mm_answer_ess_event entering\ndebug3: mm_request_receive: entering\ndebug3: monitor_read: checking request 50\ndebug3: mm_answer_term: tearing down sessions\n",
+      "observed_client_children_still_live": [],
+      "peak_client_tree_rss": 13762560,
+      "passed": true,
+      "round": 0
+    }
+  ],
+  "numeric_connect": {
+    "exit": 0,
+    "log": "\nrunning 1 test\ntest sftp::connect::tests::numeric_connect_handles_dual_stack_refusal_fallback_and_descriptor_flags ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 380 filtered out; finished in 0.00s\n\n"
+  },
+  "ssh_settings": {
+    "exit": 0,
+    "log": "\nrunning 1 test\ntest ssh::settings::tests::real_openssh_expansion_preserves_paths_and_flags_unhandled_changes ... SSH_QUERY_CANCEL match_exec=ok elapsed_ns=57281541\nSSH_QUERY round=0 direct_ns=10961666 supervised_ns=10818708\nSSH_QUERY round=1 direct_ns=12794000 supervised_ns=9404458\nSSH_QUERY round=2 direct_ns=14298208 supervised_ns=8653792\nSSH_QUERY round=3 direct_ns=35611708 supervised_ns=9306667\nSSH_QUERY round=4 direct_ns=12861333 supervised_ns=8875125\nSSH_SETTINGS real_include_match_proxy=ok fields_max=512 output_max=131072 peak=456532 final=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 380 filtered out; finished in 0.21s\n\n",
+    "samples": [
+      {
+        "elapsed_ns": 19750,
+        "client": {
+          "33446": {
+            "rss": 458752,
+            "cpu_ns": 922833,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 6628125,
+        "client": {
+          "33446": {
+            "rss": 819200,
+            "cpu_ns": 7425208,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 13093125,
+        "client": {
+          "33446": {
+            "rss": 8863744,
+            "cpu_ns": 12880041,
+            "threads": 2
+          },
+          "33447": {
+            "rss": 212992,
+            "cpu_ns": 1070541,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 19437458,
+        "client": {
+          "33446": {
+            "rss": 8863744,
+            "cpu_ns": 12920375,
+            "threads": 2
+          }
+        }
+      },
+      {
+        "elapsed_ns": 25792833,
+        "client": {
+          "33446": {
+            "rss": 8896512,
+            "cpu_ns": 13578750,
+            "threads": 2
+          },
+          "33449": {
+            "rss": 2899968,
+            "cpu_ns": 4422166,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 32120625,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14285583,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 2899968,
+            "cpu_ns": 3464208,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 38475625,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14294583,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 3309568,
+            "cpu_ns": 4216166,
+            "threads": 1
+          },
+          "33451": {
+            "rss": 2326528,
+            "cpu_ns": 4076041,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 45143083,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14363333,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 3309568,
+            "cpu_ns": 4216166,
+            "threads": 1
+          },
+          "33451": {
+            "rss": 1064960,
+            "cpu_ns": 8343708,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 51898125,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14388250,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 3309568,
+            "cpu_ns": 4216166,
+            "threads": 1
+          },
+          "33451": {
+            "rss": 1064960,
+            "cpu_ns": 8343708,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 58576542,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14413041,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 3309568,
+            "cpu_ns": 4216166,
+            "threads": 1
+          },
+          "33451": {
+            "rss": 1064960,
+            "cpu_ns": 8343708,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 65122208,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14435666,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 3309568,
+            "cpu_ns": 4216166,
+            "threads": 1
+          },
+          "33451": {
+            "rss": 1064960,
+            "cpu_ns": 8343708,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 71347875,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14450500,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 3309568,
+            "cpu_ns": 4216166,
+            "threads": 1
+          },
+          "33451": {
+            "rss": 1064960,
+            "cpu_ns": 8343708,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 78138208,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14472375,
+            "threads": 3
+          },
+          "33450": {
+            "rss": 3309568,
+            "cpu_ns": 4216166,
+            "threads": 1
+          },
+          "33451": {
+            "rss": 1064960,
+            "cpu_ns": 8343708,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 84628500,
+        "client": {
+          "33446": {
+            "rss": 8994816,
+            "cpu_ns": 14633208,
+            "threads": 2
+          }
+        }
+      },
+      {
+        "elapsed_ns": 90158292,
+        "client": {
+          "33446": {
+            "rss": 9011200,
+            "cpu_ns": 15395333,
+            "threads": 2
+          },
+          "33452": {
+            "rss": 1998848,
+            "cpu_ns": 4239750,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 96866667,
+        "client": {
+          "33446": {
+            "rss": 9125888,
+            "cpu_ns": 16241541,
+            "threads": 2
+          },
+          "33453": {
+            "rss": 114688,
+            "cpu_ns": 716458,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 102342833,
+        "client": {
+          "33446": {
+            "rss": 9125888,
+            "cpu_ns": 16258166,
+            "threads": 2
+          },
+          "33453": {
+            "rss": 2703360,
+            "cpu_ns": 5431666,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 108770917,
+        "client": {
+          "33446": {
+            "rss": 9142272,
+            "cpu_ns": 17493958,
+            "threads": 2
+          },
+          "33454": {
+            "rss": 212992,
+            "cpu_ns": 1524250,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 115257417,
+        "client": {
+          "33446": {
+            "rss": 9142272,
+            "cpu_ns": 17529791,
+            "threads": 2
+          }
+        }
+      },
+      {
+        "elapsed_ns": 121803417,
+        "client": {
+          "33446": {
+            "rss": 9142272,
+            "cpu_ns": 18320416,
+            "threads": 2
+          },
+          "33455": {
+            "rss": 2506752,
+            "cpu_ns": 5452375,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 128738250,
+        "client": {
+          "33446": {
+            "rss": 9175040,
+            "cpu_ns": 18647041,
+            "threads": 2
+          }
+        }
+      },
+      {
+        "elapsed_ns": 135484458,
+        "client": {
+          "33446": {
+            "rss": 9175040,
+            "cpu_ns": 19772958,
+            "threads": 2
+          },
+          "33456": {
+            "rss": 1966080,
+            "cpu_ns": 4742458,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 141366667,
+        "client": {
+          "33446": {
+            "rss": 9175040,
+            "cpu_ns": 19772958,
+            "threads": 2
+          },
+          "33456": {
+            "rss": 3358720,
+            "cpu_ns": 8015833,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 147945708,
+        "client": {
+          "33446": {
+            "rss": 9191424,
+            "cpu_ns": 20613416,
+            "threads": 2
+          },
+          "33457": {
+            "rss": 2506752,
+            "cpu_ns": 4145416,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 154372333,
+        "client": {
+          "33446": {
+            "rss": 9207808,
+            "cpu_ns": 21732125,
+            "threads": 2
+          },
+          "33458": {
+            "rss": 245760,
+            "cpu_ns": 1949958,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 160933417,
+        "client": {
+          "33446": {
+            "rss": 9207808,
+            "cpu_ns": 21912083,
+            "threads": 2
+          }
+        }
+      },
+      {
+        "elapsed_ns": 172419375,
+        "client": {
+          "33446": {
+            "rss": 9224192,
+            "cpu_ns": 22834541,
+            "threads": 2
+          },
+          "33459": {
+            "rss": 114688,
+            "cpu_ns": 719041,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 191975667,
+        "client": {
+          "33446": {
+            "rss": 9224192,
+            "cpu_ns": 22834541,
+            "threads": 2
+          },
+          "33459": {
+            "rss": 1900544,
+            "cpu_ns": 4724791,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 198371000,
+        "client": {
+          "33446": {
+            "rss": 9224192,
+            "cpu_ns": 23602458,
+            "threads": 2
+          },
+          "33460": {
+            "rss": 212992,
+            "cpu_ns": 1140666,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 206575292,
+        "client": {
+          "33446": {
+            "rss": 9224192,
+            "cpu_ns": 23602458,
+            "threads": 2
+          },
+          "33460": {
+            "rss": 2719744,
+            "cpu_ns": 6132333,
+            "threads": 1
+          }
+        }
+      },
+      {
+        "elapsed_ns": 213186042,
+        "client": {
+          "33446": {
+            "rss": 9256960,
+            "cpu_ns": 24267083,
+            "threads": 2
+          },
+          "33461": {
+            "rss": 1835008,
+            "cpu_ns": 3117708,
+            "threads": 1
+          }
+        }
+      }
+    ],
+    "observed_children_still_live": [],
+    "peak_client_tree_rss": 14630912
+  },
+  "resolver_cost": {
+    "exit": 0,
+    "log": "\nrunning 1 test\ntest resolve::parent::tests::real_helper_resolution_and_cost_are_bounded_and_release_credit ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 380 filtered out; finished in 0.90s\n\nRESOLVE_HELPER round=0 direct_ns=2418625 helper_ns=829807708 numeric_ns=4667 peak=262144 final=0\nRESOLVE_HELPER round=1 direct_ns=311458 helper_ns=18612709 numeric_ns=1250 peak=262144 final=0\nRESOLVE_HELPER round=2 direct_ns=158792 helper_ns=13130417 numeric_ns=3375 peak=262144 final=0\nRESOLVE_HELPER round=3 direct_ns=381458 helper_ns=13155792 numeric_ns=625 peak=262144 final=0\nRESOLVE_HELPER round=4 direct_ns=163750 helper_ns=12301542 numeric_ns=1208 peak=262144 final=0\nRESOLVE_CACHE samples=1000 mean_ns=116 final=0\n"
+  },
+  "scope_note": "The POSIX run does not execute Windows capture. Legacy unsupported wording in scope is superseded by the cross-built Windows capture bundle. Logs, measurements and source hashes are unchanged; later Rust changes only strengthen the Windows-only ignored native fixture."
+}

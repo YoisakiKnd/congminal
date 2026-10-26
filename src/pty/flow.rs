@@ -3,13 +3,13 @@ use super::{EventSink, PtyEvent};
 use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread::JoinHandle;
-#[cfg(any(windows, test))]
+#[cfg(test)]
 use std::time::Duration;
 
 pub const OUTPUT_LIMIT: usize = 1024 * 1024;
 pub const INPUT_LIMIT: usize = 8 * 1024 * 1024;
 pub const READ_CHUNK: usize = 16 * 1024;
+const MAX_CHUNKS: usize = 1024;
 
 #[derive(Default)]
 struct State {
@@ -23,29 +23,56 @@ pub struct ByteQueue {
     state: Mutex<State>,
     changed: Condvar,
     limit: usize,
+    max_chunk: usize,
+    memory: Arc<crate::resources::Lease>,
 }
 
 impl ByteQueue {
+    #[cfg(test)]
     pub fn new(limit: usize) -> Self {
-        Self { state: Mutex::new(State::default()), changed: Condvar::new(), limit }
+        Self::input(limit).unwrap()
+    }
+    pub fn input(limit: usize) -> io::Result<Self> {
+        Self::reserve(limit, limit, 0)
+    }
+    pub fn output(limit: usize) -> io::Result<Self> {
+        // 读线程缓冲、等待 push 的块及解析中的块同时存在；都计入容量预留。
+        Self::reserve(limit, READ_CHUNK.min(limit), 3 * READ_CHUNK)
+    }
+    fn reserve(limit: usize, max_chunk: usize, held: usize) -> io::Result<Self> {
+        let bytes = limit
+            .checked_add(held)
+            .and_then(|n| n.checked_add(2 * MAX_CHUNKS * std::mem::size_of::<Vec<u8>>()))
+            .ok_or_else(|| io::Error::other("队列额度溢出"))?;
+        let memory = Arc::new(
+            crate::resources::current().lease(crate::resources::Kind::Queue, bytes).map_err(io::Error::other)?,
+        );
+        Ok(Self { state: Mutex::new(State::default()), changed: Condvar::new(), limit, max_chunk, memory })
+    }
+    pub fn reservation(&self) -> Arc<crate::resources::Lease> {
+        self.memory.clone()
+    }
+    pub fn session_reservation() -> usize {
+        INPUT_LIMIT + OUTPUT_LIMIT + 3 * READ_CHUNK + 4 * MAX_CHUNKS * std::mem::size_of::<Vec<u8>>()
     }
 
     /// 仅供 PTY 读线程：队列满时停止读取，让操作系统向子进程施加背压。
     pub fn push(&self, data: Vec<u8>) -> bool {
-        if data.len() > self.limit {
+        let cost = data.capacity();
+        if cost > self.limit || cost > self.max_chunk {
             return false;
         }
         if data.is_empty() {
             return true;
         }
         let mut state = self.state.lock().unwrap();
-        while !state.closed && (data.len() > self.limit - state.bytes || state.chunks.len() >= 1024) {
+        while !state.closed && (cost > self.limit - state.bytes || state.chunks.len() >= MAX_CHUNKS) {
             state = self.changed.wait(state).unwrap();
         }
         if state.closed {
             return false;
         }
-        state.bytes += data.len();
+        state.bytes += cost;
         state.chunks.push_back(data);
         self.changed.notify_one();
         true
@@ -63,7 +90,7 @@ impl ByteQueue {
         if data.len() > self.limit {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "输入超过 8 MiB，本次输入未发送"));
         }
-        if data.len() > self.limit - state.bytes || state.chunks.len() >= 1024 {
+        if data.len() > self.limit - state.bytes || state.chunks.len() >= MAX_CHUNKS {
             return Err(io::Error::new(io::ErrorKind::WouldBlock, "输入缓冲已满，本次输入未发送"));
         }
         if !data.is_empty() {
@@ -77,7 +104,7 @@ impl ByteQueue {
     pub fn pop(&self) -> Option<Vec<u8>> {
         let mut state = self.state.lock().unwrap();
         let data = state.chunks.pop_front()?;
-        state.bytes -= data.len();
+        state.bytes -= data.capacity();
         self.changed.notify_one();
         Some(data)
     }
@@ -121,23 +148,35 @@ impl ByteQueue {
 
 pub struct AsyncWriter {
     queue: Arc<ByteQueue>,
-    thread: JoinHandle<()>,
+    thread: crate::runtime::Control,
 }
 
 impl AsyncWriter {
-    #[cfg(any(windows, test))]
+    #[cfg(test)]
     pub fn spawn(writer: impl Write + Send + 'static, sink: EventSink) -> io::Result<Self> {
-        Self::spawn_with_wait(writer, sink, || std::thread::park_timeout(Duration::from_millis(2)))
+        Self::spawn_with_wait(Arc::new(ByteQueue::input(INPUT_LIMIT)?), writer, sink, || {
+            std::thread::park_timeout(Duration::from_millis(2))
+        })
     }
-
+    #[cfg(test)]
     pub fn spawn_with_wait(
+        queue: Arc<ByteQueue>,
+        writer: impl Write + Send + 'static,
+        sink: EventSink,
+        wait: impl FnMut() + Send + 'static,
+    ) -> io::Result<Self> {
+        let permit = crate::runtime::prepare("pty-writer", queue.memory.budget())?;
+        Self::spawn_reserved(permit, queue, writer, sink, wait)
+    }
+    pub(crate) fn spawn_reserved(
+        permit: crate::runtime::Permit,
+        queue: Arc<ByteQueue>,
         mut writer: impl Write + Send + 'static,
         sink: EventSink,
         mut wait: impl FnMut() + Send + 'static,
     ) -> io::Result<Self> {
-        let queue = Arc::new(ByteQueue::new(INPUT_LIMIT));
         let pending = queue.clone();
-        let thread = std::thread::Builder::new().name("pty-writer".into()).spawn(move || {
+        let thread = permit.spawn_control(move || {
             while let Some(data) = pending.wait_take() {
                 let mut offset = 0;
                 while offset < data.len() && !pending.is_closed() {
@@ -158,9 +197,16 @@ impl AsyncWriter {
                         }
                     }
                 }
-                pending.release(data.len());
+                pending.release(data.capacity());
             }
-        })?;
+        });
+        let thread = match thread {
+            Ok(thread) => thread,
+            Err(error) => {
+                queue.close();
+                return Err(error);
+            }
+        };
         Ok(Self { queue, thread })
     }
 
@@ -182,19 +228,9 @@ fn fail(queue: &ByteQueue, sink: &EventSink, error: io::Error) {
 impl Drop for AsyncWriter {
     fn drop(&mut self) {
         self.queue.close();
-        self.thread.thread().unpark();
+        self.thread.unpark();
         #[cfg(windows)]
-        {
-            use std::os::windows::io::AsRawHandle;
-            #[link(name = "kernel32")]
-            unsafe extern "system" {
-                fn CancelSynchronousIo(thread: *mut std::ffi::c_void) -> i32;
-            }
-            // 取消正在进行的同步管道写入；不等待工作线程，避免阻塞 UI。
-            unsafe {
-                CancelSynchronousIo(self.thread.as_raw_handle());
-            }
-        }
+        self.thread.cancel_io();
     }
 }
 
@@ -202,7 +238,63 @@ impl Drop for AsyncWriter {
 mod tests {
     use super::*;
     use std::sync::mpsc;
+    #[test]
+    fn failed_control_publication_closes_queue_and_running_writer_retires() {
+        let pool = crate::resources::Budget::new(16 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let queue = Arc::new(ByteQueue::input(4096).unwrap());
+        let permit = crate::runtime::prepare("failed-control", &pool).unwrap().fail_control_for_test();
+        let result = AsyncWriter::spawn_reserved(permit, queue.clone(), std::io::sink(), Arc::new(|_| true), || {});
+        assert!(result.is_err());
+        assert!(queue.is_closed());
+        let until = std::time::Instant::now() + Duration::from_secs(3);
+        while pool.snapshot().managed_workers != 0 {
+            assert!(std::time::Instant::now() < until);
+            std::thread::yield_now();
+        }
+        drop(queue);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn queue_reservation_lives_with_last_owner_and_counts_capacity() {
+        let pool = crate::resources::Budget::new(128 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let queue = ByteQueue::input(16).unwrap();
+        let reservation = queue.reservation();
+        assert!(pool.snapshot().used > 16);
+        let mut chunk = Vec::with_capacity(16);
+        chunk.push(1);
+        assert!(queue.push(chunk));
+        assert_eq!(queue.bytes(), 16);
+        assert!(queue.try_push(&[2]).is_err());
+        let chunk = queue.pop().unwrap();
+        assert_eq!(queue.bytes(), 0);
+        drop(chunk);
+        drop(queue);
+        assert!(pool.snapshot().used > 0);
+        drop(reservation);
+        assert_eq!(pool.snapshot().used, 0);
+    }
 
+    #[test]
+    fn paste_transform_and_queue_refusal_never_publish_a_partial_bracket_frame() {
+        let queue = ByteQueue::new(32);
+        queue.try_push(&[b'x'; 32]).unwrap();
+        let pool = crate::resources::Budget::new(1024, 0);
+        let converted = crate::platform::paste_bytes("中\r\n\x1b[201~end", true, &pool).unwrap();
+        assert_eq!(queue.try_push(&converted).unwrap_err().kind(), io::ErrorKind::WouldBlock);
+        assert_eq!(queue.pop().unwrap(), vec![b'x'; 32]);
+        assert!(queue.pop().is_none());
+        queue.try_push(&converted).unwrap();
+        assert_eq!(queue.pop().unwrap(), "\x1b[200~中\rend\x1b[201~".as_bytes());
+        assert!(queue.pop().is_none());
+        drop(converted);
+        assert_eq!(pool.snapshot().used, 0);
+        let hold = pool.lease(crate::resources::Kind::Queue, 1024).unwrap();
+        assert!(crate::platform::paste_bytes("denied", true, &pool).is_err());
+        assert!(queue.pop().is_none());
+        drop(hold);
+    }
     #[test]
     fn backpressure_preserves_order_and_close_releases_producer() {
         let queue = Arc::new(ByteQueue::new(4));

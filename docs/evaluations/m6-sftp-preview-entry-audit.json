@@ -1,0 +1,34 @@
+{
+  "scope": "Current source/tools/fixtures build, software entry real network and existing Workspace allocation checks. Failed native-window transfer record retained and not used for acceptance.",
+  "checks": [
+    {
+      "report": "docs/evaluations/m6-sftp-preview-entry-build.json",
+      "sha256": "12831f67de43837743a7f3683b68458b82861d33e91e897664a4e9d00657a652",
+      "source_manifests_match": true
+    },
+    {
+      "report": "docs/evaluations/m6-sftp-preview-entry-real.json",
+      "sha256": "b1717d28763a7d09afe658d600bf3322225aebd9ec4ada8815225f0e6ee05c21",
+      "source_manifests_match": true,
+      "tool_match": true
+    },
+    {
+      "report": "docs/evaluations/m6-sftp-preview-entry-allocation.json",
+      "sha256": "1f2d407dc75e3ae53168f9f85599127abd340034e3e086daf443da3c4b423819",
+      "source_manifests_match": true,
+      "tool_fixture_match": true
+    },
+    {
+      "report": "docs/evaluations/m6-sftp-preview-native.json",
+      "sha256": "50698e819b88103253081eb4f1ca961b3c40765bf5cb7ffbcd3ffeb1414a6e1b",
+      "native_transfer_acceptance": "not passed; not used as success evidence",
+      "fixture_cleaned": true
+    },
+    {
+      "report": "docs/evaluations/m6-sftp-preview-entry-package.json",
+      "sha256": "7ebb946136db5ba1e729e1a7e41915aac008a1c30ff4212eb710f2937e63317b",
+      "source_zip_match": true,
+      "native_transfer_acceptance": "not passed"
+    }
+  ]
+}

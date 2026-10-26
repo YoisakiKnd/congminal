@@ -1,0 +1,95 @@
+{
+  "method": "isolated exact reflow bench, five balanced pairs, final row-index optimization; isolated from other benchmark allocator states",
+  "runs": {
+    "before": [
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1415,
+        "p95_us": 1996,
+        "max_us": 2864,
+        "total_ms": 30
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1381,
+        "p95_us": 1620,
+        "max_us": 3019,
+        "total_ms": 29
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1804,
+        "p95_us": 2442,
+        "max_us": 3618,
+        "total_ms": 37
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1423,
+        "p95_us": 1720,
+        "max_us": 4390,
+        "total_ms": 32
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1766,
+        "p95_us": 3070,
+        "max_us": 3964,
+        "total_ms": 40
+      }
+    ],
+    "after": [
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1620,
+        "p95_us": 2427,
+        "max_us": 4211,
+        "total_ms": 35
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1617,
+        "p95_us": 2506,
+        "max_us": 3549,
+        "total_ms": 35
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1531,
+        "p95_us": 2435,
+        "max_us": 4168,
+        "total_ms": 35
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1462,
+        "p95_us": 2101,
+        "max_us": 3831,
+        "total_ms": 32
+      },
+      {
+        "history_bytes": 67107840,
+        "p50_us": 1637,
+        "p95_us": 3057,
+        "max_us": 3374,
+        "total_ms": 39
+      }
+    ]
+  },
+  "median": {
+    "before": {
+      "history_bytes": 67107840,
+      "p50_us": 1423,
+      "p95_us": 1996,
+      "max_us": 3618,
+      "total_ms": 32
+    },
+    "after": {
+      "history_bytes": 67107840,
+      "p50_us": 1617,
+      "p95_us": 2435,
+      "max_us": 3831,
+      "total_ms": 35
+    }
+  }
+}

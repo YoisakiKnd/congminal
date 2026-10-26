@@ -1,0 +1,590 @@
+{
+  "seconds": 60.271,
+  "status": 0,
+  "samples": [
+    {
+      "t": 0.0,
+      "rss": 43876352,
+      "cpu_ns": 1329760,
+      "threads": 14
+    },
+    {
+      "t": 1.005,
+      "rss": 112525312,
+      "cpu_ns": 26901805,
+      "threads": 14
+    },
+    {
+      "t": 2.01,
+      "rss": 112525312,
+      "cpu_ns": 52597605,
+      "threads": 14
+    },
+    {
+      "t": 3.015,
+      "rss": 112525312,
+      "cpu_ns": 78212993,
+      "threads": 14
+    },
+    {
+      "t": 4.021,
+      "rss": 112525312,
+      "cpu_ns": 104036928,
+      "threads": 14
+    },
+    {
+      "t": 5.026,
+      "rss": 116473856,
+      "cpu_ns": 129402878,
+      "threads": 14
+    },
+    {
+      "t": 6.031,
+      "rss": 116473856,
+      "cpu_ns": 154986225,
+      "threads": 14
+    },
+    {
+      "t": 7.036,
+      "rss": 116473856,
+      "cpu_ns": 180753986,
+      "threads": 14
+    },
+    {
+      "t": 8.038,
+      "rss": 116473856,
+      "cpu_ns": 206408933,
+      "threads": 14
+    },
+    {
+      "t": 9.043,
+      "rss": 116473856,
+      "cpu_ns": 232042166,
+      "threads": 14
+    },
+    {
+      "t": 10.046,
+      "rss": 116457472,
+      "cpu_ns": 257742218,
+      "threads": 14
+    },
+    {
+      "t": 11.052,
+      "rss": 116473856,
+      "cpu_ns": 283423648,
+      "threads": 14
+    },
+    {
+      "t": 12.057,
+      "rss": 116473856,
+      "cpu_ns": 309109324,
+      "threads": 14
+    },
+    {
+      "t": 13.062,
+      "rss": 116473856,
+      "cpu_ns": 334776997,
+      "threads": 14
+    },
+    {
+      "t": 14.067,
+      "rss": 116473856,
+      "cpu_ns": 360457665,
+      "threads": 14
+    },
+    {
+      "t": 15.072,
+      "rss": 116473856,
+      "cpu_ns": 386071178,
+      "threads": 14
+    },
+    {
+      "t": 16.077,
+      "rss": 116473856,
+      "cpu_ns": 411799953,
+      "threads": 14
+    },
+    {
+      "t": 17.082,
+      "rss": 116473856,
+      "cpu_ns": 437506753,
+      "threads": 14
+    },
+    {
+      "t": 18.087,
+      "rss": 116473856,
+      "cpu_ns": 463086282,
+      "threads": 14
+    },
+    {
+      "t": 19.093,
+      "rss": 116473856,
+      "cpu_ns": 488791437,
+      "threads": 14
+    },
+    {
+      "t": 20.096,
+      "rss": 116473856,
+      "cpu_ns": 514455876,
+      "threads": 14
+    },
+    {
+      "t": 21.101,
+      "rss": 116473856,
+      "cpu_ns": 540157388,
+      "threads": 14
+    },
+    {
+      "t": 22.106,
+      "rss": 116473856,
+      "cpu_ns": 565761668,
+      "threads": 14
+    },
+    {
+      "t": 23.111,
+      "rss": 116473856,
+      "cpu_ns": 591405547,
+      "threads": 14
+    },
+    {
+      "t": 24.113,
+      "rss": 116473856,
+      "cpu_ns": 617066595,
+      "threads": 14
+    },
+    {
+      "t": 25.118,
+      "rss": 116473856,
+      "cpu_ns": 642664728,
+      "threads": 14
+    },
+    {
+      "t": 26.123,
+      "rss": 116473856,
+      "cpu_ns": 668377008,
+      "threads": 14
+    },
+    {
+      "t": 27.128,
+      "rss": 116473856,
+      "cpu_ns": 694121854,
+      "threads": 14
+    },
+    {
+      "t": 28.13,
+      "rss": 116473856,
+      "cpu_ns": 719892850,
+      "threads": 14
+    },
+    {
+      "t": 29.135,
+      "rss": 116473856,
+      "cpu_ns": 745665534,
+      "threads": 14
+    },
+    {
+      "t": 30.14,
+      "rss": 116473856,
+      "cpu_ns": 771409217,
+      "threads": 14
+    },
+    {
+      "t": 31.145,
+      "rss": 116473856,
+      "cpu_ns": 797141744,
+      "threads": 14
+    },
+    {
+      "t": 32.15,
+      "rss": 116473856,
+      "cpu_ns": 822783383,
+      "threads": 14
+    },
+    {
+      "t": 33.155,
+      "rss": 116473856,
+      "cpu_ns": 848367856,
+      "threads": 14
+    },
+    {
+      "t": 34.16,
+      "rss": 116473856,
+      "cpu_ns": 874097393,
+      "threads": 14
+    },
+    {
+      "t": 35.165,
+      "rss": 116473856,
+      "cpu_ns": 899778917,
+      "threads": 14
+    },
+    {
+      "t": 36.17,
+      "rss": 116473856,
+      "cpu_ns": 925437446,
+      "threads": 14
+    },
+    {
+      "t": 37.174,
+      "rss": 116473856,
+      "cpu_ns": 951055373,
+      "threads": 14
+    },
+    {
+      "t": 38.18,
+      "rss": 116473856,
+      "cpu_ns": 976632262,
+      "threads": 14
+    },
+    {
+      "t": 39.185,
+      "rss": 116473856,
+      "cpu_ns": 1002427652,
+      "threads": 14
+    },
+    {
+      "t": 40.19,
+      "rss": 116473856,
+      "cpu_ns": 1028104721,
+      "threads": 14
+    },
+    {
+      "t": 41.195,
+      "rss": 116473856,
+      "cpu_ns": 1053753249,
+      "threads": 14
+    },
+    {
+      "t": 42.196,
+      "rss": 116473856,
+      "cpu_ns": 1079330276,
+      "threads": 14
+    },
+    {
+      "t": 43.201,
+      "rss": 116473856,
+      "cpu_ns": 1105256216,
+      "threads": 14
+    },
+    {
+      "t": 44.206,
+      "rss": 116473856,
+      "cpu_ns": 1130960190,
+      "threads": 14
+    },
+    {
+      "t": 45.211,
+      "rss": 116473856,
+      "cpu_ns": 1156588235,
+      "threads": 14
+    },
+    {
+      "t": 46.213,
+      "rss": 116473856,
+      "cpu_ns": 1182107359,
+      "threads": 14
+    },
+    {
+      "t": 47.218,
+      "rss": 116473856,
+      "cpu_ns": 1207728734,
+      "threads": 14
+    },
+    {
+      "t": 48.223,
+      "rss": 116473856,
+      "cpu_ns": 1233420579,
+      "threads": 14
+    },
+    {
+      "t": 49.228,
+      "rss": 116473856,
+      "cpu_ns": 1258977301,
+      "threads": 14
+    },
+    {
+      "t": 50.229,
+      "rss": 116473856,
+      "cpu_ns": 1284586136,
+      "threads": 14
+    },
+    {
+      "t": 51.235,
+      "rss": 116473856,
+      "cpu_ns": 1310249054,
+      "threads": 14
+    },
+    {
+      "t": 52.24,
+      "rss": 116473856,
+      "cpu_ns": 1335986262,
+      "threads": 14
+    },
+    {
+      "t": 53.245,
+      "rss": 116473856,
+      "cpu_ns": 1361609760,
+      "threads": 14
+    },
+    {
+      "t": 54.246,
+      "rss": 116473856,
+      "cpu_ns": 1387162561,
+      "threads": 14
+    },
+    {
+      "t": 55.251,
+      "rss": 116473856,
+      "cpu_ns": 1412881940,
+      "threads": 14
+    },
+    {
+      "t": 56.256,
+      "rss": 116473856,
+      "cpu_ns": 1438565970,
+      "threads": 14
+    },
+    {
+      "t": 57.261,
+      "rss": 116473856,
+      "cpu_ns": 1464173926,
+      "threads": 14
+    },
+    {
+      "t": 58.263,
+      "rss": 116473856,
+      "cpu_ns": 1489795107,
+      "threads": 14
+    },
+    {
+      "t": 59.268,
+      "rss": 116473856,
+      "cpu_ns": 1515563676,
+      "threads": 14
+    }
+  ],
+  "log": "    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\n\nrunning 1 test\ntest workspace::tests::stress_workspace_sessions ... BUDGET t=5 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=5 cycles=51762 panes=4 history=53280000 canvases=6498304 max_tick_us=44 max_key_us=44\nBUDGET t=10 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=10 cycles=104726 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=15 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=15 cycles=157734 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=20 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=20 cycles=210414 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=25 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=25 cycles=262313 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=30 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=30 cycles=315325 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=35 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=35 cycles=368470 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=40 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=40 cycles=421448 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=45 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=45 cycles=473796 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=50 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=50 cycles=526487 panes=4 history=53280000 canvases=6498304 max_tick_us=58 max_key_us=54\nBUDGET t=55 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=55 cycles=579536 panes=4 history=53280000 canvases=6498304 max_tick_us=71 max_key_us=54\nBUDGET t=60 used=44846284 peak=57598924 canvas=6498304 queue=38338560 glyph=9420 font_owned=0 mapped=41082052 mappings=2 denied=0\nM4STRESS t=60 cycles=632478 panes=4 history=53280000 canvases=6498304 max_tick_us=71 max_key_us=54\nM4STRESS done cycles=632478 max_tick_us=71 max_key_us=54\nBUDGET done used=0 mappings=0\nok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 232 filtered out; finished in 60.14s\n\n",
+  "method": "60s four real PTYs; switch/reflow/repeated create-close; 1Hz process samples and 5s ledger snapshots; all credits must return after drop",
+  "source_sha256": {
+    "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+    "src/session.rs": "b6c8de125bc64b18cf558c07bcb567d8e2b69778c7846f4641224484e7819cfb",
+    "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+    "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+    "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+    "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+    "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+    "src/render.rs": "2acfb5ccadaf4a09a83250858a61418efafc7f8775a9aebda1366501e525921f",
+    "src/workspace.rs": "4762c4ae2f8bc7deca643b269b7e9aaa18e35fb4733d6c0e8f60622600657a73",
+    "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+    "src/main.rs": "8c29dafd5e6da662236419d21c931f2c05add3e40896c25f66568684fd744a41",
+    "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+    "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+    "src/resources.rs": "be9187bb59664290d2f1efa6239a53320a1b1910f9fe3177e9a326868866cbe9",
+    "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+    "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+    "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+    "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+    "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+    "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+    "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+    "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+    "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+    "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+    "src/config/mod.rs": "bc164e408efe7f828d070307fde38cd14d14b00586f539630e7018012672c5b2",
+    "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+    "src/resources/budget.rs": "0a13c68322bea46ffb9bba37bee46fa9ac537e776ec2c7323b29d13b737b83bd",
+    "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+    "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+    "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+    "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+    "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+    "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+    "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+    "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+    "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+    "src/term/grid.rs": "edbc4e8b13b9cb9d7dfb36a88e21c0156271cbf9a610e42411b730d2c7769576",
+    "src/term/mod.rs": "7d9a8feac62b787fdc0ef4552ab5b17838c51307b9a6b6217b8f55045e3c5879",
+    "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+    "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+    "src/term/reflow.rs": "5b7ebb4fd42ab391f3969903fa17e922c81c3ba0d7b0e412c5afc60f4155888b",
+    "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+    "src/image/inflate.rs": "a139a42ec071a56c075546b8e08516416eef0d8d386c8c6106715f5aef4aa392",
+    "src/image/mod.rs": "108b26f31eec7e3f56a0da5fab894c598e23d7e0671819ea61d5aadcc96d8ebc",
+    "src/image/png.rs": "16d2fbbe72f7d8ab067183f24406922c3ce73dc5cdb763df0b2540989e9111d9",
+    "src/font/psf.rs": "541f5897259e0da176f8783f7befaa380ae92373de9ef82a7b0c16891f14a3c9",
+    "src/font/cache.rs": "8ec55c1cfed20f88019bc7fed1f571a195c6e261855984b84050ae0e5336ace6",
+    "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+    "src/font/color.rs": "732de0224d71fc1b3b7b76bb7d897a39eab96975c2d84b5f69899e0b0eefc803",
+    "src/font/gsub.rs": "7ed0fda273e1e25d14fce626fb266549ffb98c0081e48fba05655059dace0f28",
+    "src/font/mod.rs": "8cc77fe536e9e1ce4c00a46abc01a6e183e9a3fecb566a3d17fe23c0f27fee34",
+    "src/font/mmap.rs": "abf5db0f94dbee529d1581ae393ff6245960210af2e41ee89ed068753ff26aee",
+    "src/font/ttf.rs": "cd1acc2b3ed55db094b0b0fecd52be4e49883be4dd011fac4f5cdcfaf4639390",
+    "src/font/raster.rs": "a94481158a2eb575c5124e774ad2b342c322891b46b695dee9e8c78958738d46",
+    "src/font/morx.rs": "22cc7ffd21132c73107ffb413af3c123fa208b5ac6ce681353fc03c01150b2af"
+  },
+  "ledger_series": [
+    {
+      "t": 5,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 10,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 15,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 20,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 25,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 30,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 35,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 40,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 45,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 50,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 55,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    },
+    {
+      "t": 60,
+      "used": 44846284,
+      "peak": 57598924,
+      "canvas": 6498304,
+      "queue": 38338560,
+      "glyph": 9420,
+      "font_owned": 0,
+      "mapped": 41082052,
+      "mappings": 2,
+      "denied": 0
+    }
+  ],
+  "limits": {
+    "mixed_bytes": 536870912,
+    "mapped_bytes": 1073741824,
+    "max_mappings": 128
+  },
+  "summary": {
+    "0": {
+      "rss_min_mib": 41.84375,
+      "rss_max_mib": 111.078125
+    },
+    "20": {
+      "rss_min_mib": 111.078125,
+      "rss_max_mib": 111.078125
+    },
+    "40": {
+      "rss_min_mib": 111.078125,
+      "rss_max_mib": 111.078125
+    }
+  }
+}

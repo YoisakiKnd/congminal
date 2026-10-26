@@ -273,6 +273,7 @@ unsafe extern "C" {
     ) -> c_int;
     fn XFree(data: *mut c_void) -> c_int;
     fn XSetSelectionOwner(display: *mut Display, selection: Atom, owner: XWindow, time: c_ulong) -> c_int;
+    fn XDeleteProperty(display: *mut Display, window: XWindow, property: Atom) -> c_int;
     fn XGetSelectionOwner(display: *mut Display, selection: Atom) -> XWindow;
     fn XConvertSelection(
         display: *mut Display,
@@ -361,7 +362,8 @@ pub struct Window {
     wake_write: Arc<UnixStream>,
     atoms: Atoms,
     /// 我们复制的文字。X11 的剪贴板只是"所有权"，内容一直留在复制它的程序手里，别人来要时才给。
-    clipboard: Option<String>,
+    clipboard: Option<super::CopyText>,
+    paste_read: Option<super::PasteRequest>,
 }
 
 struct Atoms {
@@ -477,6 +479,7 @@ impl Window {
                 wake_write: Arc::new(wake_write),
                 atoms,
                 clipboard: None,
+                paste_read: None,
             })
         }
     }
@@ -535,9 +538,9 @@ impl Window {
             if let Some(request) = app.take_clipboard_request() {
                 match request {
                     ClipboardRequest::Copy(text) => self.copy(text),
-                    ClipboardRequest::Paste => {
-                        if let Some(text) = self.request_paste()
-                            && !app.event(Event::Paste(text))
+                    ClipboardRequest::Paste(policy) => {
+                        if let Some(event) = self.request_paste(policy)
+                            && !app.event(event)
                         {
                             return;
                         }
@@ -625,7 +628,17 @@ impl Window {
                     self.clipboard = None;
                     vec![]
                 }
-                SELECTION_NOTIFY => self.read_paste(&event.selection).map(Event::Paste).into_iter().collect(),
+                SELECTION_NOTIFY
+                    if event.selection.selection == self.atoms.clipboard
+                        && event.selection.requestor == self.window =>
+                {
+                    if let Some(mut request) = self.paste_read.take() {
+                        let text = self.read_paste(&event.selection, &mut request);
+                        vec![request.finish(text)]
+                    } else {
+                        vec![]
+                    }
+                }
                 _ => vec![],
             }
         }
@@ -633,18 +646,33 @@ impl Window {
 
     // ---- 剪贴板 ----
 
-    fn copy(&mut self, text: String) {
+    fn copy(&mut self, text: super::CopyText) {
         self.clipboard = Some(text);
         unsafe { XSetSelectionOwner(self.display, self.atoms.clipboard, self.window, CURRENT_TIME) };
     }
 
     /// 剪贴板是自己的就直接给出内容；否则请剪贴板的主人把内容转成 UTF-8 放到我们窗口上，
     /// 结果在 SelectionNotify 事件里到达
-    fn request_paste(&mut self) -> Option<String> {
+    fn request_paste(&mut self, mut request: super::PasteRequest) -> Option<Event> {
+        // 工作区只允许一次在途读取；在答复前不覆盖该次的限量策略。
+        if self.paste_read.is_some() {
+            return None;
+        }
+        let policy = request.policy();
         unsafe {
-            if XGetSelectionOwner(self.display, self.atoms.clipboard) == self.window {
-                return self.clipboard.clone();
+            let owner = XGetSelectionOwner(self.display, self.atoms.clipboard);
+            if owner == self.window {
+                let text = self
+                    .clipboard
+                    .as_ref()
+                    .filter(|s| s.len() <= policy.limit())
+                    .and_then(|s| request.utf8(s.as_bytes()));
+                return Some(request.finish(text));
             }
+            if owner == 0 {
+                return Some(request.finish(None));
+            }
+            self.paste_read = Some(request);
             XConvertSelection(
                 self.display,
                 self.atoms.clipboard,
@@ -657,10 +685,15 @@ impl Window {
         None
     }
 
-    fn read_paste(&mut self, event: &XSelectionEvent) -> Option<String> {
-        if event.property == 0 {
+    fn read_paste(&mut self, event: &XSelectionEvent, request: &mut super::PasteRequest) -> Option<String> {
+        let policy = request.policy();
+        if event.property == 0 || event.property != self.atoms.paste_property {
             return None; // 剪贴板是空的，或者对方不支持 UTF-8
         }
+        let Some(_external) = request.external_memory() else {
+            unsafe { XDeleteProperty(self.display, self.window, event.property) };
+            return None;
+        };
         unsafe {
             let (mut kind, mut format, mut count, mut remaining) = (0, 0, 0, 0);
             let mut data: *mut u8 = null_mut();
@@ -669,8 +702,8 @@ impl Window {
                 self.window,
                 event.property,
                 0,
-                // 单位是 4 字节，最多读 64 MB
-                16 * 1024 * 1024,
+                // 单位是 4 字节；分配前限制剪贴板读取上限。
+                policy.limit().div_ceil(4) as c_long,
                 1,
                 0,
                 &mut kind,
@@ -679,11 +712,14 @@ impl Window {
                 &mut remaining,
                 &mut data,
             );
+            XDeleteProperty(self.display, self.window, event.property);
             if data.is_null() {
                 return None;
             }
-            let text = (format == 8)
-                .then(|| String::from_utf8_lossy(std::slice::from_raw_parts(data, count as usize)).into_owned());
+            let text =
+                (kind == self.atoms.utf8_string && format == 8 && remaining == 0 && count as usize <= policy.limit())
+                    .then(|| request.utf8(std::slice::from_raw_parts(data, count as usize)))
+                    .flatten();
             XFree(data.cast());
             text
         }

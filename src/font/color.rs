@@ -14,7 +14,7 @@ pub enum ColorGlyph {
     /// 位图：解码后的图片，以及它是按多大的字号（每 em 多少像素）画的
     Bitmap { image: Image, ppem: u16 },
     /// 矢量图层：(字形编号, 颜色 0xAARRGGBB)，颜色为 None 表示用文字颜色
-    Layers(Vec<(u16, Option<u32>)>),
+    Layers(crate::resources::Tracked<Vec<(u16, Option<u32>)>>),
 }
 
 /// 字体里的彩色字形表
@@ -48,29 +48,35 @@ impl ColorTables {
 
     /// `ppem`：要画的字号（每 em 多少像素），位图格式据此挑最合适的一组图片
     pub fn glyph(&self, face: &Face, glyph: u16, ppem: f32) -> Option<ColorGlyph> {
+        let _scope = crate::resources::Scope::enter(face.budget().clone());
         match self {
             ColorTables::Sbix(sbix) => sbix_glyph(sbix, face.num_glyphs(), glyph, ppem, 0),
             ColorTables::Cbdt { cblc, cbdt } => cbdt_glyph(cblc, cbdt, glyph, ppem),
-            ColorTables::Colr { colr, cpal } => colr_glyph(colr, cpal, glyph),
+            ColorTables::Colr { colr, cpal } => colr_glyph(colr, cpal, glyph, face.budget()),
         }
     }
 }
 
 /// 从几个字号里挑：不小于目标的里面最小的；都比目标小就挑最大的（缩小比放大清楚）
 fn pick_size(sizes: impl Iterator<Item = (usize, u16)>, target: f32) -> Option<usize> {
-    let sizes: Vec<(usize, u16)> = sizes.collect();
-    sizes
-        .iter()
-        .filter(|(_, ppem)| *ppem as f32 >= target)
-        .min_by_key(|(_, ppem)| *ppem)
-        .or_else(|| sizes.iter().max_by_key(|(_, ppem)| *ppem))
-        .map(|(i, _)| *i)
+    let mut above: Option<(usize, u16)> = None;
+    let mut largest: Option<(usize, u16)> = None;
+    for candidate in sizes {
+        if candidate.1 as f32 >= target && above.is_none_or(|best| candidate.1 < best.1) {
+            above = Some(candidate);
+        }
+        if largest.is_none_or(|best| candidate.1 >= best.1) {
+            largest = Some(candidate);
+        }
+    }
+    above.or(largest).map(|(i, _)| i)
 }
 
 // ---- sbix ----
 
 fn sbix_glyph(sbix: &[u8], num_glyphs: u16, glyph: u16, ppem: f32, depth: u32) -> Option<ColorGlyph> {
     let strike_count = u32_at(sbix, 4)? as usize;
+    sbix.get(8..8usize.checked_add(strike_count.checked_mul(4)?)?)?;
     let strikes = (0..strike_count).filter_map(|i| {
         let offset = u32_at(sbix, 8 + 4 * i)? as usize;
         Some((offset, u16_at(sbix, offset)?))
@@ -97,6 +103,7 @@ fn sbix_glyph(sbix: &[u8], num_glyphs: u16, glyph: u16, ppem: f32, depth: u32) -
 fn cbdt_glyph(cblc: &[u8], cbdt: &[u8], glyph: u16, ppem: f32) -> Option<ColorGlyph> {
     // CBLC 头：版本（4 字节）、字号个数，然后每个字号一条 48 字节的 BitmapSize 记录
     let size_count = u32_at(cblc, 4)? as usize;
+    cblc.get(8..8usize.checked_add(size_count.checked_mul(48)?)?)?;
     let sizes = (0..size_count).filter_map(|i| {
         let record = 8 + 48 * i;
         let (first, last) = (u16_at(cblc, record + 40)?, u16_at(cblc, record + 42)?);
@@ -158,7 +165,12 @@ fn cbdt_glyph(cblc: &[u8], cbdt: &[u8], glyph: u16, ppem: f32) -> Option<ColorGl
 
 // ---- COLR / CPAL ----
 
-fn colr_glyph(colr: &[u8], cpal: &[u8], glyph: u16) -> Option<ColorGlyph> {
+fn colr_glyph(
+    colr: &[u8],
+    cpal: &[u8],
+    glyph: u16,
+    budget: &std::sync::Arc<crate::resources::Budget>,
+) -> Option<ColorGlyph> {
     let base_count = u16_at(colr, 2)? as usize;
     let base_records = u32_at(colr, 4)? as usize;
     let layer_records = u32_at(colr, 8)? as usize;
@@ -181,25 +193,74 @@ fn colr_glyph(colr: &[u8], cpal: &[u8], glyph: u16) -> Option<ColorGlyph> {
     };
     let first_layer = u16_at(colr, record + 2)? as usize;
     let layer_count = u16_at(colr, record + 4)? as usize;
+    if layer_count > 128 {
+        return None;
+    }
+    let memory = budget
+        .lease(crate::resources::Kind::FontOutline, layer_count * std::mem::size_of::<(u16, Option<u32>)>())
+        .ok()?;
 
     // 调色板 0 的第一个颜色在颜色记录数组里的位置
     let palette_start = u16_at(cpal, 12)? as usize;
     let colors = u32_at(cpal, 8)? as usize;
-    let layers = (first_layer..first_layer + layer_count)
-        .map(|i| {
-            let layer = layer_records + 4 * i;
-            let (glyph, palette_index) = (u16_at(colr, layer)?, u16_at(colr, layer + 2)?);
-            // 0xFFFF 表示"用文字的颜色"
-            let color = (palette_index != 0xFFFF)
-                .then(|| {
-                    let c = colors + 4 * (palette_start + palette_index as usize);
-                    // 颜色记录的字节顺序是 BGRA
-                    let [b, g, r, a]: [u8; 4] = cpal.get(c..c + 4)?.try_into().ok()?;
-                    Some(u32::from_be_bytes([a, r, g, b]))
-                })
-                .flatten();
-            Some((glyph, color))
-        })
-        .collect::<Option<Vec<_>>>()?;
-    Some(ColorGlyph::Layers(layers))
+    let mut layers = Vec::with_capacity(layer_count);
+    for i in first_layer..first_layer + layer_count {
+        let layer = layer_records + 4 * i;
+        let (glyph, palette_index) = (u16_at(colr, layer)?, u16_at(colr, layer + 2)?);
+        // 0xFFFF 表示"用文字的颜色"
+        let color = (palette_index != 0xFFFF)
+            .then(|| {
+                let c = colors + 4 * (palette_start + palette_index as usize);
+                // 颜色记录的字节顺序是 BGRA
+                let [b, g, r, a]: [u8; 4] = cpal.get(c..c + 4)?.try_into().ok()?;
+                Some(u32::from_be_bytes([a, r, g, b]))
+            })
+            .flatten();
+        layers.push((glyph, color));
+    }
+    Some(ColorGlyph::Layers(crate::resources::Tracked::new(layers, memory)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn size_selection_matches_original_tie_rules_without_collecting_strikes() {
+        for sizes in [vec![], vec![(0, 32)], vec![(0, 32), (1, 16), (2, 32), (3, 48), (4, 48)]] {
+            for target in [0.0, 16.0, 24.0, 32.0, 40.0, 48.0, 100.0, f32::NAN] {
+                let expected = sizes
+                    .iter()
+                    .filter(|(_, size)| *size as f32 >= target)
+                    .min_by_key(|(_, size)| *size)
+                    .or_else(|| sizes.iter().max_by_key(|(_, size)| *size))
+                    .map(|(i, _)| *i);
+                assert_eq!(pick_size(sizes.iter().copied(), target), expected);
+            }
+        }
+    }
+    #[test]
+    fn colr_layer_index_has_a_cap_and_retains_credit_until_drop() {
+        let mut colr = vec![0; 24];
+        colr[2..4].copy_from_slice(&1u16.to_be_bytes());
+        colr[4..8].copy_from_slice(&14u32.to_be_bytes());
+        colr[8..12].copy_from_slice(&20u32.to_be_bytes());
+        colr[14..16].copy_from_slice(&1u16.to_be_bytes());
+        colr[18..20].copy_from_slice(&1u16.to_be_bytes());
+        colr[20..22].copy_from_slice(&1u16.to_be_bytes());
+        colr[22..24].copy_from_slice(&0xffffu16.to_be_bytes());
+        let cpal = [0; 14];
+        let denied = crate::resources::Budget::new(0, 0);
+        assert!(colr_glyph(&colr, &cpal, 1, &denied).is_none());
+        assert_eq!(denied.snapshot().used, 0);
+        let pool = crate::resources::Budget::new(4096, 0);
+        let result = colr_glyph(&colr, &cpal, 1, &pool).unwrap();
+        let ColorGlyph::Layers(layers) = result else { unreachable!() };
+        assert_eq!(layers.as_slice(), [(1, None)]);
+        assert_eq!(pool.snapshot().used, layers.capacity() * std::mem::size_of::<(u16, Option<u32>)>());
+        drop(layers);
+        assert_eq!(pool.snapshot().used, 0);
+        colr[18..20].copy_from_slice(&129u16.to_be_bytes());
+        assert!(colr_glyph(&colr, &cpal, 1, &pool).is_none());
+        assert_eq!(pool.snapshot().peak, std::mem::size_of::<(u16, Option<u32>)>());
+    }
 }

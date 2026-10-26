@@ -1,0 +1,12 @@
+{
+  "scenario": "three restored real GUI tabs; targeted NSRunningApplication.terminate request; no force kill",
+  "request_exit": 0,
+  "request_stdout": "true",
+  "request_stderr": "",
+  "gui_exit": 0,
+  "quit_ms": 84.52979199999989,
+  "layout_unchanged": true,
+  "trace": [
+    "[trace] 收到系统退出请求，交由 Rust 关闭路径处理"
+  ]
+}

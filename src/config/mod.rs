@@ -3,6 +3,9 @@
 //! 写错的地方不会让程序启动失败：那一项保留默认值，错误收集起来显示在终端里。
 //! 完整的选项说明见 `assets/congminal.example.toml`（也就是 `congminal --print-config` 的输出）。
 
+pub mod profiles;
+#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+pub mod sftp;
 pub mod theme;
 pub mod toml;
 
@@ -16,7 +19,8 @@ pub static EXAMPLE: &str = include_str!("../../assets/congminal.example.toml");
 
 pub const DEFAULT_FONT_FAMILIES: [&str; 4] = ["Maple Mono NF CN", "Maple Mono NF", "Maple Mono CN", "Maple Mono"];
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
 pub struct Config {
     pub font: FontConfig,
     pub window: WindowConfig,
@@ -25,8 +29,14 @@ pub struct Config {
     color_overrides: theme::Overrides,
     pub bindings: crate::action::Bindings,
     pub notifications: crate::notifications::Settings,
+    #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+    pub sftp: sftp::Settings,
+    /// 布局持久化在下次启动生效；默认关闭，不增加单终端的 I/O 或线程。
+    pub restore_layout: bool,
+    pub memory: MemoryConfig,
     pub cursor_shape: CursorShape,
     pub shell: ShellConfig,
+    pub connections: profiles::Profiles,
     /// [env] 里的额外环境变量
     pub env: Vec<(String, String)>,
     /// 回滚历史保留的行数
@@ -49,6 +59,16 @@ pub struct WindowConfig {
     pub rows: usize,
     pub padding: f32,
 }
+#[derive(Clone, Debug, PartialEq)]
+pub struct MemoryConfig {
+    pub managed_mib: usize,
+    pub mapped_font_mib: usize,
+}
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self { managed_mib: 512, mapped_font_mib: 1024 }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Colors {
@@ -62,7 +82,8 @@ pub struct Colors {
     pub palette: [u32; 256],
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
 pub struct ShellConfig {
     /// None 表示用系统默认的 shell
     pub program: Option<String>,
@@ -93,8 +114,13 @@ impl Default for Config {
             color_overrides: theme::Overrides::default(),
             bindings: crate::action::Bindings::default(),
             notifications: crate::notifications::Settings::default(),
+            #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+            sftp: sftp::Settings::default(),
+            restore_layout: false,
+            memory: MemoryConfig::default(),
             cursor_shape: CursorShape::Block,
             shell: ShellConfig::default(),
+            connections: profiles::Profiles::default(),
             env: Vec::new(),
             scrollback: crate::term::DEFAULT_SCROLLBACK,
             option_as_alt: OptionAsAlt::Both,
@@ -123,6 +149,9 @@ const SCHEMA: &[(&str, &[&str])] = &[
     ("keybindings", &[]),
     ("font", &["family", "size", "line-height", "ligatures"]),
     ("window", &["columns", "rows", "padding"]),
+    ("workspace", &["restore-layout"]),
+    ("sftp", &["enabled", "helper", "ssh-config"]),
+    ("memory", &["managed-mib", "mapped-font-mib"]),
     (
         "colors",
         &[
@@ -136,11 +165,12 @@ const SCHEMA: &[(&str, &[&str])] = &[
             "palette",
         ],
     ),
-    ("notifications", &["muted", "system", "failures", "long-commands", "background", "long-seconds"]),
+    ("notifications", &["muted", "system", "failures", "long-commands", "background", "transfers", "long-seconds"]),
     ("cursor", &["shape"]),
     ("scrollback", &["lines"]),
     ("shell", &["program", "args", "working-directory"]),
     ("env", &[]),
+    ("connections", &[]),
     ("macos", &["option-as-alt"]),
 ];
 
@@ -191,6 +221,14 @@ impl Config {
         };
         let mut r = Reader { root: &root, warnings: Vec::new() };
         r.check_unknown_keys();
+        #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+        {
+            config.sftp = sftp::read(&mut r);
+        }
+        #[cfg(not(any(test, all(feature = "sftp-preview", unix))))]
+        if r.boolean("sftp", "enabled") == Some(true) {
+            r.warn("sftp", "enabled", "本构建没有 SFTP 预览入口，请使用 sftp-preview 构建".into());
+        }
 
         if let Some(families) = r.strings("font", "family") {
             if families.len() > 16 {
@@ -217,6 +255,15 @@ impl Config {
         if let Some(padding) = r.number("window", "padding", 0.0, 200.0) {
             config.window.padding = padding as f32;
         }
+        if let Some(enabled) = r.boolean("workspace", "restore-layout") {
+            config.restore_layout = enabled;
+        }
+        if let Some(value) = r.integer("memory", "managed-mib", 128, 4096) {
+            config.memory.managed_mib = value;
+        }
+        if let Some(value) = r.integer("memory", "mapped-font-mib", 64, 4096) {
+            config.memory.mapped_font_mib = value;
+        }
 
         if let Some(name) = r.string("appearance", "theme") {
             match theme::Theme::parse(&name) {
@@ -230,6 +277,7 @@ impl Config {
             ("failures", &mut config.notifications.failures),
             ("long-commands", &mut config.notifications.long_commands),
             ("background", &mut config.notifications.background),
+            ("transfers", &mut config.notifications.transfers),
         ] {
             if let Some(value) = r.boolean("notifications", key) {
                 *slot = value;
@@ -312,7 +360,19 @@ impl Config {
             Some(_) => r.warn("macos", "option-as-alt", "可以是 true、false、\"left\"、\"right\"".into()),
         }
 
+        // 引导阶段未初始化进程池；独立额度先保护新增持久数据，发布前 adopt。
+        if root.get("connections").is_some() {
+            let pool = crate::resources::configuration(config.memory.managed_mib * 1024 * 1024);
+            config.connections = profiles::Profiles::parse(&root, &pool, &mut r.warnings);
+        }
         (config, r.warnings)
+    }
+
+    pub fn admit_connections(&mut self, warnings: &mut Vec<String>) {
+        if let Err(error) = self.connections.adopt(&crate::resources::current()) {
+            self.connections = profiles::Profiles::default();
+            warnings.push(error.into());
+        }
     }
 
     /// 环境变量优先于配置文件，方便临时试一下
@@ -359,6 +419,15 @@ struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
+    fn integer(&mut self, section: &str, key: &str, min: i64, max: i64) -> Option<usize> {
+        match self.get(section, key)? {
+            Value::Integer(value) if (min..=max).contains(value) => Some(*value as usize),
+            _ => {
+                self.warn(section, key, format!("需要 {min} 到 {max} 的整数"));
+                None
+            }
+        }
+    }
     fn warn(&mut self, section: &str, key: &str, message: String) {
         self.warnings.push(format!("[{section}] {key}：{message}"));
     }
@@ -373,7 +442,7 @@ impl<'a> Reader<'a> {
                 self.warnings.push(format!("“{section}”应该是一个分组 [{section}]"));
                 continue;
             };
-            if section == "env" || section == "keybindings" {
+            if section == "env" || section == "keybindings" || section == "connections" {
                 continue;
             }
             for (key, _) in &table.entries {
@@ -557,6 +626,27 @@ palette = ["#345678"]
     #[test]
     fn empty_file_is_default() {
         assert_eq!(Config::parse(""), (Config::default(), vec![]));
+    }
+
+    #[test]
+    fn layout_persistence_is_explicit_and_type_checked() {
+        let (config, warnings) = Config::parse("[workspace]\nrestore-layout=true");
+        assert!(config.restore_layout);
+        assert!(warnings.is_empty());
+        let (config, warnings) = Config::parse("[workspace]\nrestore-layout='true'");
+        assert!(!config.restore_layout);
+        assert_eq!(warnings.len(), 1);
+    }
+    #[test]
+    fn shared_memory_limits_are_bounded_integers() {
+        let (config, warnings) = Config::parse("[memory]\nmanaged-mib=128\nmapped-font-mib=64");
+        assert!(warnings.is_empty());
+        assert_eq!(config.memory, MemoryConfig { managed_mib: 128, mapped_font_mib: 64 });
+        for value in ["127", "4097", "512.5", "true", "'512'", "nan", "-1"] {
+            let (config, warnings) = Config::parse(&format!("[memory]\nmanaged-mib={value}"));
+            assert_eq!(config.memory, MemoryConfig::default());
+            assert!(!warnings.is_empty());
+        }
     }
 
     #[test]

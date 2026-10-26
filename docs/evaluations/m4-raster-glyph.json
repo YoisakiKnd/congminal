@@ -1,0 +1,753 @@
+{
+  "method": "seven glyph generation paths using fixed system Menlo and Apple Color Emoji plus bundled Terminus; font construction excluded from probe/timing; full pixel checksums, placement and size compared; output plus temporary requested allocation and realloc overlap; separate uninstrumented timing builds, five balanced pairs; no concurrent performance jobs",
+  "source_sha256": {
+    "before": {
+      "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+      "src/session.rs": "91e53e58e0705ce496fd64b254deeccdeda26e913a01283af7ea2120bec719d1",
+      "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+      "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+      "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+      "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+      "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+      "src/render.rs": "9e1e0deda0e0ebbf653a0cf422a3d8a94169fa291e67e90daebeb854b8772daf",
+      "src/workspace.rs": "44f054f33aaf0d270f1a29ec6d58613a6aef60931a31df70be896131cc279139",
+      "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+      "src/main.rs": "764443cbaf6e1fb887924031893c576d06c59774d18ce1cea6e0cf7d906fda7d",
+      "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+      "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+      "src/resources.rs": "e722bc8f912eb3b2da76dda27cc9d2e804085b86bce5725bd0ef53a926ef279b",
+      "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+      "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+      "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+      "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+      "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+      "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+      "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+      "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+      "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+      "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+      "src/config/mod.rs": "bc164e408efe7f828d070307fde38cd14d14b00586f539630e7018012672c5b2",
+      "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+      "src/resources/budget.rs": "6cb677c394f5a061b25b50cc52d2c5d6e2f666d678352fd0199a39854430d6c4",
+      "src/resources/tracked.rs": "fa3b6b8d5306d7ffa7253d4869e433c7ef664cd54fc74464391b9ad65ec131b4",
+      "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+      "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+      "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+      "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+      "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+      "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+      "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+      "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+      "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+      "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+      "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+      "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+      "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+      "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+      "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+      "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+      "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+      "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+      "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+      "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+      "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+      "src/font/psf.rs": "541f5897259e0da176f8783f7befaa380ae92373de9ef82a7b0c16891f14a3c9",
+      "src/font/cache.rs": "cf7180e61384e0f7ee597018c2eee6244ca52fa39c6ed2327a7daeb7f5652876",
+      "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+      "src/font/color.rs": "732de0224d71fc1b3b7b76bb7d897a39eab96975c2d84b5f69899e0b0eefc803",
+      "src/font/gsub.rs": "7ed0fda273e1e25d14fce626fb266549ffb98c0081e48fba05655059dace0f28",
+      "src/font/mod.rs": "9a590c2255bc7eedcb4015a8fba4f34303dc1037fd73c0c78caf0b4ff269f6dd",
+      "src/font/mmap.rs": "abf5db0f94dbee529d1581ae393ff6245960210af2e41ee89ed068753ff26aee",
+      "src/font/ttf.rs": "cd1acc2b3ed55db094b0b0fecd52be4e49883be4dd011fac4f5cdcfaf4639390",
+      "src/font/raster.rs": "a94481158a2eb575c5124e774ad2b342c322891b46b695dee9e8c78958738d46",
+      "src/font/morx.rs": "22cc7ffd21132c73107ffb413af3c123fa208b5ac6ce681353fc03c01150b2af"
+    },
+    "after": {
+      "src/links.rs": "845ac65941aeba6cffe1c927f55b1e282b2e9e4017cb7cf40fafb659248e0f72",
+      "src/session.rs": "91e53e58e0705ce496fd64b254deeccdeda26e913a01283af7ea2120bec719d1",
+      "src/action.rs": "30038d5ae5d34c77d060729881f7ed8d2fb004ef49e5be21d629e0464fb4894b",
+      "src/vt.rs": "3d3a4f82fa62e323aa4bfa20e17c4e570a034ac3a69550cf9a21a975236c3abe",
+      "src/ui.rs": "05d3bd6b5940deba0ec64d83818f603d68988335080cfb48bb970cf178687a66",
+      "src/shell.rs": "a7fee3554a5be4bf7fd338d7bab588939adf42003d5ac5b4f36a86b79203299b",
+      "src/tasks.rs": "91a4ad9a9ad3e729a42053e94be7e20019d2efedae2afe1357498c8c0b1f4238",
+      "src/render.rs": "9e1e0deda0e0ebbf653a0cf422a3d8a94169fa291e67e90daebeb854b8772daf",
+      "src/workspace.rs": "44f054f33aaf0d270f1a29ec6d58613a6aef60931a31df70be896131cc279139",
+      "src/selection.rs": "8349b9d207b290f44ecf1bf790c7c9514592529e83e0fd02b2096a63e583f13e",
+      "src/main.rs": "764443cbaf6e1fb887924031893c576d06c59774d18ce1cea6e0cf7d906fda7d",
+      "src/text.rs": "d4780c504a108c719b9fed3644b14767260be0d36e765681f25245fba768424d",
+      "src/input.rs": "f62c50deea4aab0ca81a774a9511670cacec9d6c7450f217999275cc0cefb33d",
+      "src/resources.rs": "e722bc8f912eb3b2da76dda27cc9d2e804085b86bce5725bd0ef53a926ef279b",
+      "src/launcher.rs": "3bc68134e715b85301cab668cdfe95f59a011369543817ae04273da8ac4a97da",
+      "src/notifications.rs": "c9a0a79a5f59d229cde8e4ebc1c14f92b31162aec6bc54eb42b6d7128a3e78db",
+      "src/mouse.rs": "fc6e8ac683565d9efb2200d71a62f7766fd3639ecd9dab188c87da55378f962c",
+      "src/search.rs": "7aec5023709c32547cfde4b85dd536255917357cb50a825d5cbfa254033085cf",
+      "src/hash.rs": "e4531503244a5fdd4aa234d28fb750ef66d699e4327c1b8fe422b4ff7978778d",
+      "src/pty/flow.rs": "ac27523529aa41b35624cf8e7618a1396bc26dd7d54a52f0d9872034648b7ec9",
+      "src/pty/unix.rs": "16a62133a859e78a9a4ba0b914f6ea8881bb091f90fef5fc5beb17dd20889fae",
+      "src/pty/mod.rs": "4f599b1881701c4de75dc49c4bb9eeca0ed18e33b0e83ec5b6c3797b4f69e8cc",
+      "src/pty/windows.rs": "109e392a2b0e76825ba1153b0f1f8467920dbaef1db6be5d7fb94e7a9b6e54d8",
+      "src/config/theme.rs": "33da820ae00758349f819b586276f9abba5333aeb3e49d54d5ec94502a78a7b5",
+      "src/config/mod.rs": "bc164e408efe7f828d070307fde38cd14d14b00586f539630e7018012672c5b2",
+      "src/config/toml.rs": "f86498d9ec0bfa67a112ab12685a67ac025389c1684c1fad33255b665550e765",
+      "src/resources/budget.rs": "ce8763333278b31f6bcb349851465f5df34f39bd10b0bfcbcbba8c5b2b73ffdf",
+      "src/resources/tracked.rs": "fa384eabf7af25296c85ed3a99a6c50e7529a9b28c0c819dbb04e7fcc372c4fe",
+      "src/platform/win32.rs": "51e4054a8f264410ff8cdd20e36c497ce0f3b46da7165b202a813d938504b855",
+      "src/platform/macos.rs": "e7cd71813d0526ec2247306b603c9848b3ce22f2a77776216b9b61a6c0ca8d6f",
+      "src/platform/mod.rs": "b54b11b73d00862c77ef7f1b6b4fb43e7f0f1f9b7f206a9fd3ae3f0846def2d3",
+      "src/platform/x11.rs": "a4c244d98f1f01dadf27c039d405d959445e0441f3d68043a8393d69b72783b7",
+      "src/workspace/layout.rs": "3c2a3636e0a4d59b931cd7730cadf08e918a877c8282d2e0d3b7c3d1df461161",
+      "src/term/emoji.rs": "3019d00447810ffdc699abd2441b85f728d8281f840bf46ad3761d511945da8a",
+      "src/term/reflow_reference.rs": "abbb24da71e3f9e2971a88254b8c692949bea1c16e8b66289c855f8f11fe8362",
+      "src/term/regression.rs": "79f55ac0aabf6079497f861beb9854d74da47ca83fd608f9d3c6b6c995e87b3f",
+      "src/term/compose.rs": "ff04feb34456d0d75533c00dc955cba60a3e69ee05bc09167363a53bf82b4d76",
+      "src/term/memory.rs": "9e14d4b2701398316ebf5bf32ee3a7ea07806cd3da7e4273ebe19689dd107f2f",
+      "src/term/grid.rs": "02803f5055a427c36b9f77aab4d508652ba1eea668829584461243ec1deee3c0",
+      "src/term/mod.rs": "ea7bf799ca31ad48f0a8af3c529de376a061cd1a5bd34b687e00ddeac2ac63e1",
+      "src/term/compose_table.rs": "61ce2c7fe91ebaa43071ed1faca27dff5b01a4c243bb16e45b7ef61eab8c5533",
+      "src/term/width.rs": "f25347ad4458851973588fe4afe764ea28321ad510d5699f26a77c95575f6cfb",
+      "src/term/reflow.rs": "226f8c2f65e6e5758caaaa22c429146e867dd9ca79c3d6ccab51d0b7dadebe31",
+      "src/term/width_table.rs": "cac4048330432a86fc6dc3d925ec80a3a44cb447bd8f40ce92cd801079939e81",
+      "src/term/memory/stepped.rs": "cdef7e0f12fd84642d74cae4b6cf17dc04cb5e143609fbd8680431c5185713e8",
+      "src/term/reflow/stream.rs": "c643dcf6421e204a3891c74b949080ceb7a3fd2eacbbc556aea635eb311367e2",
+      "src/image/inflate.rs": "287986d20efdd0d601cf4477d27b4d36678e7187509afaf92553a8c2fd6c3665",
+      "src/image/mod.rs": "1ad2697eb0ff292b421fa5e8e9611a9aabdc267c4f81df434c2d0089b128f1e3",
+      "src/image/png.rs": "f41641e3e771203b83be0bd531d6a4fa6b4c72d8e1ac6326e6ac0d6d8dfb3078",
+      "src/font/psf.rs": "541f5897259e0da176f8783f7befaa380ae92373de9ef82a7b0c16891f14a3c9",
+      "src/font/cache.rs": "cf7180e61384e0f7ee597018c2eee6244ca52fa39c6ed2327a7daeb7f5652876",
+      "src/font/discover.rs": "715749d245bfc64efd5c97b6143cad21987cf525c22f5f5038dbb110053d5c76",
+      "src/font/color.rs": "a36a801b358af627806fa92eebdeef27c43053a55b3b4e2823f693f0621cc0cb",
+      "src/font/gsub.rs": "7ed0fda273e1e25d14fce626fb266549ffb98c0081e48fba05655059dace0f28",
+      "src/font/mod.rs": "e55fd57fb73e7b4f1b28d2ec78c37c57780c9e4963889d22a97f1de3840d885b",
+      "src/font/mmap.rs": "27bf9a80c3969e40d9b4029473b1a46780e67992a53905a1ffe2d276880febbd",
+      "src/font/ttf.rs": "05bce1f331b4f0fbaeea31f48251458db99430b65ed3d4f0023392867871041d",
+      "src/font/raster.rs": "8d8b457605048131fa47e36cb827534c99e9e8f3dfea51f48ee644672992ea9f",
+      "src/font/morx.rs": "22cc7ffd21132c73107ffb413af3c123fa208b5ac6ce681353fc03c01150b2af"
+    }
+  },
+  "fixtures": {
+    "/System/Library/Fonts/Menlo.ttc": "f2d400484a6aace67980730ec0a9ef24ce9e535a2604f118e6fdc2510021b85f",
+    "/System/Library/Fonts/Apple Color Emoji.ttc": "12bc8221a908c5bcf05f0fce940d3c3f6e9d09d8d806ffe31a969b4ac9be8f9e"
+  },
+  "test_injection": "\n#[cfg(test)] mod measured_raster_workload {\n use super::*;\n fn face(path:&str)->ttf::Face{load_face(&FaceInfo{path:path.into(),index:0,families:vec![],weight:400,italic:false}).unwrap()}\n #[test] fn measure_raster_workload(){\n  let mode=std::env::var(\"RASTER_MODE\").unwrap();let label=std::env::var(\"RASTER_LABEL\").unwrap();\n  for name in [\"ascii\",\"compound\",\"bold\",\"large\",\"layers\",\"bitmap\",\"emoji\"] {\n   let pool=crate::resources::Budget::new(usize::MAX,usize::MAX);let _scope=crate::resources::Scope::enter(pool.clone());\n   let size=if name==\"large\"{1200.0}else{32.0};\n   let fonts=Fonts::outline(face(\"/System/Library/Fonts/Menlo.ttc\"),None,vec![],vec![],size,1.0,String::new());\n   let Source::Outline(outline)=&fonts.source else{unreachable!()};let font=&outline.regular;\n   let emoji=if name==\"emoji\"{Some(face(\"/System/Library/Fonts/Apple Color Emoji.ttc\"))}else{None};\n   let bitmap=psf::Font::parse(TERMINUS_16).unwrap();\n   let input=pool.snapshot().used;let initial_peak=pool.snapshot().peak;\n   macro_rules! measure {($op:expr)=>{{\n    if mode==\"probe\" {\n     crate::raster_meter::start();let glyph=$op.unwrap();let(live,peak)=crate::raster_meter::stop();\n     let checksum=match &glyph.pixels{Pixels::Alpha(p)=>p.iter().fold(0xcbf29ce484222325u64,|v,&b|(v^b as u64).wrapping_mul(0x100000001b3)),Pixels::Color(p)=>p.iter().fold(0xcbf29ce484222325u64,|v,&b|(v^b as u64).wrapping_mul(0x100000001b3))};\n     let returned=pool.snapshot().used-input;let admitted=pool.snapshot().peak-input;\n     if label==\"after\"{assert!(peak>=0 && peak as usize<=admitted);}\n     eprintln!(\"RASTER_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"width\\\":{},\\\"height\\\":{},\\\"left\\\":{},\\\"top\\\":{},\\\"live_requested_bytes\\\":{live},\\\"peak_requested_bytes\\\":{peak},\\\"ledger_returned_bytes\\\":{returned},\\\"ledger_peak_bytes\\\":{admitted},\\\"initial_ledger_peak\\\":{initial_peak},\\\"checksum\\\":{checksum}}}\",glyph.width,glyph.height,glyph.left,glyph.top);\n     drop(glyph);assert_eq!(pool.snapshot().used,input);\n    }else{\n     drop($op.unwrap());let n=if name==\"large\"{20}else if name==\"emoji\"{100}else{1000};let start=std::time::Instant::now();\n     for _ in 0..n{let glyph=$op.unwrap();std::hint::black_box(&glyph);drop(glyph);}\n     eprintln!(\"RASTER_SAMPLE {{\\\"name\\\":\\\"{name}\\\",\\\"generate_drop_ns\\\":{},\\\"n\\\":{n}}}\",start.elapsed().as_nanos()/n);\n    }\n   }}}\n   match name{\n    \"ascii\"|\"large\"=>measure!(outline.render(font,font.glyph_index('A'),false,fonts.cell_width)),\n    \"compound\"=>measure!(outline.render(font,font.glyph_index('\u00e9'),false,fonts.cell_width)),\n    \"bold\"=>measure!(outline.render(font,font.glyph_index('A'),true,fonts.cell_width)),\n    \"layers\"=>measure!(outline.layered_glyph(font,font.glyph_index('A'),&[(font.glyph_index('A'),Some(0xffff0000)),(font.glyph_index('A'),Some(0x800000ff))],fonts.cell_width)),\n    \"bitmap\"=>measure!(bitmap_glyph(&bitmap,'A',0)),\n    \"emoji\"=>{let font=emoji.as_ref().unwrap();measure!(outline.color_glyph(font,font.glyph_index('\ud83d\ude00'),fonts.cell_width*2));},\n    _=>unreachable!()\n   }\n   drop(fonts);drop(emoji);assert_eq!(pool.snapshot().used,0);\n  }\n }\n}\n",
+  "allocator_injection": "\n#[cfg(test)]\nmod raster_meter {\n use std::{alloc::{GlobalAlloc,Layout,System},cell::Cell};\n thread_local! {static ON:Cell<bool>=const{Cell::new(false)};static LIVE:Cell<isize>=const{Cell::new(0)};static PEAK:Cell<isize>=const{Cell::new(0)};}\n fn count(n:isize){let _=ON.try_with(|v|if v.get(){LIVE.with(|l|{let n=l.get()+n;l.set(n);PEAK.with(|p|p.set(p.get().max(n)))})});}\n struct Meter;\n unsafe impl GlobalAlloc for Meter{\n  unsafe fn alloc(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn alloc_zeroed(&self,l:Layout)->*mut u8{let p=unsafe{System.alloc_zeroed(l)};if !p.is_null(){count(l.size()as isize);}p}\n  unsafe fn dealloc(&self,p:*mut u8,l:Layout){unsafe{System.dealloc(p,l)};count(-(l.size()as isize));}\n  unsafe fn realloc(&self,p:*mut u8,l:Layout,n:usize)->*mut u8{count(n as isize);let p=unsafe{System.realloc(p,l,n)};count(-((if p.is_null(){n}else{l.size()})as isize));p}\n }\n #[global_allocator]static ALLOC:Meter=Meter;\n pub fn start(){LIVE.with(|v|v.set(0));PEAK.with(|v|v.set(0));ON.with(|v|v.set(true));}\n pub fn stop()->(isize,isize){ON.with(|v|v.set(false));(LIVE.with(Cell::get),PEAK.with(Cell::get))}\n}\n",
+  "allocation": {
+    "before": {
+      "samples": [
+        {
+          "name": "ascii",
+          "width": 21,
+          "height": 24,
+          "left": 0,
+          "top": 6,
+          "live_requested_bytes": 504,
+          "peak_requested_bytes": 2984,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "initial_ledger_peak": 0,
+          "checksum": 801568014800206664
+        },
+        {
+          "name": "compound",
+          "width": 19,
+          "height": 27,
+          "left": 1,
+          "top": 4,
+          "live_requested_bytes": 513,
+          "peak_requested_bytes": 3477,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "initial_ledger_peak": 0,
+          "checksum": 7990634162048636738
+        },
+        {
+          "name": "bold",
+          "width": 22,
+          "height": 24,
+          "left": 0,
+          "top": 6,
+          "live_requested_bytes": 528,
+          "peak_requested_bytes": 2984,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "initial_ledger_peak": 0,
+          "checksum": 18114382979714916492
+        },
+        {
+          "name": "large",
+          "width": 682,
+          "height": 875,
+          "left": 21,
+          "top": 239,
+          "live_requested_bytes": 596750,
+          "peak_requested_bytes": 2984214,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "initial_ledger_peak": 0,
+          "checksum": 778282889556583877
+        },
+        {
+          "name": "layers",
+          "width": 21,
+          "height": 24,
+          "left": 0,
+          "top": 6,
+          "live_requested_bytes": 2016,
+          "peak_requested_bytes": 11312,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "initial_ledger_peak": 0,
+          "checksum": 14177875043807099415
+        },
+        {
+          "name": "bitmap",
+          "width": 8,
+          "height": 16,
+          "left": 0,
+          "top": 0,
+          "live_requested_bytes": 128,
+          "peak_requested_bytes": 192,
+          "ledger_returned_bytes": 0,
+          "ledger_peak_bytes": 0,
+          "initial_ledger_peak": 0,
+          "checksum": 16139728631744942567
+        },
+        {
+          "name": "emoji",
+          "width": 37,
+          "height": 37,
+          "left": 0,
+          "top": 0,
+          "live_requested_bytes": 5476,
+          "peak_requested_bytes": 14292,
+          "ledger_returned_bytes": 5476,
+          "ledger_peak_bytes": 14292,
+          "initial_ledger_peak": 0,
+          "checksum": 8470052532920735401
+        }
+      ],
+      "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 0.01s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"width\":21,\"height\":24,\"left\":0,\"top\":6,\"live_requested_bytes\":504,\"peak_requested_bytes\":2984,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"initial_ledger_peak\":0,\"checksum\":801568014800206664}\nRASTER_SAMPLE {\"name\":\"compound\",\"width\":19,\"height\":27,\"left\":1,\"top\":4,\"live_requested_bytes\":513,\"peak_requested_bytes\":3477,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"initial_ledger_peak\":0,\"checksum\":7990634162048636738}\nRASTER_SAMPLE {\"name\":\"bold\",\"width\":22,\"height\":24,\"left\":0,\"top\":6,\"live_requested_bytes\":528,\"peak_requested_bytes\":2984,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"initial_ledger_peak\":0,\"checksum\":18114382979714916492}\nRASTER_SAMPLE {\"name\":\"large\",\"width\":682,\"height\":875,\"left\":21,\"top\":239,\"live_requested_bytes\":596750,\"peak_requested_bytes\":2984214,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"initial_ledger_peak\":0,\"checksum\":778282889556583877}\nRASTER_SAMPLE {\"name\":\"layers\",\"width\":21,\"height\":24,\"left\":0,\"top\":6,\"live_requested_bytes\":2016,\"peak_requested_bytes\":11312,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"initial_ledger_peak\":0,\"checksum\":14177875043807099415}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"width\":8,\"height\":16,\"left\":0,\"top\":0,\"live_requested_bytes\":128,\"peak_requested_bytes\":192,\"ledger_returned_bytes\":0,\"ledger_peak_bytes\":0,\"initial_ledger_peak\":0,\"checksum\":16139728631744942567}\nRASTER_SAMPLE {\"name\":\"emoji\",\"width\":37,\"height\":37,\"left\":0,\"top\":0,\"live_requested_bytes\":5476,\"peak_requested_bytes\":14292,\"ledger_returned_bytes\":5476,\"ledger_peak_bytes\":14292,\"initial_ledger_peak\":0,\"checksum\":8470052532920735401}\n"
+    },
+    "after": {
+      "samples": [
+        {
+          "name": "ascii",
+          "width": 21,
+          "height": 24,
+          "left": 0,
+          "top": 6,
+          "live_requested_bytes": 504,
+          "peak_requested_bytes": 3152,
+          "ledger_returned_bytes": 504,
+          "ledger_peak_bytes": 3152,
+          "initial_ledger_peak": 0,
+          "checksum": 801568014800206664
+        },
+        {
+          "name": "compound",
+          "width": 19,
+          "height": 27,
+          "left": 1,
+          "top": 4,
+          "live_requested_bytes": 513,
+          "peak_requested_bytes": 4205,
+          "ledger_returned_bytes": 513,
+          "ledger_peak_bytes": 4205,
+          "initial_ledger_peak": 0,
+          "checksum": 7990634162048636738
+        },
+        {
+          "name": "bold",
+          "width": 22,
+          "height": 24,
+          "left": 0,
+          "top": 6,
+          "live_requested_bytes": 528,
+          "peak_requested_bytes": 3152,
+          "ledger_returned_bytes": 528,
+          "ledger_peak_bytes": 3152,
+          "initial_ledger_peak": 0,
+          "checksum": 18114382979714916492
+        },
+        {
+          "name": "large",
+          "width": 682,
+          "height": 875,
+          "left": 21,
+          "top": 239,
+          "live_requested_bytes": 596750,
+          "peak_requested_bytes": 2984382,
+          "ledger_returned_bytes": 596750,
+          "ledger_peak_bytes": 2984382,
+          "initial_ledger_peak": 0,
+          "checksum": 778282889556583877
+        },
+        {
+          "name": "layers",
+          "width": 21,
+          "height": 24,
+          "left": 0,
+          "top": 6,
+          "live_requested_bytes": 2016,
+          "peak_requested_bytes": 11248,
+          "ledger_returned_bytes": 2016,
+          "ledger_peak_bytes": 11248,
+          "initial_ledger_peak": 0,
+          "checksum": 14177875043807099415
+        },
+        {
+          "name": "bitmap",
+          "width": 8,
+          "height": 16,
+          "left": 0,
+          "top": 0,
+          "live_requested_bytes": 128,
+          "peak_requested_bytes": 128,
+          "ledger_returned_bytes": 128,
+          "ledger_peak_bytes": 128,
+          "initial_ledger_peak": 0,
+          "checksum": 16139728631744942567
+        },
+        {
+          "name": "emoji",
+          "width": 37,
+          "height": 37,
+          "left": 0,
+          "top": 0,
+          "live_requested_bytes": 5476,
+          "peak_requested_bytes": 14292,
+          "ledger_returned_bytes": 5476,
+          "ledger_peak_bytes": 14292,
+          "initial_ledger_peak": 0,
+          "checksum": 8470052532920735401
+        }
+      ],
+      "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.01s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"width\":21,\"height\":24,\"left\":0,\"top\":6,\"live_requested_bytes\":504,\"peak_requested_bytes\":3152,\"ledger_returned_bytes\":504,\"ledger_peak_bytes\":3152,\"initial_ledger_peak\":0,\"checksum\":801568014800206664}\nRASTER_SAMPLE {\"name\":\"compound\",\"width\":19,\"height\":27,\"left\":1,\"top\":4,\"live_requested_bytes\":513,\"peak_requested_bytes\":4205,\"ledger_returned_bytes\":513,\"ledger_peak_bytes\":4205,\"initial_ledger_peak\":0,\"checksum\":7990634162048636738}\nRASTER_SAMPLE {\"name\":\"bold\",\"width\":22,\"height\":24,\"left\":0,\"top\":6,\"live_requested_bytes\":528,\"peak_requested_bytes\":3152,\"ledger_returned_bytes\":528,\"ledger_peak_bytes\":3152,\"initial_ledger_peak\":0,\"checksum\":18114382979714916492}\nRASTER_SAMPLE {\"name\":\"large\",\"width\":682,\"height\":875,\"left\":21,\"top\":239,\"live_requested_bytes\":596750,\"peak_requested_bytes\":2984382,\"ledger_returned_bytes\":596750,\"ledger_peak_bytes\":2984382,\"initial_ledger_peak\":0,\"checksum\":778282889556583877}\nRASTER_SAMPLE {\"name\":\"layers\",\"width\":21,\"height\":24,\"left\":0,\"top\":6,\"live_requested_bytes\":2016,\"peak_requested_bytes\":11248,\"ledger_returned_bytes\":2016,\"ledger_peak_bytes\":11248,\"initial_ledger_peak\":0,\"checksum\":14177875043807099415}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"width\":8,\"height\":16,\"left\":0,\"top\":0,\"live_requested_bytes\":128,\"peak_requested_bytes\":128,\"ledger_returned_bytes\":128,\"ledger_peak_bytes\":128,\"initial_ledger_peak\":0,\"checksum\":16139728631744942567}\nRASTER_SAMPLE {\"name\":\"emoji\",\"width\":37,\"height\":37,\"left\":0,\"top\":0,\"live_requested_bytes\":5476,\"peak_requested_bytes\":14292,\"ledger_returned_bytes\":5476,\"ledger_peak_bytes\":14292,\"initial_ledger_peak\":0,\"checksum\":8470052532920735401}\n"
+    }
+  },
+  "runs": {
+    "before": [
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 3341,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 4216,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 3376,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 802866,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 4787,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 453,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 62305,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 0.04s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":3341,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":4216,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":3376,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":802866,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":4787,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":453,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":62305,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 857,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1630,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1265,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 486993,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 3179,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 324,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 44385,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":857,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1630,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1265,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":486993,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":3179,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":324,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":44385,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 857,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1505,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1287,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 446537,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 3095,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 324,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 44904,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":857,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1505,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1287,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":446537,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":3095,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":324,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":44904,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 865,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1476,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1306,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 492556,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 3117,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 330,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 45335,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":865,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1476,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1306,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":492556,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":3117,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":330,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":45335,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 867,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1652,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1293,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 450408,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 3118,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 333,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 44639,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 294 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":867,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1652,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1293,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":450408,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":3118,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":333,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":44639,\"n\":100}\n"
+      }
+    ],
+    "after": [
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 3165,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 4007,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 2845,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 799370,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 4596,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 134,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 62872,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.04s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":3165,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":4007,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":2845,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":799370,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":4596,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":134,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":62872,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 938,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1551,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1334,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 462904,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 3065,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 99,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 45063,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":938,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1551,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1334,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":462904,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":3065,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":99,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":45063,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 820,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1386,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1263,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 417512,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 3149,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 105,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 44744,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":820,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1386,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1263,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":417512,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":3149,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":105,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":44744,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 832,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1387,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1255,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 452497,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 3109,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 100,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 45311,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":832,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1387,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1255,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":452497,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":3109,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":100,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":45311,\"n\":100}\n"
+      },
+      {
+        "samples": [
+          {
+            "name": "ascii",
+            "generate_drop_ns": 856,
+            "n": 1000
+          },
+          {
+            "name": "compound",
+            "generate_drop_ns": 1481,
+            "n": 1000
+          },
+          {
+            "name": "bold",
+            "generate_drop_ns": 1266,
+            "n": 1000
+          },
+          {
+            "name": "large",
+            "generate_drop_ns": 406902,
+            "n": 20
+          },
+          {
+            "name": "layers",
+            "generate_drop_ns": 5656,
+            "n": 1000
+          },
+          {
+            "name": "bitmap",
+            "generate_drop_ns": 104,
+            "n": 1000
+          },
+          {
+            "name": "emoji",
+            "generate_drop_ns": 44603,
+            "n": 100
+          }
+        ],
+        "log": "\nrunning 1 test\ntest font::measured_raster_workload::measure_raster_workload ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 301 filtered out; finished in 0.02s\n\n    Finished `release` profile [optimized + debuginfo] target(s) in 0.00s\n     Running unittests src/main.rs (target/release/deps/congminal-39bfc86c907a150f)\nRASTER_SAMPLE {\"name\":\"ascii\",\"generate_drop_ns\":856,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"compound\",\"generate_drop_ns\":1481,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bold\",\"generate_drop_ns\":1266,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"large\",\"generate_drop_ns\":406902,\"n\":20}\nRASTER_SAMPLE {\"name\":\"layers\",\"generate_drop_ns\":5656,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"bitmap\",\"generate_drop_ns\":104,\"n\":1000}\nRASTER_SAMPLE {\"name\":\"emoji\",\"generate_drop_ns\":44603,\"n\":100}\n"
+      }
+    ]
+  },
+  "median": {
+    "before": {
+      "ascii": 865,
+      "compound": 1630,
+      "bold": 1293,
+      "large": 486993,
+      "layers": 3118,
+      "bitmap": 330,
+      "emoji": 44904
+    },
+    "after": {
+      "ascii": 856,
+      "compound": 1481,
+      "bold": 1266,
+      "large": 452497,
+      "layers": 3149,
+      "bitmap": 104,
+      "emoji": 45063
+    }
+  }
+}
