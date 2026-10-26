@@ -44,6 +44,22 @@ enabled = false
 # 不写时沿用系统 SSH 配置；以下设置只影响独立 SFTP，不改变终端 ssh 命令。
 # ssh-config = "/absolute/path/ssh_config"
 
+# 本地只读 Git 面板（右栏 Git 页，Primary+I 打开右栏后点标签）。
+# 只执行 rev-parse/status/symbolic-ref/diff，不改索引、不执行任何写操作。
+# 面板可见且窗口聚焦时才查询：切换焦点/窗口变化后去抖 0.3 秒，
+# 两次查询至少间隔 refresh-seconds；同仓库的多个窗格复用同一份结果。
+[git]
+enabled = true
+# 不写时用 PATH 中的 git；也可以写绝对路径。
+# program = "/usr/bin/git"
+refresh-seconds = 2
+# 单次查询超时，超时会杀掉子进程并保留上一次结果。
+timeout-seconds = 20
+# 一次快照最多列出多少个变更文件，超出标记“已截断”。
+max-files = 2000
+# 单次 diff 的读取上限（MiB），超出部分丢弃并提示已截断。
+diff-mib = 8
+
 [memory]
 # 共享准入额度，128–4096 MiB；不是完整堆/RSS 上限。下次启动生效。
 # 当前计入：画布容量/扩容峰值、PTY 队列容量预留、字形缓存计费、字体堆回退。

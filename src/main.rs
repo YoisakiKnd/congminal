@@ -17,6 +17,7 @@
 mod action;
 mod config;
 mod font;
+mod git;
 mod hash;
 mod image;
 mod input;
@@ -25,6 +26,7 @@ mod links;
 mod local_directory;
 mod mouse;
 mod notifications;
+mod path_text;
 mod platform;
 mod process_launch;
 mod pty;
@@ -311,7 +313,8 @@ impl Congminal {
             | Action::NextPane
             | Action::PreviousPane
             | Action::ToggleLeftSidebar
-            | Action::ToggleRightSidebar => return false,
+            | Action::ToggleRightSidebar
+            | Action::ShowGitPanel => return false,
             Action::Ignore => {}
             Action::PassThrough => return false,
         }

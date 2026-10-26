@@ -114,34 +114,7 @@ impl Request {
     }
 }
 fn label(name: &OsStr, prefix: &str) -> String {
-    use std::fmt::Write;
-    let mut output = String::with_capacity(name.len() * 4 + prefix.len());
-    output.push_str(prefix);
-    let mut bytes = name.as_encoded_bytes();
-    while !bytes.is_empty() {
-        let (valid, bad) = match std::str::from_utf8(bytes) {
-            Ok(s) => (s.len(), 0),
-            Err(e) => (e.valid_up_to(), e.error_len().unwrap_or(bytes.len() - e.valid_up_to())),
-        };
-        for c in std::str::from_utf8(&bytes[..valid]).unwrap().chars() {
-            if c == '\\' {
-                output.push_str("\\\\");
-            } else if c.is_control() && c.is_ascii() {
-                write!(output, "\\x{:02x}", c as u32).unwrap();
-            } else if c.is_control()
-                || matches!(c,'\u{061c}'|'\u{200b}'..='\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2060}'..='\u{206f}'|'\u{feff}')
-            {
-                write!(output, "\\u{{{:x}}}", c as u32).unwrap();
-            } else {
-                output.push(c);
-            }
-        }
-        for b in &bytes[valid..valid + bad] {
-            write!(output, "\\x{b:02x}").unwrap();
-        }
-        bytes = &bytes[valid + bad..];
-    }
-    output
+    crate::path_text::escape(name.as_encoded_bytes(), prefix)
 }
 
 #[cfg(test)]
