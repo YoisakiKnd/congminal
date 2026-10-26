@@ -148,6 +148,7 @@ mod interoperability {
             self.input.flush()
         }
     }
+    #[cfg(unix)]
     #[test]
     #[ignore = "本地sftp-server：建目录/重命名/删除的协议互操作；无SSH/网络，文件都在临时目录"]
     fn local_subsystem_creates_renames_and_removes_entries() {
