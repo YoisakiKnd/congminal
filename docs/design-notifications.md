@@ -6,8 +6,8 @@
 
 | 来源 | 触发 | 文案（应用内） | 系统横幅（ASCII 模板） |
 | --- | --- | --- | --- |
-| `Source::Command(id)` | 命令完成/失败、长命令、后台结束 | 原有文案 | `... failed`/`completed` |
-| `Source::Session` | 会话结束 | 原有文案 | 原有模板 |
+| `Source::Command(id)` | 命令完成/失败、长命令、后台结束（单窗口与**每个工作区窗格**都结算） | 原有文案 | `... failed`/`completed` |
+| `Source::Session` | 会话结束（单窗口与窗格退出） | 原有文案 | 原有模板 |
 | `Source::Transfers` | 传输结局（`sftp-preview` 构建） | 原有汇总文案 | 原有模板 |
 | `Source::Git` | 暂存、取消暂存、提交成功或失败 | `Git · 暂存完成` / `Git · 提交失败` | `Git: write completed` / `failed` |
 | `Source::Monitor` | 采样从正常转为失败（平台不支持、额度不足、任务失败） | `监控 · 采样失败` | `Monitor: sampling failed` |
@@ -21,6 +21,7 @@
 
 ## 管线
 
+0. **按主机静音**：`mute-hosts` 命中来源主机时整条通知不产生（不排队、不计数、不进合并窗口）。主机取自该窗格 shell 报告的 OSC 7 目录（状态栏显示的正是它）或 SSH 配置档的 `host`；本地命令、本地 Git 与监控没有主机维度，永不被主机规则拦掉。比较为大小写不敏感的精确匹配，最多 32 条、每条不超过 253 字节。
 1. **来源开关**：`Settings` 里的 `git`、`monitor` 复用 `transfers`，`muted` 全局静音。被关掉的来源直接丢弃，不排队、不补发。
 2. **固定窗口限速**：10 秒内最多 `burst`（默认 12）条进入本地记录；超出只累加 `throttled` 计数，状态栏显示“限速丢弃N”。
 3. **同类合并**：`Git`、`SFTP`、`Monitor` 这三类无载荷事件，同来源 + 同类别 + 同动作词且间隔小于 `dedupe-seconds`（默认 5）时合并成一条并累加 `repeat`，文案追加 `×N`。命令与传输带载荷，不参与合并。
@@ -52,11 +53,17 @@ system = false
 dedupe-seconds = 5    # 0 视为 1，同类事件在该窗口内合并
 burst = 12            # 10 秒窗口内的本地通知上限，至少 1
 hide-context = false  # 隐藏状态栏与状态页里的主机名、工作目录
+mute-hosts = []       # 按主机静音，大小写不敏感，最多 32 条
 ```
+
+工作区模式下每个窗格各自持有通知中心：后台窗格的命令完成/失败与窗格退出只进**它自己**的列表（切到该窗格可见）并立刻走系统通知闸门，不会把当前窗格的列表塞满。
 
 ## 测试
 
-- `notifications::tests`：同类合并与 `×N`、限速计数与不补发、按来源静音、SFTP 文案与 ASCII 系统模板、`current()`/`recent_notices()` 顺序（18 项含传输侧）。
+- `notifications::tests`：同类合并与 `×N`、限速计数与不补发、按来源静音、按主机静音（大小写不敏感、无主机事件不受影响）、SFTP 文案与 ASCII 系统模板、`current()`/`recent_notices()` 顺序（19 项含传输侧）。
+- `config::tests::mute_hosts_are_normalized_deduped_and_bounded`：去空白、统一小写、去重、空串给警告、超 32 条只保留上限并提示。
+- `integration_tests::notices_from_a_muted_host_are_dropped`：命中 `mute-hosts` 的 OSC 7 主机不产生通知，换一台主机后同一条事件照常上报。
+- `workspace::tests::workspace_reports_command_completions_from_every_pane`：工作区里后台窗格与前台的命令完成各进自己的通知中心（此前工作区模式下完全不上报）。
 - `workspace::tests::git_panel_stages_and_commits_through_the_sidebar`：真实仓库暂存与提交后，通知中心出现 `Git · 暂存完成` 与 `Git · 提交完成`，且文案不含文件名与提交正文。
 - `workspace::tests::status_page_notice_rows_jump_to_the_related_page_and_monitor_failure_is_reported_once`：状态页点击 Git 通知行切到 Git 页并重新打开面板；监控失败只上报一次。
 - `workspace::tests::monitor_failure_notice_fires_once_per_failure_and_rearms_after_recovery`：失败持续不重复、恢复后重新置位。
@@ -73,7 +80,8 @@ hide-context = false  # 隐藏状态栏与状态页里的主机名、工作目�
 
 ## 未验收
 
-- 按主机静音（现在只有按来源类别静音）。
+- SSH 认证失败、连接断开与重连事件尚未接入通知中心（只有会话结束）。
+- 主机名依赖 OSC 7 或 SSH 配置档：远端 shell 不报告目录时无法按主机静音，也不会猜测主机。
 - 命令正文（状态栏之外的输入行本身）无法隐藏；`hide-context` 只覆盖摘要行。
 - 真实系统通知权限、送达与峰值内存（M3 遗留，需要真机）。
 - 工作区模式下没有通知浮层，只有状态页的行；键盘浏览浮层仍只在单窗口可用。

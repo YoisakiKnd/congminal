@@ -188,6 +188,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
             "dedupe-seconds",
             "burst",
             "hide-context",
+            "mute-hosts",
         ],
     ),
     ("cursor", &["shape"]),
@@ -320,6 +321,30 @@ impl Config {
         }
         if let Some(value) = r.number("notifications", "burst", 1.0, 1000.0) {
             config.notifications.burst = value as u32;
+        }
+        if let Some(list) = r.strings("notifications", "mute-hosts") {
+            let mut hosts: Vec<String> = Vec::new();
+            for entry in list {
+                let host = entry.trim();
+                if host.is_empty() || host.len() > crate::notifications::MUTE_HOST_BYTES {
+                    r.warn("notifications", "mute-hosts", format!("“{entry}”不是有效主机名，已忽略"));
+                    continue;
+                }
+                if hosts.len() == crate::notifications::MUTE_HOSTS {
+                    r.warn(
+                        "notifications",
+                        "mute-hosts",
+                        format!("最多 {} 个主机，其余已忽略", crate::notifications::MUTE_HOSTS),
+                    );
+                    break;
+                }
+                if hosts.iter().any(|kept| kept.eq_ignore_ascii_case(host)) {
+                    continue;
+                }
+                // 统一小写后按大小写不敏感比较，配置里的大小写不影响命中。
+                hosts.push(host.to_ascii_lowercase());
+            }
+            config.notifications.mute_hosts = hosts;
         }
         let overrides = &mut config.color_overrides;
         for (key, slot) in [
@@ -634,6 +659,29 @@ burst = 0
         let (default, warnings) = Config::parse("");
         assert!(!default.notifications.hide_context);
         assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    #[test]
+    fn mute_hosts_are_normalized_deduped_and_bounded() {
+        let (config, warnings) = Config::parse(
+            r#"
+[notifications]
+mute-hosts = [" Web-1 ", "web-1", "", "db.example.com"]
+"#,
+        );
+        // 去空白、统一小写、去重；空串被忽略并给出一条警告。
+        assert_eq!(config.notifications.mute_hosts, vec!["web-1".to_string(), "db.example.com".to_string()]);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        // 单个字符串也接受。
+        let (single, warnings) = Config::parse("[notifications]\nmute-hosts = \"host-a\"\n");
+        assert_eq!(single.notifications.mute_hosts, vec!["host-a".to_string()]);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        // 超长列表只保留上限条数，并提示其余被忽略。
+        let many: Vec<String> = (0..40).map(|i| format!("\"host-{i}\"")).collect();
+        let (bounded, warnings) = Config::parse(&format!("[notifications]\nmute-hosts = [{}]\n", many.join(",")));
+        assert_eq!(bounded.notifications.mute_hosts.len(), crate::notifications::MUTE_HOSTS);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        assert!(warnings[0].contains("最多"), "{warnings:?}");
     }
 
     #[test]

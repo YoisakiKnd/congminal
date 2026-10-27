@@ -325,6 +325,14 @@ pub(super) struct State {
     _memory: Lease,
 }
 impl State {
+    /// 当前连接的主机名，用于按主机静音；本地连接或尚未连接时没有主机。
+    fn host(&self) -> Option<&str> {
+        let (_, profiles, index) = self.attempted.as_ref()?;
+        match &profiles.get(*index)?.connection {
+            crate::config::profiles::Connection::Ssh(ssh) => Some(ssh.host.as_str()),
+            crate::config::profiles::Connection::Local(_) => None,
+        }
+    }
     fn new(paths: Paths<'_>, notify: Notify) -> Result<Self, Failure> {
         Options::validate(paths)?;
         let service = Service::new(&crate::resources::current(), notify).map_err(|_| Failure::Budget)?;
@@ -485,7 +493,7 @@ impl Workspace {
         Ok(ticket)
     }
     /// 远程写操作失败进通知中心；取消与超时不走这里。
-    fn submit_remote_write_failure(&mut self, op: Op) {
+    fn submit_remote_write_failure(&mut self, op: Op, host: Option<&str>) {
         let label = match op {
             Op::NewFolder => "新建目录",
             Op::Rename => "重命名",
@@ -496,6 +504,7 @@ impl Workspace {
             crate::notifications::Category::SftpWrite,
             label,
             crate::shell::Outcome::Exit(1),
+            host,
         );
     }
 
@@ -565,20 +574,24 @@ impl Workspace {
                                     Op::Delete => ("删除", "已删除"),
                                 };
                                 self.notice(done);
+                                let host = state.host().map(str::to_owned);
                                 self.submit_notice(
                                     crate::notifications::Source::Sftp,
                                     crate::notifications::Category::SftpWrite,
                                     label,
                                     crate::shell::Outcome::Exit(0),
+                                    host.as_deref(),
                                 );
                             }
                             Err(error) => {
                                 state.error = Some(error);
-                                self.submit_remote_write_failure(mutation.op);
+                                let host = state.host().map(str::to_owned);
+                                self.submit_remote_write_failure(mutation.op, host.as_deref());
                             }
                             _ => {
                                 state.error = Some(Failure::Protocol);
-                                self.submit_remote_write_failure(mutation.op);
+                                let host = state.host().map(str::to_owned);
+                                self.submit_remote_write_failure(mutation.op, host.as_deref());
                             }
                         },
                         // 用户主动取消不算失败，不发通知。

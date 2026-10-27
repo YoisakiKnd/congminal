@@ -140,6 +140,9 @@ option-as-alt = true
 # 系统适配：macOS osascript / Linux notify-send / Windows PowerShell .NET NotifyIcon。
 # 调用有 5 秒超时、每 10 秒最多一次，失败在通知中心显示；不会发送命令、路径或输出正文。
 [notifications]
+# 按主机静音：命中这些主机名的通知完全不产生（大小写不敏感，最多 32 个）。
+# 主机名取自 shell 报告的 OSC 7 目录或 SSH 配置档；本地命令、本地 Git 与监控没有主机维度。
+# mute-hosts = ["web-1", "db.example.com"]
 # SFTP 候选入口启用后，控制传输结局通知；不包含文件路径或主机名。
 transfers = true
 # Git 写操作与监控采样失败的通知；关掉后对应事件不再进通知中心。
