@@ -43,15 +43,25 @@
 | 连接关闭/回收 | 面板切到 `Failure::Connection`，写任务随 Service 关闭一起取消 |
 | 删除非空目录 | 服务端返回错误（`Rmdir` 不递归），目录内容保留，面板显示错误 |
 | 重命名目标已存在 | 不替换（`replace = false`），返回服务端错误，原目标内容保留 |
+| 清理残留临时文件 | 第一次点击只起 10 秒确认窗口，第二次才提交删除；窗口过期、换选记录或关闭面板都不删 |
 | 关闭应用 | 在途写任务取消，票据归还，`Drop` 不重试 |
 
 ## 后台任务、线程、子进程、缓存与数据所有权
 
 - 不新增线程：写请求进入既有 SFTP Service（2 活动 / 64 等待 / 16 MiB 子池），完成结果由既有 `service.take()` 在 `sftp_tick` 中取出。
 - 不新增子进程：仍由 helper/OpenSSH 会话承载；helper 缺失时立刻失败为 `Failure::Authentication`。
-- 缓存：只有一个 `Mutation` 槽位（票据、绑定、认证句柄、操作类型、额度票据）；名称输入上限 1024 字节、预编辑 256 字节，均按 `Kind::Sftp` 计费。没有跨请求缓存。
+- 缓存：只有一个 `Mutation` 槽位（票据、绑定、认证句柄、操作类型、来源、额度票据）；清理残留复用同一槽位，不额外占额度；名称输入上限 1024 字节、预编辑 256 字节，均按 `Kind::Sftp` 计费。没有跨请求缓存。
 - 数据所有权：`Workspace` 持有 `remote_files::State`；`State` 持有 `form`/`confirm`/`mutation`；`Mutation` 持有 `Ticket` 与 `Authentication`；Service 持有实际请求与结果。成功后的目录重读走既有 `submit_remote_directory`，票据仍是原目录票据。
 - 认证归属：`Mutation.binding` 与目录视图同源（窗格 id、profile、generation），换窗格/换配置档后的迟到结果直接丢弃。
+
+## 残留临时文件
+
+上传先把内容写到目标目录下的 `.congminal-<32 位十六进制>.part`，确认长度后再改名成目标名。取消、失败或提交结果不确定时，这个临时文件可能留在远端；传输记录会记下它的完整路径（`transfer_state::Status::partial`）。
+
+- 列表：任务结束后若还记着临时文件，金额行末尾出现 `· 残留`。
+- 详情：`[详情]` 的报告里有一行「部分文件候选（不保证存在）：<完整路径>」，这是唯一显示完整路径的地方（侧栏只有 30 列左右）。
+- 清理：选中该记录后第三行出现 `[清理]`，第一次点击把按钮变成 `[确认]` 并起 10 秒窗口，第二次点击才提交一次 `remove`（只删这一个路径，不递归、不碰目标文件）；成功后记录上的临时路径被清掉、提示「已删除残留临时文件」，失败则提示原因且记录保留。
+- 边界：`[清理]` 只在记录已结束且有临时路径时可用；没有残留时按钮不可点。确认窗口过期、换选到别的记录、面板关闭都会作废确认。清理走的是文件页删除同一条 `Action::Remove` 通道，因此同样受 `mutation_path` 校验、10 秒超时与连接关闭取消约束。
 
 ## 协议层与薄适配
 
@@ -87,11 +97,16 @@ CONGMINAL_TEST_SFTP_SERVER=/usr/lib/openssh/sftp-server \
   cargo test --locked local_subsystem_creates_renames_and_removes_entries -- --ignored
 cargo test --locked directory_sort                 # 四种排序模式的条目顺序
 cargo test --locked sort_button_cycles             # 面板点击换档、重读与状态栏提示
+cargo test --locked residual_temp_file             # 残留标记、二次确认、清理提交与额度归还
+cargo test --locked cleanup_confirmation           # 确认窗口过期与换选记录作废
+cargo test --locked forgetting_the_partial         # 清掉记录后不再提示残留
 CONGMINAL_TEST_SFTP_SERVER=/usr/lib/openssh/sftp-server \
   cargo test --locked local_subsystem_sorts_directory_entries_the_way_the_panel_asks -- --ignored
 ```
 
 覆盖：字符经 `Key::Char` 进入名称且 Ctrl 组合被忽略、新建目录成功与重名失败（失败后通道失效）、重命名成功与目标已存在不覆盖、删除文件/空目录成功与非空目录被拒、提交后额度归零；面板侧覆盖无选中时改名/删除被拒、删除确认行含主机与路径且 `Esc` 不留任务、名称 1024 字节封顶与非法名称本地拒绝、合法名称进入在途任务并在 helper 缺失时留下 `Failure::Authentication`、输入期间键盘不写入终端、窄侧栏保留名称末尾。
+
+残留覆盖：结束且记录了临时文件的记录才启用 `[清理]`，没有残留时不可点；第一次点击只起确认窗口、不提交任务，第二次点击提交 `Action::Remove`（`Origin::Cleanup(记录)`）；确认窗口过期后点击不会删除而是重新起窗口；换选记录后确认作废；`Status::forget_partial` 清掉后不再显示残留。
 
 排序覆盖：`Scan::finish` 在合成 NAME 页上对四种模式逐一比对顺序（含目录在前、同键按名字）、按钮循环顺序；面板侧点击四次逐档核对 `State::sort`、状态栏提示与“视图换成在途状态”（旧结果不会冒充新顺序）；本地 `sftp-server` 互操作测试按 `名称↑`/`名称↓`/`大小↓`/`时间↓` 读取真实目录并核对顺序。
 
@@ -116,6 +131,8 @@ cargo test --locked name_input_is_bounded
 - 没有递归删除、批量删除、拖拽移动、上传覆盖同一批的远端覆盖确认；删除只做单条目。
 - 重命名只改名称，不支持跨目录移动（目标恒为当前目录）。
 - 写操作没有进度条：远端确认期间只显示等待提示，长延迟目录只能等超时。
+- 残留清理一次只处理一条记录，也不清理“记录已被清除”后留下的临时文件（清除记录不会删除文件，这是既有约定）；下载的本地暂存残留同样不在本批范围。
+- 清理成功后只清掉记录上的标记，不再回读目录；远端若同时有同名新文件，由用户在文件页确认。
 - 排序模式不落盘（重开面板回到 `名称↑`），也没有“按扩展名/权限”排序；切换模式会重读一次目录，超大目录仍受既有 512 项/8192 次扫描上限约束。
 - 真实 SSH 主机回环（自建 sshd + helper）未验证：本机没有 `sshd`，只有 `sftp-server`；协议层与面板层分别用本地子系统和合成目录验证，不能替代真机验收。
 - Windows 未运行；交叉编译不算真机验证。

@@ -2682,7 +2682,8 @@ impl App for Workspace {
         self.chrome_dirty = false;
         self.full = false;
         self.last_draw = Instant::now();
-        (bottom > top).then_some((&self.frame, Damage { y: top, height: bottom - top }))
+        // `then_some` 会先算出实参：bottom < top 时 `bottom - top` 会下溢，所以用惰性版本。
+        (bottom > top).then(|| (&self.frame, Damage { y: top, height: bottom - top }))
     }
     fn take_title(&mut self) -> Option<String> {
         if !self.enabled {
