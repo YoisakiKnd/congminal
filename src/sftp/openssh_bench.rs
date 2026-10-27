@@ -128,7 +128,8 @@ fn workload<I: Read + Write>(
                 temporary: temporary.as_os_str().as_encoded_bytes(),
                 destination: destination.as_os_str().as_encoded_bytes(),
                 length,
-                replace: false
+                replace: false,
+                resume: 0
             },
             cancel,
             |_| {}

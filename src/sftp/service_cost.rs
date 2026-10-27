@@ -226,6 +226,7 @@ fn identical_file_jobs_compare_direct_execution_with_bounded_pool() {
             remote: remote.as_os_str().as_bytes(),
             length,
             replace: Replace::No,
+            resume: None,
         },
         notify.clone(),
         &gate,

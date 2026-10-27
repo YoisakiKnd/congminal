@@ -452,6 +452,7 @@ pub(super) mod tests {
                 remote: b"/unused-target",
                 length: 1,
                 replace: service::Replace::No,
+                resume: None,
             })
             .unwrap();
         until(|| {

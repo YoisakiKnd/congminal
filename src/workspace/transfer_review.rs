@@ -13,6 +13,8 @@ enum Payload {
         remote: PathValue,
         length: u64,
         expected: Option<service::LocalStamp>,
+        /// 续传时复用上次的临时文件路径；None 表示从头传输。
+        resume: Option<PathValue>,
     },
     Download {
         local: PathValue,
@@ -261,17 +263,19 @@ impl Workspace {
             return Err(Failure::Invalid);
         }
         let payload = match selection {
-            service::TransferSelection::Upload { local, remote, length, .. } => Payload::Upload {
+            service::TransferSelection::Upload { local, remote, length, resume, .. } => Payload::Upload {
                 local: path_value(state.service.budget(), local.as_os_str().as_bytes())?,
                 remote: path_value(state.service.budget(), remote)?,
                 length,
                 expected: None,
+                resume: resume.map(|path| path_value(state.service.budget(), path)).transpose()?,
             },
-            service::TransferSelection::UploadChecked { local, remote, stamp, .. } => Payload::Upload {
+            service::TransferSelection::UploadChecked { local, remote, stamp, resume, .. } => Payload::Upload {
                 local: path_value(state.service.budget(), local.as_os_str().as_bytes())?,
                 remote: path_value(state.service.budget(), remote)?,
                 length: stamp.length,
                 expected: Some(stamp),
+                resume: resume.map(|path| path_value(state.service.budget(), path)).transpose()?,
             },
             service::TransferSelection::Download { local, remote, version, .. } => Payload::Download {
                 local: path_value(state.service.budget(), local.as_os_str().as_bytes())?,
@@ -414,19 +418,21 @@ impl Workspace {
                 let r = self.sftp.as_mut().unwrap().review.take().unwrap();
                 let replace = if r.overwrite { service::Replace::ExplicitlyApproved } else { service::Replace::No };
                 let selection = match &r.payload {
-                    Payload::Upload { local, remote, expected: Some(stamp), .. } => {
+                    Payload::Upload { local, remote, expected: Some(stamp), resume, .. } => {
                         Some(service::TransferSelection::UploadChecked {
                             local: Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
                             remote: remote.bytes(),
                             stamp: *stamp,
                             replace,
+                            resume: resume.as_ref().map(|path| path.bytes()),
                         })
                     }
-                    Payload::Upload { local, remote, length, .. } => Some(service::TransferSelection::Upload {
+                    Payload::Upload { local, remote, length, resume, .. } => Some(service::TransferSelection::Upload {
                         local: Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
                         remote: remote.bytes(),
                         length: *length,
                         replace,
+                        resume: resume.as_ref().map(|path| path.bytes()),
                     }),
                     Payload::Download { local, remote, version } => Some(service::TransferSelection::Download {
                         local: Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
@@ -580,7 +586,13 @@ pub(super) mod tests {
         }
     }
     fn selection<'a>(local: &'a Path, remote: &'a [u8]) -> service::TransferSelection<'a> {
-        service::TransferSelection::Upload { local, remote, length: 1, replace: service::Replace::ExplicitlyApproved }
+        service::TransferSelection::Upload {
+            local,
+            remote,
+            length: 1,
+            replace: service::Replace::ExplicitlyApproved,
+            resume: None,
+        }
     }
     #[test]
     fn complete_visible_pages_are_required_and_overwrite_requires_fresh_review() {

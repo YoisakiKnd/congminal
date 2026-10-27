@@ -6,7 +6,7 @@ use crate::{
 };
 
 fn upload<'a>(local: &'a Path, remote: &'a [u8]) -> service::TransferSelection<'a> {
-    service::TransferSelection::Upload { local, remote, length: 1, replace: service::Replace::No }
+    service::TransferSelection::Upload { local, remote, length: 1, replace: service::Replace::No, resume: None }
 }
 #[test]
 fn file_record_survives_refresh_hide_and_other_pane_then_explicit_release() {

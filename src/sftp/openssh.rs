@@ -233,6 +233,7 @@ mod tests {
                         destination: destination.as_os_str().as_encoded_bytes(),
                         length,
                         replace: false,
+                        resume: 0,
                     };
                     assert_eq!(
                         transfer::upload(&mut channel, &mut Pattern(0, length), target, &cancel, |_| {}).unwrap(),

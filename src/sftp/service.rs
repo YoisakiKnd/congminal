@@ -149,8 +149,8 @@ pub struct Paths<'a> {
 }
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub enum TransferSelection<'a> {
-    Upload { local: &'a Path, remote: &'a [u8], length: u64, replace: Replace },
-    UploadChecked { local: &'a Path, remote: &'a [u8], stamp: LocalStamp, replace: Replace },
+    Upload { local: &'a Path, remote: &'a [u8], length: u64, replace: Replace, resume: Option<&'a [u8]> },
+    UploadChecked { local: &'a Path, remote: &'a [u8], stamp: LocalStamp, replace: Replace, resume: Option<&'a [u8]> },
     Download { remote: &'a [u8], local: &'a Path, version: Version, replace: Replace },
 }
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -160,9 +160,9 @@ pub struct TransferTask {
     pub status: Status,
 }
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum TransferKind {
-    Upload { length: u64, replace: bool, expected: Option<LocalStamp> },
+    Upload { length: u64, replace: bool, expected: Option<LocalStamp>, resume: Option<RemotePath> },
     Download { version: Version, replace: Replace },
 }
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -479,15 +479,21 @@ fn prepare_file(
     owner: Owner,
     selection: TransferSelection<'_>,
 ) -> Result<(FileRequest, Status), Failure> {
-    let (local, remote, direction, length, kind) = match selection {
-        TransferSelection::Upload { local, remote, length, replace } => (
+    let (local, remote, direction, length, kind, resume) = match selection {
+        TransferSelection::Upload { local, remote, length, replace, resume } => (
             local,
             remote,
             Direction::Upload,
             length,
-            TransferKind::Upload { length, replace: replace == Replace::ExplicitlyApproved, expected: None },
+            TransferKind::Upload {
+                length,
+                replace: replace == Replace::ExplicitlyApproved,
+                expected: None,
+                resume: None,
+            },
+            resume,
         ),
-        TransferSelection::UploadChecked { local, remote, stamp, replace } => (
+        TransferSelection::UploadChecked { local, remote, stamp, replace, resume } => (
             local,
             remote,
             Direction::Upload,
@@ -496,10 +502,12 @@ fn prepare_file(
                 length: stamp.length,
                 replace: replace == Replace::ExplicitlyApproved,
                 expected: Some(stamp),
+                resume: None,
             },
+            resume,
         ),
         TransferSelection::Download { remote, local, version, replace } => {
-            (local, remote, Direction::Download, version.length, TransferKind::Download { version, replace })
+            (local, remote, Direction::Download, version.length, TransferKind::Download { version, replace }, None)
         }
     };
     // 文件任务使用完整绝对目标；不能在后台随默认工作目录改变目标含义。
@@ -515,6 +523,23 @@ fn prepare_file(
     }
     let local = LocalPath::new(local, pool).map_err(local_failure)?;
     let remote = RemotePath::new(pool, remote).map_err(model_failure)?;
+    // 续传只接受与目标同目录、形如 .congminal-*.part 的临时文件，避免误写别的路径。
+    let kind = match (kind, resume) {
+        (TransferKind::Upload { length, replace, expected, .. }, Some(path)) => {
+            let path = RemotePath::new(pool, path).map_err(model_failure)?;
+            let name = path.bytes().rsplit(|b| *b == b'/').next().unwrap_or(b"");
+            let parent = |p: &RemotePath| p.parent().ok().flatten().map(|p| p.bytes().to_vec());
+            if name.len() > 48
+                || !name.starts_with(b".congminal-")
+                || !name.ends_with(b".part")
+                || parent(&path) != parent(&remote)
+            {
+                return Err(Failure::Invalid);
+            }
+            TransferKind::Upload { length, replace, expected, resume: Some(path) }
+        }
+        (kind, _) => kind,
+    };
     let (from, to) = match direction {
         Direction::Upload => (local.value(), remote.clone()),
         Direction::Download => (remote.clone(), local.value()),
@@ -700,7 +725,7 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
             return Outcome { result: Err(executor::Error::Panicked), cleanup: Cleanup::Unknown };
         }
         return match connect(request, pool, cancel) {
-            Ok(channel) => match file.kind {
+            Ok(channel) => match file.kind.clone() {
                 TransferKind::Upload { .. } => upload_file(channel, file, pool, cancel, memory),
                 TransferKind::Download { version, replace } => {
                     download_file(channel, file, pool, version, replace, cancel, memory)
@@ -816,7 +841,7 @@ fn upload_file(
     cancel: &Cancellation,
     memory: crate::resources::Lease,
 ) -> Outcome<Reply> {
-    let TransferKind::Upload { length, replace, expected } = file.kind else { unreachable!() };
+    let TransferKind::Upload { length, replace, expected, resume } = file.kind.clone() else { unreachable!() };
     let mut cleanup = Cleanup::Confirmed;
     let result = match LocalSource::open(&file.local, pool, cancel) {
         Err(error) => {
@@ -830,8 +855,23 @@ fn upload_file(
                 if source.stamp().length != length || expected.is_some_and(|stamp| stamp != source.stamp()) {
                     return Err(Failure::Changed);
                 }
-                let temporary = temporary(&file.remote)?;
+                // 续传复用上次的临时文件；第一次传输则现生成一个唯一临时名。
+                let temporary = match resume.clone() {
+                    Some(path) => path,
+                    None => temporary(&file.remote)?,
+                };
                 file.progress.partial(temporary.clone()).map_err(|_| Failure::Invalid)?;
+                // 已写入的字节数由远端临时文件的真实大小决定；为 0 或已写满时从头开始。
+                let offset = if resume.is_some() {
+                    let attrs =
+                        operations::attributes(&mut channel, temporary.bytes(), cancel).map_err(operation_failure)?;
+                    match attrs.size {
+                        Some(size) if size > 0 && size < length => size,
+                        _ => 0,
+                    }
+                } else {
+                    0
+                };
                 transfer::upload_observed(
                     &mut channel,
                     &mut source,
@@ -840,6 +880,7 @@ fn upload_file(
                         destination: file.remote.bytes(),
                         length,
                         replace,
+                        resume: offset,
                     },
                     cancel,
                     |bytes| file.progress.advance(bytes).expect("validated monotonic transfer"),
@@ -1147,7 +1188,8 @@ mod tests {
                         local: Path::new("/no-such-local-source"),
                         remote,
                         length: u64::MAX,
-                        replace: Replace::No
+                        replace: Replace::No,
+                        resume: None,
                     },
                     Duration::from_secs(1)
                 ),
@@ -1165,7 +1207,8 @@ mod tests {
                     local: Path::new("relative"),
                     remote: b"/remote",
                     length: 0,
-                    replace: Replace::No
+                    replace: Replace::No,
+                    resume: None,
                 },
                 Duration::from_secs(1)
             ),
@@ -1236,6 +1279,7 @@ mod tests {
                     remote: b"/no-target-opened",
                     length: 32 * 1024 * 1024,
                     replace: Replace::No,
+                    resume: None,
                 }
             } else {
                 TransferSelection::Download {
@@ -1259,7 +1303,8 @@ mod tests {
                     local: Path::new("/no-source-opened"),
                     remote: b"/no-target-opened",
                     length: 0,
-                    replace: Replace::No
+                    replace: Replace::No,
+                    resume: None,
                 },
                 Duration::from_secs(1)
             ),
@@ -1321,7 +1366,13 @@ mod tests {
                 profiles.clone(),
                 0,
                 paths,
-                TransferSelection::Upload { local, remote: &raw, length: 32 * 1024 * 1024, replace: Replace::No },
+                TransferSelection::Upload {
+                    local,
+                    remote: &raw,
+                    length: 32 * 1024 * 1024,
+                    replace: Replace::No,
+                    resume: None,
+                },
                 Duration::from_secs(1),
             ) {
                 Ok(task) => {
@@ -1354,6 +1405,7 @@ mod tests {
                     remote: b"/small-target",
                     length: 0,
                     replace: Replace::No,
+                    resume: None,
                 },
                 Duration::from_secs(1),
             )
@@ -1564,7 +1616,13 @@ mod tests {
                 replace,
             }
         } else {
-            TransferSelection::Upload { local: &local, remote: remote.as_os_str().as_bytes(), length, replace }
+            TransferSelection::Upload {
+                local: &local,
+                remote: remote.as_os_str().as_bytes(),
+                length,
+                replace,
+                resume: None,
+            }
         };
         let mut tasks: [Option<TransferTask>; 2] = [
             Some(service.transfer(owner, profiles.clone(), 0, paths, selection, Duration::from_secs(3)).unwrap()),
@@ -1623,6 +1681,7 @@ mod tests {
                             remote: &pressure_raw,
                             length,
                             replace: Replace::No,
+                            resume: None,
                         },
                         Duration::from_secs(3),
                     ) {

@@ -627,7 +627,7 @@ mod interoperability {
         let uploaded = transfer::upload(
             &mut channel,
             &mut Pattern { at: 0, length },
-            Upload { temporary: b"large.part", destination: b"large", length, replace: false },
+            Upload { temporary: b"large.part", destination: b"large", length, replace: false, resume: 0 },
             &cancel,
             |at| {
                 assert!(at > last);
@@ -668,7 +668,7 @@ mod interoperability {
             let result = transfer::upload(
                 &mut channel,
                 &mut Pattern { at: 0, length: input_length },
-                Upload { temporary: b"temp.part", destination: b"done", length, replace: false },
+                Upload { temporary: b"temp.part", destination: b"done", length, replace: false, resume: 0 },
                 &cancel,
                 |_| {
                     if scenario == "cancel" {
@@ -699,6 +699,104 @@ mod interoperability {
             drop(channel);
             assert_eq!(server.pool.snapshot().used, 0);
         }
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    #[ignore = "本地sftp-server：断点续传保留已写内容；无SSH/网络"]
+    fn local_subsystem_resumes_an_interrupted_upload() {
+        use super::{
+            client::{Channel, Source},
+            transfer::{self, Upload},
+            wire::{Attributes, Expected, HandleOp, Request, Response},
+        };
+        use crate::tasks::Cancellation;
+        fn byte(at: u64) -> u8 {
+            (at ^ (at >> 13) ^ (at >> 23)) as u8
+        }
+        struct Pattern {
+            at: u64,
+            length: u64,
+        }
+        impl Read for Pattern {
+            fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+                let n = bytes.len().min((self.length - self.at) as usize);
+                for (index, byte) in bytes[..n].iter_mut().enumerate() {
+                    *byte = byte_of(self.at + index as u64);
+                }
+                self.at += n as u64;
+                Ok(n)
+            }
+        }
+        fn byte_of(at: u64) -> u8 {
+            byte(at)
+        }
+        struct Verify(u64);
+        impl Write for Verify {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                for (index, &byte) in bytes.iter().enumerate() {
+                    assert_eq!(byte, byte_of(self.0 + index as u64));
+                }
+                self.0 += bytes.len() as u64;
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut server = Server::new();
+        let cancel = Cancellation::default();
+        let source = Source { session: 37, generation: 3 };
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        let half = 64 * 1024u64;
+        let length = 128 * 1024u64;
+        // 第一段只写前一半到临时文件、不重命名，模拟中途断开留下的残留。
+        let first: Vec<u8> = (0..half).map(byte).collect();
+        channel
+            .issue(
+                Expected::Handle,
+                |id| Request::Open {
+                    id,
+                    path: b"large.part",
+                    flags: 2 | 8 | 32,
+                    attrs: Attributes { permissions: Some(0o600), ..Attributes::default() },
+                },
+                &cancel,
+            )
+            .unwrap();
+        let handle = {
+            let reply = channel.receive(&cancel).unwrap();
+            match reply.response().unwrap() {
+                Response::Handle { handle, .. } => handle.to_vec(),
+                _ => panic!("服务端没有返回句柄"),
+            }
+        };
+        channel
+            .issue(Expected::Status, |id| Request::Write { id, handle: &handle, offset: 0, data: &first }, &cancel)
+            .unwrap();
+        assert!(matches!(channel.receive(&cancel).unwrap().response().unwrap(), Response::Status { code: 0, .. }));
+        channel
+            .issue(Expected::Status, |id| Request::Handle { id, op: HandleOp::Close, handle: &handle }, &cancel)
+            .unwrap();
+        assert!(matches!(channel.receive(&cancel).unwrap().response().unwrap(), Response::Status { code: 0, .. }));
+        assert_eq!(std::fs::metadata(server.path.join("large.part")).unwrap().len(), half);
+        // 续传不清空临时文件，只从断点往后写。
+        let uploaded = transfer::upload(
+            &mut channel,
+            &mut Pattern { at: 0, length },
+            Upload { temporary: b"large.part", destination: b"large", length, replace: false, resume: half },
+            &cancel,
+            |_| {},
+        )
+        .unwrap();
+        assert_eq!(uploaded, length);
+        assert!(!server.path.join("large.part").exists());
+        assert_eq!(std::fs::metadata(server.path.join("large")).unwrap().len(), length);
+        let mut output = Verify(0);
+        assert_eq!(transfer::download(&mut channel, b"large", &mut output, length, &cancel, |_| {}).unwrap(), length);
+        assert_eq!(output.0, length);
+        drop(channel);
+        assert_eq!(server.pool.snapshot().used, 0);
     }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]
@@ -752,7 +850,7 @@ mod interoperability {
         let uploaded = transfer::upload_observed(
             &mut channel,
             &mut local,
-            transfer::Upload { temporary: b"remote.part", destination: b"remote", length, replace: false },
+            transfer::Upload { temporary: b"remote.part", destination: b"remote", length, replace: false, resume: 0 },
             &cancel,
             |bytes| upload_progress.advance(bytes).unwrap(),
             |source| {
@@ -831,7 +929,7 @@ mod interoperability {
         let result = transfer::upload_observed(
             &mut channel,
             &mut local,
-            transfer::Upload { temporary: b"changed.part", destination: b"kept", length, replace: false },
+            transfer::Upload { temporary: b"changed.part", destination: b"kept", length, replace: false, resume: 0 },
             &cancel,
             |bytes| {
                 changed_progress.advance(bytes).unwrap();

@@ -13,6 +13,8 @@ pub(super) struct Preparation {
     local: PathValue,
     remote: PathValue,
     upload: bool,
+    /// 续传要复用的临时文件路径。
+    resume: Option<PathValue>,
     authentication: Option<Authentication>,
     ready: Option<Result<SourceVersion, Failure>>,
     error: Option<Failure>,
@@ -30,7 +32,7 @@ impl Workspace {
         local: &Path,
         remote: &[u8],
     ) -> Result<Ticket, Failure> {
-        self.prepare_transfer_source(local, remote, true)
+        self.prepare_transfer_source(local, remote, true, None)
     }
     /// 仅准备新请求；不复用旧版本、覆盖同意、认证答案或已传输字节。
     pub(super) fn retry_remote_transfer(&mut self, ticket: Ticket) -> Result<Ticket, Failure> {
@@ -42,9 +44,40 @@ impl Workspace {
         let status = file.status.clone();
         let upload = status.direction() == service::TransferDirection::Upload;
         let (local, remote) = if upload { (status.from(), status.to()) } else { (status.to(), status.from()) };
-        self.prepare_transfer_source(Path::new(std::ffi::OsStr::from_bytes(local.bytes())), remote.bytes(), upload)
+        self.prepare_transfer_source(
+            Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
+            remote.bytes(),
+            upload,
+            None,
+        )
     }
-    fn prepare_transfer_source(&mut self, local: &Path, remote: &[u8], upload: bool) -> Result<Ticket, Failure> {
+    /// 续传：复用记录里那次传输的临时文件，其余流程与普通上传一致（仍要过审阅与认证）。
+    pub(super) fn resume_remote_transfer(&mut self, ticket: Ticket) -> Result<Ticket, Failure> {
+        let state = self.sftp.as_ref().ok_or(Failure::Invalid)?;
+        let file = state.files.iter().flatten().find(|f| f.ticket == ticket).ok_or(Failure::Invalid)?;
+        if !file.retryable() || !file.binding.valid(self) || self.selected != file.binding.owner.session {
+            return Err(Failure::Invalid);
+        }
+        let partial = file.status.partial().ok_or(Failure::Invalid)?;
+        let status = file.status.clone();
+        if status.direction() != service::TransferDirection::Upload {
+            return Err(Failure::Invalid);
+        }
+        let local = status.to();
+        self.prepare_transfer_source(
+            Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
+            status.from().bytes(),
+            true,
+            Some(partial.bytes().to_vec()),
+        )
+    }
+    fn prepare_transfer_source(
+        &mut self,
+        local: &Path,
+        remote: &[u8],
+        upload: bool,
+        resume: Option<Vec<u8>>,
+    ) -> Result<Ticket, Failure> {
         if self.composing()
             || self.authentication.is_some()
             || self.sftp.as_ref().is_some_and(State::transfer_input_active)
@@ -98,12 +131,17 @@ impl Workspace {
             )?;
             (ticket, Some(authentication))
         };
+        let resume = match resume {
+            Some(bytes) => Some(captured(&bytes)?),
+            None => None,
+        };
         state.preparation = Some(Preparation {
             ticket,
             binding,
             local: local_value,
             remote: remote_value,
             upload,
+            resume,
             authentication,
             ready: None,
             error: None,
@@ -184,6 +222,7 @@ impl Workspace {
                 remote: p.remote.bytes(),
                 stamp,
                 replace: service::Replace::No,
+                resume: p.resume.as_ref().map(|path| path.bytes()),
             }),
             Ok(SourceVersion::Remote(version)) => self.open_transfer_review(service::TransferSelection::Download {
                 local: Path::new(std::ffi::OsStr::from_bytes(p.local.bytes())),
@@ -308,7 +347,7 @@ mod tests {
         let mut app = workspace();
         app.start_remote_files(paths(), b".").unwrap();
         let ticket =
-            app.prepare_transfer_source(Path::new("/tmp/never-created-retry-target"), b"/source", false).unwrap();
+            app.prepare_transfer_source(Path::new("/tmp/never-created-retry-target"), b"/source", false, None).unwrap();
         let mut state = app.sftp.take().unwrap();
         let result = reply(&state, ticket, Cleanup::Unknown);
         assert!(app.transfer_preparation_result(&mut state, result).is_none());
@@ -326,7 +365,7 @@ mod tests {
         assert!(app.sftp.as_ref().unwrap().files.iter().all(Option::is_none));
         app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
         let current =
-            app.prepare_transfer_source(Path::new("/tmp/never-created-retry-other"), b"/other", false).unwrap();
+            app.prepare_transfer_source(Path::new("/tmp/never-created-retry-other"), b"/other", false, None).unwrap();
         assert_ne!(current, ticket);
         let mut state = app.sftp.take().unwrap();
         let late = reply(&state, ticket, Cleanup::Confirmed);
@@ -356,6 +395,7 @@ mod tests {
                 remote: b"/raw-\xff-target",
                 length: 3,
                 replace: service::Replace::No,
+                resume: None,
             })
             .unwrap();
         until(|| {

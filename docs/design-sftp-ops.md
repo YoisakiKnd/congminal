@@ -44,6 +44,8 @@
 | 删除非空目录 | 服务端返回错误（`Rmdir` 不递归），目录内容保留，面板显示错误 |
 | 重命名目标已存在 | 不替换（`replace = false`），返回服务端错误，原目标内容保留 |
 | 清理残留临时文件 | 第一次点击只起 10 秒确认窗口，第二次才提交删除；窗口过期、换选记录或关闭面板都不删 |
+| 续传 | 只在记录是上传、已结束、可重试且记着临时文件时可用；第一次点击起 10 秒确认窗口，第二次才提交。窗口过期按未确认处理，换选记录或关闭面板作废 |
+| 续传时临时文件已不存在 | `attributes` 检查失败即按失败结束记录（通道同时失效），不会静默从头重写；要重新开始请用 `[重试]` |
 | 关闭应用 | 在途写任务取消，票据归还，`Drop` 不重试 |
 
 ## 后台任务、线程、子进程、缓存与数据所有权
@@ -62,6 +64,21 @@
 - 详情：`[详情]` 的报告里有一行「部分文件候选（不保证存在）：<完整路径>」，这是唯一显示完整路径的地方（侧栏只有 30 列左右）。
 - 清理：选中该记录后第三行出现 `[清理]`，第一次点击把按钮变成 `[确认]` 并起 10 秒窗口，第二次点击才提交一次 `remove`（只删这一个路径，不递归、不碰目标文件）；成功后记录上的临时路径被清掉、提示「已删除残留临时文件」，失败则提示原因且记录保留。
 - 边界：`[清理]` 只在记录已结束且有临时路径时可用；没有残留时按钮不可点。确认窗口过期、换选到别的记录、面板关闭都会作废确认。清理走的是文件页删除同一条 `Action::Remove` 通道，因此同样受 `mutation_path` 校验、10 秒超时与连接关闭取消约束。
+
+## 断点续传
+
+传输中断后，记录上仍记着远端临时文件的完整路径（见上一节）。选中该记录，操作行的 `[续传]` 可用：
+
+1. 第一次点击只起 10 秒确认窗口（按钮变 `[确认]`，提示行写「再点一次「确认」从断点续传」），第二次才提交。
+2. 提交走与普通上传相同的准备与审阅链路（`prepare_transfer_source` → 本地源戳 → 审阅页 → 认证），只是选择项带上 `resume: Some(临时路径)`，所以覆盖确认、主机校验与额度规则一条都不少。
+3. 服务层校验续传路径：必须与目标同目录、名字形如 `.congminal-*.part` 且不超过 48 字节，否则 `Failure::Invalid`。这样续传只能写自己的临时文件，不会碰到目标文件或别的路径。
+4. 工作线程用 `operations::attributes` 读临时文件的真实大小作为断点：`0 < size < length` 时从该偏移继续；为 0 或已写满则从头写同一文件。读不到（文件已被删）按失败结束，不改用新名字。
+5. 流式原语在续传时不清空临时文件（OPEN 不带 `TRUNC`），先丢掉源文件前 `size` 字节再续写，并先报一次断点进度，界面从断点显示而不是 0。
+6. 提交成功后旧记录上的临时路径被清掉（`forget_partial`），`[续传]`/`[清理]` 都不再出现——临时文件已经交给新记录，避免两边同时动它。
+
+限制：只支持上传续传（下载没有远端临时文件语义）；断点取远端文件真实大小，因此远端内容被外部改动时续传会拼出错误内容，这一层不做校验和比对。
+
+确认态截图：[`docs/previews/m6-sftp-resume.png`](previews/m6-sftp-resume.png)（按钮变 `[确认]`，提示行「再点一次「确认」从断点续传」，记录行仍标 `· 残留`）。
 
 ## 打开远端文件（有界临时下载 + 显式回传）
 
@@ -122,6 +139,10 @@ cargo test --locked sort_button_cycles             # 面板点击换档、重读
 cargo test --locked residual_temp_file             # 残留标记、二次确认、清理提交与额度归还
 cargo test --locked cleanup_confirmation           # 确认窗口过期与换选记录作废
 cargo test --locked forgetting_the_partial         # 清掉记录后不再提示残留
+cargo test --locked resume_is_offered               # 续传按钮条件、二次确认、过期与换选作废
+cargo test --locked resume_keeps_the_temporary      # OPEN 不带 TRUNC、跳过已写字节、断点进度
+CONGMINAL_TEST_SFTP_SERVER=/usr/lib/openssh/sftp-server \
+  cargo test --locked local_subsystem_resumes_an_interrupted_upload -- --ignored
 CONGMINAL_TEST_SFTP_SERVER=/usr/lib/openssh/sftp-server \
   cargo test --locked local_subsystem_sorts_directory_entries_the_way_the_panel_asks -- --ignored
 cargo test --locked temp_copies_keep                # 临时路径只留最后一段、连续打开不重名
