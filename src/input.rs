@@ -83,7 +83,15 @@ pub struct Flags {
     pub app_cursor: bool,
     /// DECKPAM：小键盘发 SS3 而不是数字和运算符
     pub app_keypad: bool,
+    /// Kitty 键盘协议的 flags：1 = 消除歧义转义码，8 = 所有按键都发转义序列。
+    ///
+    /// 程序用 `CSI > 1 u` 之类的序列压栈申请，终端退出时弹栈回到 0（传统编码）。
+    pub kitty: u32,
 }
+
+/// Kitty 协议里我们实现的位：消除歧义、所有按键转义。
+const KITTY_DISAMBIGUATE: u32 = 1;
+const KITTY_REPORT_ALL: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mods {
@@ -107,6 +115,12 @@ impl Mods {
 
 pub fn encode(key: Key, mods: Mods, flags: Flags) -> Vec<u8> {
     let app_cursor = flags.app_cursor;
+    // Kitty 协议：程序要求全部转义，或者这个键在传统编码下有歧义时，改用 CSI u。
+    let wants_kitty =
+        flags.kitty & KITTY_REPORT_ALL != 0 || (flags.kitty & KITTY_DISAMBIGUATE != 0 && ambiguous(key, mods));
+    if wants_kitty && let Some(bytes) = kitty(key, mods) {
+        return bytes;
+    }
     let mut out = Vec::new();
     // Alt 组合键：在前面加一个 ESC（xterm 的 metaSendsEscape）
     let alt_prefix = |out: &mut Vec<u8>| {
@@ -250,6 +264,41 @@ fn ctrl_byte(c: char) -> Option<u8> {
     })
 }
 
+/// 传统编码下这个按键会丢掉信息的组合：单独 ESC 和它做前缀分不清，
+/// 带修饰的 Enter/Tab/Backspace 会被压成同一个控制字节，带修饰的字符拿不到修饰位。
+fn ambiguous(key: Key, mods: Mods) -> bool {
+    match key {
+        Key::Escape => true,
+        Key::Enter | Key::Tab | Key::Backspace => mods.shift || mods.ctrl || mods.alt || mods.logo,
+        Key::Char(_) | Key::Keypad(_) => mods.ctrl || mods.alt || mods.logo,
+        _ => false,
+    }
+}
+
+/// Kitty 的 `CSI key;mods u` 形式。返回 None 表示这个键仍然用传统序列（方向键、功能键）。
+fn kitty(key: Key, mods: Mods) -> Option<Vec<u8>> {
+    let code = match key {
+        Key::Char(c) => c as u32,
+        Key::Keypad(k) => match k {
+            Keypad::Enter => 13,
+            k => k.as_char()? as u32,
+        },
+        Key::Enter => 13,
+        Key::Tab => 9,
+        Key::Backspace => 127,
+        Key::Escape => 27,
+        _ => return None,
+    };
+    let modifiers = 1 + mods.shift as u32 + 2 * mods.alt as u32 + 4 * mods.ctrl as u32 + 8 * mods.logo as u32;
+    let mut out = Vec::new();
+    if modifiers == 1 {
+        out.extend_from_slice(format!("\x1b[{code}u").as_bytes());
+    } else {
+        out.extend_from_slice(format!("\x1b[{code};{modifiers}u").as_bytes());
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +330,41 @@ mod tests {
         assert_eq!(encode(Key::F(5), NONE, Flags::default()), b"\x1b[15~");
         assert_eq!(encode(Key::F(12), ALT, Flags::default()), b"\x1b[24;3~");
         assert_eq!(encode(Key::Delete, NONE, Flags::default()), b"\x1b[3~");
+    }
+
+    #[test]
+    fn kitty_flags_encode_ambiguous_keys() {
+        let none = Mods::default();
+        let ctrl = Mods { ctrl: true, ..Mods::default() };
+        let shift_enter = Mods { shift: true, ..Mods::default() };
+
+        // 没有申请就保持传统编码
+        assert_eq!(encode(Key::Escape, none, Flags::default()), b"\x1b");
+        assert_eq!(encode(Key::Enter, shift_enter, Flags::default()), b"\r");
+        assert_eq!(encode(Key::Char('a'), ctrl, Flags::default()), b"\x01");
+
+        // 消除歧义：只有传统编码会丢信息的组合改用 CSI u
+        let disambiguate = Flags { kitty: 1, ..Flags::default() };
+        assert_eq!(encode(Key::Escape, none, disambiguate), b"\x1b[27u");
+        assert_eq!(encode(Key::Enter, shift_enter, disambiguate), b"\x1b[13;2u");
+        assert_eq!(encode(Key::Tab, shift_enter, disambiguate), b"\x1b[9;2u");
+        assert_eq!(encode(Key::Backspace, ctrl, disambiguate), b"\x1b[127;5u");
+        assert_eq!(encode(Key::Char('a'), ctrl, disambiguate), b"\x1b[97;5u");
+        // 单纯 Shift 打出来的字符本来就没歧义，仍然直接发文字
+        assert_eq!(encode(Key::Char('A'), shift_enter, disambiguate), b"A");
+        // 方向键、功能键的 CSI 1;mods 形式已经带修饰位，不重复改造
+        assert_eq!(encode(Key::Up, ctrl, disambiguate), b"\x1b[1;5A");
+
+        // 全部按键转义：连普通字符和小键盘也走 CSI u
+        let all = Flags { kitty: 8, ..Flags::default() };
+        assert_eq!(encode(Key::Char('a'), none, all), b"\x1b[97u");
+        assert_eq!(encode(Key::Keypad(Keypad::Digit(7)), none, all), b"\x1b[55u");
+        assert_eq!(encode(Key::Keypad(Keypad::Enter), none, all), b"\x1b[13u");
+        // Alt 的语义进修饰位，不再加 ESC 前缀
+        let alt = Mods { alt: true, ..Mods::default() };
+        assert_eq!(encode(Key::Char('b'), alt, all), b"\x1b[98;3u");
+        // 没实现的键仍然用传统序列
+        assert_eq!(encode(Key::F(1), none, all), b"\x1bOP");
     }
 
     #[test]
