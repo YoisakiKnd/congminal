@@ -185,6 +185,9 @@ impl Congminal {
     }
 
     fn resize_prepared(&mut self, width: u32, height: u32, plan: session::ResizeRequest) -> bool {
+        // 字符格子的像素尺寸随字体缩放变化，CSI 14/16 t 的查询按它换算。
+        let (cell_w, cell_h) = self.renderer.cell_size();
+        self.session.term.set_cell_pixels(cell_w as u32, cell_h as u32);
         if !self.framebuffer.resize(width as usize, height as usize) {
             self.renderer.reclaim_caches();
             if !self.framebuffer.resize(width as usize, height as usize) {
@@ -667,7 +670,8 @@ impl Congminal {
                     }
                     None if self.search.edit_key(key, &self.session.term) => {}
                     None => {
-                        if let Key::Char(c) = key
+                        // 主键盘字符与数字小键盘都按文字进搜索框。
+                        if let Some(c) = key.text()
                             && !mods.ctrl
                             && !mods.alt
                             && !mods.logo
@@ -782,6 +786,12 @@ impl Congminal {
         }
     }
 
+    /// 当前终端模式里影响按键编码的两项（方向键/小键盘的应用模式）。
+    fn key_flags(&self) -> input::Flags {
+        let modes = self.session.term.modes();
+        input::Flags { app_cursor: modes.app_cursor, app_keypad: modes.app_keypad }
+    }
+
     fn scroll(&mut self, delta: ScrollDelta, x: f64, y: f64, mods: Mods) {
         let reporting = self.reports_mouse(mods);
         let lines = match delta {
@@ -804,7 +814,7 @@ impl Congminal {
         } else if self.session.term.is_alt_screen() {
             // 备用屏幕没有历史：把滚轮变成上下方向键，less、vim 里也能用滚轮
             let key = if whole > 0.0 { Key::Up } else { Key::Down };
-            let bytes = input::encode(key, Mods::default(), self.session.term.modes().app_cursor);
+            let bytes = input::encode(key, Mods::default(), self.key_flags());
             self.write_to_pty(&bytes.repeat(whole.abs() as usize));
         } else {
             self.session.term.scroll_display(whole as isize);
@@ -851,7 +861,7 @@ impl App for Congminal {
                     self.session.term.scroll_to_bottom();
                     self.dirty = true;
                 }
-                let bytes = input::encode(key, mods, self.session.term.modes().app_cursor);
+                let bytes = input::encode(key, mods, self.key_flags());
                 if !bytes.is_empty() {
                     self.write_to_pty(&bytes);
                 }
@@ -1577,6 +1587,10 @@ mod integration_tests {
         app.event(Event::Key { key: Key::F(6), mods: Mods::default() });
         assert_eq!(app.search.query(), "中文Z");
         assert!(!screen(&app).contains('Z'));
+        // 数字小键盘敲出的数字同样进搜索框，而不是送给终端。
+        app.event(Event::Key { key: Key::Keypad(crate::input::Keypad::Digit(7)), mods: Mods::default() });
+        assert_eq!(app.search.query(), "中文Z7");
+        assert!(!screen(&app).contains('7'));
         app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
         app.tick();
         app.draw();

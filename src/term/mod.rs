@@ -208,6 +208,10 @@ pub struct Terminal {
     title: Option<String>,
     /// 需要回写给 PTY 的应答（比如光标位置报告）
     response: Vec<u8>,
+    /// 因为超过 RESPONSE_LIMIT 被丢掉的应答字节数，只用于追踪
+    dropped_responses: usize,
+    /// 一个字符格子的像素尺寸，供 CSI 14/16 t 的窗口尺寸查询使用；未知时是 (0, 0)
+    cell_pixels: (u32, u32),
     // 所有网格缓冲销毁后归还。预留覆盖保留容量，非实际预分配。
     grid_memory: crate::resources::Lease,
 }
@@ -296,6 +300,8 @@ impl Terminal {
             default_cursor_shape: CursorShape::Block,
             title: None,
             response: Vec::new(),
+            dropped_responses: 0,
+            cell_pixels: (0, 0),
             grid_memory,
         }
     }
@@ -442,6 +448,22 @@ impl Terminal {
     /// 取出需要写回 PTY 的应答数据
     pub fn take_response(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.response)
+    }
+
+    /// 累计被丢弃的应答字节数（缓冲上限触发时才会增长）
+    pub fn dropped_responses(&self) -> usize {
+        self.dropped_responses
+    }
+
+    /// 记录一个字符格子的像素尺寸，窗口/字符尺寸查询按它换算。
+    /// 缩放字体后由工作区重新写入；0 表示未知。
+    pub fn set_cell_pixels(&mut self, width: u32, height: u32) {
+        self.cell_pixels = (width, height);
+    }
+
+    #[cfg(test)]
+    pub fn cell_pixels(&self) -> (u32, u32) {
+        self.cell_pixels
     }
 
     #[cfg(test)]
@@ -737,8 +759,37 @@ impl Terminal {
         Cell::blank(&self.cursor.template)
     }
 
+    /// 一个解析周期里最多积压的应答字节。程序可以不停地发查询，
+    /// 上限保证 response 不会随查询次数无界增长。
+    const RESPONSE_LIMIT: usize = 4096;
+
     fn respond(&mut self, bytes: &[u8]) {
+        if self.response.len() + bytes.len() > Self::RESPONSE_LIMIT {
+            self.dropped_responses = self.dropped_responses.saturating_add(bytes.len());
+            trace(format_args!("应答缓冲已满，丢弃 {} 字节", bytes.len()));
+            return;
+        }
         self.response.extend_from_slice(bytes);
+    }
+
+    /// CSI t 的查询子集：只回答不需要窗口系统也能给出的尺寸信息。
+    /// 像素相关的回答依赖 set_cell_pixels 写入的格子尺寸，未知时按 0 回答。
+    fn window_op(&mut self, op: usize) {
+        let (cell_w, cell_h) = self.cell_pixels;
+        match op {
+            11 => self.respond(b"\x1b[1t"),
+            14 => {
+                let width = (self.cols() as u32).saturating_mul(cell_w);
+                let height = (self.rows() as u32).saturating_mul(cell_h);
+                self.respond(format!("\x1b[4;{height};{width}t").as_bytes());
+            }
+            16 => self.respond(format!("\x1b[6;{cell_h};{cell_w}t").as_bytes()),
+            18 => {
+                let (cols, rows) = (self.cols(), self.rows());
+                self.respond(format!("\x1b[8;{rows};{cols}t").as_bytes());
+            }
+            n => trace(format_args!("未处理的窗口操作 CSI {n} t")),
+        }
     }
 
     // ---- 光标移动 ----
@@ -1213,6 +1264,7 @@ impl Terminal {
 
     fn reset(&mut self) {
         let default_cursor_shape = self.default_cursor_shape;
+        let cell_pixels = self.cell_pixels;
         let scrollback = self.history.limit();
         let history_bytes = self.history.byte_limit();
         let epoch = self.text_epoch.wrapping_add(1);
@@ -1231,6 +1283,7 @@ impl Terminal {
         self.shell = shell;
         self.text_epoch = epoch;
         self.default_cursor_shape = default_cursor_shape;
+        self.cell_pixels = cell_pixels;
         self.history.set_limit(scrollback);
         self.history.set_byte_limit(history_bytes);
     }
@@ -1322,6 +1375,8 @@ impl Perform for Terminal {
             ([], b'c') if arg(params, 0, 0) == 0 => self.respond(b"\x1b[?62;22c"),
             // DA2：终端类型和版本号
             ([b'>'], b'c') if arg(params, 0, 0) == 0 => self.respond(b"\x1b[>0;100;0c"),
+            // CSI 11/14/16/18 t：窗口状态、窗口像素、字符像素、行列数
+            ([], b't') => self.window_op(arg(params, 0, 0)),
             ([], b'g') => match arg(params, 0, 0) {
                 0 => self.tabs[self.cursor.col] = false,
                 3 => self.tabs.fill(false),
@@ -1648,6 +1703,51 @@ mod tests {
     fn cursor_position_report() {
         let mut t = run(10, 5, "\x1b[3;7H\x1b[6n");
         assert_eq!(t.take_response(), b"\x1b[3;7R");
+    }
+
+    #[test]
+    fn window_size_reports() {
+        // 字符尺寸未知时按 0 回答，但必须回答，否则等应答的程序会一直等下去
+        let mut t = run(80, 24, "\x1b[18t");
+        assert_eq!(t.take_response(), b"\x1b[8;24;80t");
+        let mut t = run(80, 24, "\x1b[16t");
+        assert_eq!(t.take_response(), b"\x1b[6;0;0t");
+        let mut t = run(80, 24, "\x1b[14t");
+        assert_eq!(t.take_response(), b"\x1b[4;0;0t");
+        let mut t = run(80, 24, "\x1b[11t");
+        assert_eq!(t.take_response(), b"\x1b[1t");
+        // 未实现的窗口操作不能凭空回答
+        let mut t = run(80, 24, "\x1b[13t");
+        assert!(t.take_response().is_empty());
+    }
+
+    #[test]
+    fn window_pixel_size_uses_cell_size() {
+        let mut t = Terminal::new(80, 24);
+        t.set_cell_pixels(8, 17);
+        assert_eq!(t.cell_pixels(), (8, 17));
+        Parser::new().advance(&mut t, b"\x1b[14t\x1b[16t\x1b[18t");
+        // 80×8=640 宽、24×17=408 高；回复顺序与查询顺序一致
+        assert_eq!(t.take_response(), b"\x1b[4;408;640t\x1b[6;17;8t\x1b[8;24;80t");
+        // 缩放后按新尺寸回答，RIS 复位不清掉格子尺寸
+        t.set_cell_pixels(10, 20);
+        Parser::new().advance(&mut t, b"\x1bc\x1b[16t");
+        assert_eq!(t.cell_pixels(), (10, 20));
+        assert_eq!(t.take_response(), b"\x1b[6;20;10t");
+    }
+
+    #[test]
+    fn response_buffer_is_bounded() {
+        // 程序可以无限发查询；积压到上限后丢弃，不跟着查询次数一起长
+        let replies = Terminal::RESPONSE_LIMIT / 6;
+        let queries = "\x1b[6n".repeat(replies + 18);
+        let mut t = run(80, 24, &queries);
+        let response = t.take_response();
+        assert_eq!(response, b"\x1b[1;1R".repeat(replies));
+        assert_eq!(t.dropped_responses(), 18 * 6);
+        // 取走后可以继续积压，上限是按当前缓冲算的
+        Parser::new().advance(&mut t, b"\x1b[6n");
+        assert_eq!(t.take_response(), b"\x1b[1;1R");
     }
 
     #[test]

@@ -1111,7 +1111,7 @@ impl Workspace {
             }
         }
         self.dividers = dividers;
-        let (_, cell_h) = self.driver.renderer.cell_size();
+        let (cell_w, cell_h) = self.driver.renderer.cell_size();
         self.left_rect =
             if area.x > 0 { Rect { x: 0, y: cell_h, w: area.x - DIVIDER, h: area.h } } else { Rect::default() };
         self.left_edge =
@@ -1128,6 +1128,8 @@ impl Workspace {
         };
         for index in 0..self.panes.len() {
             self.load(index);
+            // 字符格子的像素尺寸随字体缩放变化，CSI 14/16 t 的查询按它换算。
+            self.driver.session.term.set_cell_pixels(cell_w as u32, cell_h as u32);
             let rect = placed.iter().find(|(id, _)| *id == self.panes[index].id).map(|(_, r)| *r).unwrap_or_default();
             self.panes[index].rect = rect;
             if rect.visible() {
@@ -2517,6 +2519,28 @@ mod tests {
     fn layout_file(dir: &layout::TestDir) -> PathBuf {
         layout::path(&dir.0.join("test.toml")).unwrap()
     }
+    #[test]
+    fn panes_learn_the_cell_size_for_pixel_queries() {
+        // CSI 14/16 t 的回复要按字符格子的像素尺寸换算，窗格必须知道当前格子多大。
+        let mut app = workspace();
+        let (cell_w, cell_h) = app.driver.renderer.cell_size();
+        let expected = (cell_w as u32, cell_h as u32);
+        assert_eq!(app.driver.session.term.cell_pixels(), expected);
+        // 进入工作区后由重排写入，拆窗格后每个窗格都有
+        assert!(app.enable());
+        app.add(None);
+        // 当前载入的窗格把会话借给了 driver，其余窗格自己持有
+        wait(&mut app, |a| a.panes.len() == 2 && (0..2).all(|i| i == a.loaded || a.panes[i].state.is_some()));
+        for index in 0..app.panes.len() {
+            let term = if index == app.loaded {
+                &app.driver.session.term
+            } else {
+                &app.panes[index].state.as_ref().unwrap().session.term
+            };
+            assert_eq!(term.cell_pixels(), expected, "窗格 {} 缺少格子尺寸", app.panes[index].id);
+        }
+    }
+
     #[test]
     fn ssh_cancel_and_late_owner_result_do_not_create_a_session() {
         use std::os::unix::fs::PermissionsExt;

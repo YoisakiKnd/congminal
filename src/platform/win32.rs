@@ -4,7 +4,7 @@
 //! 真正的处理都在 `run` 的主循环里，这样就不用在回调里拿到 App 的引用。
 
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
-use crate::input::{Key, Mods};
+use crate::input::{Key, Keypad, Mods};
 use crate::render::{Damage, Framebuffer};
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -126,7 +126,10 @@ const VK_CONTROL: i32 = 0x11;
 const VK_MENU: i32 = 0x12;
 const VK_LWIN: i32 = 0x5B;
 const VK_RWIN: i32 = 0x5C;
+const VK_RETURN: usize = 0x0D;
 const VK_F4: usize = 0x73;
+/// 键盘消息 lparam 的第 24 位：小键盘回车、右侧 Ctrl/Alt、小键盘除号等“增强键”
+const EXTENDED_KEY: isize = 0x0100_0000;
 
 #[link(name = "user32")]
 unsafe extern "system" {
@@ -595,11 +598,13 @@ unsafe extern "system" fn wnd_proc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: 
         }
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             let mods = current_mods();
-            match named_key(wparam) {
+            let named =
+                if is_keypad_enter(wparam, lparam) { Some(Key::Keypad(Keypad::Enter)) } else { named_key(wparam) };
+            match named {
                 // Alt+F4 留给系统关窗口
                 Some(_) if mods.alt && wparam == VK_F4 => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
                 Some(key) => {
-                    if matches!(key, Key::Enter | Key::Backspace | Key::Tab | Key::Escape) {
+                    if matches!(key, Key::Enter | Key::Backspace | Key::Tab | Key::Escape | Key::Keypad(_)) {
                         SUPPRESS_CHAR.set(true);
                     }
                     push(Event::Key { key, mods });
@@ -660,6 +665,11 @@ fn current_mods() -> Mods {
     Mods { shift: down(VK_SHIFT), ctrl: down(VK_CONTROL), alt: down(VK_MENU), logo: down(VK_LWIN) || down(VK_RWIN) }
 }
 
+/// 小键盘的回车和主键盘回车共用 VK_RETURN，键盘消息的扩展位（第 24 位）区分两者。
+fn is_keypad_enter(vk: usize, lparam: isize) -> bool {
+    vk == VK_RETURN && lparam & EXTENDED_KEY != 0
+}
+
 /// 虚拟键码到功能键
 fn named_key(vk: usize) -> Option<Key> {
     Some(match vk {
@@ -677,6 +687,16 @@ fn named_key(vk: usize) -> Option<Key> {
         0x28 => Key::Down,
         0x2D => Key::Insert,
         0x2E => Key::Delete,
+        // 小键盘：VK_NUMPAD0..9 与运算符；小键盘的回车由扩展位单独判断
+        vk @ 0x60..=0x69 => Key::Keypad(Keypad::Digit((vk - 0x60) as u8)),
+        0x6A => Key::Keypad(Keypad::Multiply),
+        0x6B => Key::Keypad(Keypad::Add),
+        0x6C => Key::Keypad(Keypad::Separator),
+        0x6D => Key::Keypad(Keypad::Subtract),
+        0x6E => Key::Keypad(Keypad::Decimal),
+        0x6F => Key::Keypad(Keypad::Divide),
+        // 日文键盘的小键盘等号（VK_OEM_NEC_EQUAL）
+        0x92 => Key::Keypad(Keypad::Equal),
         vk @ 0x70..=0x7B => Key::F((vk - 0x70 + 1) as u8),
         _ => return None,
     })
@@ -684,4 +704,25 @@ fn named_key(vk: usize) -> Option<Key> {
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn keypad_virtual_keys_are_distinguished_from_main_keyboard() {
+        assert_eq!(named_key(0x60), Some(Key::Keypad(Keypad::Digit(0))));
+        assert_eq!(named_key(0x69), Some(Key::Keypad(Keypad::Digit(9))));
+        assert_eq!(named_key(0x6A), Some(Key::Keypad(Keypad::Multiply)));
+        assert_eq!(named_key(0x6B), Some(Key::Keypad(Keypad::Add)));
+        assert_eq!(named_key(0x6C), Some(Key::Keypad(Keypad::Separator)));
+        assert_eq!(named_key(0x6D), Some(Key::Keypad(Keypad::Subtract)));
+        assert_eq!(named_key(0x6E), Some(Key::Keypad(Keypad::Decimal)));
+        assert_eq!(named_key(0x6F), Some(Key::Keypad(Keypad::Divide)));
+        // 回车靠扩展位区分：小键盘回车带扩展位，主键盘回车不带
+        assert!(is_keypad_enter(0x0D, 0x0100_0001));
+        assert!(!is_keypad_enter(0x0D, 0x0000_0001));
+        assert_eq!(named_key(0x0D), Some(Key::Enter));
+        assert_eq!(named_key(0x31), None);
+    }
 }
