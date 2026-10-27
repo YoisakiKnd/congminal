@@ -77,6 +77,8 @@ impl Connector {
 /// 连接状态：只报能判断的阶段，认证过程不猜。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Phase {
+    /// 前台认证覆盖层正在为这个窗格等口令或主机密钥确认；只在预览/测试构建里可能出现。
+    Authenticating,
     /// ssh 进程已启动，还没有任何输出：可能在认证、可能在等远端首屏。
     Starting,
     /// 已经收到输出，远端开始交互。
@@ -89,6 +91,7 @@ pub(super) enum Phase {
 impl Phase {
     pub fn label(self) -> &'static str {
         match self {
+            Phase::Authenticating => "认证中",
             Phase::Starting => "启动中",
             Phase::Active => "活动",
             Phase::Disconnected => "断开",
@@ -100,6 +103,10 @@ impl Phase {
 pub(super) struct State {
     started: Instant,
     finished: Option<Duration>,
+    /// 首次收到输出的耗时：即这次连接真正建立的时间。
+    connected: Option<Duration>,
+    /// 前台认证覆盖层正等着这个窗格的凭据；由工作区每次 tick 写入，状态机自己不猜。
+    authenticating: bool,
     exit: Option<i32>,
     check: Duration,
     /// 收到过输出后置位，进程退出后保留，用于区分“断开”与“从未连上”。
@@ -109,7 +116,16 @@ pub(super) struct State {
 }
 impl State {
     pub fn new(check: Duration) -> Self {
-        Self { started: Instant::now(), finished: None, exit: None, check, output: false, retry: None }
+        Self {
+            started: Instant::now(),
+            finished: None,
+            connected: None,
+            exit: None,
+            check,
+            output: false,
+            authenticating: false,
+            retry: None,
+        }
     }
     /// 重连在准备阶段失败（工具缺失、参数非法）：旧会话照旧，失败原因留给状态页。
     pub fn retry_failed(&mut self, message: String) {
@@ -119,7 +135,18 @@ impl State {
         self.retry.as_deref()
     }
     pub fn mark_output(&mut self) {
+        if !self.output {
+            self.connected = Some(self.started.elapsed());
+        }
         self.output = true;
+    }
+    pub fn set_authenticating(&mut self, authenticating: bool) {
+        self.authenticating = authenticating;
+    }
+    /// 连接建立耗时；还没收到输出时为 None。
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn connect_time(&self) -> Option<Duration> {
+        self.connected
     }
     pub fn finish(&mut self, status: Option<i32>) {
         self.exit = status;
@@ -127,6 +154,7 @@ impl State {
     }
     pub fn phase(&self) -> Phase {
         match self.finished {
+            None if self.authenticating && !self.output => Phase::Authenticating,
             None if self.output => Phase::Active,
             None => Phase::Starting,
             Some(_) if self.exit.is_some_and(|code| code != 0) => Phase::Failed,
@@ -140,16 +168,21 @@ impl State {
     pub fn describe(&self) -> String {
         let phase = self.phase();
         let seconds = self.elapsed().as_secs();
+        let connected = self.connected.map(|d| format!(" · 连接 {:.1} s", d.as_secs_f64()));
         match phase {
+            Phase::Authenticating => format!("SSH 认证中 · 已等待 {seconds} s"),
             Phase::Starting => format!("SSH 启动中 · 等待首屏输出 · 工具检查 {} ms", self.check.as_millis()),
-            Phase::Active => format!("SSH 活动 · {seconds} s"),
+            Phase::Active => format!("SSH 活动 · {seconds} s{}", connected.unwrap_or_default()),
             Phase::Disconnected => match self.exit {
                 Some(code) => format!("SSH 断开 · 退出码 {code} · {seconds} s"),
                 None => format!("SSH 断开 · 原因未知 · {seconds} s"),
             },
             Phase::Failed => {
                 let why = self.exit.map_or_else(|| "原因未知".into(), |code| format!("退出码 {code}"));
-                format!("SSH 失败 · {why} · {seconds} s · 连接页可重连")
+                let connected = self
+                    .connected
+                    .map_or_else(|| " · 未连上".to_string(), |d| format!(" · 连接 {:.1} s", d.as_secs_f64()));
+                format!("SSH 失败 · {why} · {seconds} s{connected} · 连接页可重连")
             }
         }
     }
@@ -191,6 +224,8 @@ impl Workspace {
         let Some(phase) = self.panes[index].remote.as_ref().map(State::phase) else { return };
         let host = self.panes[index].profile.as_ref().and_then(|(profiles, profile)| ssh_host(profiles, *profile));
         match phase {
+            // 还在认证、刚启动或已经活动：不报事件，等它真的结束。
+            Phase::Authenticating | Phase::Starting | Phase::Active => {}
             Phase::Failed => {
                 let screen = screen_text(&self.driver.session.term);
                 let detail = classify_failure(&screen);
@@ -211,7 +246,6 @@ impl Workspace {
                     host.as_deref(),
                 );
             }
-            Phase::Starting | Phase::Active => {}
         }
     }
 
@@ -384,6 +418,31 @@ impl Workspace {
 mod tests {
     use super::*;
 
+    #[test]
+    fn authentication_wait_is_its_own_phase_and_connect_time_is_measured() {
+        // 前台认证覆盖层在等凭据：报“认证中”，还没收到输出就不算活动。
+        let mut state = State::new(Duration::from_millis(4));
+        state.set_authenticating(true);
+        assert_eq!(state.phase(), Phase::Authenticating);
+        assert_eq!(state.phase().label(), "认证中");
+        assert!(state.describe().starts_with("SSH 认证中 · 已等待 "), "{}", state.describe());
+        assert!(state.connect_time().is_none(), "认证期间还没有连接耗时");
+        // 收到输出：认证结束，进入活动，连接耗时开始有值。
+        state.set_authenticating(false);
+        state.mark_output();
+        assert_eq!(state.phase(), Phase::Active);
+        assert!(state.connect_time().is_some());
+        let text = state.describe();
+        assert!(text.contains("连接 "), "{text}");
+        // 首次输出之后再收到的认证标志不会把活动会话退回“认证中”。
+        state.set_authenticating(true);
+        assert_eq!(state.phase(), Phase::Active);
+        // 没连上就失败：说明“未连上”，不编造连接耗时。
+        let mut failed = State::new(Duration::from_millis(2));
+        failed.finish(Some(255));
+        let text = failed.describe();
+        assert!(text.contains("未连上"), "{text}");
+    }
     #[test]
     fn phases_follow_output_and_exit_status_without_guessing_authentication() {
         // 刚启动、还没有任何输出：只能说“启动中”，不猜认证阶段。

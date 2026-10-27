@@ -1627,6 +1627,22 @@ impl Workspace {
     }
 
     /// 某个配置档当前连接的阶段：优先当前窗格，其次第一个用它的窗格。
+    /// 认证覆盖层是否正为这个窗格等待口令或主机密钥确认。
+    /// 非预览构建没有覆盖层，恒为 false（只有密钥/agent 认证，没有可观察的“认证中”）。
+    fn authenticating_pane(&self, index: usize) -> bool {
+        #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+        {
+            self.authentication.as_ref().is_some_and(|overlay| {
+                let owner = overlay.controller.owner();
+                owner.session == self.panes[index].id && owner.generation == self.panes[index].auth_generation
+            })
+        }
+        #[cfg(not(all(any(test, feature = "sftp-preview"), unix)))]
+        {
+            let _ = index;
+            false
+        }
+    }
     fn profile_phase(&self, profile: usize) -> Option<remote::Phase> {
         let profiles = &self.driver.config.connections;
         let loaded = self.index(self.selected);
@@ -2420,6 +2436,11 @@ impl App for Workspace {
                 {
                     remote.mark_output();
                     self.chrome_dirty = true;
+                }
+                // 前台认证覆盖层正在等这个窗格的凭据：状态机据此报“认证中”，不靠输出猜。
+                let authenticating = self.authenticating_pane(index);
+                if let Some(remote) = &mut self.panes[index].remote {
+                    remote.set_authenticating(authenticating);
                 }
                 if !ticked && !self.panes[index].ended {
                     self.panes[index].ended = true;
@@ -3223,7 +3244,9 @@ exec /bin/cat
         wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Active));
         let rows = app.status_rows();
         assert!(rows[0].starts_with("SSH 活动 · "), "{}", rows[0]);
+        assert!(rows[0].contains("连接 "), "活动会话要写出连接耗时：{}", rows[0]);
         assert_eq!(app.panes[app.loaded].remote.as_ref().unwrap().phase(), remote::Phase::Active);
+        assert!(app.panes[app.loaded].remote.as_ref().unwrap().connect_time().is_some());
         if let Ok(path) = std::env::var("CONGMINAL_SSH_PHASE_PREVIEW_PATH") {
             force_draw(&mut app);
             let mut bytes = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
@@ -3240,6 +3263,40 @@ exec /bin/cat
         assert!(rows[0].contains("SSH 失败 · 退出码 3"), "{}", rows[0]);
         assert!(rows[0].contains("连接页可重连"), "{}", rows[0]);
         assert_eq!(app.profile_phase(1), Some(remote::Phase::Failed));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn authentication_overlay_marks_the_pane_as_authenticating_before_it_connects() {
+        use crate::ssh::auth::{Backend, Kind};
+        let dir = layout::TestDir::new();
+        // 静默的假 ssh：只等、不输出，这样“还没连上”的阶段可以稳定观察。
+        let silent = fake_ssh(&dir.0, "fake-ssh-silent", "sleep 30\n");
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[connections.quiet]\nkind='ssh'\nhost='fixture'\nprogram={silent:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.connections = configured.connections;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+        app.add_with_profile(None, Some(0));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Starting));
+        // 打开前台认证覆盖层：该窗格报“认证中”，状态页写等待时长而不是猜出来的阶段。
+        let (owner, identity) = app.prepare_authentication().unwrap();
+        let (mut backend, front) =
+            Backend::with_identity(owner, &crate::resources::current(), Arc::new(|| {}), identity).unwrap();
+        let _ticket =
+            backend.begin(Kind::Secret, b"Complete fixture challenge", &crate::tasks::Cancellation::default()).unwrap();
+        app.open_authentication(front).unwrap();
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Authenticating));
+        let rows = app.status_rows();
+        assert!(rows[0].starts_with("SSH 认证中 · 已等待 "), "{}", rows[0]);
+        // 取消认证后回到“启动中”：没有输出就不能自称活动。
+        app.dismiss_authentication();
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Starting));
     }
 
     #[cfg(unix)]

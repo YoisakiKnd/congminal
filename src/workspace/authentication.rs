@@ -107,7 +107,7 @@ impl Workspace {
     pub(super) fn cancel_authentication(&mut self) {
         self.dismiss_authentication();
     }
-    fn dismiss_authentication(&mut self) {
+    pub(super) fn dismiss_authentication(&mut self) {
         if let Some(mut overlay) = self.take_authentication() {
             overlay.controller.close();
         }
