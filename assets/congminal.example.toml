@@ -37,6 +37,15 @@ restore-layout = false
 
 # SFTP 需 macOS/Linux 的 sftp-preview 构建；普通构建启用会提示不支持。
 # 启用只开放 SSH 会话文件页的“连接”按钮，点击前不创建池、工作器或连接。
+# 系统 SSH 配置的只读摘要：连接页会把这里的别名列出来，点一下就按该别名新建连接。
+# 只认 Host 行里不含通配符（* ? !）的单个名字，最多 32 条；Include/Match/ProxyJump 等
+# 仍由 OpenSSH 自己展开，应用不重复实现。文件不存在时不报错，只是列表为空。
+[ssh]
+# 连接别名时用的 ssh 程序；[connections.<id>] 里写了 program 的仍以配置档为准。
+program = "ssh"
+# 读别名的文件，~ 会换成用户主目录。
+config-file = "~/.ssh/config"
+
 [sftp]
 enabled = false
 # 默认查找主程序旁的 congminal-ssh-helper；密码/私钥正文不要写入配置。

@@ -8,6 +8,7 @@ pub mod monitor;
 pub mod profiles;
 #[cfg(any(test, all(feature = "sftp-preview", unix)))]
 pub mod sftp;
+pub mod ssh;
 pub mod theme;
 pub mod toml;
 
@@ -38,6 +39,8 @@ pub struct Config {
     pub notifications: crate::notifications::Settings,
     pub git: git::Settings,
     pub monitor: monitor::Settings,
+    /// 系统 SSH 配置的只读摘要：连接页列出的别名与连接它们用的 ssh 程序。
+    pub ssh: ssh::Settings,
     #[cfg(any(test, all(feature = "sftp-preview", unix)))]
     pub sftp: sftp::Settings,
     /// 布局持久化在下次启动生效；默认关闭，不增加单终端的 I/O 或线程。
@@ -132,6 +135,7 @@ impl Default for Config {
             notifications: crate::notifications::Settings::default(),
             git: git::Settings::default(),
             monitor: monitor::Settings::default(),
+            ssh: ssh::Settings::default(),
             #[cfg(any(test, all(feature = "sftp-preview", unix)))]
             sftp: sftp::Settings::default(),
             restore_layout: false,
@@ -172,6 +176,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
     ("window", &["columns", "rows", "padding"]),
     ("workspace", &["restore-layout"]),
     ("git", &["enabled", "program", "refresh-seconds", "timeout-seconds", "max-files", "diff-mib"]),
+    ("ssh", &["program", "config-file"]),
     (
         "monitor",
         &[
@@ -277,6 +282,7 @@ impl Config {
         r.check_unknown_keys();
         config.git = git::read(&mut r);
         config.monitor = monitor::read(&mut r);
+        config.ssh = ssh::read(&mut r);
         #[cfg(any(test, all(feature = "sftp-preview", unix)))]
         {
             config.sftp = sftp::read(&mut r);
@@ -767,6 +773,25 @@ burst = 0
     }
 
     #[test]
+    fn ssh_settings_read_the_program_and_alias_list_from_the_configured_file() {
+        let dir = std::env::temp_dir().join(format!("cg-config-ssh-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("config");
+        std::fs::write(&file, "Host web-1 db\n  HostName 10.0.0.3\nHost *\n").unwrap();
+        let (config, warnings) =
+            Config::parse(&format!("[ssh]\nprogram = \"/opt/ssh\"\nconfig-file = {:?}\n", file.to_str().unwrap()));
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(config.ssh.program, std::path::PathBuf::from("/opt/ssh"));
+        assert_eq!(config.ssh.aliases, vec!["web-1".to_string(), "db".to_string()]);
+        // 默认：PATH 里的 ssh 与 ~/.ssh/config；文件不存在时列表为空且不报警。
+        let (default, warnings) = Config::parse("[ssh]\nconfig-file = \"/nonexistent/congminal/ssh-config\"\n");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(default.ssh.program, std::path::PathBuf::from("ssh"));
+        assert!(default.ssh.aliases.is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn mute_hosts_are_normalized_deduped_and_bounded() {
         let (config, warnings) = Config::parse(
             r#"
@@ -826,8 +851,10 @@ palette = ["#345678"]
     #[test]
     fn example_matches_defaults() {
         // 示例配置里写的值必须和代码里的默认值一致，否则文档就骗人了
-        let (config, warnings) = Config::parse(EXAMPLE);
+        let (mut config, warnings) = Config::parse(EXAMPLE);
         assert_eq!(warnings, Vec::<String>::new());
+        // 别名列表来自这台机器的 ~/.ssh/config，不属于“默认值”，单独比。
+        config.ssh.aliases.clear();
         assert_eq!(config, Config::default());
     }
 

@@ -1591,6 +1591,29 @@ impl Workspace {
                         false,
                     );
                 }
+                // 配置档之后列出 ~/.ssh/config 里的别名：点一下就按这个别名新建连接。
+                let aliases = &self.driver.config.ssh.aliases;
+                let start = self.connection_alias_start(h);
+                if !aliases.is_empty() {
+                    let rows = (r.h / h).saturating_sub(start);
+                    if rows >= 2 {
+                        self.driver.renderer.chrome(
+                            &mut self.frame,
+                            [r.x, r.y + start * h, r.w, h],
+                            "SSH 别名 · 来自 ssh 配置",
+                            false,
+                        );
+                        for (index, alias) in aliases.iter().take(rows - 1).enumerate() {
+                            let text = format!("别名 · {alias}");
+                            self.driver.renderer.chrome(
+                                &mut self.frame,
+                                [r.x, r.y + (start + 1 + index) * h, r.w, h],
+                                &text,
+                                false,
+                            );
+                        }
+                    }
+                }
             } else {
                 for i in 0..self.panes.len() {
                     let p = &self.panes[i];
@@ -1641,6 +1664,24 @@ impl Workspace {
         {
             let _ = index;
             false
+        }
+    }
+    /// 连接页里别名区的起始行：重连/取消两行之后是配置档，别名接在配置档后面。
+    fn connection_alias_start(&self, h: usize) -> usize {
+        let visible = (self.left_rect.h / h).saturating_sub(2);
+        let profiles = self.driver.config.connections.len();
+        let offset = self.profiles_offset.min(profiles.saturating_sub(visible));
+        let drawn = profiles.saturating_sub(offset).min(visible);
+        2 + drawn
+    }
+    /// 点连接页里的 SSH 别名：按别名临时合成一个配置档后新建远程窗格。
+    fn open_ssh_alias(&mut self, alias: &str) {
+        let program = self.driver.config.ssh.program.clone();
+        match config::profiles::Profiles::alias_profile(alias, &program, &crate::resources::current()) {
+            Some(profiles) => {
+                self.start_remote_alias(profiles, 0, remote::Target::New(self.selected), alias.to_string())
+            }
+            None => self.notice("这个别名不能直接当主机名使用"),
         }
     }
     fn profile_phase(&self, profile: usize) -> Option<remote::Phase> {
@@ -2114,7 +2155,16 @@ impl Workspace {
                                 let offset = self
                                     .profiles_offset
                                     .min(self.driver.config.connections.len().saturating_sub(visible));
-                                self.add_with_profile(None, Some(offset + index));
+                                let profiles = self.driver.config.connections.len();
+                                let drawn = profiles.saturating_sub(offset).min(visible);
+                                if index < drawn {
+                                    self.add_with_profile(None, Some(offset + index));
+                                } else if let Some(alias) = row
+                                    .checked_sub(self.connection_alias_start(h) + 1)
+                                    .and_then(|i| self.driver.config.ssh.aliases.get(i).cloned())
+                                {
+                                    self.open_ssh_alias(&alias);
+                                }
                             }
                         } else if let Some(index) = row.checked_sub(1).filter(|i| *i < self.panes.len()) {
                             self.select(self.panes[index].id);
@@ -3263,6 +3313,70 @@ exec /bin/cat
         assert!(rows[0].contains("SSH 失败 · 退出码 3"), "{}", rows[0]);
         assert!(rows[0].contains("连接页可重连"), "{}", rows[0]);
         assert_eq!(app.profile_phase(1), Some(remote::Phase::Failed));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_aliases_from_the_system_config_start_connections_from_the_connection_page() {
+        let dir = layout::TestDir::new();
+        let fake = fake_ssh(&dir.0, "fake-ssh-alias", "printf 'REMOTE_READY'\nexec /bin/cat\n");
+        let ssh_config = dir.0.join("ssh-config");
+        std::fs::write(&ssh_config, "Host web-1\n  HostName 10.0.0.9\nHost *.internal\n").unwrap();
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[ssh]\nprogram = {fake:?}\nconfig-file = {ssh_config:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.ssh = configured.ssh;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+        // 别名区接在配置档后面：没有配置档时从第 2 行开始，标题下面才是可点的别名。
+        let h = app.driver.renderer.cell_size().1;
+        let start = app.connection_alias_start(h);
+        assert_eq!(start, 2, "没有配置档时别名标题就在按钮行下面");
+        let rect = app.left_rect;
+        let (x, y) = ((rect.x + 4) as f64, (rect.y + (start + 1) * h + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        wait(&mut app, |a| a.panes.len() == 2);
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        // 新建的窗格按别名连：host 就是别名，其余交给 ssh 自己解析。
+        let (profiles, index) = app.panes[app.loaded].profile.clone().unwrap();
+        match &profiles.get(index).unwrap().connection {
+            config::profiles::Connection::Ssh(ssh) => assert_eq!(ssh.host, "web-1"),
+            other => panic!("别名应当建成 SSH 连接：{other:?}"),
+        }
+        assert_eq!(app.driver.config.connections.len(), 0, "临时配置档不写回配置列表");
+        wait(&mut app, |a| a.profile_phase(0).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn late_alias_results_are_dropped_when_the_alias_disappears() {
+        let dir = layout::TestDir::new();
+        let fake = fake_ssh(&dir.0, "fake-ssh-alias-gone", "printf 'REMOTE_READY'\nexec /bin/cat\n");
+        let ssh_config = dir.0.join("ssh-config");
+        std::fs::write(&ssh_config, "Host gone-1\n  HostName 10.0.0.10\n").unwrap();
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[ssh]\nprogram = {fake:?}\nconfig-file = {ssh_config:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.ssh = configured.ssh;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+        let h = app.driver.renderer.cell_size().1;
+        let start = app.connection_alias_start(h);
+        let rect = app.left_rect;
+        let (x, y) = ((rect.x + 4) as f64, (rect.y + (start + 1) * h + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        // 配置重载后别名没了：这次连接的结果不能再落地，也不能悄悄换成别的配置档。
+        app.driver.config.ssh.aliases.clear();
+        wait(&mut app, |a| a.status.as_deref() == Some("连接来源已变化，未应用迟到的 SSH 结果"));
+        assert_eq!(app.panes.len(), 1);
     }
 
     #[cfg(unix)]

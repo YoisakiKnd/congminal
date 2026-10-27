@@ -15,6 +15,9 @@ struct Request {
     profiles: Profiles,
     index: usize,
     target: Target,
+    /// 这次连接是不是由 `~/.ssh/config` 的别名临时合成的配置档。
+    /// 合成档不在配置列表里，所以结果有效性改用“别名还在不在”判断。
+    alias: Option<String>,
 }
 pub(super) struct Ready {
     request: Request,
@@ -27,7 +30,14 @@ pub(super) struct Connector {
     _memory: Option<Arc<crate::resources::Lease>>,
 }
 impl Connector {
-    pub fn start(&mut self, profiles: Profiles, index: usize, target: Target, notify: Notify) -> Result<(), Error> {
+    pub fn start(
+        &mut self,
+        profiles: Profiles,
+        index: usize,
+        target: Target,
+        alias: Option<String>,
+        notify: Notify,
+    ) -> Result<(), Error> {
         if !profiles.get(index).is_some_and(|p| matches!(p.connection, Connection::Ssh(_))) {
             return Err(Error::Invalid);
         }
@@ -50,7 +60,7 @@ impl Connector {
             self.task = Some(task);
             self._memory = Some(memory);
         }
-        let request = Request { profiles, index, target };
+        let request = Request { profiles, index, target, alias };
         self.pending = Some(request.clone());
         if let Err(error) = self.task.as_ref().unwrap().try_submit(request) {
             self.pending = None;
@@ -250,6 +260,13 @@ impl Workspace {
     }
 
     pub(super) fn start_remote(&mut self, profiles: Profiles, index: usize, target: Target) {
+        self.start_remote_with(profiles, index, target, None);
+    }
+    /// 由连接页里的 SSH 别名发起连接：配置档是临时合成的，别忘记录下别名。
+    pub(super) fn start_remote_alias(&mut self, profiles: Profiles, index: usize, target: Target, alias: String) {
+        self.start_remote_with(profiles, index, target, Some(alias));
+    }
+    fn start_remote_with(&mut self, profiles: Profiles, index: usize, target: Target, alias: Option<String>) {
         if self.composing() {
             return;
         }
@@ -257,7 +274,7 @@ impl Workspace {
             self.notice("已达到 8 个会话上限");
             return;
         }
-        match self.ssh.start(profiles, index, target, self.driver.notify.clone()) {
+        match self.ssh.start(profiles, index, target, alias, self.driver.notify.clone()) {
             Ok(()) => self.notice("正在检查 SSH 工具；可在连接页取消"),
             Err(error) => self.notice(error.message()),
         }
@@ -277,7 +294,14 @@ impl Workspace {
         let Some(ready) = self.ssh.take() else { return };
         let request = ready.request;
         let valid = match request.target {
-            Target::New(source) => self.selected == source && request.profiles.shares(&self.driver.config.connections),
+            Target::New(source) => {
+                self.selected == source
+                    && match &request.alias {
+                        // 别名合成档不在配置列表里，改用“这个别名还在不在”判断结果是否过期。
+                        Some(alias) => self.driver.config.ssh.aliases.iter().any(|listed| listed == alias),
+                        None => request.profiles.shares(&self.driver.config.connections),
+                    }
+            }
             Target::Replace(id) => self.index(id).is_some_and(|i| {
                 self.panes[i]
                     .profile
