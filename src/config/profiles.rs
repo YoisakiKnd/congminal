@@ -8,6 +8,16 @@ use crate::resources::{Budget, Kind, Lease};
 use std::{ops::Deref, sync::Arc};
 
 pub const LIMIT: usize = 16;
+/// 单个配置档最多的转发条目。
+pub const FORWARD_LIMIT: usize = 16;
+/// 转发规则只允许这些字符：地址、端口、方括号与 IPv6 冒号。
+fn forward_valid(spec: &str) -> bool {
+    !spec.is_empty()
+        && spec.len() <= 128
+        && !spec.starts_with('-')
+        && spec.bytes().all(|b| b.is_ascii_alphanumeric() || b".:_-[]".contains(&b))
+        && spec.split(':').count() >= 3
+}
 const WORK_BYTES: usize = 512 * 1024;
 
 #[derive(Debug, PartialEq)]
@@ -19,6 +29,8 @@ pub struct Ssh {
     pub identity_file: Option<String>,
     /// 跳板机（`ssh -J`）：`[user@]host[:port]`，也允许逗号分隔的多跳。
     pub jump: Option<String>,
+    /// 终端会话的本地转发（`ssh -L`），每项形如 `[绑定地址:]端口:主机:端口`。
+    pub forwards: Vec<String>,
     pub program: Option<String>,
 }
 #[derive(Debug, PartialEq)]
@@ -180,6 +192,7 @@ impl Profiles {
                                 "port",
                                 "identity-file",
                                 "jump",
+                                "forward",
                                 "program",
                             ],
                         )?;
@@ -207,12 +220,37 @@ impl Profiles {
                         }) {
                             return Err("jump 须为 [user@]host[:port]，可逗号分隔多跳，不能含选项或命令");
                         }
+                        // 端口转发只作用于交互式终端会话：SFTP/监控/Git 各自的后台通道不加。
+                        let forwards = match t.get("forward") {
+                            None => Vec::new(),
+                            Some(Value::String(spec)) => vec![spec.clone()],
+                            Some(Value::Array(items)) => {
+                                if items.len() > FORWARD_LIMIT {
+                                    return Err("forward 最多 16 项");
+                                }
+                                let mut out = Vec::with_capacity(items.len());
+                                for item in items {
+                                    let Value::String(spec) = item else {
+                                        return Err("forward 须为字符串或字符串数组");
+                                    };
+                                    out.push(spec.clone());
+                                }
+                                out
+                            }
+                            _ => return Err("forward 须为字符串或字符串数组"),
+                        };
+                        for spec in &forwards {
+                            if !forward_valid(spec) {
+                                return Err("forward 须为 [绑定地址:]端口:主机:端口，不能含选项或命令");
+                            }
+                        }
                         Connection::Ssh(Ssh {
                             host: host.into(),
                             user: user.map(str::to_owned),
                             port,
                             identity_file: identity.map(str::to_owned),
                             jump: jump.map(str::to_owned),
+                            forwards,
                             program: program.map(str::to_owned),
                         })
                     }
@@ -275,6 +313,8 @@ impl Profile {
                         + optional(&c.user)
                         + optional(&c.identity_file)
                         + optional(&c.jump)
+                        + c.forwards.capacity() * std::mem::size_of::<String>()
+                        + c.forwards.iter().map(String::capacity).sum::<usize>()
                         + optional(&c.program)
                 }
             }
@@ -361,6 +401,41 @@ jump="one,two"
             assert!(profiles.is_empty(), "{bad} 不应加载");
             assert!(warnings.iter().any(|w| w.contains("jump")), "{bad}: {warnings:?}");
         }
+    }
+    #[test]
+    fn forwards_accept_one_or_many_entries_and_reject_options() {
+        let pool = Budget::new(WORK_BYTES, 0);
+        let (profiles, warnings) = parse(
+            r#"
+[connections.a]
+kind="ssh"
+host="target"
+forward="8080:localhost:80"
+[connections.b]
+kind="ssh"
+host="target"
+forward=["8080:localhost:80", "[::1]:5432:db:5432"]
+"#,
+            &pool,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let Connection::Ssh(a) = &profiles[0].connection else { panic!("expected ssh") };
+        assert_eq!(a.forwards, ["8080:localhost:80"]);
+        let Connection::Ssh(b) = &profiles[1].connection else { panic!("expected ssh") };
+        assert_eq!(b.forwards.len(), 2, "{:?}", b.forwards);
+        for bad in ["-oProxyCommand=echo", "8080", "8080:localhost:80; rm -rf /", "a b:c:d"] {
+            let fresh = Budget::new(WORK_BYTES, 0);
+            let (profiles, warnings) =
+                parse(&format!("[connections.x]\nkind=\"ssh\"\nhost=\"t\"\nforward=\"{bad}\"\n"), &fresh);
+            assert!(profiles.is_empty(), "{bad} 不应加载");
+            assert!(warnings.iter().any(|w| w.contains("forward")), "{bad}: {warnings:?}");
+        }
+        // 条目数有上限，超出的整条配置档不加载。
+        let many =
+            (0..FORWARD_LIMIT + 1).map(|i| format!("\"{}:localhost:80\"", 8000 + i)).collect::<Vec<_>>().join(", ");
+        let fresh = Budget::new(WORK_BYTES, 0);
+        let (profiles, _) = parse(&format!("[connections.x]\nkind=\"ssh\"\nhost=\"t\"\nforward=[{many}]\n"), &fresh);
+        assert!(profiles.is_empty(), "超过 {FORWARD_LIMIT} 项不应加载");
     }
     #[test]
     fn invalid_or_secret_fields_do_not_load_or_echo_values() {

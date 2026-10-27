@@ -245,8 +245,15 @@ mod tests {
         let (back, front) = Backend::new(Owner { session: 10, generation: 2 }, &pool, Arc::new(|| {})).unwrap();
         let pump = Pump::new(&std::env::temp_dir(), back, &pool, &cancel).unwrap();
         let path = pump.ticket_path().to_owned();
-        let profile =
-            Ssh { host: "fixture".into(), user: None, port: None, identity_file: None, jump: None, program: None };
+        let profile = Ssh {
+            host: "fixture".into(),
+            user: None,
+            port: None,
+            identity_file: None,
+            jump: None,
+            forwards: Vec::new(),
+            program: None,
+        };
         let connection = Connection {
             profile: &profile,
             configuration: Configuration::None,
@@ -270,8 +277,15 @@ mod tests {
         let directory = pump.ticket_path().parent().unwrap().to_path_buf();
         let retained = directory.join("unexpected-fixture-file");
         std::fs::write(&retained, b"must not recursively delete").unwrap();
-        let profile =
-            Ssh { host: "fixture".into(), user: None, port: None, identity_file: None, jump: None, program: None };
+        let profile = Ssh {
+            host: "fixture".into(),
+            user: None,
+            port: None,
+            identity_file: None,
+            jump: None,
+            forwards: Vec::new(),
+            program: None,
+        };
         let failure = Authenticated::connect_checked(
             Connection {
                 profile: &profile,
@@ -330,6 +344,7 @@ mod tests {
                     port: None,
                     identity_file: None,
                     jump: None,
+                    forwards: Vec::new(),
                     program: None,
                 };
                 Authenticated::connect(

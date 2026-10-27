@@ -742,6 +742,7 @@ mod tests {
                     port: None,
                     identity_file: None,
                     jump: None,
+                    forwards: Vec::new(),
                     program: Some("/usr/bin/ssh".into()),
                 };
                 Some(

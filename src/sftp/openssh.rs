@@ -79,6 +79,7 @@ mod tests {
             port: Some(2222),
             identity_file: Some("key space;$()".into()),
             jump: None,
+            forwards: Vec::new(),
             program: None,
         };
         let spec = command(&profile, Configuration::File(std::path::Path::new("config space")));
@@ -118,6 +119,7 @@ mod tests {
             port: None,
             identity_file: None,
             jump: Some("dev@bastion:2200".into()),
+            forwards: Vec::new(),
             program: None,
         };
         let spec = command(&profile, Configuration::None);
@@ -148,6 +150,7 @@ mod tests {
             port: None,
             identity_file: None,
             jump: None,
+            forwards: Vec::new(),
             program: None,
         };
         let cancel = Cancellation::default();
