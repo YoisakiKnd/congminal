@@ -446,6 +446,13 @@ impl Panel {
                         monitor::human(raw.disk_total)
                     ));
                 }
+                // 网络速率要靠两次采样的累计字节差：第一次采样只有基线，显示未知而不是 0。
+                headline.push(match (raw.net_down, raw.net_up) {
+                    (Some(down), Some(up)) => {
+                        format!("网络 ↓{} ↑{}", monitor::rate(down as u64), monitor::rate(up as u64))
+                    }
+                    _ => "网络 未知".into(),
+                });
             }
             None => headline.push(if self.loading { "正在采样…".into() } else { "等待第一次采样".into() }),
         }

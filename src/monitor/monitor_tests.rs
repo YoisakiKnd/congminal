@@ -1,7 +1,7 @@
 use super::*;
 
 fn raw(cpu: f32) -> Raw {
-    Raw { cpu, cores: 4, mem_used: 1, mem_total: 2, disk_used: 3, disk_total: 4 }
+    Raw { cpu, cores: 4, mem_used: 1, mem_total: 2, disk_used: 3, disk_total: 4, net_down: None, net_up: None }
 }
 
 fn sample(at: Instant, cpu: f32) -> Sample {
@@ -148,12 +148,35 @@ fn process_list_keeps_the_busiest_rows_and_stays_bounded() {
 }
 
 #[test]
-fn one_sample_stays_within_64_bytes() {
-    // 每条历史样本的内存占用：现在 64 字节（Instant 16 + Raw 48）。
-    // 900 点上限即 57.6 KiB；加字段会抬高这条断言，必须是有意的。
-    assert!(std::mem::size_of::<Sample>() <= 64, "{}", std::mem::size_of::<Sample>());
+fn one_sample_stays_within_80_bytes() {
+    // 每条历史样本的内存占用：现在 80 字节（Instant 16 + Raw 56 + 对齐）。
+    // 比加入网络速率前多 16 字节（两个 `Option<u32>`）；900 点上限即 72 KiB。
+    // 再加字段必须重新核对这条断言，别让历史池悄悄变大。
+    assert!(std::mem::size_of::<Sample>() <= 80, "{}", std::mem::size_of::<Sample>());
     let history = History::new(900);
-    assert!(history.bytes() <= 900 * 64, "{}", history.bytes());
+    assert!(history.bytes() <= 900 * 80, "{}", history.bytes());
+}
+
+#[test]
+fn network_counters_skip_loopback_and_report_unknown_when_absent() {
+    // 两行表头之后是每接口一行；接收字节第 1 个字段、发送字节第 9 个。
+    let text = "Inter-|   Receive                                                |  Transmit\n\
+                face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets\n\
+                lo: 900 1 0 0 0 0 0 0 800 1 0 0 0 0 0 0\n\
+                eth0: 1000 5 0 0 0 0 0 0 200 3 0 0 0 0 0 0\n\
+                wlan0: 500 2 0 0 0 0 0 0 100 1 0 0 0 0 0 0\n";
+    assert_eq!(parse_net_dev(text), Some((1500, 300)));
+    // 只有回环、或者行格式坏掉：未知，不显示成 0。
+    assert_eq!(parse_net_dev("h1\nh2\nlo: 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16\n"), None);
+    assert_eq!(parse_net_dev("h1\nh2\neth0: broken\n"), None);
+    assert_eq!(parse_net_dev(""), None);
+}
+
+#[test]
+fn rates_use_finer_units_than_capacity() {
+    assert_eq!(rate(300), "300 B/s");
+    assert_eq!(rate(2048), "2 KiB/s");
+    assert_eq!(rate(3 * 1024 * 1024), "3.0 MiB/s");
 }
 
 /// 采样成本：`cargo test monitor_sample_cost -- --ignored --nocapture`。

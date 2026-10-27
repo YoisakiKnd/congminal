@@ -86,7 +86,9 @@ impl Sampling for Source {
         } else {
             (0, 0)
         };
-        Ok(Raw { cpu, cores: times.cores, mem_used, mem_total, disk_used, disk_total })
+        // 远端速率这一版不采：`/proc/net/dev` 的解析与本地共用同一套，但远端要多跑一次
+        // 文件读取，留到需要时再加，界面显示“未知”。
+        Ok(Raw { cpu, cores: times.cores, mem_used, mem_total, disk_used, disk_total, net_down: None, net_up: None })
     }
 
     fn mount(&self) -> Option<String> {
