@@ -46,6 +46,7 @@ impl Workspace {
             shown: None,
             sampled: Instant::now(),
             speed: 0,
+            open: None,
         });
         self.panes[index].auth_generation = owner.generation;
         self.chrome_dirty = true;
@@ -183,8 +184,39 @@ impl Workspace {
             }
         }
         self.finish_remote_authentication(completion.ticket);
+        // 打开远端文件：下载成功才启动系统程序，失败只报告，不留半截临时文件当成功。
+        if file.failure.is_none()
+            && let Some(target) = file.open.take()
+        {
+            self.launch_open_target(target);
+        }
         self.chrome_dirty = true;
         None
+    }
+    /// 用系统程序打开刚下好的临时副本；进程由工作区每帧回收，不新增线程。
+    pub(super) fn launch_open_target(&mut self, target: super::remote_files::OpenTarget) {
+        if crate::open::reap(&mut self.open_children) >= crate::open::MAX_CHILDREN {
+            self.notice("已经打开太多临时文件（上限 8 个），先关掉一些再打开");
+            return;
+        }
+        let opener = self.driver.config.sftp.opener();
+        let args = self.driver.config.sftp.opener_args();
+        match crate::open::spawn(&opener, args, &target.local) {
+            Ok(child) => {
+                self.open_children.push(child);
+                let shown = target.local.display();
+                if let Some(state) = self.sftp.as_mut() {
+                    state.tasks.note = Some(format!("已打开临时副本：{shown}"));
+                }
+                let back = crate::path_text::escape(&target.remote, "");
+                self.notice(&format!("已打开临时副本 {shown}；改完用 [上传] 传回 {back}"));
+            }
+            Err(error) => {
+                let shown = target.local.display();
+                self.notice(&format!("打开程序启动失败（{error}）；临时副本在 {shown}，可用 [上传] 回传"));
+            }
+        }
+        self.chrome_dirty = true;
     }
     pub(super) fn cancel_remote_transfers(&mut self, state: &mut State) {
         for file in state.files.iter_mut().flatten().filter(|f| !f.complete) {

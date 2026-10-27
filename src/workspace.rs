@@ -317,6 +317,9 @@ pub struct Workspace {
     right_page: RightPage,
     /// 状态页里来自通知中心的行：行号 → 来源，用于点击定位。
     notice_rows: Vec<(usize, crate::notifications::Source)>,
+    /// 打开远端文件时启动的系统程序；每帧回收已退出的，数量有上限。
+    #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+    open_children: Vec<std::process::Child>,
     /// 状态页“清空通知”那一行；没有通知时为 None。
     clear_row: Option<usize>,
     /// 外部程序探测结果与它对应的程序清单；清单变了就重算，条数有上限。
@@ -403,6 +406,8 @@ impl Workspace {
             monitor: monitor_panel::Panel::new(),
             right_page: RightPage::Status,
             notice_rows: Vec::new(),
+            #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+            open_children: Vec::new(),
             clear_row: None,
             tools: None,
             right: false,
@@ -2101,10 +2106,10 @@ impl Workspace {
                         } else if self.left_page == LeftPage::Files {
                             #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
                             {
-                                // 操作行有六个按钮槽位、第一行四个（上级/刷新/隐藏/排序），其余行沿用三列；
-                                // 列号按行换算后交给面板。
+                                // 操作行有七个按钮槽位（含打开）、第一行四个（上级/刷新/隐藏/排序），
+                                // 其余行沿用三列；列号按行换算后交给面板。
                                 let slots = if row == 3 {
-                                    6
+                                    crate::workspace::remote_files::OPS_SLOTS
                                 } else if row == 1 {
                                     4
                                 } else {
@@ -2417,6 +2422,9 @@ impl App for Workspace {
         keep
     }
     fn tick(&mut self) -> bool {
+        // 打开器进程在这里回收：退出后立刻不再占用进程表，也不新增线程。
+        #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+        crate::open::reap(&mut self.open_children);
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         {
             self.sftp_tick();

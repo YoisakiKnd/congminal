@@ -14,11 +14,14 @@ const PREEDIT_BYTES: usize = 256;
 /// 第一行四个槽位：上级 / 刷新 / 隐藏 / 排序（显示当前排序方式）。
 const HEAD_LABELS: [[&str; 4]; 3] =
     [["上级", "刷新", "隐藏", "排序"], ["上级", "刷新", "隐藏", "排序"], ["上", "刷", "隐", "序"]];
-const OPS_LABELS: [[&str; 6]; 3] = [
-    ["[新建]", "[改名]", "[删除]", "[上传]", "[下载]", "[任务]"],
-    ["新建", "改名", "删除", "上传", "下载", "任务"],
-    ["新", "改", "删", "上", "下", "任"],
+/// 文件页操作行：新建/改名/删除/上传/下载/打开/任务。
+const OPS_LABELS: [[&str; 7]; 3] = [
+    ["[新建]", "[改名]", "[删除]", "[上传]", "[下载]", "[打开]", "[任务]"],
+    ["新建", "改名", "删除", "上传", "下载", "打开", "任务"],
+    ["新", "改", "删", "上", "下", "开", "任"],
 ];
+/// 文件页操作行的槽数（与 `OPS_LABELS` 一一对应）。
+pub(super) const OPS_SLOTS: usize = 7;
 const FORM_LABELS: [[&str; 2]; 3] = [["[确定]", "[取消]"], ["确定", "取消"], ["确", "取"]];
 const CONFIRM_LABELS: [[&str; 2]; 3] = [["[删除]", "[取消]"], ["删除", "取消"], ["删", "取"]];
 #[cfg(feature = "sftp-preview")]
@@ -148,6 +151,50 @@ struct FileTask {
     shown: Option<service::TransferSnapshot>,
     sampled: Instant,
     speed: u64,
+    /// 这条记录是“打开远端文件”的有界临时下载：完成后用系统程序打开，路径可回传。
+    open: Option<OpenTarget>,
+}
+/// 打开远端文件的临时路径：`$TMPDIR/congminal-open/<会话>-<序号>-<名字>`。
+///
+/// 名字只保留最后一段并压掉分隔符与控制字符；序号保证同一次运行里不重名，
+/// 因此下载可以用“不覆盖”提交，不会误删用户已有的临时文件。
+fn open_temp_path(session: u64, name: &[u8]) -> Option<PathBuf> {
+    let dir = std::env::temp_dir().join("congminal-open");
+    std::fs::create_dir_all(&dir).ok()?;
+    let mut local = String::with_capacity(128);
+    for ch in String::from_utf8_lossy(name).chars() {
+        if local.len() >= 120 {
+            break;
+        }
+        local.push(if ch == '/' || ch == '\\' || ch.is_control() { '_' } else { ch });
+    }
+    if local.is_empty() {
+        local.push_str("file");
+    }
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let nonce = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Some(dir.join(format!("{session}-{nonce}-{local}")))
+}
+/// 打开失败的一句话原因（面板只显示一行）。
+fn open_failure(failure: Failure) -> &'static str {
+    match failure {
+        Failure::Full => "传输记录已满，先清除已结束的记录",
+        Failure::Budget => "额度不足，先清除已结束的记录",
+        Failure::Cancelled => "连接已关闭",
+        Failure::Authentication => "需要先完成认证",
+        Failure::Connection => "连接已断开",
+        Failure::Changed => "文件在下载前发生了变化，刷新后再试",
+        Failure::Remote(_) => "远端拒绝了这次读取",
+        _ => "请求无效，请刷新目录后再试",
+    }
+}
+/// 打开远端文件时下到本地的临时副本；远端原路径保留下来供回传对照。
+pub(super) struct OpenTarget {
+    pub(super) local: PathBuf,
+    /// 远端原路径（回传时对照，详情里也显示）。
+    pub(super) remote: Vec<u8>,
+    /// 临时路径与远端路径的额度；随记录释放。
+    _memory: crate::resources::Lease,
 }
 impl FileTask {
     fn retryable(&self) -> bool {
@@ -881,7 +928,8 @@ impl Workspace {
         }
         if row == 3 && column >= 3 {
             return match column {
-                5 => {
+                5 => self.sftp_open_selected(),
+                6 => {
                     self.show_transfer_list();
                     true
                 }
@@ -1072,6 +1120,94 @@ impl Workspace {
         state.form = Some(form);
         self.chrome_dirty = true;
         Ok(())
+    }
+    /// 打开选中的远端文件：有大小上限的临时下载，完成后交给系统程序。
+    ///
+    /// 这里不弹路径表单：临时路径由应用自己生成（`$TMPDIR/congminal-open/<会话>-<名字>`），
+    /// 用户在完成提示与详情里看到它，改完可用 [上传] 显式回传。
+    pub(super) fn sftp_open_selected(&mut self) -> bool {
+        if self.composing()
+            || self.authentication.is_some()
+            || self.sftp.as_ref().is_some_and(State::transfer_input_active)
+        {
+            self.notice("先结束当前的输入或认证，再打开远端文件");
+            return true;
+        }
+        let Some(index) = self.index(self.selected) else { return true };
+        let pane = &self.panes[index];
+        let Some((profiles, profile)) = pane.profile.as_ref() else { return true };
+        let generation = pane.auth_generation;
+        let Some(state) = self.sftp.as_ref() else { return true };
+        let Some(view) = state.view.as_ref().filter(|v| {
+            v.binding.owner.session == pane.id
+                && v.binding.owner.generation == generation
+                && v.binding.profiles.shares(profiles)
+                && v.binding.profile == *profile
+                && !v.loading
+        }) else {
+            self.notice("目录还没加载完，稍后再试");
+            return true;
+        };
+        let Some(entry) = view.selected.and_then(|i| view.listing()?.entries.get(i)) else {
+            self.notice("先选中一个远端文件再打开");
+            return true;
+        };
+        // 与下载一致：列表说普通文件，或权限里没有类型位/就是普通文件。
+        let regular = entry.kind == FileKind::File
+            || entry.attrs.permissions.is_none_or(|p| matches!(p & 0o170000, 0 | 0o100000));
+        if !regular {
+            self.notice("只能打开普通文件；目录、符号链接和特殊文件请先下载");
+            return true;
+        }
+        let Some(version) = service::Version::from(entry.attrs) else {
+            self.notice("这个文件的属性不全，刷新目录后再打开");
+            return true;
+        };
+        let cap = self.driver.config.sftp.open_max_bytes;
+        if version.length > cap {
+            let mib = cap / (1024 * 1024);
+            self.notice(&format!("文件 {} MiB 超过打开上限 {mib} MiB，请改用 [下载]", version.length / (1024 * 1024)));
+            return true;
+        }
+        let Ok(remote) = view.target.child(&entry.name) else {
+            self.notice("远端路径过长，无法打开");
+            return true;
+        };
+        let Some(local) = open_temp_path(pane.id, entry.name.as_slice()) else {
+            self.notice("无法准备临时目录，请检查 TMPDIR 权限");
+            return true;
+        };
+        let remote_bytes = remote.bytes().to_vec();
+        let capacity = std::mem::size_of::<OpenTarget>() + local.as_os_str().len() + remote_bytes.len() + 64;
+        let memory = match self.sftp.as_ref().map(|s| s.service.budget().lease(crate::resources::Kind::Sftp, capacity))
+        {
+            Some(Ok(lease)) => lease,
+            _ => {
+                self.notice("额度不足，先清除已结束的传输记录");
+                return true;
+            }
+        };
+        let selection = service::TransferSelection::Download {
+            remote: &remote_bytes,
+            local: &local,
+            version,
+            replace: service::Replace::No,
+        };
+        match self.submit_remote_transfer(selection) {
+            Ok(ticket) => {
+                if let Some(state) = self.sftp.as_mut()
+                    && let Some(file) = state.files.iter_mut().flatten().find(|f| f.ticket == ticket)
+                {
+                    file.open = Some(OpenTarget { local, remote: remote_bytes, _memory: memory });
+                }
+                self.notice("正在下载到临时副本，完成后用系统程序打开");
+            }
+            Err(failure) => {
+                self.notice(&format!("无法开始打开：{}", open_failure(failure)));
+            }
+        }
+        self.chrome_dirty = true;
+        true
     }
     fn sftp_open_confirm(&mut self) -> Result<(), Failure> {
         let state = self.sftp.as_mut().ok_or(Failure::Invalid)?;
@@ -1318,7 +1454,7 @@ impl Workspace {
             } else if busy {
                 0
             } else {
-                6
+                OPS_SLOTS
             };
             if count == 0 {
                 self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 3 * h, r.w, h], message, error.is_some());
@@ -1407,6 +1543,11 @@ mod tests {
     }
     /// 用合成目录结果替换视图：面板逻辑不依赖真实 SFTP 服务端，写入仍走真实服务层。
     pub(super) fn loaded(app: &mut Workspace, names: &[(&str, bool)]) {
+        let entries: Vec<(&str, bool, Option<u64>)> = names.iter().map(|(name, dir)| (*name, *dir, None)).collect();
+        loaded_with(app, &entries);
+    }
+    /// 同 `loaded`，但可以给普通文件带上大小（打开远端文件要看大小上限）。
+    pub(super) fn loaded_with(app: &mut Workspace, entries: &[(&str, bool, Option<u64>)]) {
         let state = app.sftp.as_mut().unwrap();
         let pool = state.service.budget().clone();
         let view = state.view.as_mut().unwrap();
@@ -1419,9 +1560,14 @@ mod tests {
             crate::sftp::model::Sort::Name,
         )
         .unwrap();
-        for (name, directory) in names {
+        for (name, directory, size) in entries {
             let permissions = Some(if *directory { 0o040755 } else { 0o100644 });
-            let attrs = crate::sftp::model::Attributes { permissions, ..Default::default() };
+            let attrs = crate::sftp::model::Attributes {
+                permissions,
+                size: size.or(Some(0)),
+                times: Some((0, 0)),
+                ..Default::default()
+            };
             scan.push_entry(name.as_bytes(), attrs, &cancel).unwrap();
         }
         let listing = scan.finish(true).unwrap();
@@ -1488,6 +1634,92 @@ mod tests {
         drop(app);
         released(&pool);
     }
+    #[test]
+    fn temp_copies_keep_only_the_last_segment_and_never_reuse_a_name() {
+        let first = open_temp_path(7, b"a/b/c\nfile.txt").unwrap();
+        let second = open_temp_path(7, b"a/b/c\nfile.txt").unwrap();
+        let name = first.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("7-"), "{name}");
+        assert!(name.ends_with("-a_b_c_file.txt"), "分隔符与控制字符都要换掉：{name}");
+        assert_ne!(first, second, "同名文件连续打开不能互相覆盖");
+        assert!(first.parent().unwrap().ends_with("congminal-open"));
+        let empty = open_temp_path(1, b"").unwrap();
+        assert!(empty.file_name().unwrap().to_string_lossy().ends_with("-file"));
+    }
+
+    #[test]
+    fn opening_a_remote_file_refuses_directories_and_oversized_files() {
+        let pool = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(pool.clone());
+        let mut app = workspace();
+        app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded_with(&mut app, &[("folder", true, None), ("big.bin", false, Some(8 * 1024 * 1024))]);
+        app.left = true;
+        app.left_page = LeftPage::Files;
+
+        // 没选中：明确提示，不提交任何东西。
+        assert!(app.sftp_click(3, 5));
+        assert_eq!(app.status.as_deref(), Some("先选中一个远端文件再打开"));
+        assert!(app.sftp.as_ref().unwrap().files.iter().all(Option::is_none));
+
+        // 目录：不能打开，让用户走下载。
+        app.sftp.as_mut().unwrap().view.as_mut().unwrap().selected = Some(0);
+        assert!(app.sftp_click(3, 5));
+        assert!(app.status.as_deref().unwrap().contains("只能打开普通文件"), "{:?}", app.status);
+
+        // 超过上限（默认 4 MiB）：拒绝并给出改用下载的建议。
+        app.sftp.as_mut().unwrap().view.as_mut().unwrap().selected = Some(1);
+        assert!(app.sftp_click(3, 5));
+        let status = app.status.clone().unwrap();
+        assert!(status.contains("超过打开上限"), "{status}");
+        assert!(status.contains("[下载]"), "{status}");
+
+        // 放宽上限后开始有界临时下载，并记在这条记录上。
+        app.driver.config.sftp.open_max_bytes = 16 * 1024 * 1024;
+        assert!(app.sftp_click(3, 5));
+        let state = app.sftp.as_ref().unwrap();
+        let record = state.files.iter().flatten().find(|f| f.open.is_some()).expect("记录上要带临时副本");
+        assert!(record.open.as_ref().unwrap().local.to_string_lossy().contains("congminal-open"));
+        assert!(record.open.as_ref().unwrap().remote.ends_with(b"/tmp/big.bin"));
+        close(&mut app);
+        drop(app);
+        released(&pool);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_configured_opener_gets_the_temp_copy_and_is_reaped() {
+        let pool = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(pool.clone());
+        let dir = crate::workspace::layout::TestDir::new();
+        let marker = dir.0.join("opened.txt");
+        let opener = dir.0.join("fake-opener.sh");
+        std::fs::write(&opener, format!("#!/bin/sh\necho \"$1\" > {marker:?}\n")).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut app = workspace();
+        // notice() 只有在工作区启用后才写状态栏；这里打开一次布局。
+        assert!(app.enable());
+        app.driver.config.sftp.opener = Some(opener);
+        let temp = dir.0.join("temp-copy.txt");
+        std::fs::write(&temp, b"edited").unwrap();
+        let lease = pool.lease(Kind::Sftp, 256).unwrap();
+        app.launch_open_target(OpenTarget {
+            local: temp.clone(),
+            remote: b"/remote/temp-copy.txt".to_vec(),
+            _memory: lease,
+        });
+        until(|| std::fs::read_to_string(&marker).is_ok_and(|text| text.trim() == temp.display().to_string()));
+        assert!(app.status.as_deref().unwrap().contains("已打开临时副本"), "{:?}", app.status);
+        // 打开器退出后由 tick 回收，不留下子进程。
+        until(|| {
+            app.tick();
+            app.open_children.is_empty()
+        });
+        drop(app);
+        released(&pool);
+    }
+
     /// 排序按钮在窄栏里也要能点到：点一次换一档，并按同一目录重新读取。
     #[test]
     fn sort_button_cycles_the_order_and_rereads_the_directory() {
@@ -1552,7 +1784,7 @@ mod tests {
         loaded(&mut app, &[("folder", true), ("file.txt", false)]);
         draw_now(&mut app);
         preview(&app, "CONGMINAL_SFTP_OPS_PREVIEW_PATH");
-        // 操作行六个槽位：新建、改名、删除、上传、下载、任务；改名与删除需要先选中条目。
+        // 操作行七个槽位：新建、改名、删除、上传、下载、打开、任务；改名与删除需要先选中条目。
         assert!(app.sftp_click(3, 1));
         assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Invalid));
         assert!(app.sftp.as_ref().unwrap().form.is_none());

@@ -27,6 +27,8 @@ mod local_directory;
 mod monitor;
 mod mouse;
 mod notifications;
+#[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+mod open;
 mod path_text;
 mod platform;
 mod process_launch;
