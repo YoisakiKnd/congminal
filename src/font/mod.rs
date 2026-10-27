@@ -397,6 +397,29 @@ impl Fonts {
         self.cache.get(&key).and_then(Option::as_ref)
     }
 
+    /// 字体里是否有这个字的字形（主字体、后备字体都算）。界面图标据此决定要不要回退成 ASCII；
+    /// 终端内容不做这种替换——程序输出缺字时显示缺字方框才是正确行为。
+    pub fn has_glyph(&mut self, c: char) -> bool {
+        match &mut self.source {
+            Source::Bitmap { regular, .. } => regular.has(c),
+            Source::Outline(outline) => {
+                let outline = &mut *outline.data;
+                if outline.regular.glyph_index(c) != 0 {
+                    return true;
+                }
+                for i in 0..outline.fallbacks.len() {
+                    load_pending(&mut outline.fallbacks, i, "后备字体");
+                    if let Fallback::Loaded(face) = &outline.fallbacks[i]
+                        && face.glyph_index(c) != 0
+                    {
+                        return true;
+                    }
+                }
+                false
+            }
+        }
+    }
+
     /// 编程连字：一段连续的 ASCII 字（不含空格）里哪些要换成别的字形。
     /// 返回 (第几个字, 字形编号)，没有要换的（或者字体没有连字、关掉了连字）时是空的。
     pub fn ligatures(&mut self, text: &str, bold: bool) -> &[(usize, u16)] {

@@ -108,6 +108,8 @@ pub struct Renderer {
     ui: crate::ui::State,
     /// 命令行标记：在提示行左侧画一条结果色条（成功绿、失败红、中断黄）
     command_marks: bool,
+    /// 界面图标回退结果：字符 → 实际画的字符。只记界面里出现过的字，上限 128 条。
+    icons: std::collections::HashMap<char, char>,
 }
 
 /// 每个窗格的脏行/装饰状态；字体和缓存留在唯一的 Renderer 中。
@@ -184,6 +186,7 @@ impl Renderer {
         work::release(&mut self.last_rows);
         self.work.release();
         self.ui.release();
+        self.icons.clear();
         self.last_frame = 0;
     }
     /// `scale` 是屏幕缩放比例
@@ -201,6 +204,7 @@ impl Renderer {
             last_frame: 0,
             ui: crate::ui::State::default(),
             command_marks: config.command_marks,
+            icons: std::collections::HashMap::new(),
         }
     }
 
@@ -226,6 +230,7 @@ impl Renderer {
         );
         let mut col = x + 3;
         for c in text.chars().filter(|c| !c.is_control()).take(256) {
+            let c = self.chrome_char(c);
             let cells = char_width(c);
             if col + cells * self.fonts.cell_width > x + width {
                 break;
@@ -236,6 +241,22 @@ impl Renderer {
             }
         }
     }
+    /// 界面图标回退：字体画不出来的图标换成 ASCII，避免侧栏、页签出现缺字方框。
+    /// 结果按字缓存（上限 128 条），字体重新加载后清空。
+    fn chrome_char(&mut self, c: char) -> char {
+        if c.is_ascii() {
+            return c;
+        }
+        if let Some(&mapped) = self.icons.get(&c) {
+            return mapped;
+        }
+        let mapped = if self.fonts.has_glyph(c) { c } else { crate::ui::icon_fallback(c).unwrap_or('?') };
+        if self.icons.len() < 128 {
+            self.icons.insert(c, mapped);
+        }
+        mapped
+    }
+
     /// 认证测试视图：显式矩形裁剪、有限字符数，并保留零宽组合符号。
     #[cfg(any(test, all(feature = "sftp-preview", unix)))]
     pub(crate) fn auth_text(
@@ -1177,6 +1198,34 @@ mod tests {
         assert!(renderer.auth_text(&mut marked, bounds, "e\u{301} ", false));
         assert!(base.pixels != marked.pixels, "a combining mark must contribute pixels rather than disappear");
         assert!(renderer.auth_text(&mut marked, bounds, "\u{301}", false));
+    }
+
+    #[test]
+    fn chrome_falls_back_to_ascii_when_the_font_lacks_an_icon() {
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let (_, height) = renderer.cell_size();
+        // 字体有字形就照原样画，没有就换成 ASCII——测试字体覆盖哪些图标由字体决定，逐个核对。
+        let icons = ['●', '✓', '→', '↻', '⏸', '⚡', '…', '·'];
+        let mut fell_back = 0;
+        for icon in icons {
+            let has = renderer.fonts.has_glyph(icon);
+            let expected = if has { icon } else { crate::ui::icon_fallback(icon).unwrap() };
+            assert_eq!(renderer.chrome_char(icon), expected, "{icon}");
+            if !has {
+                fell_back += 1;
+            }
+        }
+        assert!(fell_back > 0, "测试字体应当缺至少一个图标，否则没覆盖回退分支");
+        // 普通字符与 ASCII 原样通过，中文有字形时也不替换。
+        assert_eq!(renderer.chrome_char('a'), 'a');
+        assert_eq!(renderer.chrome_char('中'), '中');
+        // 同一个字只查一次字体：查过的非 ASCII 字都在缓存里，且条数有上限。
+        assert!(icons.iter().all(|icon| renderer.icons.contains_key(icon)));
+        assert!(renderer.icons.len() <= 128);
+        let mut frame = Framebuffer::new(120, height + 20);
+        renderer.chrome(&mut frame, [10, 10, 100, height], "● 终端 1", false);
+        assert!(renderer.icons.contains_key(&'●'));
     }
 
     #[test]
