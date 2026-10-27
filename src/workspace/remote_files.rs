@@ -269,7 +269,14 @@ struct Mutation {
     binding: Binding,
     authentication: Authentication,
     op: Op,
+    /// 谁发起的写操作：文件页的按钮，还是传输记录里清理残留临时文件。
+    origin: Origin,
     _memory: Lease,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    Files,
+    Cleanup(Ticket),
 }
 struct View {
     ticket: Ticket,
@@ -500,6 +507,24 @@ impl Workspace {
         Ok(ticket)
     }
     /// 远程写操作失败进通知中心；取消与超时不走这里。
+    /// 清理残留失败时给一句能读懂的原因：Failure 只有变体，没有自带文案。
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    fn cleanup_failure(failure: Failure) -> String {
+        let reason = match failure {
+            Failure::Remote(code) => return format!("清理残留失败：远端返回 {code}"),
+            Failure::Authentication => "认证失败",
+            Failure::Connection => "连接已断开",
+            Failure::Protocol => "远端返回了意外的结果",
+            Failure::Changed => "临时文件已变化",
+            Failure::Local => "本地读写失败",
+            Failure::Model => "路径无效",
+            Failure::Full => "队列已满",
+            Failure::Budget => "额度不足",
+            Failure::Cancelled => "已取消",
+            Failure::Invalid => "记录或临时文件已变化",
+        };
+        format!("清理残留失败：{reason}")
+    }
     fn submit_remote_write_failure(&mut self, op: Op, host: Option<&str>) {
         let label = match op {
             Op::NewFolder => "新建目录",
@@ -568,9 +593,32 @@ impl Workspace {
             if state.mutation.as_ref().is_some_and(|m| m.ticket == completion.ticket) {
                 let mutation = state.mutation.take().unwrap();
                 self.finish_remote_authentication(completion.ticket);
+                // 清理残留临时文件不改目录内容：成功后只清掉记录上的标记，不重读目录。
+                let cleanup = match mutation.origin {
+                    Origin::Files => None,
+                    Origin::Cleanup(record) => Some(record),
+                };
                 if mutation.binding.valid(self) && mutation.binding.owner.session == self.selected {
                     match completion.result {
                         Ok(reply) => match reply.data {
+                            Ok(service::Output::Changed) if cleanup.is_some() => {
+                                state.error = None;
+                                if let Some(record) = cleanup
+                                    && let Some(file) = state.files.iter().flatten().find(|f| f.ticket == record)
+                                {
+                                    file.status.forget_partial();
+                                }
+                                state.tasks.note = Some("已删除残留临时文件".into());
+                                self.notice("已删除残留临时文件");
+                                let host = state.host().map(str::to_owned);
+                                self.submit_notice(
+                                    crate::notifications::Source::Sftp,
+                                    crate::notifications::Category::SftpWrite,
+                                    "清理残留",
+                                    crate::shell::Outcome::Exit(0),
+                                    host.as_deref(),
+                                );
+                            }
                             Ok(service::Output::Changed) => {
                                 state.error = None;
                                 // 写操作成功后才重新读取目录；失败保留原列表与错误。
@@ -591,12 +639,18 @@ impl Workspace {
                                 );
                             }
                             Err(error) => {
-                                state.error = Some(error);
+                                match cleanup {
+                                    Some(_) => state.tasks.note = Some(Self::cleanup_failure(error)),
+                                    None => state.error = Some(error),
+                                }
                                 let host = state.host().map(str::to_owned);
                                 self.submit_remote_write_failure(mutation.op, host.as_deref());
                             }
                             _ => {
-                                state.error = Some(Failure::Protocol);
+                                match cleanup {
+                                    Some(_) => state.tasks.note = Some(Self::cleanup_failure(Failure::Protocol)),
+                                    None => state.error = Some(Failure::Protocol),
+                                }
                                 let host = state.host().map(str::to_owned);
                                 self.submit_remote_write_failure(mutation.op, host.as_deref());
                             }
@@ -1123,7 +1177,45 @@ impl Workspace {
             }
             Op::Delete => state.service.remove(owner, profiles, profile, paths, target.bytes(), directory, timeout)?,
         };
-        state.mutation = Some(Mutation { ticket, binding, authentication, op, _memory: memory });
+        state.mutation = Some(Mutation { ticket, binding, authentication, op, origin: Origin::Files, _memory: memory });
+        Ok(())
+    }
+    /// 删除某条传输记录留下的远端临时文件。走与文件页删除相同的变更通道：
+    /// 只删这一个路径，不递归、不碰目标文件；确认由调用方（传输列表）负责。
+    pub(super) fn start_partial_cleanup(&mut self, record: Ticket) -> Result<(), Failure> {
+        // 先做只读校验（要借 &self），再取可变借用，避免同一时刻两种借用并存。
+        let (binding, partial) = {
+            let state = self.sftp.as_ref().ok_or(Failure::Invalid)?;
+            let file = state.files.iter().flatten().find(|f| f.ticket == record).ok_or(Failure::Invalid)?;
+            if !file.binding.valid(self) || file.binding.owner.session != self.selected {
+                return Err(Failure::Cancelled);
+            }
+            (file.binding.clone(), file.status.partial().ok_or(Failure::Invalid)?)
+        };
+        let state = self.sftp.as_mut().ok_or(Failure::Invalid)?;
+        if state.exiting || state.mutation.is_some() {
+            return Err(Failure::Cancelled);
+        }
+        let pool = state.service.budget().clone();
+        if !partial.uses(&pool) {
+            return Err(Failure::Invalid);
+        }
+        let memory = pool.lease(Kind::Sftp, std::mem::size_of::<Mutation>() + 128).map_err(|_| Failure::Budget)?;
+        let owner = binding.owner;
+        let profiles = binding.profiles.clone();
+        let profile = binding.profile;
+        let timeout = Duration::from_secs(10);
+        let paths = state.options.paths();
+        let (ticket, authentication) =
+            state.service.remove(owner, profiles, profile, paths, partial.bytes(), false, timeout)?;
+        state.mutation = Some(Mutation {
+            ticket,
+            binding,
+            authentication,
+            op: Op::Delete,
+            origin: Origin::Cleanup(record),
+            _memory: memory,
+        });
         Ok(())
     }
     pub(super) fn sftp_paint(&mut self, r: Rect, h: usize) -> bool {
@@ -1340,7 +1432,7 @@ mod tests {
         view.selected = None;
     }
     /// 导出当前帧，供人工核对右栏排版；未设置环境变量时不做任何事。
-    fn preview(app: &Workspace, name: &str) {
+    pub(super) fn preview(app: &Workspace, name: &str) {
         if let Some(path) = std::env::var_os(name) {
             let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
             for &pixel in &app.frame.pixels {

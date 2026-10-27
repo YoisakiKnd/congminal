@@ -170,6 +170,10 @@ impl Status {
     pub fn partial(&self) -> Option<RemotePath> {
         self.0.lock().partial.clone()
     }
+    /// 残留临时文件已删除后清掉记录；只在任务结束后由界面调用。
+    pub fn forget_partial(&self) -> bool {
+        self.0.lock().partial.take().is_some()
+    }
     pub fn snapshot(&self) -> Snapshot {
         self.0.lock().snapshot
     }
@@ -318,6 +322,18 @@ mod tests {
         assert_eq!(queued.snapshot().end, Some(End::NotStarted));
         drop((status, progress, queued));
         assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn forgetting_the_partial_clears_the_hint_for_good() {
+        let pool = Budget::new(4 * 1024 * 1024, 8 * 1024 * 1024);
+        let (status, progress) = pair(&pool, Direction::Upload, 100);
+        progress.begin().ok().unwrap();
+        let temporary = RemotePath::new(&pool, b"/from/.congminal-01.part").ok().unwrap();
+        progress.partial(temporary).ok().unwrap();
+        assert!(status.partial().is_some());
+        assert!(status.forget_partial());
+        assert!(status.partial().is_none());
+        assert!(!status.forget_partial(), "clearing twice reports nothing left");
     }
     #[test]
     fn bounded_coalescing_validates_order_and_retains_funded_raw_paths() {
