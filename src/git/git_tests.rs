@@ -69,6 +69,18 @@ fn pool() -> Arc<Budget> {
 fn base_limits() -> Limits {
     Limits::default()
 }
+/// 全局执行槽是进程级固定表，并行跑测试时可能一时占满；等一会儿再取，避免把资源竞争当成功能失败。
+#[cfg(unix)]
+fn retry_worker<T>(mut run: impl FnMut() -> Result<T, Error>) -> Result<T, Error> {
+    let until = Instant::now() + Duration::from_secs(5);
+    loop {
+        match run() {
+            Err(Error::Worker) if Instant::now() < until => std::thread::sleep(Duration::from_millis(20)),
+            other => return other,
+        }
+    }
+}
+
 fn wait_released(pool: &Arc<Budget>) {
     let until = Instant::now() + Duration::from_secs(5);
     while pool.snapshot().used != 0 || pool.snapshot().managed_workers != 0 {
@@ -707,8 +719,11 @@ fn remote_status_runs_git_through_ssh_with_the_remote_path() {
         }),
         ..base_limits()
     };
-    let request = StatusRequest::new(1, 7, fixture.path(), &limits, None, &pool).unwrap();
-    let snapshot = status(request, &Cancellation::default()).result.unwrap();
+    let snapshot = retry_worker(|| {
+        let request = StatusRequest::new(1, 7, fixture.path(), &limits, None, &pool)?;
+        status(request, &Cancellation::default()).result
+    })
+    .unwrap();
     // 远端路径原样交给 `git -C`：快照根就是夹具仓库，分支与变更都能读出来。
     assert!(same_path(&snapshot.root, fixture.path()), "{}", snapshot.root.display());
     assert_eq!(snapshot.counts.unstaged, 1);
@@ -735,8 +750,11 @@ fn remote_ssh_failures_are_reported_as_host_key_or_auth_not_as_git_errors() {
             ..base_limits()
         };
         // 版本探测会先跑一次 `git --version`，这里给定版本以直接进入状态查询。
-        let request = StatusRequest::new(1, 7, fixture.path(), &limits, Some("2.43.0"), &pool).unwrap();
-        let error = status(request, &Cancellation::default()).result.unwrap_err();
+        let error = retry_worker(|| {
+            let request = StatusRequest::new(1, 7, fixture.path(), &limits, Some("2.43.0"), &pool)?;
+            status(request, &Cancellation::default()).result
+        })
+        .unwrap_err();
         assert_eq!(error, expected, "{name}");
         // 提示要指向可操作的下一步，而不是把 ssh 原文直接甩出来。
         assert!(error.message().contains("终端"), "{}", error.message());
