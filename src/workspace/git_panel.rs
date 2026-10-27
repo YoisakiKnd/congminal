@@ -32,6 +32,48 @@ const COMMIT_BYTES: usize = 4096;
 /// 输入法组合串的显示上限。
 const PREEDIT_BYTES: usize = 256;
 const SCROLL_LIMIT: f64 = 1.0e6;
+/// 远端操作的二次确认窗口：第一次点击只记下意图，窗口内再点同一个按钮才执行。
+const REMOTE_CONFIRM: Duration = Duration::from_secs(10);
+/// 按钮标签按每槽可用显示列降级（完整 → 双字 → 单字），避免被裁成半个词。
+const STATUS_LABELS: [[&str; 4]; 3] =
+    [["刷新", "差异", "暂存", "提交"], ["刷新", "差异", "暂存", "提交"], ["刷", "差", "存", "提"]];
+/// 第三列在条目已全部进索引时变成“取消暂存”。
+const UNSTAGE_LABELS: [&str; 3] = ["取消暂存", "撤存", "撤"];
+const REMOTE_LABELS: [&str; 3] = ["拉取", "拉取", "拉"];
+const PUSH_LABELS: [&str; 3] = ["推送", "推送", "推"];
+const CONFIRM_REMOTE_LABELS: [&str; 3] = ["确认拉取", "确认", "确"];
+const CONFIRM_PUSH_LABELS: [&str; 3] = ["确认推送", "确认", "确"];
+const INERT_LABEL: &str = "—";
+const CANCEL_INPUT_LABELS: [&str; 2] = ["提交", "取消"];
+const CANCEL_INPUT_LABELS_NARROW: [&str; 2] = ["提", "取"];
+
+/// 需要二次确认的远端操作。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum RemoteOp {
+    Pull,
+    Push,
+}
+impl RemoteOp {
+    fn write(self) -> git::WriteOp {
+        match self {
+            Self::Pull => git::WriteOp::Pull,
+            Self::Push => git::WriteOp::Push,
+        }
+    }
+    fn describe(self) -> &'static str {
+        match self {
+            Self::Pull => "拉取",
+            Self::Push => "推送",
+        }
+    }
+    /// 提示要能放进右栏：完整说清“再点一次”和后果，但不重复按钮上的长标签。
+    fn hint(self) -> &'static str {
+        match self {
+            Self::Pull => "再点一次“确认”拉取（快进）",
+            Self::Push => "再点一次“确认”推送（上游）",
+        }
+    }
+}
 
 /// 一帧要画的 Git 页内容；由界面线程负责实际绘制。
 pub(super) struct View {
@@ -87,6 +129,8 @@ pub(super) struct Panel {
     pub(super) write_op: Option<&'static str>,
     pub(super) write_done: Option<(&'static str, bool)>,
     pub(super) input: Option<CommitInput>,
+    /// 等待二次确认的远端操作与它的失效时刻。
+    pub(super) pending: Option<(RemoteOp, Instant)>,
 }
 
 impl Panel {
@@ -129,6 +173,7 @@ impl Panel {
             write_op: None,
             write_done: None,
             input: None,
+            pending: None,
         }
     }
 
@@ -199,6 +244,7 @@ impl Panel {
         self.next = None;
         self.last_key = None;
         self.input = None;
+        self.pending = None;
         self.write_note = None;
         if !self.write_loading {
             self.write = None;
@@ -240,6 +286,15 @@ impl Panel {
     ) -> bool {
         // 写操作不受页面可见性影响：面板隐藏后仍要把它跑完并结算。
         let mut changed = self.poll_write(notify.clone());
+        // 二次确认有窗口期：过期就作废，避免很久以后再点一次被当成确认。
+        if let Some((op, until)) = self.pending
+            && Instant::now() >= until
+        {
+            self.pending = None;
+            self.write_note = Some(format!("{}确认已过期，未执行", op.describe()));
+            self.revision = self.revision.wrapping_add(1);
+            changed = true;
+        }
         if !visible {
             self.active = false;
             return self.close() | changed;
@@ -560,7 +615,9 @@ impl Panel {
     }
 
     /// 一帧的文本；界面线程只做绘制，不再触碰 git 状态。
-    pub(super) fn view(&self, rows: usize) -> View {
+    /// `tier` 是按每槽可用显示列选出的标签档位（0 完整、1 双字、2 单字）。
+    pub(super) fn view(&self, rows: usize, tier: usize) -> View {
+        let tier = tier.min(2);
         let mut headline = Vec::with_capacity(2);
         let mut content = Vec::new();
         if !self.enabled {
@@ -601,11 +658,26 @@ impl Panel {
             .and_then(|snapshot| self.selected.and_then(|index| snapshot.entries.get(index)))
             .is_some_and(|entry| entry.fully_staged());
         let buttons = if input_open {
-            vec!["提交", "取消"]
-        } else if fully_staged {
-            vec!["刷新", "差异", "取消暂存", "提交"]
+            if tier >= 2 { CANCEL_INPUT_LABELS_NARROW.to_vec() } else { CANCEL_INPUT_LABELS.to_vec() }
         } else {
-            vec!["刷新", "差异", "暂存", "提交"]
+            let mut buttons = STATUS_LABELS[tier].to_vec();
+            if fully_staged {
+                buttons[2] = UNSTAGE_LABELS[tier];
+            }
+            // 待确认时“提交”位置换成“取消”，只让被点的那个远端按钮变成“确认”，
+            // 另一个位置留空，避免误触。
+            match self.pending.map(|(op, _)| op) {
+                Some(RemoteOp::Pull) => {
+                    vec![buttons[0], buttons[1], buttons[2], "取消", CONFIRM_REMOTE_LABELS[tier], INERT_LABEL]
+                }
+                Some(RemoteOp::Push) => {
+                    vec![buttons[0], buttons[1], buttons[2], "取消", INERT_LABEL, CONFIRM_PUSH_LABELS[tier]]
+                }
+                None => {
+                    buttons[3] = STATUS_LABELS[tier][3];
+                    vec![buttons[0], buttons[1], buttons[2], buttons[3], REMOTE_LABELS[tier], PUSH_LABELS[tier]]
+                }
+            }
         };
         match (&self.snapshot, &self.input) {
             (_, Some(input)) => {
@@ -669,7 +741,7 @@ impl Panel {
         } else if self.diff_open {
             3
         } else {
-            4
+            6
         }
     }
 
@@ -791,6 +863,13 @@ impl Panel {
         if self.snapshot.is_none() {
             return false;
         }
+        if self.snapshot.as_ref().is_some_and(|snapshot| snapshot.counts.conflicted > 0) {
+            // 有未解决的冲突时 git 也会拒绝提交；先说清楚原因，不让人对着空输入框猜。
+            self.write_note = Some("有未解决的冲突，先在终端里解决再提交".into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        self.pending = None;
         let memory = match self.pool.lease(Kind::Git, COMMIT_BYTES + 256) {
             Ok(memory) => memory,
             Err(_) => {
@@ -822,6 +901,41 @@ impl Panel {
             return true;
         };
         self.start_write(git::WriteOp::Commit { message }, &root, notify)
+    }
+
+    /// 远端操作按钮：第一次点击只进入确认态，窗口内再点同一个按钮才真正执行。
+    pub(super) fn request_remote(&mut self, op: RemoteOp, notify: Notify) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        if self.write_loading {
+            let running = self.write_op.unwrap_or("写操作");
+            self.write_note = Some(format!("正在{running}…请等它结束"));
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        let confirmed = matches!(self.pending, Some((pending, until)) if pending == op && Instant::now() < until);
+        if !confirmed {
+            self.pending = Some((op, Instant::now() + REMOTE_CONFIRM));
+            self.write_note = Some(op.hint().into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        self.pending = None;
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+            self.write_note = Some("还没有 Git 状态，先刷新".into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        };
+        self.start_write(op.write(), &root, notify)
+    }
+
+    /// 取消待确认的远端操作。
+    pub(super) fn cancel_pending(&mut self) -> bool {
+        let Some((op, _)) = self.pending.take() else { return false };
+        self.write_note = Some(format!("已取消{}", op.describe()));
+        self.revision = self.revision.wrapping_add(1);
+        true
     }
 
     /// 暂存 / 取消暂存当前条目；已经全部进入索引的条目再点一次就是取消暂存。
@@ -936,7 +1050,17 @@ fn inside_root(dir: &Path, root: &Path) -> bool {
 impl Workspace {
     pub(super) fn git_paint(&mut self, r: Rect, h: usize) {
         let rows = (r.h / h).max(1);
-        let view = self.git.view(rows.saturating_sub(LIST_TOP));
+        // 按钮标签按每槽可用的显示列降级：完整 → 双字 → 单字，避免被裁成半个词。
+        let slot = (r.w / self.git.button_count().max(1)).max(1);
+        let per = slot / self.driver.renderer.cell_size().0.max(1);
+        let tier = if per >= 5 {
+            0
+        } else if per >= 3 {
+            1
+        } else {
+            2
+        };
+        let view = self.git.view(rows.saturating_sub(LIST_TOP), tier);
         let third = r.w / view.buttons.len().max(1);
         for (index, text) in view.buttons.iter().enumerate() {
             let x = r.x + index * third;
@@ -980,7 +1104,11 @@ impl Workspace {
                     (1, true) => self.git.toggle_side(notify),
                     (2, true) => self.git.back(),
                     (2, false) => self.git.toggle_stage(notify),
+                    // 待确认期间“提交”位置是“取消”，不会顺带打开提交输入。
+                    (3, false) if self.git.pending.is_some() => self.git.cancel_pending(),
                     (3, false) => self.git.open_commit(),
+                    (4, false) => self.git.request_remote(RemoteOp::Pull, notify),
+                    (5, false) => self.git.request_remote(RemoteOp::Push, notify),
                     _ => false,
                 };
             }
@@ -1005,8 +1133,8 @@ mod tests {
         let mut panel = Panel::new();
         assert!(panel.open());
         assert!(panel.active);
-        let view = panel.view(10);
-        assert_eq!(view.buttons, vec!["刷新", "差异", "暂存", "提交"]);
+        let view = panel.view(10, 0);
+        assert_eq!(view.buttons, vec!["刷新", "差异", "暂存", "提交", "拉取", "推送"]);
         assert!(view.headline[0].contains("工作目录未知"));
         assert!(view.content.is_empty());
         assert!(panel.bytes() == 0);
@@ -1014,7 +1142,7 @@ mod tests {
         assert!(panel.close());
         assert!(panel.deadline().is_none());
         assert!(!panel.close());
-        assert_eq!(panel.view(10).headline[0], "工作目录未知，等待 shell 报告目录");
+        assert_eq!(panel.view(10, 0).headline[0], "工作目录未知，等待 shell 报告目录");
     }
 
     fn notify() -> Notify {
@@ -1095,7 +1223,7 @@ mod tests {
         // 超长输入被截断，不扩容也不进入终端。
         panel.capture_text(&"z".repeat(COMMIT_BYTES * 2));
         assert!(panel.input.as_ref().unwrap().text.data.len() <= COMMIT_BYTES);
-        assert!(panel.view(6).headline[0].starts_with("提交信息 › "));
+        assert!(panel.view(6, 0).headline[0].starts_with("提交信息 › "));
     }
 
     #[test]
@@ -1116,7 +1244,7 @@ mod tests {
                     panel.diff_open = true;
                 }
             }
-            assert_eq!(panel.button_count(), panel.view(6).buttons.len(), "状态 {state}");
+            assert_eq!(panel.button_count(), panel.view(6, 0).buttons.len(), "状态 {state}");
         }
     }
 
@@ -1124,10 +1252,54 @@ mod tests {
     fn stage_button_reflects_whether_the_selection_is_already_staged() {
         let mut panel = panel_with(vec![entry("a.txt", b' ', b'M'), entry("b.txt", b'M', b' ')]);
         panel.selected = Some(0);
-        assert_eq!(panel.view(6).buttons, vec!["刷新", "差异", "暂存", "提交"]);
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异", "暂存", "提交", "拉取", "推送"]);
         // 已全部进入索引的条目：同一个按钮变成“取消暂存”。
         panel.selected = Some(1);
-        assert_eq!(panel.view(6).buttons, vec!["刷新", "差异", "取消暂存", "提交"]);
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异", "取消暂存", "提交", "拉取", "推送"]);
+        // 窄面板降到单字档，标签不被裁成半个词。
+        assert_eq!(panel.view(6, 2).buttons, vec!["刷", "差", "撤", "提", "拉", "推"]);
+    }
+
+    #[test]
+    fn remote_operations_need_a_second_click_within_the_window() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        assert!(panel.request_remote(RemoteOp::Push, notify()));
+        // 第一次点击只进入确认态：按钮换成“确认”，并有明确提示。
+        assert_eq!(panel.pending.map(|(op, _)| op), Some(RemoteOp::Push));
+        let note = panel.write_note.clone().unwrap_or_default();
+        assert!(note.contains("再点一次") && note.contains("推送"), "{note}");
+        let buttons = panel.view(6, 0).buttons;
+        assert_eq!(buttons, vec!["刷新", "差异", "暂存", "取消", "—", "确认推送"]);
+        // 取消按钮清掉确认态，不执行任何 git 命令。
+        assert!(panel.cancel_pending());
+        assert!(panel.pending.is_none());
+        assert!(panel.write_note.as_deref().unwrap_or("").contains("已取消推送"));
+        // 换成拉取会重新计时，不会被当成对推送的确认。
+        assert!(panel.request_remote(RemoteOp::Push, notify()));
+        assert!(panel.request_remote(RemoteOp::Pull, notify()));
+        assert_eq!(panel.pending.map(|(op, _)| op), Some(RemoteOp::Pull));
+        assert_eq!(panel.view(6, 0).buttons[4], "确认拉取");
+    }
+
+    #[test]
+    fn expired_remote_confirmation_is_dropped() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        assert!(panel.request_remote(RemoteOp::Pull, notify()));
+        // 确认窗口过期：不执行，也不留下可以误触的状态。
+        panel.pending = Some((RemoteOp::Pull, Instant::now() - Duration::from_millis(1)));
+        panel.tick(0, None, 0, notify(), true, true, true, &crate::config::git::Settings::default());
+        assert!(panel.pending.is_none());
+        assert!(panel.write_note.as_deref().unwrap_or("").contains("过期"));
+    }
+
+    #[test]
+    fn unresolved_conflicts_block_the_commit_input() {
+        let mut panel = panel_with(vec![entry("a.txt", b'U', b'U')]);
+        panel.snapshot.as_mut().unwrap().counts.conflicted = 1;
+        assert!(panel.open_commit());
+        // 点击被消费但不打开输入，并说明原因。
+        assert!(!panel.capturing());
+        assert!(panel.write_note.as_deref().unwrap_or("").contains("冲突"));
     }
 
     #[test]

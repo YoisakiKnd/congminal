@@ -31,6 +31,8 @@ pub const DEFAULT_DIFF_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_DIFF_BYTES: usize = 32 * 1024 * 1024;
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 pub const MAX_TIMEOUT: Duration = Duration::from_secs(120);
+/// 拉取/推送要等远端与凭据代理，比本地读写给的时间长，但仍受 `MAX_TIMEOUT` 约束。
+pub const NETWORK_TIMEOUT: Duration = Duration::from_secs(60);
 const STDERR_BYTES: usize = 4 * 1024;
 const PATH_LIMIT: usize = 16 * 1024;
 const DIFF_LINES: usize = 8000;
@@ -864,9 +866,22 @@ fn run(
 
 /// 写操作种类。每个变体都来自一次明确的用户动作，不接受来自仓库内容的推断。
 pub(crate) enum WriteOp {
-    Stage { paths: Vec<OsString>, count: usize },
-    Unstage { paths: Vec<OsString>, count: usize, unborn: bool },
-    Commit { message: String },
+    Stage {
+        paths: Vec<OsString>,
+        count: usize,
+    },
+    Unstage {
+        paths: Vec<OsString>,
+        count: usize,
+        unborn: bool,
+    },
+    Commit {
+        message: String,
+    },
+    /// 拉取：只允许快进，分叉或冲突时直接失败，交给用户自己处理。
+    Pull,
+    /// 推送：推到当前分支已配置的上游；没有上游时 git 自己会报错。
+    Push,
 }
 impl WriteOp {
     fn bytes(&self) -> usize {
@@ -875,7 +890,12 @@ impl WriteOp {
                 paths.iter().map(|path| path.len().saturating_add(std::mem::size_of::<OsString>())).sum()
             }
             Self::Commit { message } => message.capacity(),
+            Self::Pull | Self::Push => 0,
         }
+    }
+    /// 联网操作要等远端，使用更长的时限；本地操作保持原有上限。
+    fn network(&self) -> bool {
+        matches!(self, Self::Pull | Self::Push)
     }
     /// 写操作在界面上的名字，用于防重复与结果提示。
     pub(crate) fn describe(&self) -> &'static str {
@@ -883,6 +903,8 @@ impl WriteOp {
             Self::Stage { .. } => "暂存",
             Self::Unstage { .. } => "取消暂存",
             Self::Commit { .. } => "提交",
+            Self::Pull => "拉取",
+            Self::Push => "推送",
         }
     }
 }
@@ -934,7 +956,12 @@ pub(crate) fn write(request: WriteRequest, cancel: &Cancellation) -> WriteReply 
 
 fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error> {
     let pool = request.memory.budget().clone();
-    let limits = &request.limits;
+    let mut extended = request.limits.clone();
+    if request.op.network() {
+        // 远端可能慢，但不能无限等：仍由 `MAX_TIMEOUT` 封顶，超时后杀子进程。
+        extended.timeout = extended.timeout().max(NETWORK_TIMEOUT);
+    }
+    let limits = &extended;
     let root = request.root.as_path();
     match &request.op {
         WriteOp::Stage { paths, count } => {
@@ -971,7 +998,46 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             let line = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("");
             Ok(if line.is_empty() { "已提交".to_string() } else { line.chars().take(MESSAGE_LIMIT).collect() })
         }
+        WriteOp::Pull => {
+            // `--ff-only`：分叉时不生成合并提交，也不改工作区，只把结果报给用户。
+            let args = [OsStr::new("pull"), OsStr::new("--ff-only")];
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output));
+            }
+            Ok(match first_line(&output.stdout) {
+                Some(line) => format!("已拉取 {line}"),
+                None => "已拉取".to_string(),
+            })
+        }
+        WriteOp::Push => {
+            let args = [OsStr::new("push")];
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output));
+            }
+            // git 的第一行是 `To <远端地址>`，会把路径带进界面与通知；只取最后的引用更新行。
+            let detail =
+                last_line(&output.stderr).or_else(|| last_line(&output.stdout)).filter(|line| !line.starts_with("To "));
+            Ok(match detail {
+                Some(line) => format!("已推送 {line}"),
+                None => "已推送".to_string(),
+            })
+        }
     }
+}
+
+/// git 把进度和摘要写在 stderr；取第一条非空行当摘要，最长 `MESSAGE_LIMIT` 个字符。
+fn first_line(bytes: &[u8]) -> Option<String> {
+    summarize(String::from_utf8_lossy(bytes).lines().map(str::trim).find(|line| !line.is_empty())?)
+}
+/// 取最后一条非空行：推送的引用更新写在 `To <远端>` 之后。
+fn last_line(bytes: &[u8]) -> Option<String> {
+    summarize(String::from_utf8_lossy(bytes).lines().map(str::trim).rfind(|line| !line.is_empty())?)
+}
+fn summarize(line: &str) -> Option<String> {
+    let summary: String = line.chars().take(MESSAGE_LIMIT).map(|c| if c.is_control() { ' ' } else { c }).collect();
+    Some(summary.trim().to_string()).filter(|line| !line.is_empty())
 }
 
 #[cfg(test)]
