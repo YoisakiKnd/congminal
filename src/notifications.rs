@@ -17,7 +17,15 @@ pub struct Settings {
     pub long_commands: bool,
     pub background: bool,
     pub transfers: bool,
+    pub git: bool,
+    pub monitor: bool,
     pub long_seconds: u64,
+    /// 同类事件在该窗口内只保留一条，后面的累加次数。
+    pub dedupe_seconds: u64,
+    /// 隐藏状态栏与状态页里的命令正文、主机与工作目录等敏感上下文。
+    pub hide_context: bool,
+    /// 10 秒窗口内最多产生多少条本地通知，超出只计数不排队。
+    pub burst: u32,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -28,18 +36,35 @@ impl Default for Settings {
             long_commands: true,
             background: true,
             transfers: true,
+            git: true,
+            monitor: true,
             long_seconds: 10,
+            dedupe_seconds: 5,
+            hide_context: false,
+            burst: 12,
         }
     }
 }
+const BURST_WINDOW: Duration = Duration::from_secs(10);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Category {
     Failure,
     LongCommand,
     Background,
     SessionEnded,
+    GitWrite,
+    /// 只在启用 SFTP 预览/测试构建里构造（远程写操作面板）。
+    #[allow(dead_code)]
+    SftpWrite,
+    MonitorFailed,
     #[cfg(any(test, all(feature = "sftp-preview", unix)))]
     Transfers(TransferCounts),
+}
+impl Category {
+    /// 同类合并只用于不带载荷的类别：传输批次各自带计数，合并会丢信息。
+    fn mergeable(self) -> bool {
+        matches!(self, Self::GitWrite | Self::SftpWrite | Self::MonitorFailed)
+    }
 }
 #[cfg(any(test, all(feature = "sftp-preview", unix)))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,16 +106,37 @@ impl TransferCounts {
         self == Self::default()
     }
 }
+/// 通知来自哪一类事件；`Command` 带命令编号，其余是工作区级事件。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Source {
+    Command(u64),
+    Session,
+    /// 传输与远程写操作来自启用 SFTP 预览/测试构建的工作区面板。
+    #[allow(dead_code)]
+    Transfers,
+    Git,
+    Monitor,
+    #[allow(dead_code)]
+    Sftp,
+}
 #[derive(Clone, Copy, Debug)]
 pub struct Notice {
     pub id: u64,
     pub category: Category,
     pub elapsed: Duration,
     pub outcome: Outcome,
+    pub source: Source,
+    /// 固定文案的补充词（如“暂存”“提交”），不来自命令输出或路径。
+    pub detail: &'static str,
+    /// 去抖窗口内被合并的次数，界面上显示为 ×N。
+    pub repeat: u16,
 }
 impl Notice {
     pub fn text(self) -> String {
         self.to_string()
+    }
+    fn succeeded(self) -> bool {
+        matches!(self.outcome, Outcome::Exit(0))
     }
     // 系统通知永远不包含路径、命令、输出或远程主机名。
     fn system_text(self) -> String {
@@ -101,8 +147,17 @@ impl Notice {
                 c.published, c.warnings, c.cancelled, c.failed, c.uncertain, c.interrupted, c.not_started
             );
         }
-        if self.category == Category::SessionEnded {
-            return "Shell session ended".into();
+        match self.category {
+            Category::SessionEnded => return "Shell session ended".into(),
+            // 系统横幅只用 ASCII 模板：操作名与路径留在应用内通知里。
+            Category::GitWrite => {
+                return format!("Git: write {}", if self.succeeded() { "completed" } else { "failed" });
+            }
+            Category::SftpWrite => {
+                return format!("SFTP: remote write {}", if self.succeeded() { "completed" } else { "failed" });
+            }
+            Category::MonitorFailed => return "Monitor: sampling failed".into(),
+            _ => {}
         }
         format!(
             "Command #{}: {}, {:.1}s",
@@ -121,16 +176,51 @@ impl std::fmt::Display for Notice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[cfg(any(test, all(feature = "sftp-preview", unix)))]
         if let Category::Transfers(c) = self.category {
-            return write!(
+            write!(
                 f,
                 "SFTP · 发布{} 警告{} 取消{} 失败{} 不确定{} 中断{} 未开始{}",
                 c.published, c.warnings, c.cancelled, c.failed, c.uncertain, c.interrupted, c.not_started
-            );
+            )?;
+            return self.repeat_suffix(f);
         }
-        if self.category == Category::SessionEnded {
-            return f.write_str("Shell 会话已结束，未推断命令退出状态");
+        match self.category {
+            Category::SessionEnded => {
+                f.write_str("Shell 会话已结束，未推断命令退出状态")?;
+                return self.repeat_suffix(f);
+            }
+            Category::GitWrite => {
+                write!(f, "Git · {}{}", self.detail, if self.succeeded() { "完成" } else { "失败" })?;
+                return self.repeat_suffix(f);
+            }
+            Category::SftpWrite => {
+                write!(f, "SFTP · {}{}", self.detail, if self.succeeded() { "完成" } else { "失败" })?;
+                return self.repeat_suffix(f);
+            }
+            Category::MonitorFailed => {
+                f.write_str("监控 · 采样失败")?;
+                return self.repeat_suffix(f);
+            }
+            _ => {}
         }
-        write!(f, "命令 #{} · {} · {:.2}s", self.id, self.outcome, self.elapsed.as_secs_f64())
+        write!(f, "命令 #{} · {} · {:.2}s", self.id, self.outcome, self.elapsed.as_secs_f64())?;
+        self.repeat_suffix(f)
+    }
+}
+impl Notice {
+    fn repeat_suffix(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.repeat > 1 {
+            write!(f, " ×{}", self.repeat)?;
+        }
+        Ok(())
+    }
+}
+fn source_enabled(source: Source, settings: &Settings) -> bool {
+    match source {
+        Source::Transfers => settings.transfers,
+        Source::Git => settings.git,
+        Source::Monitor => settings.monitor,
+        Source::Sftp => settings.transfers,
+        Source::Command(_) | Source::Session => true,
     }
 }
 pub struct Center {
@@ -144,6 +234,11 @@ pub struct Center {
     pub dropped_system: u64,
     pub system_error: bool,
     pub dropped_local: u64,
+    /// 最近一条通知的时间，用于同类合并窗口。
+    last_at: Option<Instant>,
+    /// 限速窗口起点与本窗口已放行的条数。
+    window: Option<(Instant, u32)>,
+    pub throttled: u64,
 }
 impl Default for Center {
     fn default() -> Self {
@@ -159,12 +254,69 @@ impl Default for Center {
             dropped_system: 0,
             system_error: false,
             dropped_local: 0,
+            last_at: None,
+            window: None,
+            throttled: 0,
         }
     }
 }
 impl Center {
+    /// 所有来源都走这里：先按来源与静音过滤，再限速、同类合并，最后才占额度入列。
+    pub fn submit(&mut self, notice: Notice, settings: &Settings, now: Instant) -> Option<Notice> {
+        if settings.muted || !source_enabled(notice.source, settings) {
+            return None;
+        }
+        if !self.allow_rate(settings, now) {
+            return None;
+        }
+        if self.merge(&notice, settings, now) {
+            return None;
+        }
+        self.last_at = Some(now);
+        self.push(notice).then_some(notice)
+    }
+    /// 10 秒固定窗口限速；超出只计数，不排队也不重放。
+    fn allow_rate(&mut self, settings: &Settings, now: Instant) -> bool {
+        let burst = settings.burst.max(1);
+        match self.window {
+            Some((start, count)) if now.saturating_duration_since(start) < BURST_WINDOW => {
+                if count >= burst {
+                    self.throttled = self.throttled.saturating_add(1);
+                    return false;
+                }
+                self.window = Some((start, count + 1));
+            }
+            _ => self.window = Some((now, 1)),
+        }
+        true
+    }
+    /// 同类事件在窗口内合并到上一条，只累加次数。
+    fn merge(&mut self, notice: &Notice, settings: &Settings, now: Instant) -> bool {
+        if !notice.category.mergeable() {
+            return false;
+        }
+        let window = Duration::from_secs(settings.dedupe_seconds.max(1));
+        let Some(last) = self.last_at else { return false };
+        if now.saturating_duration_since(last) >= window {
+            return false;
+        }
+        let Some(back) = self.items.data.back_mut() else { return false };
+        // 操作词不同（暂存/提交）算不同事件，不能合并。
+        if back.source != notice.source || back.category != notice.category || back.detail != notice.detail {
+            return false;
+        }
+        back.repeat = back.repeat.saturating_add(1);
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
     #[inline]
-    pub fn complete(&mut self, event: Completion, settings: &Settings, foreground: bool) -> Option<Notice> {
+    pub fn complete(
+        &mut self,
+        event: Completion,
+        settings: &Settings,
+        foreground: bool,
+        now: Instant,
+    ) -> Option<Notice> {
         if event.id <= self.last_id {
             return None;
         }
@@ -187,10 +339,18 @@ impl Center {
             _ => return None,
         };
         // 未知状态和中断从不套用成功模板。
-        let notice = Notice { id: event.id, elapsed: event.elapsed, outcome: event.outcome, category };
-        self.push(notice).then_some(notice)
+        let notice = Notice {
+            id: event.id,
+            elapsed: event.elapsed,
+            outcome: event.outcome,
+            category,
+            source: Source::Command(event.id),
+            detail: "",
+            repeat: 1,
+        };
+        self.submit(notice, settings, now)
     }
-    pub fn ended(&mut self, settings: &Settings, foreground: bool) -> Option<Notice> {
+    pub fn ended(&mut self, settings: &Settings, foreground: bool, now: Instant) -> Option<Notice> {
         if self.ended {
             return None;
         }
@@ -198,9 +358,16 @@ impl Center {
         if settings.muted || !settings.background || foreground {
             return None;
         }
-        let notice =
-            Notice { id: 0, elapsed: Duration::ZERO, outcome: Outcome::Unknown, category: Category::SessionEnded };
-        self.push(notice).then_some(notice)
+        let notice = Notice {
+            id: 0,
+            elapsed: Duration::ZERO,
+            outcome: Outcome::Unknown,
+            category: Category::SessionEnded,
+            source: Source::Session,
+            detail: "",
+            repeat: 1,
+        };
+        self.submit(notice, settings, now)
     }
     #[inline(always)]
     fn push(&mut self, notice: Notice) -> bool {
@@ -263,6 +430,7 @@ impl Center {
         self.items.memory.resize(0).unwrap();
         self.offset = 0;
         self.dropped_local = 0;
+        self.throttled = 0;
     }
     #[cfg(all(test, unix))]
     pub fn describe(&self, muted: bool) -> String {
@@ -291,6 +459,9 @@ impl Center {
                 if c.dropped_local > 0 {
                     write!(f, " · 额度不足丢弃{}", c.dropped_local)?;
                 }
+                if c.throttled > 0 {
+                    write!(f, " · 限速丢弃{}", c.throttled)?;
+                }
                 f.write_str(" | ↑↓浏览 Esc关闭 Del清空")
             }
         }
@@ -299,8 +470,20 @@ impl Center {
     pub fn revision(&self) -> u64 {
         self.revision
     }
-    pub fn recent(&self) -> impl Iterator<Item = String> + '_ {
-        self.items.iter().rev().take(8).map(|notice| notice.text())
+    /// 当前记录条数（环形窗口内）。
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+    /// 最近 8 条通知（新的在前），供状态页绘制与点击定位。
+    pub fn recent_notices(&self) -> impl Iterator<Item = Notice> + '_ {
+        self.items.iter().rev().take(8).copied()
+    }
+    /// 当前浏览到的通知；offset 从最新一条开始。
+    pub fn current(&self) -> Option<Notice> {
+        self.items.iter().rev().nth(self.offset).copied()
     }
     pub fn resource_bytes(&self) -> usize {
         self.items.capacity() * std::mem::size_of::<Notice>()
@@ -411,6 +594,9 @@ fn run_helper(command: &mut std::process::Command, cancel: &Cancellation) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn now() -> Instant {
+        Instant::now()
+    }
     fn event(id: u64, code: Option<u8>, secs: u64) -> Completion {
         Completion { id, elapsed: Duration::from_secs(secs), outcome: code.map_or(Outcome::Unknown, Outcome::Exit) }
     }
@@ -429,8 +615,15 @@ mod tests {
         ] {
             counts.add(result);
         }
-        let notice =
-            Notice { id: 1, category: Category::Transfers(counts), elapsed: Duration::ZERO, outcome: Outcome::Unknown };
+        let notice = Notice {
+            id: 1,
+            category: Category::Transfers(counts),
+            elapsed: Duration::ZERO,
+            outcome: Outcome::Unknown,
+            source: Source::Transfers,
+            detail: "",
+            repeat: 1,
+        };
         let system = notice.system_text();
         assert!(system.is_ascii());
         assert!(system.contains("1 warnings"));
@@ -439,8 +632,8 @@ mod tests {
         let mut center = Center::default();
         let settings = Settings { system: true, ..Settings::default() };
         assert!(center.allow_system(&settings, false, Instant::now()));
-        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_some());
-        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, now()).is_some());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, now()).is_none());
         let (config, warnings) = crate::config::Config::parse("[notifications]\ntransfers=false\n");
         assert!(warnings.is_empty());
         assert!(!config.notifications.transfers);
@@ -449,15 +642,21 @@ mod tests {
     fn categories_dedupe_quiet_short_success_and_unknown_interruption() {
         let mut center = Center::default();
         let settings = Settings::default();
-        assert!(center.complete(event(1, Some(0), 1), &settings, true).is_none());
-        assert_eq!(center.complete(event(2, Some(7), 1), &settings, true).unwrap().category, Category::Failure);
-        assert!(center.complete(event(2, Some(7), 1), &settings, true).is_none());
-        assert_eq!(center.complete(event(3, Some(0), 10), &settings, true).unwrap().category, Category::LongCommand);
-        assert_eq!(center.complete(event(4, Some(0), 1), &settings, false).unwrap().category, Category::Background);
-        let n = center.complete(event(5, None, 10), &settings, true).unwrap();
+        assert!(center.complete(event(1, Some(0), 1), &settings, true, now()).is_none());
+        assert_eq!(center.complete(event(2, Some(7), 1), &settings, true, now()).unwrap().category, Category::Failure);
+        assert!(center.complete(event(2, Some(7), 1), &settings, true, now()).is_none());
+        assert_eq!(
+            center.complete(event(3, Some(0), 10), &settings, true, now()).unwrap().category,
+            Category::LongCommand
+        );
+        assert_eq!(
+            center.complete(event(4, Some(0), 1), &settings, false, now()).unwrap().category,
+            Category::Background
+        );
+        let n = center.complete(event(5, None, 10), &settings, true, now()).unwrap();
         assert!(n.text().contains("未知"));
         assert!(!n.text().contains("成功"));
-        let n = center.complete(event(6, Some(130), 1), &settings, true).unwrap();
+        let n = center.complete(event(6, Some(130), 1), &settings, true, now()).unwrap();
         assert!(n.text().contains("中断"));
         assert!(!n.text().contains("成功"));
     }
@@ -465,23 +664,23 @@ mod tests {
     fn category_switches_mute_and_no_replay() {
         let mut center = Center::default();
         let mut settings = Settings { muted: true, ..Settings::default() };
-        assert!(center.complete(event(1, Some(7), 100), &settings, false).is_none());
+        assert!(center.complete(event(1, Some(7), 100), &settings, false, now()).is_none());
         settings.muted = false;
-        assert!(center.complete(event(1, Some(7), 100), &settings, false).is_none());
+        assert!(center.complete(event(1, Some(7), 100), &settings, false, now()).is_none());
         settings.failures = false;
         settings.background = false;
         settings.long_commands = false;
-        assert!(center.complete(event(2, Some(7), 100), &settings, false).is_none());
+        assert!(center.complete(event(2, Some(7), 100), &settings, false, now()).is_none());
         settings.background = true;
-        assert!(center.ended(&settings, false).is_some());
-        assert!(center.ended(&settings, false).is_none());
+        assert!(center.ended(&settings, false, now()).is_some());
+        assert!(center.ended(&settings, false, now()).is_none());
     }
     #[test]
     fn bounded_center_and_system_rate_busy_limits() {
         let mut center = Center::default();
-        let settings = Settings { system: true, ..Settings::default() };
+        let settings = Settings { system: true, burst: u32::MAX, ..Settings::default() };
         for id in 1..10000 {
-            center.complete(event(id, Some(7), 1), &settings, true);
+            center.complete(event(id, Some(7), 1), &settings, true, now());
         }
         assert_eq!(center.items.len(), LIMIT);
         assert!(center.resource_bytes() < 16 * 1024);
@@ -502,27 +701,27 @@ mod tests {
         let _scope = Scope::enter(pool.clone());
         let settings = Settings { system: true, ..Settings::default() };
         let mut center = Center::default();
-        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, now()).is_none());
         assert!(center.items.is_empty());
         assert_eq!(center.dropped_local, 1);
         assert_eq!(center.revision(), 1);
         assert!(center.description(false).to_string().contains("额度不足丢弃1"));
-        assert!(center.ended(&settings, false).is_none());
+        assert!(center.ended(&settings, false, now()).is_none());
         assert_eq!(center.dropped_local, 2);
         assert_eq!(pool.snapshot().used, 0);
         center.clear();
         assert_eq!(center.dropped_local, 0);
-        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
-        assert!(center.ended(&settings, false).is_none());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, now()).is_none());
+        assert!(center.ended(&settings, false, now()).is_none());
         assert_eq!(center.dropped_local, 0);
         let pool = Budget::new(bytes, 0);
         let _scope = Scope::enter(pool.clone());
         let mut center = Center::default();
         let hold = pool.lease(Kind::Queue, bytes).unwrap();
-        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, now()).is_none());
         drop(hold);
-        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
-        assert!(center.complete(event(2, Some(7), 1), &settings, true).is_some());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, now()).is_none());
+        assert!(center.complete(event(2, Some(7), 1), &settings, true, now()).is_some());
         assert_eq!(center.items.len(), 1);
         assert_eq!(pool.snapshot().used, center.resource_bytes());
         drop(center);
@@ -534,22 +733,22 @@ mod tests {
         let pool = Budget::new(65536, 0);
         let _scope = Scope::enter(pool.clone());
         let mut center = Center::default();
-        let settings = Settings { system: true, ..Settings::default() };
+        let settings = Settings { system: true, burst: u32::MAX, ..Settings::default() };
         for id in 1..1000 {
-            assert!(center.complete(event(id, Some(7), 1), &settings, true).is_some());
+            assert!(center.complete(event(id, Some(7), 1), &settings, true, now()).is_some());
         }
         assert_eq!(center.items.len(), LIMIT);
         assert_eq!(center.items.capacity(), LIMIT);
         assert_eq!(pool.snapshot().used, LIMIT * std::mem::size_of::<Notice>());
-        let now = Instant::now();
-        assert!(center.allow_system(&settings, false, now));
+        let started = Instant::now();
+        assert!(center.allow_system(&settings, false, started));
         center.clear();
         assert_eq!(center.items.capacity(), 0);
         assert_eq!(center.resource_bytes(), 0);
         assert_eq!(pool.snapshot().used, 0);
-        assert!(!center.allow_system(&settings, false, now + Duration::from_secs(1)));
-        assert!(center.complete(event(999, Some(7), 1), &settings, true).is_none());
-        assert!(center.complete(event(1000, Some(7), 1), &settings, true).is_some());
+        assert!(!center.allow_system(&settings, false, started + Duration::from_secs(1)));
+        assert!(center.complete(event(999, Some(7), 1), &settings, true, started).is_none());
+        assert!(center.complete(event(1000, Some(7), 1), &settings, true, started).is_some());
         drop(center);
         assert_eq!(pool.snapshot().used, 0);
     }
@@ -560,18 +759,123 @@ mod tests {
         let _scope = Scope::enter(pool.clone());
         let mut center = Center::default();
         let mut settings = Settings { muted: true, ..Settings::default() };
-        assert!(center.complete(event(1, Some(7), 1), &settings, true).is_none());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, now()).is_none());
         assert_eq!(center.resource_bytes(), 0);
         assert_eq!(pool.snapshot().used, 0);
         let other = Budget::new(0, 0);
         let scope = Scope::enter(other.clone());
         settings.muted = false;
-        assert!(center.complete(event(2, Some(7), 1), &settings, true).is_some());
+        assert!(center.complete(event(2, Some(7), 1), &settings, true, now()).is_some());
         assert_eq!(other.snapshot().used, 0);
         assert_eq!(pool.snapshot().used, center.resource_bytes());
         drop(scope);
         drop(center);
         assert_eq!(pool.snapshot().used, 0);
+    }
+    fn git(op: &'static str, ok: bool) -> Notice {
+        Notice {
+            id: 0,
+            category: Category::GitWrite,
+            elapsed: Duration::ZERO,
+            outcome: Outcome::Exit(if ok { 0 } else { 1 }),
+            source: Source::Git,
+            detail: op,
+            repeat: 1,
+        }
+    }
+    #[test]
+    fn same_source_within_the_window_merges_into_one_notice() {
+        let mut center = Center::default();
+        let settings = Settings::default();
+        let start = Instant::now();
+        assert!(center.submit(git("提交", false), &settings, start).is_some());
+        // 窗口内同来源同类事件只累加次数，不新增条目也不重复发系统通知。
+        assert!(center.submit(git("提交", false), &settings, start + Duration::from_secs(1)).is_none());
+        assert!(center.submit(git("提交", false), &settings, start + Duration::from_secs(2)).is_none());
+        assert_eq!(center.items.len(), 1);
+        let notice = *center.items.data.back().unwrap();
+        assert_eq!(notice.repeat, 3);
+        assert!(notice.text().contains("×3"));
+        // 超出窗口后重新占一条。
+        assert!(center.submit(git("提交", false), &settings, start + Duration::from_secs(30)).is_some());
+        assert_eq!(center.items.len(), 2);
+        // 换操作词视为不同事件。
+        assert!(center.submit(git("暂存", false), &settings, start + Duration::from_secs(31)).is_some());
+        assert_eq!(center.items.len(), 3);
+    }
+    #[test]
+    fn burst_window_throttles_without_queueing_and_reports_the_count() {
+        let mut center = Center::default();
+        let settings = Settings { burst: 3, ..Settings::default() };
+        let start = Instant::now();
+        for id in 1..=3 {
+            assert!(center.complete(event(id, Some(7), 1), &settings, true, start).is_some());
+        }
+        assert!(center.complete(event(4, Some(7), 1), &settings, true, start).is_none());
+        assert!(center.complete(event(5, Some(7), 1), &settings, true, start).is_none());
+        assert_eq!(center.throttled, 2);
+        assert_eq!(center.items.len(), 3);
+        assert!(center.description(false).to_string().contains("限速丢弃2"));
+        // 新窗口重新放行，被丢弃的事件不会补发。
+        let later = start + BURST_WINDOW + Duration::from_secs(1);
+        assert!(center.complete(event(6, Some(7), 1), &settings, true, later).is_some());
+        assert_eq!(center.items.len(), 4);
+        assert!(center.items.data.iter().all(|n| n.id != 4 && n.id != 5));
+    }
+    #[test]
+    fn per_source_switches_silence_git_and_monitor_but_keep_commands() {
+        let mut center = Center::default();
+        let settings = Settings { git: false, monitor: false, ..Settings::default() };
+        let start = Instant::now();
+        assert!(center.submit(git("提交", true), &settings, start).is_none());
+        let monitor = Notice {
+            id: 0,
+            category: Category::MonitorFailed,
+            elapsed: Duration::ZERO,
+            outcome: Outcome::Unknown,
+            source: Source::Monitor,
+            detail: "",
+            repeat: 1,
+        };
+        assert!(center.submit(monitor, &settings, start).is_none());
+        assert!(center.items.is_empty());
+        assert!(center.complete(event(1, Some(7), 1), &settings, true, start).is_some());
+        let settings = Settings::default();
+        let notice = center.submit(git("暂存", true), &settings, start).unwrap();
+        assert_eq!(notice.text(), "Git · 暂存完成");
+        let notice = center.submit(monitor, &settings, start).unwrap();
+        assert_eq!(notice.text(), "监控 · 采样失败");
+        // 系统通知只用固定 ASCII 模板，不含路径或提交正文。
+        assert_eq!(git("提交", false).system_text(), "Git: write failed");
+        assert!(git("提交", false).system_text().is_ascii());
+        assert_eq!(monitor.system_text(), "Monitor: sampling failed");
+    }
+    #[test]
+    fn remote_write_notices_use_the_transfer_switch_and_stay_ascii_for_the_system() {
+        let mut center = Center::default();
+        let notice = Notice {
+            id: 0,
+            category: Category::SftpWrite,
+            elapsed: Duration::ZERO,
+            outcome: Outcome::Exit(1),
+            source: Source::Sftp,
+            detail: "删除",
+            repeat: 1,
+        };
+        // 远程写操作与传输共用同一个开关。
+        let muted = Settings { transfers: false, ..Settings::default() };
+        assert!(center.submit(notice, &muted, Instant::now()).is_none());
+        let notice = center.submit(notice, &Settings::default(), Instant::now()).unwrap();
+        assert_eq!(notice.text(), "SFTP · 删除失败");
+        assert_eq!(notice.system_text(), "SFTP: remote write failed");
+        assert!(notice.system_text().is_ascii());
+        // 浏览游标从最新一条开始，状态页按同样顺序列出。
+        let start = Instant::now();
+        let newest = center.submit(git("提交", true), &Settings::default(), start).unwrap();
+        assert_eq!(center.current().map(|n| n.id), Some(newest.id));
+        center.move_item(true);
+        assert_eq!(center.current().map(|n| n.id), Some(notice.id));
+        assert_eq!(center.recent_notices().count(), 2);
     }
     #[cfg(unix)]
     #[test]
@@ -591,6 +895,9 @@ mod tests {
             category: Category::Failure,
             elapsed: Duration::ZERO,
             outcome: Outcome::Exit(7),
+            source: Source::Command(3),
+            detail: "",
+            repeat: 1,
         });
         assert!(format!("{command:?}").contains("failed"));
     }
@@ -602,7 +909,15 @@ mod workspace_gate_tests {
     #[test]
     fn system_tool_gate_skips_parallel_and_recent_requests_without_spawning_helpers() {
         let gate = SystemGate::default();
-        let notice = Notice { id: 7, category: Category::Failure, elapsed: Duration::ZERO, outcome: Outcome::Exit(7) };
+        let notice = Notice {
+            id: 7,
+            category: Category::Failure,
+            elapsed: Duration::ZERO,
+            outcome: Outcome::Exit(7),
+            source: Source::Command(7),
+            detail: "",
+            repeat: 1,
+        };
         let lock = gate.last.lock().unwrap();
         assert!(gate.send(notice, &Cancellation::default()).is_ok());
         assert_eq!(gate.skipped(), 1);

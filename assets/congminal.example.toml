@@ -142,12 +142,21 @@ option-as-alt = true
 [notifications]
 # SFTP 候选入口启用后，控制传输结局通知；不包含文件路径或主机名。
 transfers = true
+# Git 写操作与监控采样失败的通知；关掉后对应事件不再进通知中心。
+git = true
+monitor = true
 muted = false
 system = false
 failures = true
 long-commands = true
 background = true
 long-seconds = 10
+# 同类事件（Git 写、监控失败）在该秒数内合并成一条并累加次数；0 表示不合并。
+dedupe-seconds = 5
+# 10 秒窗口内最多产生多少条本地通知，超出只计数不排队。
+burst = 12
+# 隐藏状态栏与右栏状态页里的主机名、工作目录等敏感上下文（通知本身只含固定动作词）。
+hide-context = false
 
 # 工作区快捷键（Primary：macOS 为 Cmd，其他为 Ctrl+Shift）：
 # Primary+T=new-tab，Primary+W=close-pane，Ctrl+Tab/Shift+Ctrl+Tab 切换标签。

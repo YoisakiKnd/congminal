@@ -82,6 +82,10 @@ pub(super) struct Panel {
     pub(super) write_loading: bool,
     pub(super) write_generation: u64,
     pub(super) write_note: Option<String>,
+    /// 写操作开始时的动作名与最近一次结算结果，供工作区发通知；取出即清。
+    /// 只留固定文案，不持有路径或提交正文。
+    pub(super) write_op: Option<&'static str>,
+    pub(super) write_done: Option<(&'static str, bool)>,
     pub(super) input: Option<CommitInput>,
 }
 
@@ -122,6 +126,8 @@ impl Panel {
             write_loading: false,
             write_generation: 0,
             write_note: None,
+            write_op: None,
+            write_done: None,
             input: None,
         }
     }
@@ -667,6 +673,11 @@ impl Panel {
         }
     }
 
+    /// 取出最近一次写操作的结局，交给工作区发通知；取过就不重复发。
+    pub(super) fn take_notice(&mut self) -> Option<(&'static str, bool)> {
+        self.write_done.take()
+    }
+
     /// 提交输入是否吃掉了键盘；打开期间按键不进入终端。
     pub(super) fn capturing(&self) -> bool {
         self.input.is_some()
@@ -864,6 +875,7 @@ impl Panel {
             }
         }
         self.write_loading = true;
+        self.write_op = Some(description);
         self.write_note = Some(format!("正在{description}…"));
         self.revision = self.revision.wrapping_add(1);
         if let Err(error) = self.write.as_ref().unwrap().try_submit(request) {
@@ -888,6 +900,9 @@ impl Panel {
             Ok(reply) if reply.owner == self.owner && reply.generation == self.write_generation => {
                 let success = reply.result.is_ok();
                 self.write_note = Some(reply.summary);
+                if let Some(op) = self.write_op.take() {
+                    self.write_done = Some((op, success));
+                }
                 if success {
                     changed |= self.refresh_now(notify);
                 } else {

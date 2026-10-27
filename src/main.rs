@@ -111,6 +111,8 @@ struct Congminal {
     pane_visible: bool,
     last_draw: Instant,
     dirty: bool,
+    /// 状态栏摘要的复用缓冲，避免命令视图每帧新分配字符串。
+    status_scratch: String,
 }
 
 impl Congminal {
@@ -268,6 +270,10 @@ impl Congminal {
                 }
                 self.notifications.open = true;
             }
+            Action::ClearNotifications => {
+                self.notifications.clear();
+                self.dirty = true;
+            }
             Action::Copy => self.copy(),
             Action::Paste => self.clipboard_request = Some(ClipboardRequest::Paste(Default::default())),
             Action::PageUp => self.session.term.scroll_display(page),
@@ -379,9 +385,27 @@ impl Congminal {
             self.notifications.system_error = true;
         }
     }
+    /// 回车定位：命令通知跳到该命令的输出；工作区面板类通知在单窗口下没有对应页面。
+    fn activate_notice(&mut self) {
+        let Some(notice) = self.notifications.current() else {
+            self.notifications.open = false;
+            self.dirty = true;
+            return;
+        };
+        match notice.source {
+            notifications::Source::Command(id) => {
+                self.notifications.open = false;
+                self.selected_command = Some(id);
+                self.command_output(false);
+                self.dirty = true;
+            }
+            _ => self.show_warning_refs(["该通知来自工作区面板：在窗口模式下点击状态页里的同一行可跳到对应页"]),
+        }
+    }
     fn notification_key(&mut self, key: Key, mods: Mods) {
         match key {
             Key::Escape => self.notifications.open = false,
+            Key::Enter => self.activate_notice(),
             Key::Up | Key::PageUp => self.notifications.move_item(true),
             Key::Down | Key::PageDown => self.notifications.move_item(false),
             Key::Delete => self.notifications.clear(),
@@ -688,7 +712,24 @@ impl Congminal {
         }
         self.dirty = true;
     }
+    /// 状态栏的 Shell 摘要；`notifications.hide-context` 打开时不含主机与工作目录。
+    fn shell_status(&self) -> String {
+        self.session
+            .term
+            .shell
+            .description_with(self.selected_command, self.config.notifications.hide_context)
+            .to_string()
+    }
+
     fn update_ui(&mut self) {
+        // 状态栏文本要在借用 renderer 之前准备好，并复用缓冲避免每帧分配。
+        let status = if self.command_view && !self.search.active && !self.notifications.open {
+            self.status_scratch.clear();
+            self.status_scratch.push_str(&self.shell_status());
+            Some(self.status_scratch.as_str())
+        } else {
+            None
+        };
         let state = self.renderer.ui_state();
         state.begin_matches(&self.search);
         if let Some(range) = self.search.current() {
@@ -701,8 +742,8 @@ impl Congminal {
             state.search(&self.search, self.session.term.cols());
         } else if self.notifications.open {
             state.message(format_args!("{}", self.notifications.description(self.config.notifications.muted)));
-        } else if self.command_view {
-            state.message(format_args!("{}", self.session.term.shell.description(self.selected_command)));
+        } else if let Some(status) = status {
+            state.message(format_args!("{status}"));
         } else if let Some(hit) = &self.hover {
             state.message(format_args!("URL: {}", hit.url));
         }
@@ -974,13 +1015,16 @@ impl App for Congminal {
         self.dirty |= update.changed;
         let notice_revision = self.notifications.revision();
         while let Some(event) = self.session.term.shell.take_event() {
-            if let Some(notice) = self.notifications.complete(event, &self.config.notifications, self.focus.active) {
+            if let Some(notice) =
+                self.notifications.complete(event, &self.config.notifications, self.focus.active, Instant::now())
+            {
                 self.notify_notice(notice);
                 self.dirty = true;
             }
         }
         if update.finished
-            && let Some(notice) = self.notifications.ended(&self.config.notifications, self.focus.active)
+            && let Some(notice) =
+                self.notifications.ended(&self.config.notifications, self.focus.active, Instant::now())
         {
             self.notify_notice(notice);
         }
@@ -1234,6 +1278,7 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         pane_visible: true,
         last_draw: Instant::now(),
         dirty: true,
+        status_scratch: String::new(),
     };
     {
         let warnings = app.renderer.take_font_warnings();
@@ -1438,6 +1483,7 @@ mod integration_tests {
             pane_visible: true,
             last_draw: Instant::now(),
             dirty: true,
+            status_scratch: String::new(),
         };
         app.resize(width, height);
         wait_until(&mut app, |app| screen(app).contains("READY"));
@@ -1525,6 +1571,10 @@ mod integration_tests {
         app.event(Event::Paste("secret".into()));
         app.event(Event::Preedit("secret".into()));
         app.event(Event::Key { key: Key::Enter, mods: Mods::default() });
+        // 回车定位到这条通知对应的命令输出，并关掉浮层。
+        assert!(!app.notifications.open);
+        assert_eq!(app.selected_command, Some(1));
+        assert!(app.session.selection.is_some());
         app.tick();
         assert_eq!(before, app.session.term.text_stamp());
         assert!(!app.notifications.describe(false).contains("project"));
@@ -1547,6 +1597,38 @@ mod integration_tests {
         app.session.resize(40, 20).unwrap();
         app.tick();
         assert!(app.selected_command.is_none() && app.session.selection.is_none());
+    }
+
+    #[test]
+    fn hidden_context_and_clear_notifications_follow_the_configuration() {
+        let mut app = app("[notifications]\nhide-context = true\n[keybindings]\nF5 = 'clear-notifications'\n");
+        assert!(app.config.notifications.hide_context);
+        app.write_to_pty(
+            "\x1b[2J\x1b[H\x1b]7;file://secret-host/very/private\x07\x1b]133;A\x07$ \x1b]133;B\x07build\n\x1b]133;C\x07ok\n\x1b]133;D;7\x07".as_bytes(),
+        );
+        wait_until(&mut app, |a| a.session.term.shell.command(1).is_some());
+        // `Primary+F9`：macOS 只有 Cmd，其他平台是 Ctrl+Shift；多带 Shift 在 macOS 上不匹配。
+        app.event(Event::Key {
+            key: Key::F(9),
+            mods: if cfg!(target_os = "macos") {
+                Mods { logo: true, ..Mods::default() }
+            } else {
+                Mods { ctrl: true, shift: true, ..Mods::default() }
+            },
+        });
+        assert!(app.command_view);
+        let status = app.shell_status();
+        assert!(status.contains("目录已隐藏"), "{status}");
+        assert!(!status.contains("secret-host") && !status.contains("private"), "{status}");
+        // 关掉选项后目录重新可见，便于对照。
+        app.config.notifications.hide_context = false;
+        let shown = app.shell_status();
+        assert!(shown.contains("secret-host:/very/private"), "{shown}");
+        // 命令失败的通知已在记录里，F5 按名字绑定到清空动作。
+        assert!(!app.notifications.is_empty());
+        assert!(app.notifications.describe(false).contains("退出码 7"));
+        app.event(Event::Key { key: Key::F(5), mods: Mods::default() });
+        assert!(app.notifications.is_empty());
     }
 
     #[test]
