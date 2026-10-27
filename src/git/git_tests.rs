@@ -42,6 +42,9 @@ impl Fixture {
         // 否则宿主机没配全局 user.name 时写操作测试会随环境漂移。
         self.git(&["config", "user.name", "t"]);
         self.git(&["config", "user.email", "t@t"]);
+        // 写回内容按字节比较：关掉换行转换，否则 Windows 上 checkout 会写 CRLF。
+        self.git(&["config", "core.autocrlf", "false"]);
+        self.git(&["config", "core.safecrlf", "false"]);
         std::fs::write(self.0.join("committed.txt"), b"one\n").unwrap();
         std::fs::write(self.0.join("modified.txt"), b"two\n").unwrap();
         self.git(&["add", "committed.txt", "modified.txt"]);
