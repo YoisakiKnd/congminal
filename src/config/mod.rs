@@ -43,6 +43,8 @@ pub struct Config {
     pub cursor_shape: CursorShape,
     /// 光标闪烁。默认关：静止界面不持续重绘，需要时再打开。
     pub cursor_blink: bool,
+    /// 命令行标记：在提示行左侧画结果色条（需要 shell 集成上报 OSC 133）
+    pub command_marks: bool,
     pub shell: ShellConfig,
     pub connections: profiles::Profiles,
     /// [env] 里的额外环境变量
@@ -131,6 +133,7 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             cursor_shape: CursorShape::Block,
             cursor_blink: false,
+            command_marks: true,
             shell: ShellConfig::default(),
             connections: profiles::Profiles::default(),
             env: Vec::new(),
@@ -157,7 +160,7 @@ impl Default for Colors {
 
 /// 允许出现的分组和键。[env] 里可以写任意环境变量。
 const SCHEMA: &[(&str, &[&str])] = &[
-    ("appearance", &["theme", "cursor-blink"]),
+    ("appearance", &["theme", "cursor-blink", "command-marks"]),
     ("keybindings", &[]),
     ("font", &["family", "size", "line-height", "ligatures"]),
     ("window", &["columns", "rows", "padding"]),
@@ -392,6 +395,9 @@ impl Config {
 
         if let Some(blink) = r.boolean("appearance", "cursor-blink") {
             config.cursor_blink = blink;
+        }
+        if let Some(marks) = r.boolean("appearance", "command-marks") {
+            config.command_marks = marks;
         }
         if let Some(shape) = r.string("cursor", "shape") {
             match shape.as_str() {
@@ -673,9 +679,13 @@ mod tests {
         config.reset_theme();
         assert_eq!(config.theme, theme::Theme::Midnight);
 
-        // 默认不闪烁：静止界面不为了光标持续重绘
+        // 默认不闪烁：静止界面不为了光标持续重绘；命令行标记默认开
         let (config, warnings) = Config::parse("");
         assert!(!config.cursor_blink);
+        assert!(config.command_marks);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let (config, warnings) = Config::parse("[appearance]\ncommand-marks=false");
+        assert!(!config.command_marks);
         assert!(warnings.is_empty(), "{warnings:?}");
 
         // 未知键仍然被拦住，说明新键加进了 schema

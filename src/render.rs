@@ -106,6 +106,8 @@ pub struct Renderer {
     /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
     last_frame: u64,
     ui: crate::ui::State,
+    /// 命令行标记：在提示行左侧画一条结果色条（成功绿、失败红、中断黄）
+    command_marks: bool,
 }
 
 /// 每个窗格的脏行/装饰状态；字体和缓存留在唯一的 Renderer 中。
@@ -198,6 +200,7 @@ impl Renderer {
             work: work::Work::default(),
             last_frame: 0,
             ui: crate::ui::State::default(),
+            command_marks: config.command_marks,
         }
     }
 
@@ -355,6 +358,7 @@ impl Renderer {
         self.generation = self.generation.wrapping_add(1);
         self.padding = (config.window.padding * scale as f32).round() as usize;
         self.colors = config.colors.clone();
+        self.command_marks = config.command_marks;
         self.invalidate();
     }
 
@@ -494,6 +498,7 @@ impl Renderer {
                 self.draw_cursor(fb, term, &cursor);
             }
             for r in start..end {
+                self.draw_command_mark(fb, term, r);
                 self.draw_ui_decorations(fb, term, r);
             }
             if end == rows {
@@ -527,6 +532,10 @@ impl Renderer {
         line.cells[..term.cols().min(line.cells.len())].hash(&mut hasher);
         if cursor.visible && row == cursor.row {
             (cursor.col, cursor.shape, cursor.focused, cursor.preedit).hash(&mut hasher);
+        }
+        // 命令行标记也参与指纹：命令结束时文本没变，这一行仍要重画才能出现色条
+        if self.command_marks {
+            term.shell.outcome_at(term.line_id(row)).hash(&mut hasher);
         }
         // 选区在这一行覆盖的范围
         let id = term.line_id(row);
@@ -673,6 +682,22 @@ impl Renderer {
         }
     }
 
+    /// 提示行左侧的结果色条。画在左内边距里，不压住第一个字。
+    fn draw_command_mark(&self, fb: &mut Framebuffer, term: &Terminal, row: usize) {
+        if !self.command_marks {
+            return;
+        }
+        let color = match term.shell.outcome_at(term.line_id(row)) {
+            Some(crate::shell::Outcome::Exit(0)) => self.colors.palette[2],
+            Some(crate::shell::Outcome::Exit(130 | 143)) => self.colors.palette[3],
+            Some(crate::shell::Outcome::Exit(_)) => self.colors.palette[1],
+            // 退出状态未知时宁可不画，也不误导成成功或失败
+            Some(crate::shell::Outcome::Unknown) | None => return,
+        };
+        let (x, y) = self.cell_origin(row, 0);
+        let width = self.fonts.cell_width.clamp(1, 3);
+        fb.fill_rect(x.saturating_sub(width), y + 1, width, self.fonts.cell_height.saturating_sub(2), color);
+    }
     fn draw_ui_decorations(&self, fb: &mut Framebuffer, term: &Terminal, row: usize) {
         for decoration in &self.ui.decorations.data {
             if decoration.kind == DecorationKind::Match {
@@ -1386,6 +1411,42 @@ mod boundary_tests {
         assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_none());
         drop((renderer, term, frame));
         assert_eq!(pool.snapshot().kinds[crate::resources::Kind::Render as usize], 0);
+    }
+
+    #[test]
+    fn command_marks_paint_a_result_bar_in_the_left_padding() {
+        // 第一行提示符 + 一条结束的命令；返回（帧缓冲, 提示行左侧色条的像素下标）
+        fn render_with(code: &str, marks: bool) -> (Framebuffer, usize, crate::config::Colors) {
+            let mut config = crate::config::Config::default();
+            config.command_marks = marks;
+            let mut renderer = Renderer::new(&config, 1.0);
+            let mut term = Terminal::new(20, 4);
+            let script = format!("\x1b]133;A\x07$ \x1b]133;B\x07false\r\n\x1b]133;C\x07oops\r\n\x1b]133;D;{code}\x07");
+            crate::vt::Parser::new().advance(&mut term, script.as_bytes());
+            assert_eq!(
+                term.shell.outcome_at(term.line_id(0)),
+                Some(crate::shell::Outcome::Exit(code.parse().unwrap()))
+            );
+            let (w, h) = renderer.pixel_size(20, 4);
+            let mut frame = Framebuffer::new(w as usize, h as usize);
+            assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+            // 色条画在左内边距里，从格子顶端下 1 像素开始
+            let width = renderer.fonts.cell_width.clamp(1, 3);
+            let x = renderer.padding.saturating_sub(width);
+            let index = (renderer.padding + 1) * frame.width + x;
+            (frame, index, config.colors)
+        }
+
+        // 失败用调色板红，成功用绿，中断（130/143）用黄
+        let (frame, index, colors) = render_with("1", true);
+        assert_eq!(frame.pixels[index], colors.palette[1]);
+        let (frame, index, colors) = render_with("0", true);
+        assert_eq!(frame.pixels[index], colors.palette[2]);
+        let (frame, index, colors) = render_with("130", true);
+        assert_eq!(frame.pixels[index], colors.palette[3]);
+        // 关掉标记：同样的画面不再有色条
+        let (frame, index, colors) = render_with("0", false);
+        assert_ne!(frame.pixels[index], colors.palette[2]);
     }
 
     #[test]

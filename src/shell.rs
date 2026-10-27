@@ -22,7 +22,7 @@ pub enum Phase {
     Running,
     Completed,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Outcome {
     Exit(u8),
     Unknown,
@@ -269,6 +269,13 @@ impl Shell {
             }
             _ => {}
         }
+    }
+    /// 某一行是不是命令的提示行；是就返回那条命令的结果，供命令行标记使用。
+    /// 命令按提示行升序保存，二分即可，不必每帧扫全部历史。
+    pub fn outcome_at(&self, line: u64) -> Option<Outcome> {
+        let index = self.commands.partition_point(|command| command.prompt.line < line);
+        let command = self.commands.get(index)?;
+        (command.prompt.line == line).then_some(command.outcome)
     }
     /// 重排后坐标不再可靠，但命令计时继续；备用屏幕只使当前输出范围失效。
     pub fn invalidate_positions(&mut self) {
@@ -710,6 +717,22 @@ mod tests {
         assert_eq!(shell.events.len(), EVENT_LIMIT);
         assert!(shell.resource_bytes() < 256 * 1024);
     }
+    #[test]
+    fn outcome_at_finds_the_mark_for_a_prompt_line_only() {
+        let mut term = Terminal::new(20, 6);
+        command(&mut term, "ok\r\n", "0");
+        command(&mut term, "bad\r\n", "3");
+        let ids: Vec<u64> = (0..term.rows()).map(|row| term.line_id(row)).collect();
+        let marks: Vec<Option<Outcome>> = ids.iter().map(|id| term.shell.outcome_at(*id)).collect();
+        // 两条命令各占一行提示，其余行没有标记
+        assert_eq!(marks.iter().filter(|m| m.is_some()).count(), 2);
+        assert!(marks.contains(&Some(Outcome::Exit(0))));
+        assert!(marks.contains(&Some(Outcome::Exit(3))));
+        // 已经不在文本里的行号也不会误报
+        assert_eq!(term.shell.outcome_at(u64::MAX), None);
+        assert_eq!(term.shell.outcome_at(term.text_bounds().2 + 10), None);
+    }
+
     #[test]
     fn copying_is_cancelled_on_mutation_and_refuses_oversize() {
         let mut term = Terminal::new(1000, 10);

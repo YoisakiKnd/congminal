@@ -1940,6 +1940,36 @@ mod integration_tests {
     }
 
     #[test]
+    fn command_marks_show_each_result_in_the_left_margin() {
+        // 应用层：三条命令（成功/失败/中断）在提示行左侧各画一条结果色条
+        let mut app = app("");
+        let script = "\r\n\x1b]133;A\x07$ \x1b]133;B\x07ls\r\n\x1b]133;C\x07a.txt b.txt\r\n\x1b]133;D;0\x07";
+        let script =
+            format!("{script}\x1b]133;A\x07$ \x1b]133;B\x07make\r\n\x1b]133;C\x07error: boom\r\n\x1b]133;D;2\x07");
+        let script = format!("{script}\x1b]133;A\x07$ \x1b]133;B\x07sleep 9\r\n\x1b]133;C\x07\x1b]133;D;130\x07");
+        crate::vt::Parser::new().advance(&mut app.session.term, script.as_bytes());
+        app.draw();
+        if let Some(path) = std::env::var_os("CONGMINAL_MARKS_PREVIEW_PATH") {
+            let fb = &app.framebuffer;
+            let mut ppm = format!("P6\n{} {}\n255\n", fb.width, fb.height).into_bytes();
+            for &pixel in &fb.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 左侧 4 列里每种结果色的纵向范围，按出现顺序应当依次是成功、失败、中断
+        let fb = &app.framebuffer;
+        let mut bands = Vec::new();
+        for color in [app.config.colors.palette[2], app.config.colors.palette[1], app.config.colors.palette[3]] {
+            let rows: Vec<usize> =
+                (0..fb.height).filter(|y| (0..4).any(|x| fb.pixels[y * fb.width + x] == color)).collect();
+            assert!(!rows.is_empty(), "左侧应当有结果色条");
+            bands.push((*rows.first().unwrap(), *rows.last().unwrap()));
+        }
+        assert!(bands[0].1 < bands[1].0 && bands[1].1 < bands[2].0, "{bands:?}");
+    }
+
+    #[test]
     fn reset_theme_action_restores_the_configured_theme() {
         // 轮换按多了以后能一键回到配置里写的主题（按动作名绑定，不占默认键位）。
         let mut app = app("[appearance]\ntheme='midnight'\n[keybindings]\nF5='reset-theme'\nF6='next-theme'\n");
