@@ -761,6 +761,20 @@ fn fake_ssh(fixture: &Fixture, name: &str, body: &str) -> PathBuf {
     path
 }
 
+/// 假 ssh：先把收到的参数逐行写进 `argv`，再执行远端命令（同样跳过 `--` 与主机）。
+#[cfg(unix)]
+fn fake_ssh_recording(fixture: &Fixture, name: &str, argv: &std::path::Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = fixture.path().join(name);
+    let script = format!(
+        "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '{argv}'\n\
+         while [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nexec \"$@\"\n",
+        argv = argv.display()
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
 /// 假 ssh 的失败分支：跳过选项、`--` 与主机后直接写 stderr 并以 255 退出。
 #[cfg(unix)]
 fn fake_ssh_failing(fixture: &Fixture, name: &str, stderr: &str) -> PathBuf {
@@ -789,6 +803,7 @@ fn remote_status_runs_git_through_ssh_with_the_remote_path() {
             user: Some("dev".into()),
             port: Some(2222),
             identity: None,
+            jump: None,
         }),
         ..base_limits()
     };
@@ -806,6 +821,37 @@ fn remote_status_runs_git_through_ssh_with_the_remote_path() {
     wait_released(&pool);
 }
 
+/// 远端仓库走 `ssh -J` 时跳板机作为独立参数传给 ssh，不拼进远端命令。
+#[cfg(unix)]
+#[test]
+fn remote_git_passes_the_jump_host_to_ssh_as_one_argument() {
+    let fixture = Fixture::new("jump");
+    fixture.repo();
+    let argv = fixture.path().join("ssh-argv.txt");
+    let program = fake_ssh_recording(&fixture, "fake-ssh-jump", &argv);
+    let pool = pool();
+    let limits = Limits {
+        remote: Some(Remote {
+            program,
+            host: "fixture".into(),
+            user: None,
+            port: None,
+            identity: None,
+            jump: Some("dev@bastion:2200".into()),
+        }),
+        ..base_limits()
+    };
+    let _snapshot = retry_worker(|| {
+        let request = StatusRequest::new(1, 7, fixture.path(), &limits, None, &pool)?;
+        status(request, &Cancellation::default()).result
+    })
+    .unwrap();
+    let recorded = std::fs::read_to_string(&argv).unwrap();
+    let args = recorded.lines().collect::<Vec<_>>();
+    let position = args.iter().position(|arg| *arg == "-J").expect("跳板机要传给 ssh");
+    assert_eq!(args[position + 1], "dev@bastion:2200");
+}
+
 #[cfg(unix)]
 #[test]
 fn remote_ssh_failures_are_reported_as_host_key_or_auth_not_as_git_errors() {
@@ -819,7 +865,14 @@ fn remote_ssh_failures_are_reported_as_host_key_or_auth_not_as_git_errors() {
         let program = fake_ssh_failing(&fixture, &format!("fake-ssh-{name}"), stderr);
         let pool = pool();
         let limits = Limits {
-            remote: Some(Remote { program, host: "fixture".into(), user: None, port: None, identity: None }),
+            remote: Some(Remote {
+                program,
+                host: "fixture".into(),
+                user: None,
+                port: None,
+                identity: None,
+                jump: None,
+            }),
             ..base_limits()
         };
         // 版本探测会先跑一次 `git --version`，这里给定版本以直接进入状态查询。

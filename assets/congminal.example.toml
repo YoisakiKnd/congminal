@@ -221,4 +221,5 @@ hide-context = false
 # user = "builder"
 # port = 22
 # identity-file = "/absolute/key/path" # 配置只保存路径，由 OpenSSH 读取密钥
+# jump = "dev@bastion:2200" # 跳板机，原样交给 ssh -J；多跳用逗号分隔（a,b）
 # program = "/usr/bin/ssh" # 外部后端候选的程序路径

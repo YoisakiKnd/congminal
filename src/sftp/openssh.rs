@@ -47,6 +47,9 @@ fn command_with_auth(profile: &Ssh, configuration: Configuration<'_>, interactiv
     if let Some(identity) = &profile.identity_file {
         command.arg("-i").arg(identity);
     }
+    if let Some(jump) = &profile.jump {
+        command.arg("-J").arg(jump);
+    }
     command.arg("--").arg(&profile.host).arg("sftp");
     command
 }
@@ -75,6 +78,7 @@ mod tests {
             user: Some("user".into()),
             port: Some(2222),
             identity_file: Some("key space;$()".into()),
+            jump: None,
             program: None,
         };
         let spec = command(&profile, Configuration::File(std::path::Path::new("config space")));
@@ -107,6 +111,24 @@ mod tests {
         ));
     }
     #[test]
+    fn jump_hosts_go_to_the_subsystem_command_as_one_argument() {
+        let profile = Ssh {
+            host: "alias".into(),
+            user: None,
+            port: None,
+            identity_file: None,
+            jump: Some("dev@bastion:2200".into()),
+            program: None,
+        };
+        let spec = command(&profile, Configuration::None);
+        let args = spec.get_args().collect::<Vec<_>>();
+        let position = args.iter().position(|arg| *arg == "-J").expect("跳板机要传给 sftp 子系统");
+        assert_eq!(args[position + 1], "dev@bastion:2200");
+        assert_eq!(args[position + 2], "--");
+        assert_eq!(args[position + 3], "alias");
+        assert_eq!(args[position + 4], "sftp");
+    }
+    #[test]
     #[ignore = "隔离回环 sshd、临时配置/密钥；不使用用户 SSH 文件"]
     fn isolated_subsystem_streams_lists_and_releases_after_faults() {
         use crate::sftp::{
@@ -120,8 +142,14 @@ mod tests {
         };
         let root = PathBuf::from(std::env::var_os("CONGMINAL_TEST_SFTP_ROOT").unwrap());
         let scenario = std::env::var("CONGMINAL_TEST_SFTP_SCENARIO").unwrap();
-        let profile =
-            Ssh { host: "bounded-path-alias".into(), user: None, port: None, identity_file: None, program: None };
+        let profile = Ssh {
+            host: "bounded-path-alias".into(),
+            user: None,
+            port: None,
+            identity_file: None,
+            jump: None,
+            program: None,
+        };
         let cancel = Cancellation::default();
         let pool = Budget::new(8 * 1024 * 1024, 0);
         let mut stream =

@@ -1326,6 +1326,7 @@ impl Workspace {
             user: ssh.user.clone(),
             port: ssh.port,
             identity: ssh.identity_file.clone(),
+            jump: ssh.jump.clone(),
         })
     }
 
@@ -1341,6 +1342,7 @@ impl Workspace {
             user: ssh.user.clone(),
             port: ssh.port,
             identity: ssh.identity_file.clone(),
+            jump: ssh.jump.clone(),
         })
     }
 
@@ -1578,12 +1580,18 @@ impl Workspace {
                     // 已经用这个配置档连过的窗格把当前阶段写在名字后面：启动中/活动/断开/失败。
                     let phase =
                         self.profile_phase(index).map(|phase| format!(" · {}", phase.label())).unwrap_or_default();
-                    let text = format!(
-                        "{kind} · {}{}{}{phase}",
-                        profile.group,
-                        if profile.group.is_empty() { "" } else { " / " },
-                        profile.name
-                    );
+                    // 跳板机也写在这一行，省得去翻配置才知道这条连接经过谁。
+                    let jump = match &profile.connection {
+                        config::profiles::Connection::Ssh(ssh) => ssh.jump.as_deref(),
+                        config::profiles::Connection::Local(_) => None,
+                    };
+                    let separator = if profile.group.is_empty() { "" } else { " / " };
+                    let text = match jump {
+                        Some(jump) => {
+                            format!("{kind} · {}{separator}{}{phase} · 经 {jump}", profile.group, profile.name)
+                        }
+                        None => format!("{kind} · {}{separator}{}{phase}", profile.group, profile.name),
+                    };
                     self.driver.renderer.chrome(
                         &mut self.frame,
                         [r.x, r.y + (index - self.profiles_offset + 2) * h, r.w, h],
@@ -3620,6 +3628,7 @@ exec /bin/cat
             user: Some("dev".into()),
             port: None,
             identity: None,
+            jump: None,
         };
         assert!(panel.set_target(Some(target.clone())));
         // 远端要起 ssh：间隔抬到 2 秒，不能按本地的 1 Hz 跑。

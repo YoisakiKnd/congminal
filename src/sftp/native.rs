@@ -741,6 +741,7 @@ mod tests {
                     user: None,
                     port: None,
                     identity_file: None,
+                    jump: None,
                     program: Some("/usr/bin/ssh".into()),
                 };
                 Some(

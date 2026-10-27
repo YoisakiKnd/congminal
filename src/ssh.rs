@@ -166,6 +166,10 @@ fn interactive(profile: &Ssh) -> ShellConfig {
     if let Some(identity) = &profile.identity_file {
         args.extend(["-i".into(), identity.clone()]);
     }
+    // 跳板机交给 ssh 自己处理：主机密钥校验与 BatchMode 对跳板同样生效。
+    if let Some(jump) = &profile.jump {
+        args.extend(["-J".into(), jump.clone()]);
+    }
     args.extend(["--".into(), profile.host.clone()]);
     ShellConfig { program: Some(program(profile).into()), args, working_directory: None }
 }
@@ -179,6 +183,7 @@ mod tests {
             user: Some("user".into()),
             port: Some(2222),
             identity_file: Some("key with 'quote;$literal".into()),
+            jump: None,
             program: None,
         }
     }
@@ -204,6 +209,18 @@ mod tests {
         assert!(shell.working_directory.is_none());
         assert!(valid(&profile));
         assert!(!valid(&Ssh { host: "-oProxyCommand=anything".into(), ..profile }));
+    }
+    #[test]
+    fn jump_hosts_are_passed_as_one_argument_before_the_destination() {
+        let with_jump = Ssh { jump: Some("bastion.example:2200".into()), ..profile() };
+        let shell = interactive(&with_jump);
+        let position = shell.args.iter().position(|arg| arg == "-J").expect("跳板机要传给 ssh");
+        assert_eq!(shell.args[position + 1], "bastion.example:2200");
+        assert_eq!(shell.args[position + 2], "--");
+        assert_eq!(shell.args[position + 3], "host-alias");
+        // 多跳与 user@host 形式都原样作为单个参数，不拼进命令行。
+        let multi = Ssh { jump: Some("a@one,two:2222".into()), ..profile() };
+        assert!(interactive(&multi).args.contains(&"a@one,two:2222".to_string()));
     }
     #[test]
     fn quota_and_cancel_reject_before_tool_execution() {

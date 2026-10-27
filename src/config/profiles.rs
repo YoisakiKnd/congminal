@@ -17,6 +17,8 @@ pub struct Ssh {
     pub user: Option<String>,
     pub port: Option<u16>,
     pub identity_file: Option<String>,
+    /// 跳板机（`ssh -J`）：`[user@]host[:port]`，也允许逗号分隔的多跳。
+    pub jump: Option<String>,
     pub program: Option<String>,
 }
 #[derive(Debug, PartialEq)]
@@ -168,7 +170,18 @@ impl Profiles {
                     "ssh" => {
                         known(
                             t,
-                            &["kind", "name", "group", "theme", "host", "user", "port", "identity-file", "program"],
+                            &[
+                                "kind",
+                                "name",
+                                "group",
+                                "theme",
+                                "host",
+                                "user",
+                                "port",
+                                "identity-file",
+                                "jump",
+                                "program",
+                            ],
                         )?;
                         let host = string(t, "host", 255)?.ok_or("缺少 host")?;
                         if host.starts_with('-')
@@ -186,11 +199,20 @@ impl Profiles {
                             _ => return Err("port 须为 1–65535 的整数"),
                         };
                         let identity = string(t, "identity-file", 4096)?;
+                        // 跳板机直接交给 `ssh -J`：主机密钥校验与 BatchMode 对跳板同样生效。
+                        let jump = string(t, "jump", 255)?;
+                        if jump.is_some_and(|v| {
+                            v.starts_with('-')
+                                || !v.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-:%@,".contains(&b))
+                        }) {
+                            return Err("jump 须为 [user@]host[:port]，可逗号分隔多跳，不能含选项或命令");
+                        }
                         Connection::Ssh(Ssh {
                             host: host.into(),
                             user: user.map(str::to_owned),
                             port,
                             identity_file: identity.map(str::to_owned),
+                            jump: jump.map(str::to_owned),
                             program: program.map(str::to_owned),
                         })
                     }
@@ -249,7 +271,11 @@ impl Profile {
                         + c.working_directory.as_ref().map_or(0, |p| p.capacity())
                 }
                 Connection::Ssh(c) => {
-                    c.host.capacity() + optional(&c.user) + optional(&c.identity_file) + optional(&c.program)
+                    c.host.capacity()
+                        + optional(&c.user)
+                        + optional(&c.identity_file)
+                        + optional(&c.jump)
+                        + optional(&c.program)
                 }
             }
     }
@@ -304,6 +330,37 @@ program="/usr/bin/ssh"
         assert_eq!(target.snapshot().used, bytes);
         drop(shared);
         assert_eq!(target.snapshot().used, 0);
+    }
+    #[test]
+    fn jump_hosts_are_bounded_and_never_smuggle_options() {
+        let pool = Budget::new(WORK_BYTES, 0);
+        let (profiles, warnings) = parse(
+            r#"
+[connections.a]
+kind="ssh"
+host="target"
+jump="dev@bastion:2200"
+[connections.b]
+kind="ssh"
+host="target"
+jump="one,two"
+"#,
+            &pool,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(profiles.len(), 2);
+        let Connection::Ssh(a) = &profiles[0].connection else { panic!("expected ssh") };
+        assert_eq!(a.jump.as_deref(), Some("dev@bastion:2200"));
+        let Connection::Ssh(b) = &profiles[1].connection else { panic!("expected ssh") };
+        assert_eq!(b.jump.as_deref(), Some("one,two"), "多跳按 OpenSSH 的逗号语法原样保留");
+        // 不能借 jump 传选项或命令；非法值让整条配置档不加载，并说明原因。
+        for bad in ["-oProxyCommand=echo", "a b", "host;rm -rf /", "a|b"] {
+            let fresh = Budget::new(WORK_BYTES, 0);
+            let (profiles, warnings) =
+                parse(&format!("[connections.x]\nkind=\"ssh\"\nhost=\"target\"\njump=\"{bad}\"\n"), &fresh);
+            assert!(profiles.is_empty(), "{bad} 不应加载");
+            assert!(warnings.iter().any(|w| w.contains("jump")), "{bad}: {warnings:?}");
+        }
     }
     #[test]
     fn invalid_or_secret_fields_do_not_load_or_echo_values() {
