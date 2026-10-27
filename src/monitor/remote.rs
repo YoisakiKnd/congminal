@@ -64,16 +64,21 @@ pub struct Source {
     target: Target,
     previous: Option<Times>,
     mount: Option<String>,
+    /// 主读数（`/proc/stat` + `/proc/meminfo`）那一趟的往返耗时，不含磁盘那一趟。
+    latency: Option<Duration>,
 }
 impl Source {
     pub fn new(target: Target) -> Self {
-        Self { target, previous: None, mount: None }
+        Self { target, previous: None, mount: None, latency: None }
     }
 }
 
 impl Sampling for Source {
     fn sample(&mut self, disk: bool, cancel: &Cancellation) -> Result<Raw, Error> {
+        let started = Instant::now();
         let text = run(&self.target, &["cat", "/proc/stat", "/proc/meminfo"], cancel)?;
+        // 只记主读数这一趟：磁盘那一趟按 `disk-seconds` 降频，混进来会让数字忽大忽小。
+        self.latency = Some(started.elapsed());
         let times = Times::parse(&text).ok_or(Error::Remote)?;
         let (mem_total, mem_used) = memory(&text).ok_or(Error::Remote)?;
         let cpu = self.previous.map_or(0.0, |previous| times.percent(previous));
@@ -93,6 +98,9 @@ impl Sampling for Source {
 
     fn mount(&self) -> Option<String> {
         self.mount.clone()
+    }
+    fn latency(&self) -> Option<Duration> {
+        self.latency
     }
 }
 
@@ -286,6 +294,9 @@ mod tests {
         let mut source = Source::new(target.clone());
         let cancel = Cancellation::default();
         let raw = source.sample(false, &cancel).unwrap();
+        // 主读数那一趟的往返耗时被记下来（本机假脚本也 > 0，且不超过超时上限）。
+        let latency = source.latency().expect("远端采样应记录往返耗时");
+        assert!(latency <= TIMEOUT, "{latency:?}");
         assert_eq!(raw.cores, 2);
         assert_eq!(raw.mem_total, 8_000_000 * 1024);
         assert_eq!(raw.disk_total, 0, "没到期就不读磁盘");

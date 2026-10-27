@@ -191,6 +191,10 @@ pub trait Sampling: Send {
     fn mount(&self) -> Option<String> {
         None
     }
+    /// 这一轮读数的往返耗时（远端要起一次 `ssh`）：本地采样没有网络跳，返回 `None`。
+    fn latency(&self) -> Option<std::time::Duration> {
+        None
+    }
     /// 进程列表：比全局读数贵得多，由上层按 `PROCESS_INTERVAL` 降频调用。
     fn processes(&mut self) -> Vec<Proc> {
         Vec::new()
@@ -215,6 +219,8 @@ pub struct Reply {
     pub error: Option<Error>,
     /// 进程列表（只有到期那一轮才有），条数不超过 `PROCESS_LIMIT`。
     pub processes: Vec<Proc>,
+    /// 远端读数的往返耗时；本地采样为 `None`。
+    pub latency: Option<std::time::Duration>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

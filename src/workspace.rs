@@ -3428,8 +3428,9 @@ exec /bin/cat
         assert!(app.monitor.target.is_some(), "面板应记住远端目标");
         assert_eq!(app.monitor.interval(), monitor::REMOTE_MIN_INTERVAL);
         let view = app.monitor.view(28);
-        // 夹具配置档没写 user，标签就是主机名。
-        assert_eq!(view.headline[0], "远程 fixture", "{:?}", view.headline);
+        // 夹具配置档没写 user，标签就是主机名；同一行追加远端往返耗时。
+        assert!(view.headline[0].starts_with("远程 fixture · 往返 "), "{:?}", view.headline);
+        assert!(view.headline[0].ends_with(" ms"), "{:?}", view.headline);
         assert!(view.headline.iter().any(|line| line.contains("7.6 GiB")), "{:?}", view.headline);
         // 远端节奏写进状态行，不沿用配置里的 1 秒。
         assert!(view.headline.iter().any(|line| line.contains("每 2 秒")), "{:?}", view.headline);
@@ -4442,6 +4443,8 @@ program="/definitely/missing/congminal-shell"
         // 第一轮只有计数器基线：如实显示未知，不显示 0。
         let first = app.monitor.view(40);
         assert!(first.headline.iter().any(|line| line == "网络 未知"), "{:?}", first.headline);
+        // 本机采样没有网络跳，标题里不写往返耗时。
+        assert!(!first.headline.iter().any(|line| line.contains("往返")), "{:?}", first.headline);
         wait(&mut app, |a| a.monitor.samples() >= 2);
         let second = app.monitor.view(40);
         assert!(second.headline.iter().any(|line| line == "网络 ↓2 KiB/s ↑512 B/s"), "{:?}", second.headline);
