@@ -26,6 +26,13 @@ pub const MAX_SAMPLES: usize = 900;
 pub const RESERVED: usize = 256 * 1024;
 /// 进程列表：最多显示几行、名字最长多少字节、刷新间隔（读全部进程的 /proc 比读全局读数贵）。
 pub const PROCESS_LIMIT: usize = 5;
+/// `sysinfo` 允许保留的 `/proc/<pid>/stat` 句柄数。
+///
+/// 它默认会为**每个进程**留一个打开的句柄（上限是 rlimit 的一半，本机 553 个进程就是 553 个 fd），
+/// 并且在第一次用到时把 `RLIMIT_NOFILE` 的软上限提到硬上限。句柄是硬资源：撞上上限后
+/// 整个进程的所有 open/socket 都会失败，而监控页只需要前 5 个进程。
+/// 这里显式压到 16：超出部分 sysinfo 改成每次开关句柄，代价是进程表刷新慢 2–3 ms。
+pub const FILE_HANDLES: usize = 16;
 pub const PROCESS_NAME_BYTES: usize = 24;
 pub const PROCESS_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -265,8 +272,18 @@ mod system {
         /// 上一次的网络累计字节与时间：速率靠两次采样的差值算，不做逐包统计。
         net: Option<(u64, u64, std::time::Instant)>,
     }
+    /// 只设一次：`set_open_files_limit` 是进程级全局状态，重复调用没有意义。
+    /// 非 Linux 目标上 sysinfo 直接返回 false（没有这套句柄缓存），调用无害。
+    fn limit_file_handles() {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(|| {
+            sysinfo::set_open_files_limit(super::FILE_HANDLES);
+        });
+    }
+
     impl SystemSource {
         pub fn new() -> Self {
+            limit_file_handles();
             let mut system = sysinfo::System::new();
             // 先刷新一次，让下一次调用有可比的基线。
             system.refresh_cpu_usage();

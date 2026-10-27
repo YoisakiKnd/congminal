@@ -3385,6 +3385,29 @@ exec /bin/cat
         }
     }
 
+    /// 配置里关掉进程列表后：不再向采样源要进程，也不把旧列表留在侧栏里。
+    #[test]
+    fn monitor_processes_can_be_switched_off_from_the_configuration() {
+        let mut app = workspace();
+        let refreshes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = refreshes.clone();
+        app.monitor = monitor_panel::Panel::with_source(std::sync::Arc::new(move || {
+            Box::new(ProcessSource(counter.clone())) as Box<dyn monitor::Sampling>
+        }));
+        app.width = 1200;
+        app.height = 700;
+        app.driver.config.monitor.processes = false;
+        app.action(Action::ShowMonitorPanel);
+        wait(&mut app, |a| a.monitor.samples() > 1);
+        assert_eq!(refreshes.load(std::sync::atomic::Ordering::SeqCst), 0, "关掉后不该刷新进程表");
+        let view = app.monitor.view(30);
+        assert!(!view.content.iter().any(|line| line.starts_with("进程")), "{:?}", view.content);
+        // 打开后立刻恢复：不用等满一个 5 秒周期。
+        app.driver.config.monitor.processes = true;
+        wait(&mut app, |a| a.monitor.processes.len() == 2);
+        assert!(refreshes.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+    }
+
     #[test]
     fn monitor_target_switching_clears_history_and_slows_the_interval() {
         let mut panel = monitor_panel::Panel::new();

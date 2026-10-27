@@ -62,6 +62,8 @@ pub(super) struct Panel {
     pub(super) processes: Vec<monitor::Proc>,
     /// 上次刷新进程列表的时刻，用来按 `PROCESS_INTERVAL` 降频。
     pub(super) last_processes: Option<Instant>,
+    /// 配置里是否要进程列表；关掉后不再刷新，也不再占 sysinfo 的句柄缓存。
+    pub(super) show_processes: bool,
 }
 
 impl Panel {
@@ -98,6 +100,7 @@ impl Panel {
             target: None,
             processes: Vec::new(),
             last_processes: None,
+            show_processes: true,
         }
     }
 
@@ -232,6 +235,12 @@ impl Panel {
         self.paused = false;
         self.thresholds = settings.thresholds();
         self.alert_cooldown = settings.alert_cooldown();
+        if self.show_processes != settings.processes {
+            self.show_processes = settings.processes;
+            // 关掉时把已有列表一起丢掉，免得留在侧栏里像个还活着的读数。
+            self.processes.clear();
+            self.last_processes = None;
+        }
         // 从暂停/关闭恢复时没有排定的采样点，补一个“现在”，否则会一直等不到下一轮。
         if self.next.is_none() && !self.loading {
             self.next = Some(Instant::now());
@@ -348,8 +357,8 @@ impl Panel {
         self.loading = true;
         self.next = Some(now + self.interval());
         self.revision = self.revision.wrapping_add(1);
-        let processes =
-            self.last_processes.is_none_or(|at| now.saturating_duration_since(at) >= monitor::PROCESS_INTERVAL);
+        let processes = self.show_processes
+            && self.last_processes.is_none_or(|at| now.saturating_duration_since(at) >= monitor::PROCESS_INTERVAL);
         let request = Request { generation: self.generation, disk, processes };
         if let Err(error) = self.task.as_ref().unwrap().try_submit(request) {
             self.loading = false;

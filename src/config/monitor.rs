@@ -19,6 +19,9 @@ pub struct Settings {
     pub alert_disk: u8,
     /// 同一条告警的最短间隔（秒），30–3600；避免在阈值附近来回抖动时刷屏。
     pub alert_seconds: f64,
+    /// 是否列出 CPU 占用最高的进程。关掉后完全不做进程表刷新——
+    /// `sysinfo` 会为每个进程留一个 `/proc/<pid>/stat` 句柄，进程多的机器上值得关。
+    pub processes: bool,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -32,6 +35,7 @@ impl Default for Settings {
             alert_memory: 0,
             alert_disk: 0,
             alert_seconds: DEFAULT_ALERT_SECONDS,
+            processes: true,
         }
     }
 }
@@ -107,6 +111,9 @@ pub(super) fn read(r: &mut Reader<'_>) -> Settings {
     if let Some(seconds) = r.number("monitor", "alert-seconds", MIN_ALERT_SECONDS, MAX_ALERT_SECONDS) {
         settings.alert_seconds = seconds;
     }
+    if let Some(processes) = r.boolean("monitor", "processes") {
+        settings.processes = processes;
+    }
     settings
 }
 
@@ -134,6 +141,17 @@ mod tests {
         assert_eq!(limits.disk_interval, std::time::Duration::from_secs(30));
         assert_eq!(limits.samples(), 300);
     }
+    #[test]
+    fn process_list_can_be_switched_off() {
+        // 默认开着（进程列表是既有功能），显式写 false 才关。
+        let (config, warnings) = Config::parse("");
+        assert!(warnings.is_empty());
+        assert!(config.monitor.processes);
+        let (config, warnings) = Config::parse("[monitor]\nprocesses = false\n");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(!config.monitor.processes);
+    }
+
     #[test]
     fn alert_thresholds_parse_clamp_and_default_to_off() {
         // 默认全关：不替用户猜阈值，也不在升级后突然开始弹通知。

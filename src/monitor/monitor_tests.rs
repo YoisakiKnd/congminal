@@ -120,6 +120,26 @@ fn unsupported_platforms_are_reported_instead_of_faked() {
     }
 }
 
+/// 句柄预算：`sysinfo` 默认给每个进程留一个 `/proc/<pid>/stat`，本机 500 多个进程就是 500 多个 fd。
+/// 这里断言刷新进程表之后句柄数仍然被压在上限附近——这是“不靠提预算换功能”的硬约束。
+#[cfg(target_os = "linux")]
+#[test]
+fn process_list_keeps_the_file_handle_count_bounded() {
+    fn fds() -> usize {
+        std::fs::read_dir("/proc/self/fd").map(|entries| entries.count()).unwrap_or(0)
+    }
+    let mut source = system::SystemSource::new();
+    let before = fds();
+    let processes = source.processes();
+    let after = fds();
+    // 并行测试也会开关文件，留一点余量；但绝不能出现“每个进程一个句柄”的量级。
+    assert!(
+        after <= before + FILE_HANDLES + 32,
+        "进程表刷新后句柄从 {before} 涨到 {after}（上限 {FILE_HANDLES}）：{} 个进程",
+        processes.len()
+    );
+}
+
 #[test]
 fn process_list_keeps_the_busiest_rows_and_stays_bounded() {
     let proc = |pid: u32, name: &str, cpu: f32, memory: u64| Proc { pid, name: name.into(), cpu, memory };
