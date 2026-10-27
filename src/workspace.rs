@@ -1062,6 +1062,7 @@ impl Workspace {
         category: crate::notifications::Category,
         detail: &'static str,
         outcome: crate::shell::Outcome,
+        host: Option<&str>,
     ) -> bool {
         let notice = crate::notifications::Notice {
             id: 0,
@@ -1072,9 +1073,12 @@ impl Workspace {
             detail,
             repeat: 1,
         };
-        let Some(notice) =
-            self.driver.notifications.submit(notice, &self.driver.config.notifications, std::time::Instant::now())
-        else {
+        let Some(notice) = self.driver.notifications.submit(
+            notice,
+            &self.driver.config.notifications,
+            host,
+            std::time::Instant::now(),
+        ) else {
             return false;
         };
         self.driver.notify_notice(notice);
@@ -2297,6 +2301,34 @@ impl App for Workspace {
                     }
                     self.chrome_dirty = true;
                 }
+                // 命令完成通知：窗格加载时 driver 里就是它自己的通知中心，后台窗格的
+                // 完成只影响系统通知与它自己的列表，不打断当前窗格。
+                let focused = index == foreground && self.window_focus;
+                while let Some(event) = self.driver.session.term.shell.take_event() {
+                    let host = self.driver.session.term.shell.directory.as_ref().map(|d| d.host().to_string());
+                    if let Some(notice) = self.driver.notifications.complete(
+                        event,
+                        &self.driver.config.notifications,
+                        host.as_deref(),
+                        focused,
+                        Instant::now(),
+                    ) {
+                        self.driver.notify_notice(notice);
+                        self.chrome_dirty = true;
+                    }
+                }
+                // `ended` 自己只报一次：首次调用后中心里的标记就置位。
+                if self.panes[index].ended
+                    && let Some(notice) = self.driver.notifications.ended(
+                        &self.driver.config.notifications,
+                        self.driver.session.term.shell.directory.as_ref().map(|d| d.host().to_string()).as_deref(),
+                        focused,
+                        Instant::now(),
+                    )
+                {
+                    self.driver.notify_notice(notice);
+                    self.chrome_dirty = true;
+                }
                 if let Some(title) = self.driver.take_title() {
                     let title: String = title.chars().filter(|c| !c.is_control()).take(128).collect();
                     if title != self.panes[index].title {
@@ -2388,6 +2420,8 @@ impl App for Workspace {
                 crate::notifications::Category::GitWrite,
                 op,
                 outcome,
+                // Git 面板只读本地仓库，没有主机维度。
+                None,
             );
         }
         if self.monitor.take_failure() {
@@ -2396,6 +2430,8 @@ impl App for Workspace {
                 crate::notifications::Category::MonitorFailed,
                 "",
                 crate::shell::Outcome::Unknown,
+                // 本地采样没有主机维度。
+                None,
             );
         }
         let keep = !self.quit && (self.multiple || !self.panes[0].ended);
@@ -2901,6 +2937,43 @@ mod tests {
         eprintln!("SSH_NATIVE_REJECTED exit=255");
         eprintln!("SSH_NATIVE_CLEANUP used=0 mappings=0");
     }
+    #[test]
+    fn workspace_reports_command_completions_from_every_pane() {
+        let mut app = workspace();
+        app.add_with_profile(None, None);
+        wait(&mut app, |a| a.panes.len() == 2);
+        // 后台窗格：往它自己的 PTY 送一段带失败退出码的 OSC 133 序列。
+        let background = (0..app.panes.len()).find(|&i| i != app.loaded).unwrap();
+        app.panes[background]
+            .state
+            .as_mut()
+            .unwrap()
+            .session
+            .write(b"\x1b]133;A\x07$ \x1b]133;B\x07build\n\x1b]133;C\x07ok\n\x1b]133;D;5\x07")
+            .unwrap();
+        wait(&mut app, |a| {
+            a.panes[background].state.as_ref().is_some_and(|state| state.session.term.shell.command(1).is_some())
+        });
+        // 通知落在那个窗格自己的中心里，当前窗格的列表不被后台事件塞满。
+        wait(&mut app, |a| a.panes[background].state.as_ref().is_some_and(|state| !state.notifications.is_empty()));
+        let texts: Vec<String> = app.panes[background]
+            .state
+            .as_ref()
+            .unwrap()
+            .notifications
+            .recent_notices()
+            .map(|notice| notice.text())
+            .collect();
+        assert!(texts.iter().any(|text| text.contains("退出码 5")), "{texts:?}");
+        // 前台窗格自己的命令也会产生通知：工作区模式下以前完全不会上报。
+        app.driver.session.write(b"\x1b]133;A\x07$ \x1b]133;B\x07run\n\x1b]133;C\x07ok\n\x1b]133;D;4\x07").unwrap();
+        wait(&mut app, |a| a.driver.session.term.shell.command(1).is_some());
+        wait(&mut app, |a| !a.driver.notifications.is_empty());
+        let focused_texts: Vec<String> =
+            app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(focused_texts.iter().any(|text| text.contains("退出码 4")), "{focused_texts:?}");
+    }
+
     #[test]
     fn ssh_reconnect_changes_identity_and_drops_old_paste_without_losing_old_session_on_failure() {
         use std::os::unix::fs::PermissionsExt;
@@ -3507,7 +3580,8 @@ program="/definitely/missing/congminal-shell"
             crate::notifications::Source::Git,
             crate::notifications::Category::GitWrite,
             "提交",
-            crate::shell::Outcome::Exit(0)
+            crate::shell::Outcome::Exit(0),
+            None
         ));
         app.monitor.failure_notice = true;
         app.tick();

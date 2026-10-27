@@ -1015,16 +1015,26 @@ impl App for Congminal {
         self.dirty |= update.changed;
         let notice_revision = self.notifications.revision();
         while let Some(event) = self.session.term.shell.take_event() {
-            if let Some(notice) =
-                self.notifications.complete(event, &self.config.notifications, self.focus.active, Instant::now())
-            {
+            // 主机取自 shell 报告的 OSC 7 目录：状态栏显示的就是它，按主机静音才符合直觉。
+            let host = self.session.term.shell.directory.as_ref().map(|d| d.host().to_string());
+            if let Some(notice) = self.notifications.complete(
+                event,
+                &self.config.notifications,
+                host.as_deref(),
+                self.focus.active,
+                Instant::now(),
+            ) {
                 self.notify_notice(notice);
                 self.dirty = true;
             }
         }
         if update.finished
-            && let Some(notice) =
-                self.notifications.ended(&self.config.notifications, self.focus.active, Instant::now())
+            && let Some(notice) = self.notifications.ended(
+                &self.config.notifications,
+                self.session.term.shell.directory.as_ref().map(|d| d.host().to_string()).as_deref(),
+                self.focus.active,
+                Instant::now(),
+            )
         {
             self.notify_notice(notice);
         }
@@ -1656,6 +1666,25 @@ mod integration_tests {
         assert!(app.notifications.describe(false).contains("退出码 7"));
         app.event(Event::Key { key: Key::F(5), mods: Mods::default() });
         assert!(app.notifications.is_empty());
+    }
+
+    #[test]
+    fn notices_from_a_muted_host_are_dropped() {
+        let mut app = app("[notifications]\nmute-hosts = [\"secret-host\"]\n");
+        assert_eq!(app.config.notifications.mute_hosts, vec!["secret-host".to_string()]);
+        app.write_to_pty(
+            "\x1b[2J\x1b[H\x1b]7;file://secret-host/very/private\x07\x1b]133;A\x07$ \x1b]133;B\x07build\n\x1b]133;C\x07ok\n\x1b]133;D;7\x07".as_bytes(),
+        );
+        wait_until(&mut app, |a| a.session.term.shell.command(1).is_some());
+        // 同一台主机：命令失败的通知被主机规则拦掉。
+        assert!(app.notifications.is_empty());
+        // 换一台主机后同一条事件照常产生通知。
+        app.write_to_pty(
+            "\x1b]7;file://other-host/tmp\x07\x1b]133;A\x07$ \x1b]133;B\x07build\n\x1b]133;C\x07ok\n\x1b]133;D;3\x07"
+                .as_bytes(),
+        );
+        wait_until(&mut app, |a| a.session.term.shell.command(2).is_some());
+        assert!(!app.notifications.is_empty());
     }
 
     #[test]
