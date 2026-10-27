@@ -2090,6 +2090,64 @@ mod integration_tests {
         assert_eq!(app.config.theme, next);
     }
 
+    /// 主题截图回归：三个内置主题各自把背景/前景画到帧上，互相不串色。
+    /// 设置 `CONGMINAL_THEME_PREVIEW_DIR` 时把每个主题的帧导出成 PPM，供人工比对。
+    #[test]
+    fn every_theme_paints_its_own_palette() {
+        let mut backgrounds = Vec::new();
+        for theme in crate::config::theme::Theme::ALL {
+            let mut app = app(&format!("[appearance]\ntheme='{}'\n", theme.name()));
+            assert_eq!(app.config.theme, theme);
+            // 反显的空格把整格填成对应调色板颜色：字形边缘会与背景混色，整格填充才能按位精确比较。
+            // 也不加粗：加粗会把 30+i 映射到亮色（palette[i+8]），这里要的是基础调色板。
+            let mut script = format!("\x1b[2J\x1b[H\x1b[1m主题：{}\x1b[0m\r\n", theme.label());
+            for index in 1..=6 {
+                script.push_str(&format!("\x1b[3{index};7m   \x1b[0m "));
+            }
+            script.push_str("\r\n主题 ok\r\n");
+            crate::vt::Parser::new().advance(&mut app.session.term, script.as_bytes());
+            app.draw();
+            let bg = app.config.colors.background;
+            let fg = app.config.colors.foreground;
+            let fb = &app.framebuffer;
+            assert!(fb.width > 0 && fb.height > 0);
+            let total = fb.pixels.len();
+            let painted = fb.pixels.iter().filter(|pixel| **pixel == bg).count();
+            assert!(painted * 10 > total, "{}：背景色只占 {painted}/{total}", theme.name());
+            assert!(fb.pixels.contains(&fg), "{}：没画出前景色", theme.name());
+            // 六个基础色块都要按位出现，说明调色板确实来自主题而不是硬编码。
+            for index in 1..=6 {
+                let expected = app.config.colors.palette[index];
+                assert!(fb.pixels.contains(&expected), "{}：调色板 {index}（{expected:06x}）没有画出来", theme.name());
+            }
+            if let Some(dir) = std::env::var_os("CONGMINAL_THEME_PREVIEW_DIR") {
+                let mut ppm = format!("P6\n{} {}\n255\n", fb.width, fb.height).into_bytes();
+                for &pixel in &fb.pixels {
+                    ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+                }
+                let path = std::path::PathBuf::from(dir).join(format!("theme-{}.ppm", theme.name()));
+                std::fs::write(path, ppm).unwrap();
+            }
+            backgrounds.push(bg);
+        }
+        // 三个主题的背景互不相同，浅色主题明显更亮。
+        let mut unique = backgrounds.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), 3, "主题背景色重复：{backgrounds:?}");
+        let luminance = |color: u32| {
+            let (r, g, b) = ((color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff);
+            (r * 299 + g * 587 + b * 114) / 1000
+        };
+        let light = crate::config::theme::Theme::Light.index();
+        assert!(luminance(backgrounds[light]) > 128, "浅色主题背景应当偏亮");
+        for (index, color) in backgrounds.iter().enumerate() {
+            if index != light {
+                assert!(luminance(*color) < 128, "深色主题背景应当偏暗：{color:06x}");
+            }
+        }
+    }
+
     #[test]
     fn command_marks_show_each_result_in_the_left_margin() {
         // 应用层：三条命令（成功/失败/中断）在提示行左侧各画一条结果色条
