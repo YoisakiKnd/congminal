@@ -28,6 +28,8 @@ pub struct Config {
     pub window: WindowConfig,
     pub colors: Colors,
     pub theme: theme::Theme,
+    /// 配置里写的主题；`reset-theme` 动作回到这个值（`theme` 会被轮换改掉）。
+    pub theme_default: theme::Theme,
     color_overrides: theme::Overrides,
     pub bindings: crate::action::Bindings,
     pub notifications: crate::notifications::Settings,
@@ -39,6 +41,8 @@ pub struct Config {
     pub restore_layout: bool,
     pub memory: MemoryConfig,
     pub cursor_shape: CursorShape,
+    /// 光标闪烁。默认关：静止界面不持续重绘，需要时再打开。
+    pub cursor_blink: bool,
     pub shell: ShellConfig,
     pub connections: profiles::Profiles,
     /// [env] 里的额外环境变量
@@ -115,6 +119,7 @@ impl Default for Config {
             window: WindowConfig { columns: 80, rows: 24, padding: 4.0 },
             colors: Colors::default(),
             theme: theme::Theme::default(),
+            theme_default: theme::Theme::default(),
             color_overrides: theme::Overrides::default(),
             bindings: crate::action::Bindings::default(),
             notifications: crate::notifications::Settings::default(),
@@ -125,6 +130,7 @@ impl Default for Config {
             restore_layout: false,
             memory: MemoryConfig::default(),
             cursor_shape: CursorShape::Block,
+            cursor_blink: false,
             shell: ShellConfig::default(),
             connections: profiles::Profiles::default(),
             env: Vec::new(),
@@ -151,7 +157,7 @@ impl Default for Colors {
 
 /// 允许出现的分组和键。[env] 里可以写任意环境变量。
 const SCHEMA: &[(&str, &[&str])] = &[
-    ("appearance", &["theme"]),
+    ("appearance", &["theme", "cursor-blink"]),
     ("keybindings", &[]),
     ("font", &["family", "size", "line-height", "ligatures"]),
     ("window", &["columns", "rows", "padding"]),
@@ -294,7 +300,10 @@ impl Config {
 
         if let Some(name) = r.string("appearance", "theme") {
             match theme::Theme::parse(&name) {
-                Some(theme) => config.theme = theme,
+                Some(theme) => {
+                    config.theme = theme;
+                    config.theme_default = theme;
+                }
                 None => r.warn("appearance", "theme", format!("“{name}”无效，可以是 dark、light、midnight")),
             }
         }
@@ -381,6 +390,9 @@ impl Config {
             r.warnings.extend(config.bindings.configure(table));
         }
 
+        if let Some(blink) = r.boolean("appearance", "cursor-blink") {
+            config.cursor_blink = blink;
+        }
         if let Some(shape) = r.string("cursor", "shape") {
             match shape.as_str() {
                 "block" => config.cursor_shape = CursorShape::Block,
@@ -464,6 +476,12 @@ impl Config {
 
     pub fn cycle_theme(&mut self) {
         self.theme = self.theme.next();
+        self.refresh_theme();
+    }
+
+    /// 回到配置里写的主题，用于误按轮换之后复位。
+    pub fn reset_theme(&mut self) {
+        self.theme = self.theme_default;
         self.refresh_theme();
     }
 
@@ -640,6 +658,30 @@ fn xterm_palette() -> [u32; 256] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn appearance_parses_cursor_blink_and_reset_returns_to_the_configured_theme() {
+        let (mut config, warnings) = Config::parse("[appearance]\ntheme='midnight'\ncursor-blink=true");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(config.cursor_blink);
+        assert_eq!(config.theme, theme::Theme::Midnight);
+        assert_eq!(config.theme_default, theme::Theme::Midnight);
+
+        // 轮换之后能回到配置里写的主题，而不是编译默认的 dark
+        config.cycle_theme();
+        assert_ne!(config.theme, theme::Theme::Midnight);
+        config.reset_theme();
+        assert_eq!(config.theme, theme::Theme::Midnight);
+
+        // 默认不闪烁：静止界面不为了光标持续重绘
+        let (config, warnings) = Config::parse("");
+        assert!(!config.cursor_blink);
+        assert!(warnings.is_empty(), "{warnings:?}");
+
+        // 未知键仍然被拦住，说明新键加进了 schema
+        let (_, warnings) = Config::parse("[appearance]\ncursor-blink=1");
+        assert!(!warnings.is_empty());
+    }
 
     #[test]
     fn notification_settings_parse_hidden_context_and_clamp_rate_limits() {

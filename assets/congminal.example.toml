@@ -82,7 +82,10 @@ mapped-font-mib = 1024
 
 [appearance]
 # dark、light、midnight；快捷键 Primary+F6 循环切换（不写回文件）。
+# 想回到这里写的主题，绑定 reset-theme（例如 F5 = "reset-theme"）。
 theme = "dark"
+# 光标闪烁。默认关闭：静止界面不为了光标持续重绘，只有打开后才会每 530 ms 醒一次。
+cursor-blink = false
 
 [colors]
 # 显式设置的颜色覆盖主题，并在切换主题时保留；以下展示 dark 的默认值。

@@ -39,6 +39,8 @@ pub enum Action {
     FontDecrease,
     FontReset,
     NextTheme,
+    /// 回到配置里写的主题（轮换按多了以后复位）
+    ResetTheme,
     ShowResources,
     Search,
     SearchNext,
@@ -278,6 +280,7 @@ fn parse_action(value: &Value) -> Result<Action, String> {
         "font-decrease" => Action::FontDecrease,
         "font-reset" => Action::FontReset,
         "next-theme" => Action::NextTheme,
+        "reset-theme" => Action::ResetTheme,
         "show-resources" => Action::ShowResources,
         "search" => Action::Search,
         "search-next" => Action::SearchNext,

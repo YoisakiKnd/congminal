@@ -74,6 +74,8 @@ const SYNC_TIMEOUT: Duration = Duration::from_millis(150);
 
 /// 两次点击间隔小于这个时间、并且在同一个格子上，算作双击（三击）
 const MULTI_CLICK_INTERVAL: Duration = Duration::from_millis(400);
+/// 光标闪烁的半个周期：亮 530 ms、灭 530 ms（和 xterm 的默认节奏一致）。
+const CURSOR_BLINK_MS: u64 = 530;
 
 struct Congminal {
     session: Session,
@@ -113,6 +115,10 @@ struct Congminal {
     dirty: bool,
     /// 状态栏摘要的复用缓冲，避免命令视图每帧新分配字符串。
     status_scratch: String,
+    /// 光标闪烁的相位起点；有输入或输出时重置，让光标立刻回到“亮”。
+    blink_anchor: Instant,
+    /// 上一帧光标是不是亮的，用来判断相位翻转要不要重绘。
+    last_cursor_on: bool,
 }
 
 impl Congminal {
@@ -289,6 +295,11 @@ impl Congminal {
             Action::NextTheme => {
                 self.config.cycle_theme();
                 self.renderer.apply_style(&self.config, self.scale);
+            }
+            Action::ResetTheme => {
+                self.config.reset_theme();
+                self.renderer.apply_style(&self.config, self.scale);
+                self.dirty = true;
             }
             Action::ShowResources => {
                 let tasks = self.font_task.as_ref().map_or(TaskStats::default(), LatestTask::stats);
@@ -837,6 +848,30 @@ impl Congminal {
         }
     }
 
+    /// 光标该不该闪烁：配置打开、窗口有焦点、且没有搜索/通知浮层抢走光标。
+    fn cursor_blinking(&self) -> bool {
+        self.config.cursor_blink && self.focus.active && !self.search.active && !self.notifications.open
+    }
+
+    /// 这一帧光标亮不亮。不闪烁时恒为亮。
+    fn cursor_on(&self) -> bool {
+        if !self.cursor_blinking() {
+            return true;
+        }
+        let phase = self.blink_anchor.elapsed().as_millis() as u64 / CURSOR_BLINK_MS;
+        phase.is_multiple_of(2)
+    }
+
+    /// 下一次相位翻转的时刻，用来让事件循环按时醒来。
+    fn blink_deadline(&self) -> Option<Instant> {
+        if !self.cursor_blinking() {
+            return None;
+        }
+        let elapsed = self.blink_anchor.elapsed().as_millis() as u64;
+        let next = (elapsed / CURSOR_BLINK_MS + 1) * CURSOR_BLINK_MS;
+        Some(self.blink_anchor + Duration::from_millis(next))
+    }
+
     fn scroll(&mut self, delta: ScrollDelta, x: f64, y: f64, mods: Mods) {
         let reporting = self.reports_mouse(mods);
         let lines = match delta {
@@ -870,6 +905,11 @@ impl Congminal {
 
 impl App for Congminal {
     fn event(&mut self, event: Event) -> bool {
+        if matches!(event, Event::Key { .. } | Event::Text(_) | Event::Preedit(_) | Event::Paste(_)) {
+            // 有输入就把光标立刻点亮，别让用户在自己刚敲字时看不见光标。
+            self.blink_anchor = Instant::now();
+            self.last_cursor_on = true;
+        }
         match event {
             Event::Wake => {
                 // 唤醒只标记待办；实际解析每轮只做一次，避免原生事件队列一直清不空。
@@ -1016,6 +1056,10 @@ impl App for Congminal {
             self.hover = None;
             self.hover_cell = None;
         }
+        if update.changed {
+            self.blink_anchor = Instant::now();
+            self.last_cursor_on = true;
+        }
         self.dirty |= update.changed;
         let notice_revision = self.notifications.revision();
         while let Some(event) = self.session.term.shell.take_event() {
@@ -1099,12 +1143,14 @@ impl App for Congminal {
     }
 
     fn needs_redraw(&self) -> bool {
-        self.dirty && Instant::now() >= self.next_draw_time()
+        (self.dirty && Instant::now() >= self.next_draw_time())
+            // 闪烁相位翻转时也要重画：只重画光标所在行（行指纹含光标状态）。
+            || (self.cursor_blinking() && self.cursor_on() != self.last_cursor_on)
     }
 
     fn deadline(&self) -> Option<Instant> {
         let draw = self.dirty.then(|| self.next_draw_time());
-        let deadline = draw.into_iter().chain(self.font_deadline).min();
+        let deadline = draw.into_iter().chain(self.font_deadline).chain(self.blink_deadline()).min();
         if self.session.resize_pending()
             || self.session.output_pending
             || self.search.pending()
@@ -1121,11 +1167,14 @@ impl App for Congminal {
         self.dirty = false;
         self.last_draw = Instant::now();
         let selection = self.session.selection.as_ref().and_then(|s| s.range(&self.session.term));
+        let cursor_on = self.cursor_on();
+        self.last_cursor_on = cursor_on;
         let damage = self.renderer.draw(
             &self.session.term,
             &self.session.preedit,
             selection,
             self.focus.active && !self.search.active && !self.notifications.open,
+            cursor_on,
             &mut self.framebuffer,
         )?;
         Some((&self.framebuffer, damage))
@@ -1305,6 +1354,8 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         last_draw: Instant::now(),
         dirty: true,
         status_scratch: String::new(),
+        blink_anchor: Instant::now(),
+        last_cursor_on: true,
     };
     {
         let warnings = app.renderer.take_font_warnings();
@@ -1525,6 +1576,8 @@ mod integration_tests {
             last_draw: Instant::now(),
             dirty: true,
             status_scratch: String::new(),
+            blink_anchor: Instant::now(),
+            last_cursor_on: true,
         };
         app.resize(width, height);
         wait_until(&mut app, |app| screen(app).contains("READY"));
@@ -1884,6 +1937,51 @@ mod integration_tests {
         }
         samples.sort_unstable();
         eprintln!("INPUT: p50={}ns p95={}ns p99={}ns n={}", samples[499], samples[949], samples[989], samples.len());
+    }
+
+    #[test]
+    fn reset_theme_action_restores_the_configured_theme() {
+        // 轮换按多了以后能一键回到配置里写的主题（按动作名绑定，不占默认键位）。
+        let mut app = app("[appearance]\ntheme='midnight'\n[keybindings]\nF5='reset-theme'\nF6='next-theme'\n");
+        assert_eq!(app.config.theme, crate::config::theme::Theme::Midnight);
+        app.event(Event::Key { key: Key::F(6), mods: Mods::default() });
+        assert_ne!(app.config.theme, crate::config::theme::Theme::Midnight);
+        let cycled = app.config.colors.background;
+        app.event(Event::Key { key: Key::F(5), mods: Mods::default() });
+        assert_eq!(app.config.theme, crate::config::theme::Theme::Midnight);
+        // 复位真的换了配色，不只是改了个字段
+        assert_ne!(app.config.colors.background, cycled);
+    }
+
+    #[test]
+    fn cursor_blink_phase_follows_configuration_and_input() {
+        let mut app = app("");
+        // 默认关：光标常亮，也没有额外的唤醒时刻
+        app.dirty = false;
+        app.last_draw = Instant::now();
+        assert!(app.cursor_on());
+        assert!(app.blink_deadline().is_none());
+        assert!(!app.needs_redraw());
+
+        app.config.cursor_blink = true;
+        assert!(app.cursor_on()); // 刚有过活动，处在“亮”相位
+        let deadline = app.blink_deadline().expect("闪烁时要有唤醒时刻");
+        assert!(deadline > Instant::now());
+
+        // 相位翻到“灭”：需要重绘，且只由闪烁触发（dirty 为假）
+        app.blink_anchor = Instant::now() - Duration::from_millis(CURSOR_BLINK_MS + 10);
+        assert!(!app.cursor_on());
+        assert!(app.needs_redraw());
+
+        // 敲键立刻点亮，并重新计时
+        app.event(Event::Key { key: Key::Char('x'), mods: Mods::default() });
+        assert!(app.cursor_on());
+        assert!(app.blink_deadline().is_some_and(|d| d > Instant::now()));
+
+        // 失焦或打开浮层时停止闪烁
+        app.focus.active = false;
+        assert!(app.cursor_on());
+        assert!(app.blink_deadline().is_none());
     }
 
     #[test]

@@ -28,6 +28,7 @@ cargo test
 | 回到最顶 / 最底 | Shift+Home / Shift+End | 同左 |
 | 字体放大 / 缩小 / 复位 | Cmd+Equal（或 Plus）/ Minus / 0 | Ctrl+Shift+Equal（或 Plus）/ Minus / 0 |
 | 循环切换主题 | Cmd+F6 | Ctrl+Shift+F6 |
+| 回到配置里写的主题 | 需自行绑定 `reset-theme` | 同左 |
 | 查看资源快照 | Cmd+F12 | Ctrl+Shift+F12 |
 | 搜索历史 | Cmd+F | Ctrl+Shift+F |
 | 后一项 / 前一项 | Enter / Shift+Enter（搜索栏内），F3 / Shift+F3 | 同左 |
@@ -56,11 +57,13 @@ mkdir -p ~/.config/congminal
 congminal --print-config > ~/.config/congminal/congminal.toml
 ```
 
-可以配置字体（多个字体、字号、行高）、窗口初始大小和内边距、主题（dark / light / midnight）、颜色和调色板、快捷键、光标形状、
+可以配置字体（多个字体、字号、行高）、窗口初始大小和内边距、主题（dark / light / midnight）、颜色和调色板、快捷键、光标形状与闪烁、
 shell 程序和参数、工作目录、环境变量，以及 macOS 上 Option 键是否当 Alt 用。
 完整说明见 [`assets/congminal.example.toml`](assets/congminal.example.toml)。
 
-保存后自动生效（字体、主题、颜色、快捷键、内边距、光标、Option 键）；shell 和窗口大小在下次启动时生效。
+保存后自动生效（字体、主题、颜色、快捷键、内边距、光标、光标闪烁、Option 键）；shell 和窗口大小在下次启动时生效。
+光标闪烁默认关闭：静止界面不会为了光标持续重绘，打开后每 530 ms 醒一次，且只重画光标所在的那一格。
+轮换主题按多了可以用 `reset-theme` 动作回到配置文件里写的主题（例如 `F5 = "reset-theme"`）。
 写错的地方会用黄色文字显示在终端里，那一项保持默认值，不影响其他设置。
 
 | 环境变量 | 作用 |

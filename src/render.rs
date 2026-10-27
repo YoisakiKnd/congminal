@@ -405,12 +405,14 @@ impl Renderer {
     /// `preedit` 是输入法正在输入、还没上屏的文字（比如拼音），画在光标处。
     /// `selection` 是选中的范围（稳定行号表示的起点和终点，都包含在内）。
     /// `focused`：窗口有没有键盘焦点，没有时方块光标画成空心。
+    /// `cursor_on`：闪烁的“亮”相位；false 时这一帧不画光标。
     pub fn draw(
         &mut self,
         term: &Terminal,
         preedit: &str,
         selection: Option<(Point, Point)>,
         focused: bool,
+        cursor_on: bool,
         fb: &mut Framebuffer,
     ) -> Option<Damage> {
         let (default_fg, default_bg) = if term.modes().reverse_video {
@@ -435,7 +437,7 @@ impl Renderer {
             row: cursor_row,
             col: cursor_col,
             shape: term.cursor_shape(),
-            visible: at_bottom && term.modes().cursor_visible,
+            visible: at_bottom && term.modes().cursor_visible && cursor_on,
             focused,
             preedit,
         };
@@ -1078,12 +1080,12 @@ mod bench {
             parser.advance(&mut term, format!("{line}\x1b[0m").as_bytes());
         }
         let mut fb = Framebuffer::new(width as usize, height as usize);
-        renderer.draw(&term, "", None, true, &mut fb);
+        renderer.draw(&term, "", None, true, true, &mut fb);
         let frames = 30;
         let started = Instant::now();
         for _ in 0..frames {
             renderer.invalidate();
-            renderer.draw(&term, "", None, true, &mut fb);
+            renderer.draw(&term, "", None, true, true, &mut fb);
         }
         let per_frame = started.elapsed() / frames;
         eprintln!("{}×{} 像素、{cols}×{rows} 字符：整屏重画每帧 {per_frame:?}", width, height);
@@ -1093,7 +1095,7 @@ mod bench {
         let started = Instant::now();
         for _ in 0..frames {
             renderer.invalidate();
-            renderer.draw(&blank, "", None, true, &mut fb);
+            renderer.draw(&blank, "", None, true, true, &mut fb);
         }
         eprintln!("全是空格：每帧 {:?}", started.elapsed() / frames);
 
@@ -1101,7 +1103,7 @@ mod bench {
         let started = Instant::now();
         for i in 0..frames {
             parser.advance(&mut term, format!("\x1b[30;{}Hx", i + 1).as_bytes());
-            renderer.draw(&term, "", None, true, &mut fb);
+            renderer.draw(&term, "", None, true, true, &mut fb);
         }
         eprintln!("只改一行：每帧 {:?}", started.elapsed() / frames);
     }
@@ -1159,10 +1161,10 @@ mod tests {
         let mut parser = Parser::new();
         let (w, h) = renderer.pixel_size(20, 4);
         let mut fb = Framebuffer::new(w as usize, h as usize);
-        renderer.draw(&term, "", None, true, &mut fb);
+        renderer.draw(&term, "", None, true, true, &mut fb);
         for row in [1, 4, 12, 24] {
             parser.advance(&mut term, format!("\x1b[{row};1Hx").as_bytes());
-            if let Some(damage) = renderer.draw(&term, "", None, true, &mut fb) {
+            if let Some(damage) = renderer.draw(&term, "", None, true, true, &mut fb) {
                 assert!(damage.y + damage.height <= fb.height);
             }
         }
@@ -1206,9 +1208,9 @@ mod tests {
             parser.advance(&mut term, step.as_bytes());
             let selection = selections[i % 2];
             let focused = i != 5;
-            incremental.draw(&term, "", selection, focused, &mut fb);
+            incremental.draw(&term, "", selection, focused, true, &mut fb);
             fresh.invalidate();
-            fresh.draw(&term, "", selection, focused, &mut reference);
+            fresh.draw(&term, "", selection, focused, true, &mut reference);
             if let Some(p) = fb.pixels.iter().zip(&reference.pixels).position(|(a, b)| a != b) {
                 panic!("第 {i} 步之后，像素 ({}, {}) 不一样", p % fb.width, p / fb.width);
             }
@@ -1245,12 +1247,12 @@ mod tests {
             renderer.set_ui(decorations.clone(), bar.clone());
             fresh.set_ui(decorations, bar);
             fresh.invalidate();
-            renderer.draw(&term, "", None, true, &mut frame);
+            renderer.draw(&term, "", None, true, true, &mut frame);
             let mut expected = Framebuffer::new(w as usize, h as usize);
-            fresh.draw(&term, "", None, true, &mut expected);
+            fresh.draw(&term, "", None, true, true, &mut expected);
             assert_eq!(frame.pixels, expected.pixels);
         }
-        assert!(renderer.draw(&term, "", None, true, &mut frame).is_none());
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_none());
     }
 
     #[test]
@@ -1273,7 +1275,7 @@ mod tests {
             }],
             Some(Bar::link("old")),
         );
-        renderer.draw(&term, "", None, true, &mut frame);
+        renderer.draw(&term, "", None, true, true, &mut frame);
         let mut view = ViewState::default();
         let paid = pool.snapshot().kinds[Kind::Ui as usize];
         assert!(paid > 0);
@@ -1287,14 +1289,14 @@ mod tests {
         let diagnostic = renderer.ui.bar().unwrap().text.to_string();
         drop(hold);
         fresh.set_ui(vec![], Some(Bar { text: diagnostic, caret: None, preedit: None }));
-        renderer.draw(&term, "", None, true, &mut frame);
-        fresh.draw(&term, "", None, true, &mut expected);
+        renderer.draw(&term, "", None, true, true, &mut frame);
+        fresh.draw(&term, "", None, true, true, &mut expected);
         assert_eq!(frame.pixels, expected.pixels);
         renderer.reclaim_caches();
         assert!(renderer.ui.bar().is_none());
-        renderer.draw(&term, "", None, true, &mut frame);
+        renderer.draw(&term, "", None, true, true, &mut frame);
         fresh.set_ui(vec![], None);
-        fresh.draw(&term, "", None, true, &mut expected);
+        fresh.draw(&term, "", None, true, true, &mut expected);
         assert_eq!(frame.pixels, expected.pixels);
         drop((renderer, fresh, view, term, frame, expected));
         assert_eq!(pool.snapshot().used, 0);
@@ -1311,7 +1313,7 @@ mod tests {
             Parser::new().advance(&mut term, text.as_bytes());
             let mut fb = Framebuffer::new(width as usize, height as usize);
             renderer.invalidate();
-            renderer.draw(&term, "", None, true, &mut fb);
+            renderer.draw(&term, "", None, true, true, &mut fb);
             fb.pixels
         };
         assert_eq!(draw("e\u{301}\x1b[?25l"), draw("é\x1b[?25l"));
@@ -1359,7 +1361,7 @@ mod boundary_tests {
         for (index, text) in [b"\x1b[1;1HA", b"\x1b[1;1HB"].into_iter().enumerate() {
             parser.advance(&mut term, text);
             renderer.invalidate();
-            renderer.draw(&term, "", None, true, &mut frame);
+            renderer.draw(&term, "", None, true, true, &mut frame);
             expected[index] = hash(&frame.pixels);
         }
         assert_ne!(expected[0], expected[1]);
@@ -1375,14 +1377,38 @@ mod boundary_tests {
         let hold = pool.lease(crate::resources::Kind::Queue, pool.snapshot().limit - pool.snapshot().used).unwrap();
         for (index, text) in [b"\x1b[1;1HA", b"\x1b[1;1HB", b"\x1b[1;1HA"].into_iter().enumerate() {
             parser.advance(&mut term, text);
-            assert!(renderer.draw(&term, "", None, true, &mut frame).is_some());
+            assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
             assert_eq!(hash(&frame.pixels), expected[index % 2]);
             assert!(renderer.last_rows.is_empty());
         }
         drop(hold);
-        assert!(renderer.draw(&term, "", None, true, &mut frame).is_some());
-        assert!(renderer.draw(&term, "", None, true, &mut frame).is_none());
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_none());
         drop((renderer, term, frame));
         assert_eq!(pool.snapshot().kinds[crate::resources::Kind::Render as usize], 0);
+    }
+
+    #[test]
+    fn blink_phase_decides_whether_the_cursor_is_painted() {
+        // cursor_on = false 的那半周期不画光标：只重画光标所在行，画面必须真的变。
+        let config = crate::config::Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let mut term = Terminal::new(12, 4);
+        crate::vt::Parser::new().advance(&mut term, b"ab");
+        let (w, h) = renderer.pixel_size(12, 4);
+        let mut frame = Framebuffer::new(w as usize, h as usize);
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+        let on = hash(&frame.pixels);
+        assert!(renderer.draw(&term, "", None, true, false, &mut frame).is_some());
+        let off = hash(&frame.pixels);
+        assert_ne!(on, off);
+        // 再切回亮相位：又画一次，且和第一次一致
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+        assert_eq!(hash(&frame.pixels), on);
+        // 没焦点时画的是空心框，`cursor_on` 一样能把它整个关掉
+        assert!(renderer.draw(&term, "", None, false, true, &mut frame).is_some());
+        let unfocused = hash(&frame.pixels);
+        assert!(renderer.draw(&term, "", None, false, false, &mut frame).is_some());
+        assert_ne!(hash(&frame.pixels), unfocused);
     }
 }
