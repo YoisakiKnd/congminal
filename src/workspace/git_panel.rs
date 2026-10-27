@@ -39,11 +39,16 @@ const STATUS_LABELS: [[&str; 4]; 3] =
     [["刷新", "差异", "暂存", "提交"], ["刷新", "差异", "暂存", "提交"], ["刷", "差", "存", "提"]];
 /// 第三列在条目已全部进索引时变成“取消暂存”。
 const UNSTAGE_LABELS: [&str; 3] = ["取消暂存", "撤存", "撤"];
+/// 选中的是未解决冲突时，第三列变成“解决”（点进去选保留哪一侧）。
+const RESOLVE_ENTRY_LABELS: [&str; 3] = ["解决", "解决", "解"];
 const REMOTE_LABELS: [&str; 3] = ["拉取", "拉取", "拉"];
 const PUSH_LABELS: [&str; 3] = ["推送", "推送", "推"];
 const CONFIRM_REMOTE_LABELS: [&str; 3] = ["确认拉取", "确认", "确"];
 const CONFIRM_PUSH_LABELS: [&str; 3] = ["确认推送", "确认", "确"];
 const INERT_LABEL: &str = "—";
+/// 解决冲突页的按钮：按槽宽降级，窄栏时只留一个字。
+const RESOLVE_LABELS: [[&str; 4]; 3] =
+    [["刷新", "保留我方", "保留对方", "返回"], ["刷新", "留我方", "留对方", "返回"], ["刷", "我", "对", "返"]];
 const CANCEL_INPUT_LABELS: [&str; 2] = ["提交", "取消"];
 const CANCEL_INPUT_LABELS_NARROW: [&str; 2] = ["提", "取"];
 
@@ -131,6 +136,8 @@ pub(super) struct Panel {
     pub(super) input: Option<CommitInput>,
     /// 等待二次确认的远端操作与它的失效时刻。
     pub(super) pending: Option<(RemoteOp, Instant)>,
+    /// 冲突解决模式：正在处理的冲突条目下标。
+    pub(super) resolve: Option<usize>,
 }
 
 impl Panel {
@@ -174,6 +181,7 @@ impl Panel {
             write_done: None,
             input: None,
             pending: None,
+            resolve: None,
         }
     }
 
@@ -245,6 +253,7 @@ impl Panel {
         self.last_key = None;
         self.input = None;
         self.pending = None;
+        self.resolve = None;
         self.write_note = None;
         if !self.write_loading {
             self.write = None;
@@ -578,6 +587,11 @@ impl Panel {
     }
 
     /// 列表里点一行只改变选中项；“差异”按钮才打开该条目的 diff。
+    /// 选中的条目是否是未解决的冲突。
+    pub(super) fn conflicted(&self, index: usize) -> bool {
+        self.snapshot.as_ref().and_then(|snapshot| snapshot.entries.get(index)).is_some_and(|entry| entry.conflicted())
+    }
+
     fn select(&mut self, index: usize) -> bool {
         if self.snapshot.as_ref().is_none_or(|snapshot| index >= snapshot.entries.len()) {
             return false;
@@ -651,34 +665,18 @@ impl Panel {
             }
             return View { buttons: vec!["刷新", side, "返回"], headline, content };
         }
-        let input_open = self.input.is_some();
-        let fully_staged = self
-            .snapshot
-            .as_ref()
-            .and_then(|snapshot| self.selected.and_then(|index| snapshot.entries.get(index)))
-            .is_some_and(|entry| entry.fully_staged());
-        let buttons = if input_open {
-            if tier >= 2 { CANCEL_INPUT_LABELS_NARROW.to_vec() } else { CANCEL_INPUT_LABELS.to_vec() }
-        } else {
-            let mut buttons = STATUS_LABELS[tier].to_vec();
-            if fully_staged {
-                buttons[2] = UNSTAGE_LABELS[tier];
-            }
-            // 待确认时“提交”位置换成“取消”，只让被点的那个远端按钮变成“确认”，
-            // 另一个位置留空，避免误触。
-            match self.pending.map(|(op, _)| op) {
-                Some(RemoteOp::Pull) => {
-                    vec![buttons[0], buttons[1], buttons[2], "取消", CONFIRM_REMOTE_LABELS[tier], INERT_LABEL]
-                }
-                Some(RemoteOp::Push) => {
-                    vec![buttons[0], buttons[1], buttons[2], "取消", INERT_LABEL, CONFIRM_PUSH_LABELS[tier]]
-                }
-                None => {
-                    buttons[3] = STATUS_LABELS[tier][3];
-                    vec![buttons[0], buttons[1], buttons[2], buttons[3], REMOTE_LABELS[tier], PUSH_LABELS[tier]]
-                }
-            }
-        };
+        if let Some(index) = self.resolve {
+            let label = self
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.entries.get(index))
+                .map(|entry| entry.label.clone())
+                .unwrap_or_default();
+            headline.push(format!("解决冲突 › {label}"));
+            headline.push(self.write_note.clone().unwrap_or_else(|| "选一侧写回工作区并标记已解决".into()));
+            return View { buttons: RESOLVE_LABELS[tier].to_vec(), headline, content };
+        }
+        let buttons = self.labels(tier);
         match (&self.snapshot, &self.input) {
             (_, Some(input)) => {
                 headline.push(format!("提交信息 › {}{}", input.text.data, input.preedit));
@@ -734,12 +732,51 @@ impl Panel {
         View { buttons, headline, content }
     }
 
+    /// 当前状态下第 `tier` 档的按钮标签。`tier` 越大标签越短，窄栏时用得上。
+    pub(super) fn labels(&self, tier: usize) -> Vec<&'static str> {
+        let tier = tier.min(2);
+        if self.input.is_some() {
+            return if tier >= 2 { CANCEL_INPUT_LABELS_NARROW.to_vec() } else { CANCEL_INPUT_LABELS.to_vec() };
+        }
+        if self.diff_open {
+            let side = if self.diff_staged { "暂存" } else { "工作区" };
+            return vec!["刷新", side, "返回"];
+        }
+        if self.resolve.is_some() {
+            return RESOLVE_LABELS[tier].to_vec();
+        }
+        let selected =
+            self.snapshot.as_ref().and_then(|snapshot| self.selected.and_then(|index| snapshot.entries.get(index)));
+        let mut buttons = STATUS_LABELS[tier].to_vec();
+        if selected.is_some_and(|entry| entry.fully_staged()) {
+            buttons[2] = UNSTAGE_LABELS[tier];
+        } else if selected.is_some_and(|entry| entry.conflicted()) {
+            buttons[2] = RESOLVE_ENTRY_LABELS[tier];
+        }
+        // 待确认时“提交”位置换成“取消”，只让被点的那个远端按钮变成“确认”，
+        // 另一个位置留空，避免误触。
+        match self.pending.map(|(op, _)| op) {
+            Some(RemoteOp::Pull) => {
+                vec![buttons[0], buttons[1], buttons[2], "取消", CONFIRM_REMOTE_LABELS[tier], INERT_LABEL]
+            }
+            Some(RemoteOp::Push) => {
+                vec![buttons[0], buttons[1], buttons[2], "取消", INERT_LABEL, CONFIRM_PUSH_LABELS[tier]]
+            }
+            None => {
+                buttons[3] = STATUS_LABELS[tier][3];
+                vec![buttons[0], buttons[1], buttons[2], buttons[3], REMOTE_LABELS[tier], PUSH_LABELS[tier]]
+            }
+        }
+    }
+
     /// 当前这一帧的按钮数；绘制与点击必须用同一个数字，否则点击列会错位。
     pub(super) fn button_count(&self) -> usize {
         if self.input.is_some() {
             2
         } else if self.diff_open {
             3
+        } else if self.resolve.is_some() {
+            4
         } else {
             6
         }
@@ -865,7 +902,7 @@ impl Panel {
         }
         if self.snapshot.as_ref().is_some_and(|snapshot| snapshot.counts.conflicted > 0) {
             // 有未解决的冲突时 git 也会拒绝提交；先说清楚原因，不让人对着空输入框猜。
-            self.write_note = Some("有未解决的冲突，先在终端里解决再提交".into());
+            self.write_note = Some("有未解决的冲突，先点“解决”选一侧".into());
             self.revision = self.revision.wrapping_add(1);
             return true;
         }
@@ -956,6 +993,47 @@ impl Panel {
         self.start_write(op, &root, notify)
     }
 
+    /// 进入冲突解决页：只对当前选中的冲突条目开放。
+    pub(super) fn open_resolve(&mut self, index: usize) -> bool {
+        if self.write_loading || !self.enabled || self.diff_open || self.input.is_some() {
+            return false;
+        }
+        let Some(entry) = self.snapshot.as_ref().and_then(|snapshot| snapshot.entries.get(index)) else {
+            return false;
+        };
+        if !entry.conflicted() {
+            return false;
+        }
+        self.pending = None;
+        self.resolve = Some(index);
+        self.write_note = Some("选一侧写回工作区并标记已解决".into());
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    /// 解决冲突页的“返回”。
+    pub(super) fn close_resolve(&mut self) -> bool {
+        if self.resolve.take().is_none() {
+            return false;
+        }
+        self.write_note = None;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    /// 按选定的一侧解决当前冲突条目；成功后由 `poll_write` 重读状态并退出解决页。
+    pub(super) fn resolve_side(&mut self, side: git::Side, notify: Notify) -> bool {
+        let Some(index) = self.resolve else { return false };
+        let Some(snapshot) = &self.snapshot else { return false };
+        let Some(entry) = snapshot.entries.get(index) else { return false };
+        if snapshot.bare || !entry.conflicted() {
+            return false;
+        }
+        let paths = vec![entry.path.clone()];
+        let root = snapshot.root.clone();
+        self.start_write(git::WriteOp::Resolve { paths, side, count: 1 }, &root, notify)
+    }
+
     fn start_write(&mut self, op: git::WriteOp, root: &Path, notify: Notify) -> bool {
         if self.write_loading {
             // 同一时间只有一个写操作：防重复点击，也避免两次 git 抢同一个索引。
@@ -1018,6 +1096,8 @@ impl Panel {
                     self.write_done = Some((op, success));
                 }
                 if success {
+                    // 冲突解决完就回到列表，剩下的冲突还能接着处理。
+                    self.resolve = None;
                     changed |= self.refresh_now(notify);
                 } else {
                     self.schedule(DEBOUNCE);
@@ -1052,14 +1132,12 @@ impl Workspace {
         let rows = (r.h / h).max(1);
         // 按钮标签按每槽可用的显示列降级：完整 → 双字 → 单字，避免被裁成半个词。
         let slot = (r.w / self.git.button_count().max(1)).max(1);
-        let per = slot / self.driver.renderer.cell_size().0.max(1);
-        let tier = if per >= 5 {
-            0
-        } else if per >= 3 {
-            1
-        } else {
-            2
-        };
+        // 每槽可用显示列：扣掉 `chrome()` 左侧 3 px 内边距与 1 列余量，再按列宽换算。
+        // CJK 字符占 2 列，所以要按标签的实际显示宽度挑档位，不能按字数。
+        let columns = (slot.saturating_sub(4) / self.driver.renderer.cell_size().0.max(1)).max(1);
+        let tier = (0..3)
+            .find(|tier| self.git.labels(*tier).iter().all(|label| crate::term::display_width(label) <= columns))
+            .unwrap_or(2);
         let view = self.git.view(rows.saturating_sub(LIST_TOP), tier);
         let third = r.w / view.buttons.len().max(1);
         for (index, text) in view.buttons.iter().enumerate() {
@@ -1095,6 +1173,15 @@ impl Workspace {
                         _ => false,
                     };
                 }
+                if self.git.resolve.is_some() {
+                    return match slot {
+                        0 => self.git.refresh_now(notify),
+                        1 => self.git.resolve_side(git::Side::Ours, notify),
+                        2 => self.git.resolve_side(git::Side::Theirs, notify),
+                        3 => self.git.close_resolve(),
+                        _ => false,
+                    };
+                }
                 return match (slot, self.git.diff_open) {
                     (0, _) => self.git.refresh_now(notify),
                     (1, false) => match self.git.selected {
@@ -1103,6 +1190,11 @@ impl Workspace {
                     },
                     (1, true) => self.git.toggle_side(notify),
                     (2, true) => self.git.back(),
+                    // 冲突条目不能直接暂存：先进解决页选一侧。
+                    (2, false) if self.git.selected.is_some_and(|index| self.git.conflicted(index)) => {
+                        let index = self.git.selected.unwrap_or_default();
+                        self.git.open_resolve(index)
+                    }
                     (2, false) => self.git.toggle_stage(notify),
                     // 待确认期间“提交”位置是“取消”，不会顺带打开提交输入。
                     (3, false) if self.git.pending.is_some() => self.git.cancel_pending(),
@@ -1177,6 +1269,30 @@ mod tests {
             memory,
         });
         panel
+    }
+
+    #[test]
+    fn conflict_entries_open_a_resolution_page_instead_of_staging() {
+        let mut panel = panel_with(vec![entry("a.txt", b'U', b'U'), entry("b.txt", b' ', b'M')]);
+        // 非冲突条目不能进解决页。
+        assert!(!panel.open_resolve(1));
+        assert!(panel.resolve.is_none());
+        assert!(panel.open_resolve(0));
+        assert_eq!(panel.resolve, Some(0));
+        let view = panel.view(10, 0);
+        assert_eq!(view.buttons, vec!["刷新", "保留我方", "保留对方", "返回"]);
+        assert!(view.headline[0].starts_with("解决冲突 › Ua.txt"), "{:?}", view.headline);
+        assert_eq!(panel.button_count(), 4);
+        // 窄栏只留一个字，避免被裁成半个词。
+        assert_eq!(panel.view(10, 2).buttons, vec!["刷", "我", "对", "返"]);
+        // 返回退出解决页，不启动任何写操作。
+        assert!(panel.close_resolve());
+        assert!(panel.resolve.is_none());
+        assert!(!panel.close_resolve());
+        assert_eq!(panel.button_count(), 6);
+        // 没进解决页时点“保留我方”不会做任何事。
+        assert!(!panel.resolve_side(git::Side::Ours, notify()));
+        assert!(!panel.write_loading);
     }
 
     #[test]

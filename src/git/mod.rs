@@ -882,11 +882,38 @@ pub(crate) enum WriteOp {
     Pull,
     /// 推送：推到当前分支已配置的上游；没有上游时 git 自己会报错。
     Push,
+    /// 解决冲突：把选定一侧的内容写回工作区，再标记为已解决。
+    Resolve {
+        paths: Vec<OsString>,
+        side: Side,
+        count: usize,
+    },
+}
+
+/// 冲突时保留哪一侧：`--ours` 是当前分支，`--theirs` 是正在合入的那一侧。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Side {
+    Ours,
+    Theirs,
+}
+impl Side {
+    fn flag(self) -> &'static str {
+        match self {
+            Self::Ours => "--ours",
+            Self::Theirs => "--theirs",
+        }
+    }
+    pub(crate) fn describe(self) -> &'static str {
+        match self {
+            Self::Ours => "保留我方",
+            Self::Theirs => "保留对方",
+        }
+    }
 }
 impl WriteOp {
     fn bytes(&self) -> usize {
         match self {
-            Self::Stage { paths, .. } | Self::Unstage { paths, .. } => {
+            Self::Stage { paths, .. } | Self::Unstage { paths, .. } | Self::Resolve { paths, .. } => {
                 paths.iter().map(|path| path.len().saturating_add(std::mem::size_of::<OsString>())).sum()
             }
             Self::Commit { message } => message.capacity(),
@@ -905,6 +932,7 @@ impl WriteOp {
             Self::Commit { .. } => "提交",
             Self::Pull => "拉取",
             Self::Push => "推送",
+            Self::Resolve { side, .. } => side.describe(),
         }
     }
 }
@@ -1009,6 +1037,23 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
                 Some(line) => format!("已拉取 {line}"),
                 None => "已拉取".to_string(),
             })
+        }
+        WriteOp::Resolve { paths, side, count } => {
+            // 两步：先把选定一侧写回工作区，再 `add` 标记为已解决。中途失败就停在这一步，
+            // 让用户看到 git 的原话（例如 delete/modify 冲突里这一侧没有文件）。
+            let mut checkout: Vec<&OsStr> = vec![OsStr::new("checkout"), OsStr::new(side.flag()), OsStr::new("--")];
+            checkout.extend(paths.iter().map(OsString::as_os_str));
+            let output = run(&pool, limits, &checkout, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output));
+            }
+            let mut add: Vec<&OsStr> = vec![OsStr::new("add"), OsStr::new("--")];
+            add.extend(paths.iter().map(OsString::as_os_str));
+            let output = run(&pool, limits, &add, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output));
+            }
+            Ok(format!("已{} {count} 个文件并标记已解决", side.describe()))
         }
         WriteOp::Push => {
             let args = [OsStr::new("push")];
