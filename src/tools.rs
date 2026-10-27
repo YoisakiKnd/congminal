@@ -176,9 +176,9 @@ mod tests {
         assert!(!report.tools[1].available());
         assert_eq!(report.missing().count(), 1);
         assert!(report.summary().starts_with("外部程序：SFTP缺 congminal-def"), "{}", report.summary());
-        // 全就绪时只报一句就绪，不点名路径。
+        // 全就绪时只报一句就绪，不点名路径；Windows 上程序名带 .exe，按实际名断言。
         let ready = Report::detect(&programs[..1], &search);
-        assert_eq!(ready.summary(), "外部程序 git 就绪");
+        assert_eq!(ready.summary(), format!("外部程序 {} 就绪", programs[0].0));
         // 程序名很长时先保住“哪个功能不可用”，尾巴按列裁掉。
         assert!(report.summary().starts_with("外部程序：SFTP缺 "));
         assert!(crate::term::display_width(&report.summary()) <= 30);
