@@ -52,6 +52,10 @@ enabled = false
 # helper = "/absolute/path/congminal-ssh-helper"
 # 不写时沿用系统 SSH 配置；以下设置只影响独立 SFTP，不改变终端 ssh 命令。
 # ssh-config = "/absolute/path/ssh_config"
+# 打开远端文件时用的系统程序（默认 xdg-open / open / cmd）。
+# opener = "/usr/bin/xdg-open"
+# 打开远端文件的大小上限（MiB，1–32）：超过这个大小的文件请改用下载。
+# open-max-mib = 4
 
 # 本地只读 Git 面板（右栏 Git 页，Primary+I 打开右栏后点标签）。
 # 只执行 rev-parse/status/symbolic-ref/diff，不改索引、不执行任何写操作。

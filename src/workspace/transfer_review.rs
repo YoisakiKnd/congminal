@@ -8,9 +8,21 @@ use std::{
 };
 
 enum Payload {
-    Upload { local: PathValue, remote: PathValue, length: u64, expected: Option<service::LocalStamp> },
-    Download { local: PathValue, remote: PathValue, version: service::Version },
-    Report,
+    Upload {
+        local: PathValue,
+        remote: PathValue,
+        length: u64,
+        expected: Option<service::LocalStamp>,
+    },
+    Download {
+        local: PathValue,
+        remote: PathValue,
+        version: service::Version,
+    },
+    /// 传输记录快照；打开过远端文件的记录会带上本地临时副本路径。
+    Report {
+        open: Option<PathValue>,
+    },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Control {
@@ -59,16 +71,21 @@ impl Review {
         let (from, to, length, direction) = match &payload {
             Payload::Upload { local, remote, length, .. } => (local, remote, *length, "上传"),
             Payload::Download { local, remote, version } => (remote, local, version.length, "下载"),
-            Payload::Report => {
+            Payload::Report { .. } => {
                 let status = status.ok_or(Failure::Invalid)?;
                 (status.from(), status.to(), status.snapshot().length, "传输记录快照")
             }
         };
         let partial = status.and_then(service::Status::partial);
+        let open = match &payload {
+            Payload::Report { open } => open.as_ref(),
+            _ => None,
+        };
         let capacity = identity.display().len()
             + from.label().len()
             + to.label().len()
             + partial.as_ref().map_or(0, |p| p.label().len())
+            + open.map_or(0, |path| path.label().len())
             + 2048;
         let memory =
             pool.lease(Kind::Sftp, capacity + std::mem::size_of::<Self>() + 128).map_err(|_| Failure::Budget)?;
@@ -89,6 +106,9 @@ impl Review {
         }
         if let Some(partial) = partial {
             writeln!(text, "部分文件候选（不保证存在）：\n{}", partial.label()).unwrap();
+        }
+        if let Some(open) = open {
+            writeln!(text, "本地临时副本（改完可用 [上传] 传回远端）：\n{}", open.label()).unwrap();
         }
         if matches!(payload, Payload::Upload { expected: Some(_), .. }) {
             text.push_str("上传源版本已读取；开始时会再次核对，文件变化后请重新选择。\n");
@@ -284,8 +304,13 @@ impl Workspace {
         }
         let state = self.sftp.as_mut().ok_or(Failure::Invalid)?;
         let file = state.files.iter().flatten().find(|f| f.ticket == ticket).ok_or(Failure::Invalid)?;
-        state.review =
-            Some(Review::new(file.binding.clone(), Payload::Report, Some(&file.status), state.service.budget())?);
+        let budget = state.service.budget();
+        // 打开过的记录带上临时副本路径：详情里能完整看到它，便于 [上传] 回传。
+        let open = match file.open.as_ref() {
+            Some(target) => Some(path_value(budget, target.local.to_string_lossy().as_bytes())?),
+            None => None,
+        };
+        state.review = Some(Review::new(file.binding.clone(), Payload::Report { open }, Some(&file.status), budget)?);
         self.transfer_review_opened();
         Ok(())
     }
@@ -294,7 +319,7 @@ impl Workspace {
     }
     pub(super) fn transfer_review_tick(&mut self, state: &mut State) {
         if state.review.as_ref().is_some_and(|r| {
-            !matches!(r.payload, Payload::Report)
+            !matches!(r.payload, Payload::Report { .. })
                 && (!r.binding.valid(self) || r.binding.owner.session != self.selected)
         }) {
             state.review = None;
@@ -409,7 +434,7 @@ impl Workspace {
                         version: *version,
                         replace,
                     }),
-                    Payload::Report => None,
+                    Payload::Report { .. } => None,
                 };
                 if let Some(selection) = selection {
                     match self.submit_remote_transfer(selection) {
@@ -477,7 +502,7 @@ impl Workspace {
             (Control::Submit, if r.overwrite { "[确认覆盖并传输]" } else { "[开始传输]" }, x + 26 * cw, 20 * cw),
         ];
         for (i, (control, text, bx, bw)) in buttons.into_iter().enumerate() {
-            if matches!(r.payload, Payload::Report) && control != Control::Cancel {
+            if matches!(r.payload, Payload::Report { .. }) && control != Control::Cancel {
                 continue;
             }
             let rect = [bx, bottom, bw, ch];
@@ -495,7 +520,7 @@ impl Workspace {
         self.driver.renderer.chrome(
             &mut self.frame,
             [x, y + (rows + 3) * ch, w, ch],
-            if w < 46 * cw && !matches!(r.payload, Payload::Report) {
+            if w < 46 * cw && !matches!(r.payload, Payload::Report { .. }) {
                 "请扩大窗口以显示开始按钮"
             } else if r.reviewed() {
                 "完整信息已展示；开始按钮才会提交"

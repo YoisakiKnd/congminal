@@ -191,7 +191,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
             "processes",
         ],
     ),
-    ("sftp", &["enabled", "helper", "ssh-config"]),
+    ("sftp", &["enabled", "helper", "ssh-config", "opener", "open-max-mib"]),
     ("memory", &["managed-mib", "mapped-font-mib"]),
     (
         "colors",
