@@ -4068,9 +4068,9 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
-        // 列表页七列：刷新 / 差异 / 暂存 / 提交 / 拉取 / 推送 / 分支。
-        assert_eq!(app.git.button_count(), 7);
-        click(&mut app, 6 * (r.w / 7) + 4, 1);
+        // 列表页八列：刷新 / 差异 / 暂存 / 全部暂存 / 提交 / 拉取 / 推送 / 分支。
+        assert_eq!(app.git.button_count(), 8);
+        click(&mut app, 7 * (r.w / 8) + 4, 1);
         assert!(app.git.branches_open, "{:?}", app.git.write_note);
         wait(&mut app, |a| a.git.branches.is_some() || a.git.branches_error.is_some());
         let list = app.git.branches.as_ref().unwrap();
@@ -4080,7 +4080,7 @@ program="/definitely/missing/congminal-shell"
             list.branches.iter().map(|b| &b.name).collect::<Vec<_>>()
         );
         let index = list.branches.iter().position(|branch| branch.name == "feature").unwrap();
-        assert_eq!(app.git.button_count(), 3);
+        assert_eq!(app.git.button_count(), 5);
         // 导出一帧供人工核对分支页排版（窄侧栏里“●”与长名字是否被裁）。
         force_draw(&mut app);
         if let Some(path) = std::env::var_os("CONGMINAL_GIT_BRANCH_PREVIEW_PATH") {
@@ -4093,13 +4093,13 @@ program="/definitely/missing/congminal-shell"
         // 点 feature 那一行选中它。
         click(&mut app, 6, git_panel::LIST_TOP + index);
         assert_eq!(app.git.branch_selected, Some(index));
-        // 第一次点“切到”只进入确认态，HEAD 不动。
-        click(&mut app, r.w / 3 + 4, 1);
+        // 第一次点“切到”只进入确认态，HEAD 不动（分支页五列：刷新/切到/新建/删除/返回）。
+        click(&mut app, r.w / 5 + 4, 1);
         assert!(app.git.branch_pending.is_some());
         assert!(app.git.write_note.as_deref().is_some_and(|note| note.contains("再点一次")));
         branch(&start);
         // 再点一次才执行：HEAD 换成 feature，列表与状态一起刷新。
-        click(&mut app, r.w / 3 + 4, 1);
+        click(&mut app, r.w / 5 + 4, 1);
         wait(&mut app, |a| {
             a.git.branches.as_ref().is_some_and(|list| list.branches.iter().any(|b| b.name == "feature" && b.current))
         });
@@ -4110,7 +4110,7 @@ program="/definitely/missing/congminal-shell"
             app.git.write_note
         );
         // 返回列表页后状态行显示新分支。
-        click(&mut app, 2 * (r.w / 3) + 4, 1);
+        click(&mut app, 4 * (r.w / 5) + 4, 1);
         assert!(!app.git.branches_open);
         wait(&mut app, |a| a.git.snapshot.as_ref().is_some_and(|s| s.head.describe().contains("feature")));
         // 关栏释放额度：分支列表、快照与目录票据都要还回去。
@@ -4118,6 +4118,96 @@ program="/definitely/missing/congminal-shell"
         app.tick();
         assert_eq!(app.git.bytes(), 0);
         assert!(app.git.branches.is_none());
+    }
+
+    #[test]
+    fn git_panel_stages_everything_and_creates_then_deletes_a_branch() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let head = || {
+            String::from_utf8_lossy(
+                &std::process::Command::new("git")
+                    .arg("-C")
+                    .arg(&repo)
+                    .args(["symbolic-ref", "--short", "HEAD"])
+                    .output()
+                    .unwrap()
+                    .stdout,
+            )
+            .trim()
+            .to_string()
+        };
+        let start = head();
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        // 第四槽“全部暂存”：不选条目也能把改动与未跟踪文件一次放进索引。
+        assert_eq!(app.git.button_count(), 8);
+        click(&mut app, 3 * (r.w / 8) + 4, 1);
+        wait(&mut app, |a| a.git.snapshot.as_ref().is_some_and(|s| s.counts.unstaged == 0 && s.counts.untracked == 0));
+        assert!(
+            app.git.write_note.as_deref().is_some_and(|note| note.contains("已全部暂存")),
+            "{:?}",
+            app.git.write_note
+        );
+        // 进分支页，新建一个分支：输入名字后 Enter 直接新建并切过去。
+        click(&mut app, 7 * (r.w / 8) + 4, 1);
+        assert!(app.git.branches_open, "{:?}", app.git.write_note);
+        wait(&mut app, |a| a.git.branches.is_some() || a.git.branches_error.is_some());
+        assert_eq!(app.git.button_count(), 5);
+        click(&mut app, 2 * (r.w / 5) + 4, 1);
+        assert!(app.git.capturing(), "{:?}", app.git.write_note);
+        for c in "topic".chars() {
+            app.event(Event::Key { key: Key::Char(c), mods: Mods::default() });
+        }
+        app.event(Event::Key { key: Key::Enter, mods: Mods::default() });
+        wait(&mut app, |a| {
+            a.git.branches.as_ref().is_some_and(|list| list.branches.iter().any(|b| b.name == "topic" && b.current))
+        });
+        assert_eq!(head(), "topic");
+        // 写操作结束前按钮只会提示“请等它结束”，先等它落地再点下一步。
+        wait(&mut app, |a| !a.git.write_loading);
+        // 回到原分支后删掉 topic：两次点击，第二次才执行。
+        let index = app.git.branches.as_ref().unwrap().branches.iter().position(|b| b.name == start).unwrap();
+        click(&mut app, 6, git_panel::LIST_TOP + index);
+        assert_eq!(app.git.branch_selected, Some(index));
+        click(&mut app, r.w / 5 + 4, 1);
+        assert!(app.git.branch_pending.is_some(), "{:?}", app.git.write_note);
+        click(&mut app, r.w / 5 + 4, 1);
+        // 以真实 HEAD 为准：快照可能还是上一轮的结果。
+        wait(&mut app, |_| head() == start);
+        // 分支列表也要跟上：否则“当前分支”还停在 topic 上，删除会被拒。
+        wait(&mut app, |a| {
+            a.git.branches.as_ref().is_some_and(|list| list.branches.iter().any(|b| b.name == start && b.current))
+        });
+        wait(&mut app, |a| !a.git.write_loading);
+        let index = app.git.branches.as_ref().unwrap().branches.iter().position(|b| b.name == "topic").unwrap();
+        click(&mut app, 6, git_panel::LIST_TOP + index);
+        click(&mut app, 3 * (r.w / 5) + 4, 1);
+        assert!(app.git.delete_pending.is_some(), "{:?}", app.git.write_note);
+        click(&mut app, 3 * (r.w / 5) + 4, 1);
+        wait(&mut app, |a| {
+            a.git.branches.as_ref().is_some_and(|list| !list.branches.iter().any(|b| b.name == "topic"))
+        });
+        assert!(
+            app.git.write_note.as_deref().is_some_and(|note| note.contains("已删除分支 topic")),
+            "{:?}",
+            app.git.write_note
+        );
+        // 关栏释放额度。
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
     }
 
     #[test]
