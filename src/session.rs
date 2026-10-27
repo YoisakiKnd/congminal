@@ -760,8 +760,10 @@ mod tests {
             config.shell.program = Some("/bin/sh".into());
             config.shell.args = vec!["-c".into(), "exec head -c 16777216 /dev/zero".into()];
             let session = Session::spawn(&config, Arc::new(|| {})).unwrap();
+            // 队列按块容量计费，读到的最后一块通常短于 READ_CHUNK，因此字节数会停在
+            // 距上限不足一块的位置；这里等的是“下一块已经放不进去”的背压状态。
             let deadline = Instant::now() + Duration::from_secs(5);
-            while session.output.as_ref().unwrap().bytes() < OUTPUT_LIMIT {
+            while session.output.as_ref().unwrap().bytes() + crate::pty::flow::READ_CHUNK <= OUTPUT_LIMIT {
                 assert!(Instant::now() < deadline);
                 std::thread::sleep(Duration::from_millis(1));
             }
