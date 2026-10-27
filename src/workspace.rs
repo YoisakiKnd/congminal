@@ -1329,6 +1329,21 @@ impl Workspace {
         })
     }
 
+    /// 远端窗格的监控目标：与 Git 用同一套 SSH 配置档，读的是同一台主机。
+    fn monitor_target(&self) -> Option<crate::monitor::remote::Target> {
+        let pane = &self.panes[self.loaded];
+        pane.remote.as_ref()?;
+        let (profiles, index) = pane.profile.as_ref()?;
+        let config::profiles::Connection::Ssh(ssh) = &profiles[*index].connection else { return None };
+        Some(crate::monitor::remote::Target {
+            program: PathBuf::from(crate::ssh::program(ssh)),
+            host: ssh.host.clone(),
+            user: ssh.user.clone(),
+            port: ssh.port,
+            identity: ssh.identity_file.clone(),
+        })
+    }
+
     /// 当前窗格的 Git 目标：远端会话返回远端目录（可能还没报告），本地返回本地目录。
     fn git_directory(&self) -> Option<PathBuf> {
         let pane = &self.panes[self.loaded];
@@ -2505,6 +2520,8 @@ impl App for Workspace {
             self.window_focus,
             &self.driver.config.git,
         );
+        let monitor_target = self.monitor_target();
+        self.chrome_dirty |= self.monitor.set_target(monitor_target);
         self.chrome_dirty |= self.monitor.tick(
             visible,
             visible && self.right_page == RightPage::Monitor,
@@ -3198,7 +3215,25 @@ exec /bin/cat
              if [ \"$1\" = \"-G\" ]; then exit 0; fi\n\
              while [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\n\
              shift\n\
+             shift\n\
              if [ \"$1\" = \"git\" ]; then exec \"$@\"; fi\n\
+             if [ \"$1\" = \"cat\" ]; then\n\
+             cat <<'STAT'\n\
+             cpu  120 30 60 800 10 0 5 0 0 0\n\
+             cpu0 60 15 30 400 5 0 2 0 0 0\n\
+             cpu1 60 15 30 400 5 0 3 0 0 0\n\
+             MemTotal:        8000000 kB\n\
+             MemAvailable:    3000000 kB\n\
+             STAT\n\
+             exit 0\n\
+             fi\n\
+             if [ \"$1\" = \"df\" ]; then\n\
+             cat <<'DF'\n\
+             Filesystem 1024-blocks Used Available Capacity Mounted on\n\
+             /dev/root 10000000 4000000 6000000 40% /\n\
+             DF\n\
+             exit 0\n\
+             fi\n\
              printf '\\033]7;file://fixture{0}\\007REMOTE_READY'\n\
              exec /bin/cat\n",
             remote.display()
@@ -3245,6 +3280,60 @@ exec /bin/cat
         assert!(app.tick());
         assert!(app.git.remote.is_none());
         assert!(app.git.snapshot.is_none());
+    }
+
+    #[test]
+    fn monitor_target_switching_clears_history_and_slows_the_interval() {
+        let mut panel = monitor_panel::Panel::new();
+        let target = monitor::remote::Target {
+            program: PathBuf::from("/bin/true"),
+            host: "fixture".into(),
+            user: Some("dev".into()),
+            port: None,
+            identity: None,
+        };
+        assert!(panel.set_target(Some(target.clone())));
+        // 远端要起 ssh：间隔抬到 2 秒，不能按本地的 1 Hz 跑。
+        assert_eq!(panel.interval(), monitor::REMOTE_MIN_INTERVAL);
+        // 同一个目标重复设置不算变化，不会反复清历史。
+        assert!(!panel.set_target(Some(target)));
+        assert!(panel.set_target(None));
+        assert_eq!(panel.interval(), monitor::MIN_INTERVAL);
+        assert!(panel.target.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_panes_sample_the_remote_host_through_ssh() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let tool = fake_ssh_with_directory(&dir.0, "fake-ssh-monitor", &repo);
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[connections.remote]\nkind='ssh'\nhost='fixture'\nprogram={tool:?}\n"));
+        configured.admit_connections(&mut warnings);
+        let mut app = workspace();
+        app.driver.config.connections = configured.connections;
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowMonitorPanel);
+        assert!(app.right && app.right_page == RightPage::Monitor);
+        app.add_with_profile(None, Some(0));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        // 远端读数走 ssh 读 /proc 与 df：首屏标题标明远程主机，数值来自夹具。
+        wait(&mut app, |a| a.monitor.samples() > 0 || a.monitor.error.is_some());
+        assert_eq!(app.monitor.error, None);
+        assert!(app.monitor.target.is_some(), "面板应记住远端目标");
+        assert_eq!(app.monitor.interval(), monitor::REMOTE_MIN_INTERVAL);
+        let view = app.monitor.view(28);
+        // 夹具配置档没写 user，标签就是主机名。
+        assert_eq!(view.headline[0], "远程 fixture", "{:?}", view.headline);
+        assert!(view.headline.iter().any(|line| line.contains("7.6 GiB")), "{:?}", view.headline);
+        // 远端节奏写进状态行，不沿用配置里的 1 秒。
+        assert!(view.headline.iter().any(|line| line.contains("每 2 秒")), "{:?}", view.headline);
+        // 关闭右栏：取消在途采样、释放历史，但远端目标保留到下次打开。
+        app.action(Action::ToggleRightSidebar);
+        assert!(app.tick());
+        assert_eq!(app.monitor.samples(), 0);
     }
 
     #[cfg(unix)]
@@ -4050,9 +4139,9 @@ program="/definitely/missing/congminal-shell"
     /// 可控采样源：不读真实 /proc，便于断言节奏与暂停行为。
     struct FakeSource(std::sync::Arc<std::sync::atomic::AtomicUsize>);
     impl monitor::Sampling for FakeSource {
-        fn sample(&mut self, disk: bool) -> monitor::Raw {
+        fn sample(&mut self, disk: bool, _cancel: &crate::tasks::Cancellation) -> Result<monitor::Raw, monitor::Error> {
             let step = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u32;
-            monitor::Raw {
+            Ok(monitor::Raw {
                 cpu: (step % 100) as f32,
                 cores: 4,
                 mem_used: 1 << 30,
@@ -4060,7 +4149,7 @@ program="/definitely/missing/congminal-shell"
                 // 只有真正刷新磁盘的那一轮才带磁盘读数，和真实适配层一致。
                 disk_used: if disk { 5 << 30 } else { 0 },
                 disk_total: if disk { 10 << 30 } else { 0 },
-            }
+            })
         }
         fn mount(&self) -> Option<String> {
             Some("/".into())
@@ -4077,15 +4166,15 @@ program="/definitely/missing/congminal-shell"
     /// 读数恒定偏高的采样源，用来验证阈值告警。
     struct HighSource;
     impl monitor::Sampling for HighSource {
-        fn sample(&mut self, disk: bool) -> monitor::Raw {
-            monitor::Raw {
+        fn sample(&mut self, disk: bool, _cancel: &crate::tasks::Cancellation) -> Result<monitor::Raw, monitor::Error> {
+            Ok(monitor::Raw {
                 cpu: 95.0,
                 cores: 4,
                 mem_used: 9,
                 mem_total: 10,
                 disk_used: if disk { 96 } else { 0 },
                 disk_total: if disk { 100 } else { 0 },
-            }
+            })
         }
         fn mount(&self) -> Option<String> {
             Some("/".into())

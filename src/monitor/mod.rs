@@ -14,6 +14,8 @@ pub const MAX_INTERVAL: Duration = Duration::from_secs(5);
 pub const DEFAULT_HISTORY: Duration = Duration::from_secs(300);
 pub const MIN_HISTORY: Duration = Duration::from_secs(60);
 pub const MAX_HISTORY: Duration = Duration::from_secs(900);
+/// 远端采样每次都要起一个 `ssh` 进程（约几十到几百毫秒），间隔不能像本地那么密。
+pub const REMOTE_MIN_INTERVAL: Duration = Duration::from_secs(2);
 /// 磁盘刷新比 CPU/内存贵得多（本机中位约 535 µs，见评估文档），单独降频。
 pub const DEFAULT_DISK_INTERVAL: Duration = Duration::from_secs(10);
 pub const MIN_DISK_INTERVAL: Duration = Duration::from_secs(5);
@@ -138,7 +140,8 @@ impl History {
 
 /// 采样来源；生产实现是 `SystemSource`，测试用可控的假实现。
 pub trait Sampling: Send {
-    fn sample(&mut self, disk: bool) -> Raw;
+    /// `cancel`：本轮读取要能被打断（远端读取会跑子进程，取消时要立刻杀掉）。
+    fn sample(&mut self, disk: bool, cancel: &crate::tasks::Cancellation) -> Result<Raw, Error>;
     /// 磁盘读数对应的卷标签，仅用于界面提示。
     fn mount(&self) -> Option<String> {
         None
@@ -157,6 +160,8 @@ pub struct Reply {
     pub generation: u64,
     pub sample: Sample,
     pub mount: Option<String>,
+    /// 采样本身失败时的原因（远端读不到）；有值时 `sample` 是占位读数，不要写进历史。
+    pub error: Option<Error>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -167,6 +172,8 @@ pub enum Error {
     Worker,
     /// 平台没有可用的本地采样接口。
     Unsupported,
+    /// 远端主机没有返回可用的读数（连不上、没有 `/proc`、输出无法解析）。
+    Remote,
 }
 impl Error {
     pub fn message(self) -> &'static str {
@@ -174,6 +181,7 @@ impl Error {
             Self::Budget => "监控额度不足，已停止采样",
             Self::Worker => "监控采样线程不可用",
             Self::Unsupported => "此平台不支持本地状态采样",
+            Self::Remote => "远程主机未返回读数",
         }
     }
 }
@@ -227,21 +235,21 @@ mod system {
         }
     }
     impl Sampling for SystemSource {
-        fn sample(&mut self, disk: bool) -> Raw {
+        fn sample(&mut self, disk: bool, _cancel: &crate::tasks::Cancellation) -> Result<Raw, super::Error> {
             self.system.refresh_cpu_usage();
             self.system.refresh_memory();
             if disk {
                 self.refresh_disk();
             }
             let (disk_used, disk_total) = self.disk.unwrap_or_default();
-            Raw {
+            Ok(Raw {
                 cpu: self.system.global_cpu_usage().clamp(0.0, 100.0),
                 cores: self.system.cpus().len(),
                 mem_used: self.system.used_memory(),
                 mem_total: self.system.total_memory(),
                 disk_used,
                 disk_total,
-            }
+            })
         }
         fn mount(&self) -> Option<String> {
             self.mount.clone()
@@ -266,13 +274,15 @@ mod system {
         }
     }
     impl Sampling for SystemSource {
-        fn sample(&mut self, _disk: bool) -> Raw {
-            Raw::default()
+        fn sample(&mut self, _disk: bool, _cancel: &crate::tasks::Cancellation) -> Result<Raw, super::Error> {
+            Ok(Raw::default())
         }
     }
 }
 
 pub use system::SystemSource;
+
+pub mod remote;
 
 /// 本平台是否有本地采样接口。
 pub const SUPPORTED: bool = cfg!(any(target_os = "linux", target_os = "macos", windows));
@@ -285,6 +295,11 @@ pub type Factory = std::sync::Arc<dyn Fn() -> Box<dyn Sampling> + Send + Sync>;
 
 pub fn factory() -> Factory {
     std::sync::Arc::new(|| Box::new(SystemSource::new()))
+}
+
+/// 远端采样器的工厂：每次新建任务时造一个，自己保存上一轮 CPU 时间片。
+pub fn remote_factory(target: remote::Target) -> Factory {
+    std::sync::Arc::new(move || Box::new(remote::Source::new(target.clone())))
 }
 
 /// 把字节数写成一位小数的 GiB/MiB。

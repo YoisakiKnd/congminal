@@ -89,7 +89,7 @@ fn human_and_percent_report_units_without_dividing_by_zero() {
 #[test]
 fn the_real_source_reports_plausible_readings() {
     let mut source = SystemSource::new();
-    let first = source.sample(true);
+    let first = source.sample(true, &crate::tasks::Cancellation::default()).unwrap();
     assert!(first.cores >= 1, "至少一个逻辑核");
     assert!(first.mem_total > 0, "内存总量必须可读");
     assert!(first.mem_used <= first.mem_total);
@@ -101,7 +101,7 @@ fn the_real_source_reports_plausible_readings() {
     }
     // 第二次采样要给出可比基线，读数仍然有界。
     std::thread::sleep(Duration::from_millis(50));
-    let second = source.sample(false);
+    let second = source.sample(false, &crate::tasks::Cancellation::default()).unwrap();
     assert!((0.0..=100.0).contains(&second.cpu));
     assert_eq!(second.mem_total, first.mem_total);
     // 不刷新磁盘时沿用上一次读数。
@@ -112,7 +112,7 @@ fn the_real_source_reports_plausible_readings() {
 fn unsupported_platforms_are_reported_instead_of_faked() {
     assert_eq!(SUPPORTED, cfg!(any(target_os = "linux", target_os = "macos", windows)));
     let mut source = (factory())();
-    let raw = source.sample(true);
+    let raw = source.sample(true, &crate::tasks::Cancellation::default()).unwrap();
     if SUPPORTED {
         assert!(raw.mem_total > 0);
     } else {
@@ -144,7 +144,7 @@ fn monitor_sample_cost() {
     for _ in 0..5 {
         let mut fresh = factory()();
         let start = std::time::Instant::now();
-        let _ = fresh.sample(true);
+        let _ = fresh.sample(true, &crate::tasks::Cancellation::default());
         cold.push(start.elapsed().as_secs_f64() * 1e6);
     }
     let mut cpu = Vec::new();
@@ -153,7 +153,7 @@ fn monitor_sample_cost() {
     for index in 0..200 {
         let want_disk = index % 10 == 0;
         let start = std::time::Instant::now();
-        let raw = source.sample(want_disk);
+        let raw = source.sample(want_disk, &crate::tasks::Cancellation::default()).unwrap();
         let elapsed = start.elapsed().as_secs_f64() * 1e6;
         if want_disk {
             disk.push(elapsed);
