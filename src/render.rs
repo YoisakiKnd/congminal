@@ -1217,9 +1217,11 @@ mod tests {
             }
         }
         assert!(fell_back > 0, "测试字体应当缺至少一个图标，否则没覆盖回退分支");
-        // 普通字符与 ASCII 原样通过，中文有字形时也不替换。
+        // 普通字符与 ASCII 原样通过；非 ASCII 字符有字形就照原样，缺字形又没有 ASCII 替代时用 '?'，
+        // 不画出豆腐块。测试字体是否带中文字形取决于运行环境（CI 上没有），所以按字形判定。
         assert_eq!(renderer.chrome_char('a'), 'a');
-        assert_eq!(renderer.chrome_char('中'), '中');
+        let cjk = renderer.chrome_char('中');
+        assert_eq!(cjk, if renderer.fonts.has_glyph('中') { '中' } else { '?' }, "中");
         // 同一个字只查一次字体：查过的非 ASCII 字都在缓存里，且条数有上限。
         assert!(icons.iter().all(|icon| renderer.icons.contains_key(icon)));
         assert!(renderer.icons.len() <= 128);
