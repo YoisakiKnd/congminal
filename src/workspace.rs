@@ -3428,8 +3428,9 @@ exec /bin/cat
         assert!(app.monitor.target.is_some(), "面板应记住远端目标");
         assert_eq!(app.monitor.interval(), monitor::REMOTE_MIN_INTERVAL);
         let view = app.monitor.view(28);
-        // 夹具配置档没写 user，标签就是主机名。
-        assert_eq!(view.headline[0], "远程 fixture", "{:?}", view.headline);
+        // 夹具配置档没写 user，标签就是主机名；同一行追加远端往返耗时。
+        assert!(view.headline[0].starts_with("远程 fixture · 往返 "), "{:?}", view.headline);
+        assert!(view.headline[0].ends_with(" ms"), "{:?}", view.headline);
         assert!(view.headline.iter().any(|line| line.contains("7.6 GiB")), "{:?}", view.headline);
         // 远端节奏写进状态行，不沿用配置里的 1 秒。
         assert!(view.headline.iter().any(|line| line.contains("每 2 秒")), "{:?}", view.headline);
@@ -4255,6 +4256,9 @@ program="/definitely/missing/congminal-shell"
                 // 只有真正刷新磁盘的那一轮才带磁盘读数，和真实适配层一致。
                 disk_used: if disk { 5 << 30 } else { 0 },
                 disk_total: if disk { 10 << 30 } else { 0 },
+                // 假采样源也按“第二次采样才有速率”给出（第一轮 step = 0 只有基线）。
+                net_down: (step >= 1).then_some(2048),
+                net_up: (step >= 1).then_some(512),
             })
         }
         fn mount(&self) -> Option<String> {
@@ -4277,7 +4281,16 @@ program="/definitely/missing/congminal-shell"
             _disk: bool,
             _cancel: &crate::tasks::Cancellation,
         ) -> Result<monitor::Raw, monitor::Error> {
-            Ok(monitor::Raw { cpu: 10.0, cores: 2, mem_used: 1 << 30, mem_total: 4 << 30, disk_used: 1, disk_total: 2 })
+            Ok(monitor::Raw {
+                cpu: 10.0,
+                cores: 2,
+                mem_used: 1 << 30,
+                mem_total: 4 << 30,
+                disk_used: 1,
+                disk_total: 2,
+                net_down: None,
+                net_up: None,
+            })
         }
         fn processes(&mut self) -> Vec<monitor::Proc> {
             self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -4299,6 +4312,8 @@ program="/definitely/missing/congminal-shell"
                 mem_total: 10,
                 disk_used: if disk { 96 } else { 0 },
                 disk_total: if disk { 100 } else { 0 },
+                net_down: None,
+                net_up: None,
             })
         }
         fn mount(&self) -> Option<String> {
@@ -4418,6 +4433,24 @@ program="/definitely/missing/congminal-shell"
     }
 
     #[test]
+    fn monitor_shows_network_rates_only_after_the_second_sample() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        fake_monitor(&mut app);
+        app.action(Action::ShowMonitorPanel);
+        wait(&mut app, |a| a.monitor.samples() >= 1);
+        // 第一轮只有计数器基线：如实显示未知，不显示 0。
+        let first = app.monitor.view(40);
+        assert!(first.headline.iter().any(|line| line == "网络 未知"), "{:?}", first.headline);
+        // 本机采样没有网络跳，标题里不写往返耗时。
+        assert!(!first.headline.iter().any(|line| line.contains("往返")), "{:?}", first.headline);
+        wait(&mut app, |a| a.monitor.samples() >= 2);
+        let second = app.monitor.view(40);
+        assert!(second.headline.iter().any(|line| line == "网络 ↓2 KiB/s ↑512 B/s"), "{:?}", second.headline);
+    }
+
+    #[test]
     fn monitor_panel_samples_pauses_on_focus_loss_and_releases_when_closed() {
         let mut app = workspace();
         app.width = 1200;
@@ -4441,7 +4474,9 @@ program="/definitely/missing/congminal-shell"
         assert!(view.headline[1].contains("内存"), "{:?}", view.headline);
         assert!(view.headline[2].starts_with("磁盘"), "{:?}", view.headline);
         assert!(view.headline[2].contains("5.0 GiB"), "{:?}", view.headline);
-        assert!(view.headline[3].contains("每 1 秒"), "{:?}", view.headline);
+        // 假采样源第二次采样才有速率；这里只核对未知与速率两种文案都能画出来。
+        assert!(view.headline[3].starts_with("网络 "), "{:?}", view.headline);
+        assert!(view.headline[4].contains("每 1 秒"), "{:?}", view.headline);
         assert_eq!(view.content.len(), 3, "{:?}", view.content);
         // 标签按显示宽度对齐（中文占两列），三条曲线都铺满剩下的 35 列。
         assert!(view.content[0].starts_with("CPU"));
@@ -4468,7 +4503,8 @@ program="/definitely/missing/congminal-shell"
         assert!(app.monitor.deadline().is_none());
         assert_eq!(app.monitor.samples(), samples);
         let paused = app.monitor.view(40);
-        assert!(paused.headline[3].contains("已暂停"), "{:?}", paused.headline);
+        // 状态行始终是最后一行：多出的网络行只插在它前面。
+        assert!(paused.headline.last().is_some_and(|line| line.contains("已暂停")), "{:?}", paused.headline);
         // 回到前台：立刻补一次采样，之后回到 1 秒节奏。
         app.window_focus = true;
         app.tick();

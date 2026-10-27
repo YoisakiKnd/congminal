@@ -35,6 +35,8 @@ pub(super) struct Panel {
     /// 当前历史容量（点数）；配置变化时重建环形队列。
     pub(super) points: usize,
     pub(super) mount: Option<String>,
+    /// 远端读数的往返耗时；本机采样恒为 `None`（没有网络跳）。
+    pub(super) latency: Option<std::time::Duration>,
     pub(super) task: Option<LatestTask<Request, Reply>>,
     pub(super) loading: bool,
     pub(super) generation: u64,
@@ -78,6 +80,7 @@ impl Panel {
             history: None,
             points: 0,
             mount: None,
+            latency: None,
             task: None,
             loading: false,
             generation: 0,
@@ -129,6 +132,7 @@ impl Panel {
         self.history = None;
         self.points = 0;
         self.mount = None;
+        self.latency = None;
         self.processes = Vec::new();
         self.last_processes = None;
         self.error = None;
@@ -176,6 +180,7 @@ impl Panel {
         self.points = 0;
         self.lease = None;
         self.mount = None;
+        self.latency = None;
         self.error = None;
         self.loading = false;
         self.paused = false;
@@ -321,8 +326,16 @@ impl Panel {
                     Err(error) => (monitor::Raw::default(), Some(error)),
                 };
                 let mount = source.mount();
+                let latency = source.latency();
                 let processes = if request.processes && error.is_none() { source.processes() } else { Vec::new() };
-                Ok(Reply { generation: request.generation, sample: Sample { at, raw }, mount, error, processes })
+                Ok(Reply {
+                    generation: request.generation,
+                    sample: Sample { at, raw },
+                    mount,
+                    error,
+                    processes,
+                    latency,
+                })
             }) {
                 Ok(task) => self.task = Some(task),
                 Err(_) => {
@@ -365,6 +378,7 @@ impl Panel {
             Ok(reply) if reply.generation == self.generation => {
                 self.error = None;
                 self.mount = reply.mount;
+                self.latency = reply.latency;
                 if !reply.processes.is_empty() {
                     self.processes = reply.processes;
                     self.last_processes = Some(reply.sample.at);
@@ -420,7 +434,9 @@ impl Panel {
             Some(sample) => {
                 let raw = sample.raw;
                 if let Some(target) = &self.target {
-                    headline.push(format!("远程 {}", target.label()));
+                    // 远端每轮要起一次 ssh：把往返耗时写在同一行，掉到几百毫秒时能立刻看出来。
+                    let trip = self.latency.map_or(String::new(), |trip| format!(" · 往返 {} ms", trip.as_millis()));
+                    headline.push(format!("远程 {}{trip}", target.label()));
                 }
                 headline.push(format!("CPU {:.0}% · {} 核", raw.cpu, raw.cores));
                 let memory = monitor::percent(raw.mem_used, raw.mem_total)
@@ -446,6 +462,13 @@ impl Panel {
                         monitor::human(raw.disk_total)
                     ));
                 }
+                // 网络速率要靠两次采样的累计字节差：第一次采样只有基线，显示未知而不是 0。
+                headline.push(match (raw.net_down, raw.net_up) {
+                    (Some(down), Some(up)) => {
+                        format!("网络 ↓{} ↑{}", monitor::rate(down as u64), monitor::rate(up as u64))
+                    }
+                    _ => "网络 未知".into(),
+                });
             }
             None => headline.push(if self.loading { "正在采样…".into() } else { "等待第一次采样".into() }),
         }
