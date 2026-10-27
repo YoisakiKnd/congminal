@@ -47,6 +47,7 @@ mod ssh;
 mod tasks;
 mod term;
 mod text;
+mod tools;
 mod ui;
 mod vt;
 mod workspace;

@@ -319,6 +319,8 @@ pub struct Workspace {
     notice_rows: Vec<(usize, crate::notifications::Source)>,
     /// 状态页“清空通知”那一行；没有通知时为 None。
     clear_row: Option<usize>,
+    /// 外部程序探测结果与它对应的程序清单；清单变了就重算，条数有上限。
+    tools: Option<(Vec<(String, &'static str)>, crate::tools::Report)>,
     right: bool,
     left_width: usize,
     right_width: usize,
@@ -402,6 +404,7 @@ impl Workspace {
             right_page: RightPage::Status,
             notice_rows: Vec::new(),
             clear_row: None,
+            tools: None,
             right: false,
             left_width: (220.0 * scale) as usize,
             right_width: (280.0 * scale) as usize,
@@ -1599,6 +1602,8 @@ impl Workspace {
         );
         let stats = crate::resources::current().snapshot();
         rows.push(format!("任务 {} 个在跑 · 最新任务 {}", stats.managed_workers, stats.latest_tasks));
+        let tools = self.tools().summary();
+        rows.push(tools);
         if !self.driver.notifications.is_empty() {
             // 第 0 行是页签，内容行从 1 开始。
             self.clear_row = Some(rows.len() + 1);
@@ -1610,6 +1615,38 @@ impl Workspace {
             rows.push(notice.text());
         }
         rows
+    }
+
+    /// 需要探测的外部程序：Git 用的那个加上各 SSH 配置档用的 ssh（去重，条数有上限）。
+    fn tool_programs(&self) -> Vec<(String, &'static str)> {
+        let config = &self.driver.config;
+        let mut programs: Vec<(String, &'static str)> = Vec::new();
+        let git =
+            config.git.program.as_ref().map_or_else(|| "git".to_string(), |path| path.to_string_lossy().into_owned());
+        programs.push((git, "Git 页"));
+        for profile in config.connections.iter() {
+            if let crate::config::profiles::Connection::Ssh(ssh) = &profile.connection {
+                let program = ssh
+                    .program
+                    .clone()
+                    .unwrap_or_else(|| if cfg!(windows) { "ssh.exe".to_string() } else { "ssh".to_string() });
+                if !programs.iter().any(|(name, _)| *name == program) {
+                    programs.push((program, "SSH/SFTP"));
+                }
+            }
+        }
+        programs.truncate(crate::tools::MAX_TOOLS);
+        programs
+    }
+
+    /// 外部程序探测：只在需要时算一次，配置里的程序清单变了再算一次。
+    fn tools(&mut self) -> &crate::tools::Report {
+        let programs = self.tool_programs();
+        if self.tools.as_ref().is_none_or(|(key, _)| *key != programs) {
+            let report = crate::tools::Report::detect(&programs, &crate::tools::Report::search_path());
+            self.tools = Some((programs, report));
+        }
+        &self.tools.as_ref().unwrap().1
     }
 
     fn status_paint(&mut self, r: Rect, h: usize) {
@@ -3667,6 +3704,29 @@ program="/definitely/missing/congminal-shell"
         app.action(Action::ToggleRightSidebar);
         app.tick();
         assert_eq!(app.git.bytes(), 0);
+    }
+
+    #[test]
+    fn status_page_reports_missing_external_programs() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        // 默认配置下 git 在本机 PATH 上，状态页只说一句就绪。
+        let rows = app.status_rows();
+        let tool_row = rows.iter().find(|row| row.starts_with("外部程序")).expect("状态页应有外部程序行");
+        assert!(tool_row.ends_with("就绪"), "{tool_row}");
+        // 配置指向不存在的程序：点名受影响的功能，且行宽不超右栏。
+        app.driver.config.git.program = Some(PathBuf::from("/congminal-nonexistent-git"));
+        let rows = app.status_rows();
+        let tool_row = rows.iter().find(|row| row.starts_with("外部程序")).expect("状态页应有外部程序行");
+        assert!(tool_row.starts_with("外部程序：Git 页缺 congminal"), "{tool_row}");
+        assert!(crate::term::display_width(tool_row) <= 30, "{tool_row}");
+        // 程序清单变化后重新探测：改回默认又变成就绪。
+        app.driver.config.git.program = None;
+        let rows = app.status_rows();
+        assert!(rows.iter().any(|row| row.starts_with("外部程序") && row.ends_with("就绪")), "{rows:?}");
     }
 
     #[test]
