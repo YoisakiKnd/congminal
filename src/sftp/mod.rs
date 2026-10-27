@@ -16,6 +16,8 @@ mod native;
 mod native_wait;
 mod openssh;
 mod operations;
+#[cfg(unix)]
+pub(crate) mod plan;
 #[cfg(all(test, feature = "sftp-libssh2"))]
 mod secret;
 #[cfg(unix)]
@@ -699,6 +701,49 @@ mod interoperability {
             drop(channel);
             assert_eq!(server.pool.snapshot().used, 0);
         }
+    }
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[test]
+    #[ignore = "本地sftp-server：批量预览枚举整棵树；无SSH/网络"]
+    fn local_subsystem_plans_a_directory_tree() {
+        use super::{
+            client::{Channel, Source},
+            model::RemotePath,
+            plan::{self, Walker},
+        };
+        use crate::tasks::Cancellation;
+        let mut server = Server::new();
+        std::fs::create_dir_all(server.path.join("sub/deeper")).unwrap();
+        std::fs::write(server.path.join("a.txt"), b"abc").unwrap();
+        std::fs::write(server.path.join("sub/b.txt"), b"abcde").unwrap();
+        std::fs::write(server.path.join("sub/deeper/c.txt"), b"c").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("a.txt", server.path.join("link")).unwrap();
+        let cancel = Cancellation::default();
+        let source = Source { session: 41, generation: 5 };
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        // 通道自身会长期占住少量额度，基线取连接之后的读数。
+        let baseline = server.pool.snapshot().used;
+        // `-d` 只设起始目录、不做 chroot，因此从相对根 `.` 出发（由 REALPATH 解析）。
+        let root = RemotePath::new(&server.pool, b".").unwrap();
+        let mut walker = Walker { channel: &mut channel, cancel: &cancel };
+        let plan = plan::walk(&mut walker, &root, &cancel).unwrap();
+        let mut names: Vec<Vec<u8>> = plan.items.iter().map(|item| plan.relative(&item.path).to_vec()).collect();
+        names.sort();
+        assert_eq!(names, [b"a.txt".to_vec(), b"sub/b.txt".to_vec(), b"sub/deeper/c.txt".to_vec()]);
+        assert_eq!(plan.total, 9);
+        assert_eq!(plan.directories, 3);
+        assert_eq!(plan.skipped, 1, "符号链接不跟随");
+        assert!(!plan.truncated);
+        assert!(plan.items.iter().all(|item| item.version.length == item.length));
+        let planned = server.pool.snapshot().used;
+        assert!(planned > baseline, "预览条目占用额度");
+        // Walker 只借用通道与取消令牌，作用域结束即可，不需要显式 drop。
+        let _ = &walker;
+        drop(root);
+        drop(plan);
+        assert_eq!(server.pool.snapshot().used, baseline, "预览条目随计划一起归还额度");
     }
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     #[test]

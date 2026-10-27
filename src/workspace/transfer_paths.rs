@@ -17,8 +17,18 @@ const COMPOSE: usize = 1023;
 #[path = "local_picker.rs"]
 pub(super) mod local_picker;
 enum Choice {
-    Upload { directory: PathValue, target: Option<PathValue> },
-    Download { source: PathValue, version: Option<service::Version> },
+    Upload {
+        directory: PathValue,
+        target: Option<PathValue>,
+    },
+    Download {
+        source: PathValue,
+        version: Option<service::Version>,
+    },
+    /// 目录批量下载：先枚举影响范围，确认后才逐个提交。
+    DownloadDirectory {
+        source: PathValue,
+    },
 }
 struct Lookup {
     ticket: Ticket,
@@ -125,7 +135,7 @@ impl Form {
                     target.is_none()
                 }
             }
-            Choice::Download { .. } => index == 1,
+            Choice::Download { .. } | Choice::DownloadDirectory { .. } => index == 1,
         }
     }
     fn origin(&self) -> InputOrigin {
@@ -264,11 +274,18 @@ impl Workspace {
             Choice::Upload { directory: view.target.clone(), target }
         } else {
             let entry = selected
-                .filter(|e| e.kind == FileKind::File || e.attrs.permissions.is_none_or(|p| p & 0o170000 == 0))
+                .filter(|e| {
+                    e.kind == FileKind::Directory
+                        || e.kind == FileKind::File
+                        || e.attrs.permissions.is_none_or(|p| p & 0o170000 == 0)
+                })
                 .ok_or(Failure::Invalid)?;
-            Choice::Download {
-                source: view.target.child(&entry.name).map_err(|_| Failure::Budget)?,
-                version: service::Version::from(entry.attrs),
+            let source = view.target.child(&entry.name).map_err(|_| Failure::Budget)?;
+            if entry.kind == FileKind::Directory {
+                // 目录走批量预览，不产生单文件下载。
+                Choice::DownloadDirectory { source }
+            } else {
+                Choice::Download { source, version: service::Version::from(entry.attrs) }
             }
         };
         let limits = if upload { [PATH, 1024] } else { [0, PATH] };
@@ -601,6 +618,9 @@ impl Workspace {
                         replace: service::Replace::No,
                     })
                 }
+                Choice::DownloadDirectory { source } => {
+                    self.start_remote_plan(source.bytes(), Path::new(&f.fields[1].text))
+                }
                 Choice::Download { version: None, .. } => Err(Failure::Invalid),
             };
             if result.is_err() {
@@ -714,7 +734,7 @@ impl Workspace {
         }
         let (upload, base) = match &f.choice {
             Choice::Upload { directory, .. } => (true, directory),
-            Choice::Download { source, .. } => (false, source),
+            Choice::Download { source, .. } | Choice::DownloadDirectory { source } => (false, source),
         };
         self.driver.renderer.chrome(
             &mut self.frame,
@@ -774,7 +794,7 @@ impl Workspace {
                 } else {
                     match &f.choice {
                         Choice::Upload { target: Some(t), .. } => t.label(),
-                        Choice::Download { source, .. } => source.label(),
+                        Choice::Download { source, .. } | Choice::DownloadDirectory { source } => source.label(),
                         _ => "",
                     }
                 };
@@ -1007,6 +1027,51 @@ pub(super) mod tests {
     }
     pub(in crate::workspace) fn lookup_error(app: &Workspace) -> Option<Failure> {
         app.sftp.as_ref()?.paths_form.as_ref()?.lookup.as_ref()?.error
+    }
+    #[test]
+    fn a_directory_selection_asks_for_a_local_root_and_plans_instead_of_one_file() {
+        let parent = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(parent.clone());
+        let mut app = workspace();
+        app.start_remote_files(paths(), b"/remote").unwrap();
+        until(|| {
+            app.tick();
+            !app.sftp.as_ref().unwrap().view.as_ref().unwrap().loading
+        });
+        {
+            let state = app.sftp.as_mut().unwrap();
+            let v = state.view.as_mut().unwrap();
+            let mut scan = crate::sftp::model::Scan::new(
+                v.binding.owner.session,
+                v.binding.owner.generation,
+                v.target.clone(),
+                false,
+                crate::sftp::model::Sort::Name,
+            )
+            .unwrap();
+            scan.push_entry(
+                b"folder",
+                crate::sftp::model::Attributes {
+                    permissions: Some(0o040755),
+                    size: Some(4096),
+                    times: Some((12, 12)),
+                    ..Default::default()
+                },
+                &Cancellation::default(),
+            )
+            .unwrap();
+            let memory = state.service.budget().lease(Kind::Sftp, std::mem::size_of::<service::Reply>() + 128).unwrap();
+            v.reply = Some(Tracked::new(Ok(service::Output::Directory(scan.finish(true).unwrap())), memory));
+            v.error = None;
+            v.selected = Some(0);
+        }
+        app.open_transfer_paths(false).unwrap();
+        let form = app.sftp.as_ref().unwrap().paths_form.as_ref().unwrap();
+        // 目录不走单文件下载：不需要属性核对，等用户给出本地根目录后再枚举。
+        assert!(matches!(form.choice, Choice::DownloadDirectory { .. }), "目录要进批量预览");
+        assert!(form.lookup.is_none());
+        assert!(form.editable(1), "只需要本地目标路径");
+        assert!(!form.editable(0));
     }
     #[test]
     fn attribute_completion_keeps_destination_and_old_cancelled_ticket_cannot_enable_later_form() {

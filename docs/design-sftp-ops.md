@@ -55,6 +55,7 @@
 - 缓存：只有一个 `Mutation` 槽位（票据、绑定、认证句柄、操作类型、来源、额度票据）；清理残留复用同一槽位，不额外占额度；名称输入上限 1024 字节、预编辑 256 字节，均按 `Kind::Sftp` 计费。没有跨请求缓存。
 - 数据所有权：`Workspace` 持有 `remote_files::State`；`State` 持有 `form`/`confirm`/`mutation`；`Mutation` 持有 `Ticket` 与 `Authentication`；Service 持有实际请求与结果。成功后的目录重读走既有 `submit_remote_directory`，票据仍是原目录票据。
 - 认证归属：`Mutation.binding` 与目录视图同源（窗格 id、profile、generation），换窗格/换配置档后的迟到结果直接丢弃。
+- 批量下载不新增线程/子进程：枚举与每条下载都进入同一个 Service 队列，`State.plan` 只持有一个在途枚举票据，`State.batch` 持有待提交队列（`VecDeque<plan::Item>`，上限即 2000 条、每条路径 ≤ 8 KiB）与已提交票据列表（≤ 66 个 `Ticket`），本地目录去重表 `HashSet<Vec<u8>>` 只在批次存活期间存在。
 
 ## 残留临时文件
 
@@ -79,6 +80,27 @@
 限制：只支持上传续传（下载没有远端临时文件语义）；断点取远端文件真实大小，因此远端内容被外部改动时续传会拼出错误内容，这一层不做校验和比对。
 
 确认态截图：[`docs/previews/m6-sftp-resume.png`](previews/m6-sftp-resume.png)（按钮变 `[确认]`，提示行「再点一次「确认」从断点续传」，记录行仍标 `· 残留`）。
+
+## 目录批量下载（先预览影响范围，再逐条提交）
+
+选中远端目录后点 `[下载]`，不再按单文件下载处理，而是先枚举整棵子树：
+
+1. 表单里只需要本地目标根目录（`[下载]` 路径槽），远端源固定为选中的目录。
+2. 提交枚举请求 `Action::Plan`（超时 30 秒，可取消）。服务层用 `plan::Walker` 广度优先读目录，边读边累计：
+   - 文件数上限 2000、深度上限 16、总字节上限 8 GiB、预览本身占用 512 KiB 额度；
+   - 符号链接与特殊文件不跟随，计入「跳过」；没有版本信息（大小/时间）的普通文件同样跳过，避免无法核对覆盖；
+   - 任一上限触顶就停止并标 `truncated`，已枚举的部分仍然可用。
+3. 枚举完成后右栏第二行给出影响范围：「批量下载 N 个文件 · 总大小 · 主机 → 本地目标」，截断与跳过会额外标注；列表区列出前 5 条相对路径与各自大小。
+4. 操作行变成 `[开始] [取消]`：右半取消直接丢掉预览，左半开始提交。
+5. 提交阶段不新开队列：每帧从队首取一条，按既有 66 个记录槽提交单文件下载（`Replace::No`，覆盖仍由审阅页的覆盖确认把关），本地父目录按需 `create_dir_all`。槽位满就停一帧，下一帧继续，不阻塞 UI、不放大预算。
+6. 第二行变成「正在提交批量下载 已提交/总数 · 失败 N · → 本地目标」；`[取消]` 会丢掉未提交的条目并取消已提交的传输。
+
+边界：
+
+- 预览与批次都随目录视图作废（换窗格、换配置档、目录重读时 `cancel_directories` 一并清掉并取消在途枚举）。
+- 枚举与提交都走既有前台认证流程：需要认证时弹同一个覆盖层，认证完成后再继续。
+- 本地目标目录必须存在或可创建；单个文件建目录/提交失败只计入「失败 N」，不影响后续条目。
+- 这是「下载目录」的能力，上传目录（本地目录 → 远端）尚未接同一套预览。
 
 ## 打开远端文件（有界临时下载 + 显式回传）
 
@@ -143,6 +165,11 @@ cargo test --locked resume_is_offered               # 续传按钮条件、二�
 cargo test --locked resume_keeps_the_temporary      # OPEN 不带 TRUNC、跳过已写字节、断点进度
 CONGMINAL_TEST_SFTP_SERVER=/usr/lib/openssh/sftp-server \
   cargo test --locked local_subsystem_resumes_an_interrupted_upload -- --ignored
+cargo test --locked sftp::plan                     # 遍历、上限截断、相对路径、额度归还
+cargo test --locked a_directory_selection_asks     # 目录选择进批量预览而不是单文件下载
+cargo test --locked batch_preview_reports          # 预览行/按钮/路径清单、取消不提交、开始进入批次
+CONGMINAL_TEST_SFTP_SERVER=/usr/lib/openssh/sftp-server \
+  cargo test --locked interoperability::local_subsystem_plans -- --ignored
 CONGMINAL_TEST_SFTP_SERVER=/usr/lib/openssh/sftp-server \
   cargo test --locked local_subsystem_sorts_directory_entries_the_way_the_panel_asks -- --ignored
 cargo test --locked temp_copies_keep                # 临时路径只留最后一段、连续打开不重名
@@ -182,6 +209,8 @@ cargo test --locked name_input_is_bounded
 
 - 仍只在 `sftp-preview`/测试构建中可用，默认发布入口未打开（与既有 SFTP 面板一致）。
 - 没有递归删除、批量删除、拖拽移动、上传覆盖同一批的远端覆盖确认；删除只做单条目。
+- 批量传输只覆盖「下载目录 → 本地」：上传目录（本地目录 → 远端）还没接预览；批次不做整体重试，单个失败只计入失败数，需要用户在任务页逐条重试或续传。
+- 批量预览的「影响范围」来自一次枚举，提交前远端若发生变化（新增/删除文件）不会重新核对；每条下载仍各自做覆盖确认（`Replace::No`），不会静默覆盖本地同名文件。
 - 重命名只改名称，不支持跨目录移动（目标恒为当前目录）。
 - 写操作没有进度条：远端确认期间只显示等待提示，长延迟目录只能等超时。
 - 残留清理一次只处理一条记录，也不清理“记录已被清除”后留下的临时文件（清除记录不会删除文件，这是既有约定）；下载的本地暂存残留同样不在本批范围。
