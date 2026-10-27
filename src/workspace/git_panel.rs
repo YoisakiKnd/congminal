@@ -138,6 +138,8 @@ pub(super) struct Panel {
     pub(super) pending: Option<(RemoteOp, Instant)>,
     /// 冲突解决模式：正在处理的冲突条目下标。
     pub(super) resolve: Option<usize>,
+    /// 当前窗格的远程读取通道；`Some` 时只读，且状态行标出远端主机。
+    pub(super) remote: Option<git::Remote>,
 }
 
 impl Panel {
@@ -182,6 +184,7 @@ impl Panel {
             input: None,
             pending: None,
             resolve: None,
+            remote: None,
         }
     }
 
@@ -198,6 +201,7 @@ impl Panel {
             + self.diff_label.as_ref().map_or(0, String::capacity)
             + self.input.as_ref().map_or(0, |input| input.text.memory.bytes())
             + self.write_note.as_ref().map_or(0, String::capacity)
+            + self.remote.as_ref().map_or(0, |remote| remote.label().len())
     }
     pub(super) fn open(&mut self) -> bool {
         if self.active && self.next.is_some() {
@@ -254,6 +258,8 @@ impl Panel {
         self.input = None;
         self.pending = None;
         self.resolve = None;
+        self.remote = None;
+        self.limits.remote = None;
         self.write_note = None;
         if !self.write_loading {
             self.write = None;
@@ -286,6 +292,7 @@ impl Panel {
         &mut self,
         owner: u64,
         dir: Option<&Path>,
+        remote: Option<&git::Remote>,
         key: u64,
         notify: Notify,
         visible: bool,
@@ -318,6 +325,25 @@ impl Panel {
         }
         self.active = true;
         changed |= self.poll(owner);
+        // 远端通道随窗格走：本机仓库与远端仓库不能复用同一份快照。
+        let remote_changed = self.remote.as_ref() != remote;
+        if remote_changed {
+            self.remote = remote.cloned();
+            self.limits.remote = remote.cloned();
+            self.snapshot = None;
+            self.selected = None;
+            self.offset = 0;
+            self.diff = None;
+            self.diff_open = false;
+            self.diff_error = None;
+            self.pending = None;
+            self.resolve = None;
+            self.input = None;
+            self.version = None;
+            self.schedule(DEBOUNCE);
+            self.revision = self.revision.wrapping_add(1);
+            changed = true;
+        }
         // 目录或窗格变化：同一仓库且已有结果时复用，不重复查询。
         let same_dir = match (&self.dir, dir) {
             (Some(current), Some(next)) => current.as_path() == next,
@@ -373,8 +399,9 @@ impl Panel {
             return false;
         }
         let Some(dir) = self.dir.as_deref() else {
-            if self.error.is_none() {
-                self.error = Some(Error::Path);
+            let error = if self.remote.is_some() { Error::NoRemotePath } else { Error::Path };
+            if self.error.as_ref() != Some(&error) {
+                self.error = Some(error);
                 return true;
             }
             return false;
@@ -692,7 +719,8 @@ impl Panel {
                 headline.push(match &self.write_note {
                     Some(note) => note.clone(),
                     None => format!(
-                        "{}{}{}",
+                        "{}{}{}{}",
+                        if self.remote.is_some() { "远程 · " } else { "" },
                         snapshot.counts.describe(),
                         if snapshot.limited { " · 已截断" } else { "" },
                         // 慢查询值得提示；正常几十毫秒不占宽度。
@@ -712,7 +740,11 @@ impl Panel {
                 } else if self.loading {
                     headline.push("正在读取 Git 状态…".into());
                 } else if self.dir.is_none() {
-                    headline.push("工作目录未知，等待 shell 报告目录".into());
+                    headline.push(if self.remote.is_some() {
+                        Error::NoRemotePath.message().into()
+                    } else {
+                        "工作目录未知，等待 shell 报告目录".into()
+                    });
                 } else {
                     headline.push("等待刷新…".into());
                 }
@@ -744,6 +776,10 @@ impl Panel {
         }
         if self.resolve.is_some() {
             return RESOLVE_LABELS[tier].to_vec();
+        }
+        if self.remote.is_some() {
+            // 远端只读：只留“刷新”和“差异”，写操作按钮不显示，避免点了才被拒。
+            return vec!["刷新", "差异"];
         }
         let selected =
             self.snapshot.as_ref().and_then(|snapshot| self.selected.and_then(|index| snapshot.entries.get(index)));
@@ -893,12 +929,25 @@ impl Panel {
     }
 
     /// 打开提交输入：显式的用户动作，先准入一段固定额度。
+    /// 远程仓库本批只做只读查看：写操作一律拒绝并说明原因，不做半成品。
+    fn readonly_remote(&mut self) -> bool {
+        if self.remote.is_none() {
+            return false;
+        }
+        self.write_note = Some("远程仓库暂只支持只读查看".into());
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
     pub(super) fn open_commit(&mut self) -> bool {
         if self.input.is_some() || self.write_loading || !self.enabled {
             return false;
         }
         if self.snapshot.is_none() {
             return false;
+        }
+        if self.readonly_remote() {
+            return true;
         }
         if self.snapshot.as_ref().is_some_and(|snapshot| snapshot.counts.conflicted > 0) {
             // 有未解决的冲突时 git 也会拒绝提交；先说清楚原因，不让人对着空输入框猜。
@@ -945,6 +994,9 @@ impl Panel {
         if !self.enabled {
             return false;
         }
+        if self.readonly_remote() {
+            return true;
+        }
         if self.write_loading {
             let running = self.write_op.unwrap_or("写操作");
             self.write_note = Some(format!("正在{running}…请等它结束"));
@@ -977,6 +1029,9 @@ impl Panel {
 
     /// 暂存 / 取消暂存当前条目；已经全部进入索引的条目再点一次就是取消暂存。
     pub(super) fn toggle_stage(&mut self, notify: Notify) -> bool {
+        if self.readonly_remote() {
+            return true;
+        }
         let Some(snapshot) = &self.snapshot else { return false };
         let Some(entry) = self.selected.and_then(|index| snapshot.entries.get(index)) else { return false };
         if snapshot.bare {
@@ -997,6 +1052,9 @@ impl Panel {
     pub(super) fn open_resolve(&mut self, index: usize) -> bool {
         if self.write_loading || !self.enabled || self.diff_open || self.input.is_some() {
             return false;
+        }
+        if self.readonly_remote() {
+            return true;
         }
         let Some(entry) = self.snapshot.as_ref().and_then(|snapshot| snapshot.entries.get(index)) else {
             return false;
@@ -1364,6 +1422,53 @@ mod tests {
         }
     }
 
+    fn remote() -> git::Remote {
+        git::Remote {
+            program: PathBuf::from("/bin/true"),
+            host: "fixture".into(),
+            user: Some("dev".into()),
+            port: None,
+            identity: None,
+        }
+    }
+
+    #[test]
+    fn remote_repositories_are_read_only_and_say_so() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        panel.selected = Some(0);
+        panel.remote = Some(remote());
+        panel.limits.remote = Some(remote());
+        // 远端只留只读按钮：没有暂存/提交/拉取/推送。
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异"]);
+        // 状态行标出“远程”，标题仍写分支与仓库名。
+        let view = panel.view(6, 0);
+        assert!(view.headline[1].starts_with("远程 · "), "{:?}", view.headline);
+        assert!(view.headline[0].contains("分支"), "{:?}", view.headline);
+        // 写操作被拒并说明原因，不会真的去改远端索引。
+        assert!(panel.toggle_stage(notify()));
+        assert_eq!(panel.write_note.as_deref(), Some("远程仓库暂只支持只读查看"));
+        assert!(!panel.write_loading);
+        assert!(panel.open_commit());
+        assert_eq!(panel.write_note.as_deref(), Some("远程仓库暂只支持只读查看"));
+        assert!(panel.input.is_none());
+        assert!(panel.request_remote(RemoteOp::Push, notify()));
+        assert!(panel.pending.is_none());
+        assert_eq!(panel.write_note.as_deref(), Some("远程仓库暂只支持只读查看"));
+    }
+
+    #[test]
+    fn remote_without_a_reported_directory_asks_for_one() {
+        let mut panel = Panel::new();
+        let remote = remote();
+        // 远端会话还没报告目录：不是“路径错误”，而是明确提示去远端终端进入仓库。
+        assert!(panel.tick(1, None, Some(&remote), 0, notify(), true, true, true, &Default::default()));
+        // 首次 tick 只排查询；直接跑一次查询确认报的是“远程目录未知”。
+        assert!(panel.query(notify()));
+        assert_eq!(panel.error, Some(Error::NoRemotePath));
+        let view = panel.view(6, 0);
+        assert!(view.headline[0].contains("远程目录未知"), "{:?}", view.headline);
+    }
+
     #[test]
     fn stage_button_reflects_whether_the_selection_is_already_staged() {
         let mut panel = panel_with(vec![entry("a.txt", b' ', b'M'), entry("b.txt", b'M', b' ')]);
@@ -1403,7 +1508,7 @@ mod tests {
         assert!(panel.request_remote(RemoteOp::Pull, notify()));
         // 确认窗口过期：不执行，也不留下可以误触的状态。
         panel.pending = Some((RemoteOp::Pull, Instant::now() - Duration::from_millis(1)));
-        panel.tick(0, None, 0, notify(), true, true, true, &crate::config::git::Settings::default());
+        panel.tick(0, None, None, 0, notify(), true, true, true, &crate::config::git::Settings::default());
         assert!(panel.pending.is_none());
         assert!(panel.write_note.as_deref().unwrap_or("").contains("过期"));
     }

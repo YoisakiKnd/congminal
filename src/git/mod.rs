@@ -55,6 +55,12 @@ pub enum Error {
     Failed(String),
     Output,
     Worker,
+    /// 远端主机密钥未在 known_hosts 中：不在应用里替用户接受。
+    HostKey,
+    /// SSH 认证失败：不做密码提示，让用户先在终端连一次或加载密钥。
+    Auth,
+    /// 远程目录未知：shell 还没报告过远端工作目录。
+    NoRemotePath,
 }
 impl Error {
     pub fn message(&self) -> &str {
@@ -69,6 +75,32 @@ impl Error {
             Self::Failed(detail) => detail,
             Self::Output => "Git 输出无法解析，未猜测结果",
             Self::Worker => "Git 任务不可用，请重试",
+            Self::HostKey => "远程主机密钥未确认，先在终端里连接一次并核对指纹",
+            Self::Auth => "SSH 认证失败：先用终端连接一次，或加载密钥/agent",
+            Self::NoRemotePath => "远程目录未知：先在远程终端进入仓库目录",
+        }
+    }
+}
+
+/// 远程仓库的读取通道：复用配置档里的 OpenSSH 程序，每次查询一个独立 `ssh` 进程。
+///
+/// 只读：命令串固定为 `git -C <远程目录> …`，不接受仓库内容拼进来的参数。
+/// 用 `BatchMode=yes` 关掉交互提示——需要密码时直接失败并提示去终端连接，
+/// 而不是在后台等一个永远输入不了的密码；主机密钥校验保持 OpenSSH 默认（不关闭）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Remote {
+    pub program: PathBuf,
+    pub host: String,
+    pub user: Option<String>,
+    pub port: Option<u16>,
+    pub identity: Option<String>,
+}
+impl Remote {
+    /// 面板上显示的目标，例如 `user@host`。
+    pub fn label(&self) -> String {
+        match &self.user {
+            Some(user) => format!("{user}@{}", self.host),
+            None => self.host.clone(),
         }
     }
 }
@@ -80,10 +112,18 @@ pub struct Limits {
     pub files: usize,
     pub diff_bytes: usize,
     pub timeout: Duration,
+    /// `Some` 时命令经 ssh 在远端执行，`dir` 被当成远端路径。
+    pub remote: Option<Remote>,
 }
 impl Default for Limits {
     fn default() -> Self {
-        Self { program: None, files: DEFAULT_FILES, diff_bytes: DEFAULT_DIFF_BYTES, timeout: DEFAULT_TIMEOUT }
+        Self {
+            program: None,
+            files: DEFAULT_FILES,
+            diff_bytes: DEFAULT_DIFF_BYTES,
+            timeout: DEFAULT_TIMEOUT,
+            remote: None,
+        }
     }
 }
 impl Limits {
@@ -330,7 +370,7 @@ fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Erro
         cancel,
     )?;
     if !detect.success {
-        return Err(classify(&detect));
+        return Err(classify(&detect, limits));
     }
     let (worktree, detected) = parse_detect(&detect.stdout)?;
     let root = if worktree {
@@ -343,7 +383,7 @@ fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Erro
             cancel,
         )?;
         if !top.success {
-            return Err(classify(&top));
+            return Err(classify(&top, limits));
         }
         path_from(trim_bytes(&top.stdout))
     } else {
@@ -367,7 +407,7 @@ fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Erro
             cancel,
         )?;
         if !output.success {
-            return Err(classify(&output));
+            return Err(classify(&output, limits));
         }
         let parsed = parse_status(&output.stdout, limits.files());
         // 输出被截断时最后一个记录可能不完整，不猜测它，只标记不完整。
@@ -445,7 +485,7 @@ fn scan_diff(request: &DiffRequest, cancel: &Cancellation) -> Result<Diff, Error
     args.push(target.path.as_os_str());
     let output = run(&pool, limits, &args, Some(&target.root), limits.diff(), cancel)?;
     if !output.success {
-        return Err(classify(&output));
+        return Err(classify(&output, limits));
     }
     build_diff(request, output, &pool)
 }
@@ -684,9 +724,22 @@ fn path_from(bytes: &[u8]) -> PathBuf {
     PathBuf::from(os_from(bytes))
 }
 
-fn classify(output: &Output) -> Error {
+fn classify(output: &Output, limits: &Limits) -> Error {
     let message = String::from_utf8_lossy(&output.stderr);
     let message = message.trim();
+    if limits.remote.is_some() {
+        // 远端失败多半出在 ssh 本身：主机密钥、认证或网络，先把这三类分出来，
+        // 剩下的才交给有界的 stderr 摘要。
+        if message.contains("Host key verification failed") {
+            return Error::HostKey;
+        }
+        if message.contains("Permission denied")
+            || message.contains("Too many authentication failures")
+            || message.contains("no such identity")
+        {
+            return Error::Auth;
+        }
+    }
     if message.contains("not a git repository") {
         Error::NotRepository
     } else if message.contains("Permission denied") || message.contains("permission denied") {
@@ -771,11 +824,38 @@ fn run(
     let reservation = pool
         .lease(Kind::Git, stdout_limit.saturating_add(STDERR_BYTES).saturating_add(4096))
         .map_err(|_| Error::Budget)?;
-    let program = limits.program.as_deref().map_or_else(|| OsStr::new("git"), Path::as_os_str);
-    let mut command = std::process::Command::new(program);
-    if let Some(dir) = dir {
-        command.arg("-C").arg(dir);
-    }
+    let mut command = match &limits.remote {
+        // 远端：`ssh … -- host git -C <远程目录> …`。目录只作为参数传递，不经过 shell。
+        Some(remote) => {
+            let mut command = std::process::Command::new(&remote.program);
+            command
+                .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR"])
+                .arg("-o")
+                .arg("ServerAliveInterval=15");
+            if let Some(port) = remote.port {
+                command.arg("-p").arg(port.to_string());
+            }
+            if let Some(user) = &remote.user {
+                command.arg("-l").arg(user);
+            }
+            if let Some(identity) = &remote.identity {
+                command.arg("-i").arg(identity);
+            }
+            command.arg("--").arg(&remote.host).arg("git");
+            if let Some(dir) = dir {
+                command.arg("-C").arg(dir);
+            }
+            command
+        }
+        None => {
+            let program = limits.program.as_deref().map_or_else(|| OsStr::new("git"), Path::as_os_str);
+            let mut command = std::process::Command::new(program);
+            if let Some(dir) = dir {
+                command.arg("-C").arg(dir);
+            }
+            command
+        }
+    };
     command
         .args(args)
         .env("GIT_OPTIONAL_LOCKS", "0")
@@ -998,7 +1078,7 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             args.extend(paths.iter().map(OsString::as_os_str));
             let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
             if !output.success {
-                return Err(classify(&output));
+                return Err(classify(&output, limits));
             }
             Ok(format!("已暂存 {count} 个文件"))
         }
@@ -1012,7 +1092,7 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             args.extend(paths.iter().map(OsString::as_os_str));
             let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
             if !output.success {
-                return Err(classify(&output));
+                return Err(classify(&output, limits));
             }
             Ok(format!("已取消暂存 {count} 个文件"))
         }
@@ -1020,7 +1100,7 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             let args = [OsStr::new("commit"), OsStr::new("-m"), OsStr::new(message)];
             let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
             if !output.success {
-                return Err(classify(&output));
+                return Err(classify(&output, limits));
             }
             let text = String::from_utf8_lossy(&output.stdout);
             let line = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("");
@@ -1031,7 +1111,7 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             let args = [OsStr::new("pull"), OsStr::new("--ff-only")];
             let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
             if !output.success {
-                return Err(classify(&output));
+                return Err(classify(&output, limits));
             }
             Ok(match first_line(&output.stdout) {
                 Some(line) => format!("已拉取 {line}"),
@@ -1045,13 +1125,13 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             checkout.extend(paths.iter().map(OsString::as_os_str));
             let output = run(&pool, limits, &checkout, Some(root), STDERR_BYTES, cancel)?;
             if !output.success {
-                return Err(classify(&output));
+                return Err(classify(&output, limits));
             }
             let mut add: Vec<&OsStr> = vec![OsStr::new("add"), OsStr::new("--")];
             add.extend(paths.iter().map(OsString::as_os_str));
             let output = run(&pool, limits, &add, Some(root), STDERR_BYTES, cancel)?;
             if !output.success {
-                return Err(classify(&output));
+                return Err(classify(&output, limits));
             }
             Ok(format!("已{} {count} 个文件并标记已解决", side.describe()))
         }
@@ -1059,7 +1139,7 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             let args = [OsStr::new("push")];
             let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
             if !output.success {
-                return Err(classify(&output));
+                return Err(classify(&output, limits));
             }
             // git 的第一行是 `To <远端地址>`，会把路径带进界面与通知；只取最后的引用更新行。
             let detail =

@@ -1313,11 +1313,36 @@ impl Workspace {
         self.driver.show_warnings(&[format!("工作区资源（分项字节，非 RSS）：sessions={}/8 grid={} history={}/{} marks={} queues={} canvases={} metadata={} glyphs={} font-files={}；{}",self.panes.len(),totals[0],totals[1],HISTORY_POOL,totals[2],totals[3],totals[4]+self.frame.pixels.capacity()*4,totals[5],glyphs,Fonts::file_bytes(),crate::resources::current().snapshot().describe())]);
     }
     /// 活动会话的工作目录：优先 shell 通过 OSC 7 报告的真实目录，其次配置的启动目录。
+    /// 远程窗格的读取通道：用配置档里的 ssh 程序在远端跑只读 git。
+    /// 主机密钥与认证都交给 OpenSSH 自己处理，应用不代替用户接受密钥、也不弹密码框。
+    fn git_remote(&self) -> Option<crate::git::Remote> {
+        let pane = &self.panes[self.loaded];
+        pane.remote.as_ref()?;
+        let (profiles, index) = pane.profile.as_ref()?;
+        let config::profiles::Connection::Ssh(ssh) = &profiles[*index].connection else { return None };
+        Some(crate::git::Remote {
+            program: PathBuf::from(crate::ssh::program(ssh)),
+            host: ssh.host.clone(),
+            user: ssh.user.clone(),
+            port: ssh.port,
+            identity: ssh.identity_file.clone(),
+        })
+    }
+
+    /// 当前窗格的 Git 目标：远端会话返回远端目录（可能还没报告），本地返回本地目录。
     fn git_directory(&self) -> Option<PathBuf> {
         let pane = &self.panes[self.loaded];
         if pane.remote.is_some() {
-            // 远程会话的 Git 状态还没有通道，明确显示“未知”而不是读本地同名路径。
-            return None;
+            // 远端目录来自 shell 的 OSC 7 报告；还没报告时由面板显示“远程目录未知”。
+            return self
+                .driver
+                .session
+                .term
+                .shell
+                .directory
+                .as_ref()
+                .map(|directory| PathBuf::from(directory.path()))
+                .filter(|path| !path.as_os_str().is_empty());
         }
         if let Some(directory) = &self.driver.session.term.shell.directory {
             let path = PathBuf::from(directory.path());
@@ -2466,11 +2491,13 @@ impl App for Workspace {
             self.chrome_dirty |= self.local_files.hide();
         }
         let git_dir = self.git_directory();
+        let git_remote = self.git_remote();
         let git_key = self.git_key();
         let visible = self.right && self.right_rect.visible();
         self.chrome_dirty |= self.git.tick(
             self.selected,
             git_dir.as_deref(),
+            git_remote.as_ref(),
             git_key,
             self.driver.notify.clone(),
             visible,
@@ -3158,6 +3185,66 @@ exec /bin/cat
         assert!(rows[0].contains("SSH 失败 · 退出码 3"), "{}", rows[0]);
         assert!(rows[0].contains("连接页可重连"), "{}", rows[0]);
         assert_eq!(app.profile_phase(1), Some(remote::Phase::Failed));
+    }
+
+    /// 假 ssh 同时充当终端与 Git 通道：`-G` 探测成功、终端模式报告远端目录后常驻、
+    /// Git 模式（`-- host git …`）在本机执行，用来端到端验证远程只读 Git。
+    #[cfg(unix)]
+    fn fake_ssh_with_directory(dir: &std::path::Path, name: &str, remote: &std::path::Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        let script = format!(
+            "#!/bin/sh\n\
+             if [ \"$1\" = \"-G\" ]; then exit 0; fi\n\
+             while [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\n\
+             shift\n\
+             if [ \"$1\" = \"git\" ]; then exec \"$@\"; fi\n\
+             printf '\\033]7;file://fixture{0}\\007REMOTE_READY'\n\
+             exec /bin/cat\n",
+            remote.display()
+        );
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_panes_read_git_through_ssh_and_stay_read_only() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let tool = fake_ssh_with_directory(&dir.0, "fake-ssh-git", &repo);
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[connections.remote]\nkind='ssh'\nhost='fixture'\nprogram={tool:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.connections = configured.connections;
+        app.width = 1200;
+        app.height = 700;
+        // 先打开右栏 Git 页让工作区完成布局，再连远端窗格。
+        app.action(Action::ShowGitPanel);
+        assert!(app.right && app.right_page == RightPage::Git);
+        app.add_with_profile(None, Some(0));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        // 远端 shell 用 OSC 7 报告目录后，右栏 Git 页经 ssh 读远端仓库。
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let root = app.git.snapshot.as_ref().expect("远端快照").root.clone();
+        assert_eq!(root, repo.canonicalize().unwrap());
+        assert_eq!(app.git.snapshot.as_ref().unwrap().counts.unstaged, 1);
+        assert!(app.git.remote.is_some(), "面板应记住远端通道");
+        let view = app.git.view(12, 0);
+        assert!(view.headline[1].starts_with("远程 · "), "{:?}", view.headline);
+        // 只读：按钮只有刷新与差异，暂存被拒并说明原因。
+        assert_eq!(view.buttons, vec!["刷新", "差异"]);
+        assert!(app.git.toggle_stage(app.driver.notify.clone()));
+        assert_eq!(app.git.write_note.as_deref(), Some("远程仓库暂只支持只读查看"));
+        // 关闭右栏后远端通道与快照一起释放。
+        app.action(Action::ToggleRightSidebar);
+        assert!(!app.right);
+        assert!(app.tick());
+        assert!(app.git.remote.is_none());
+        assert!(app.git.snapshot.is_none());
     }
 
     #[cfg(unix)]

@@ -35,6 +35,8 @@ impl Settings {
             files: self.max_files,
             diff_bytes: self.diff_mib.saturating_mul(1024 * 1024),
             timeout: std::time::Duration::from_secs_f64(self.timeout_seconds),
+            // 远端通道由当前窗格的连接配置档决定，不来自 [git] 配置。
+            remote: None,
         }
     }
     pub fn refresh(&self) -> std::time::Duration {
