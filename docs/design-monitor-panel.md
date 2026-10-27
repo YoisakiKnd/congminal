@@ -36,6 +36,18 @@ alert-seconds = 300       # 30–3600，同一条告警的最短间隔
 3. 行 6 起是三行趋势：`CPU`、`内存`、`磁盘`，每条按右栏可用列数把历史点分桶取最大值，按 0–100% 映射到 8 级字符梯度。
 4. 历史是定长环形队列：满了丢最旧的，保留时长变化时按新容量重建，运行期不扩容。
 
+## 进程列表（本地）
+
+监控页底部列出 CPU 占用最高的 5 个进程（`进程（按 CPU）` 之后每行 `名字 42% 64 MiB`）。
+
+- 数据来源：`sysinfo` 的 `refresh_processes_specifics(All, true, ProcessRefreshKind::nothing().with_cpu().with_memory())`——只读 CPU 与内存，不读可执行路径、命令行、环境与用户表。
+- 降频：进程表比全局读数贵得多，固定每 5 秒才刷一次（`monitor::PROCESS_INTERVAL`），其余采样轮次沿用上一份列表；请求里带 `processes: bool`，未到期时采样线程根本不碰 `/proc/<pid>`。
+- 上限：只保留 5 条（`PROCESS_LIMIT`），名字按 24 字节截断并去掉控制字符，名字为空时显示 `#pid`；`top()` 用固定大小的小表维护前 5 名（先比 CPU、再比内存），不把整张进程表收集成 `Vec`。
+- 内存：每条 `Proc` 只有 pid + 名字 + 两个数值；进程列表**不进**采样历史（历史每点仍 ≤ 64 字节），只作为面板的一份当前值保存。
+- 失败：进程读取失败不影响全局读数；远端主机（`远程 <主机>`）不显示进程列表，因为要额外一次 `ssh` 采样。
+- 预览：`CONGMINAL_MONITOR_PROC_PREVIEW_PATH=/tmp/monitor.ppm cargo test monitor_shows_the_busiest -- --nocapture` 导出整帧，裁右栏 280 px 得 [m7-monitor-procs.png](previews/m7-monitor-procs.png)（假采样源，两行进程）。
+- 实测成本（本机 8 GiB，`cargo test monitor_sample_cost -- --ignored --nocapture`）：全局读数中位 56 µs、含磁盘 619 µs、进程表 24 ms（首次 54 ms）。进程表在监控采样线程里跑，不在 UI 线程，5 秒一次约等于单核 0.5% 的占用。
+
 ## 远程主机（首版，Linux）
 
 活动窗格是 SSH 会话时，监控页不再读本机，而是通过独立执行通道读远端：

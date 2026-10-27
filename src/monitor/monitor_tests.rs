@@ -121,6 +121,33 @@ fn unsupported_platforms_are_reported_instead_of_faked() {
 }
 
 #[test]
+fn process_list_keeps_the_busiest_rows_and_stays_bounded() {
+    let proc = |pid: u32, name: &str, cpu: f32, memory: u64| Proc { pid, name: name.into(), cpu, memory };
+    let entries = vec![
+        proc(1, "idle", 0.0, 1 << 20),
+        proc(2, "busy", 90.0, 1 << 20),
+        proc(3, "middle", 40.0, 1 << 20),
+        proc(4, "heavy-mem", 40.0, 4 << 20),
+        proc(5, "small", 5.0, 1 << 20),
+        proc(6, "tiny", 1.0, 1 << 20),
+    ];
+    let top = top(entries.into_iter());
+    assert_eq!(top.len(), PROCESS_LIMIT);
+    // 先按 CPU，再按内存；只有 5 条，最闲的两条被丢掉。
+    let names: Vec<&str> = top.iter().map(|process| process.name.as_str()).collect();
+    assert_eq!(names, vec!["busy", "heavy-mem", "middle", "small", "tiny"]);
+    // 一行文本带占用率与内存，超长名字按字节截断，控制字符被丢掉。
+    let long = Proc { pid: 7, name: "x".repeat(200), cpu: 1.0, memory: 1 << 20 };
+    assert_eq!(long.name().chars().count(), PROCESS_NAME_BYTES);
+    let dirty = Proc { pid: 8, name: "a\u{7}b".into(), cpu: 0.0, memory: 0 };
+    assert_eq!(dirty.name(), "ab");
+    // 名字为空时用 pid 兜底，不显示空行。
+    let blank = Proc { pid: 9, name: String::new(), cpu: 0.0, memory: 0 };
+    assert_eq!(blank.name(), "#9");
+    assert_eq!(proc(2, "busy", 90.0, 1 << 20).line(), "busy 90% 1 MiB");
+}
+
+#[test]
 fn one_sample_stays_within_64_bytes() {
     // 每条历史样本的内存占用：现在 64 字节（Instant 16 + Raw 48）。
     // 900 点上限即 57.6 KiB；加字段会抬高这条断言，必须是有意的。
@@ -177,4 +204,14 @@ fn monitor_sample_cost() {
     stat("sample-no-disk", cpu);
     stat("sample-with-disk", disk);
     eprintln!("mem_total={} bytes", memory.first().copied().unwrap_or(0));
+    // 进程列表比全局读数贵得多，单独量一次；它按 `PROCESS_INTERVAL` 降频。
+    let mut processes = Vec::new();
+    let mut rows = 0;
+    for _ in 0..5 {
+        let start = std::time::Instant::now();
+        rows = source.processes().len();
+        processes.push(start.elapsed().as_secs_f64() * 1e6);
+    }
+    stat("processes", processes);
+    eprintln!("process rows={rows} limit={PROCESS_LIMIT} interval={PROCESS_INTERVAL:?}");
 }

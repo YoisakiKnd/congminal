@@ -56,6 +56,10 @@ pub(super) struct Panel {
     factory: monitor::Factory,
     /// 远端采样目标；`None` 表示读本机。切换主机要清历史，避免两条主机的曲线混在一起。
     pub(super) target: Option<monitor::remote::Target>,
+    /// 最近一次进程列表（最多 `PROCESS_LIMIT` 条）；不随采样历史保存。
+    pub(super) processes: Vec<monitor::Proc>,
+    /// 上次刷新进程列表的时刻，用来按 `PROCESS_INTERVAL` 降频。
+    pub(super) last_processes: Option<Instant>,
 }
 
 impl Panel {
@@ -89,6 +93,8 @@ impl Panel {
             pool: crate::resources::current(),
             factory,
             target: None,
+            processes: Vec::new(),
+            last_processes: None,
         }
     }
 
@@ -123,6 +129,8 @@ impl Panel {
         self.history = None;
         self.points = 0;
         self.mount = None;
+        self.processes = Vec::new();
+        self.last_processes = None;
         self.error = None;
         self.last_disk = None;
         self.failure_notice = false;
@@ -313,7 +321,8 @@ impl Panel {
                     Err(error) => (monitor::Raw::default(), Some(error)),
                 };
                 let mount = source.mount();
-                Ok(Reply { generation: request.generation, sample: Sample { at, raw }, mount, error })
+                let processes = if request.processes && error.is_none() { source.processes() } else { Vec::new() };
+                Ok(Reply { generation: request.generation, sample: Sample { at, raw }, mount, error, processes })
             }) {
                 Ok(task) => self.task = Some(task),
                 Err(_) => {
@@ -326,7 +335,9 @@ impl Panel {
         self.loading = true;
         self.next = Some(now + self.interval());
         self.revision = self.revision.wrapping_add(1);
-        let request = Request { generation: self.generation, disk };
+        let processes =
+            self.last_processes.is_none_or(|at| now.saturating_duration_since(at) >= monitor::PROCESS_INTERVAL);
+        let request = Request { generation: self.generation, disk, processes };
         if let Err(error) = self.task.as_ref().unwrap().try_submit(request) {
             self.loading = false;
             if error == SubmitError::Budget {
@@ -354,6 +365,10 @@ impl Panel {
             Ok(reply) if reply.generation == self.generation => {
                 self.error = None;
                 self.mount = reply.mount;
+                if !reply.processes.is_empty() {
+                    self.processes = reply.processes;
+                    self.last_processes = Some(reply.sample.at);
+                }
                 if reply.sample.raw.disk_total > 0 {
                     self.last_disk = Some(reply.sample.at);
                 }
@@ -475,6 +490,13 @@ impl Panel {
             content.push(format!("CPU  {cpu}"));
             content.push(format!("内存 {memory}"));
             content.push(format!("磁盘 {disk}"));
+        }
+        // 进程列表：条数与名字长度都有上限，按显示列裁掉超宽部分。
+        if !self.processes.is_empty() {
+            content.push("进程（按 CPU）".to_string());
+            for process in &self.processes {
+                content.push(crate::term::clip(&process.line(), width));
+            }
         }
         View { buttons: vec!["刷新"], headline, content }
     }

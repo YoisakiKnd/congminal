@@ -3283,6 +3283,39 @@ exec /bin/cat
     }
 
     #[test]
+    fn monitor_shows_the_busiest_processes_and_refreshes_them_slower() {
+        let mut app = workspace();
+        let refreshes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = refreshes.clone();
+        app.monitor = monitor_panel::Panel::with_source(std::sync::Arc::new(move || {
+            Box::new(ProcessSource(counter.clone())) as Box<dyn monitor::Sampling>
+        }));
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowMonitorPanel);
+        wait(&mut app, |a| a.monitor.samples() > 0);
+        let view = app.monitor.view(30);
+        assert!(view.content.iter().any(|line| line == "进程（按 CPU）"), "{:?}", view.content);
+        assert!(view.content.iter().any(|line| line.starts_with("busy-worker 42%")), "{:?}", view.content);
+        // 每行都裁到右栏宽度内，不挤到下一行。
+        assert!(view.content.iter().all(|line| crate::term::display_width(line) <= 30), "{:?}", view.content);
+        // 进程表 5 秒才刷一次：1 秒节奏下连续采样不会重复读全部进程。
+        let first = refreshes.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(first, 1, "首轮采样应刷新一次进程列表");
+        let seen = app.monitor.samples();
+        wait(&mut app, |a| a.monitor.samples() > seen);
+        assert_eq!(refreshes.load(std::sync::atomic::Ordering::SeqCst), first, "冷却期内不应重复刷新进程");
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_MONITOR_PROC_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+    }
+
+    #[test]
     fn monitor_target_switching_clears_history_and_slows_the_interval() {
         let mut panel = monitor_panel::Panel::new();
         let target = monitor::remote::Target {
@@ -4163,6 +4196,25 @@ program="/definitely/missing/congminal-shell"
         }));
         counter
     }
+    /// 带进程列表的采样源，用来验证进程行的显示与降频。
+    struct ProcessSource(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl monitor::Sampling for ProcessSource {
+        fn sample(
+            &mut self,
+            _disk: bool,
+            _cancel: &crate::tasks::Cancellation,
+        ) -> Result<monitor::Raw, monitor::Error> {
+            Ok(monitor::Raw { cpu: 10.0, cores: 2, mem_used: 1 << 30, mem_total: 4 << 30, disk_used: 1, disk_total: 2 })
+        }
+        fn processes(&mut self) -> Vec<monitor::Proc> {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            vec![
+                monitor::Proc { pid: 42, name: "busy-worker".into(), cpu: 42.0, memory: 64 << 20 },
+                monitor::Proc { pid: 7, name: "quiet".into(), cpu: 1.0, memory: 8 << 20 },
+            ]
+        }
+    }
+
     /// 读数恒定偏高的采样源，用来验证阈值告警。
     struct HighSource;
     impl monitor::Sampling for HighSource {
