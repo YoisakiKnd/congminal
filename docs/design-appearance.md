@@ -94,7 +94,37 @@ command-marks = true
 - **缓存有界**：字符 → 实际字形记在 `Renderer.icons`，最多 128 条，字体重新加载（`reclaim_caches`）时清空；ASCII 不进缓存。
 - **不改变宽度**：回退字符的显示宽度不大于原图标，所以侧栏列宽与点击槽位不变（`ui::icon_tests` 断言这一点）。
 
-## 6. 测试
+## 6. 整窗不透明度
+
+`[appearance] opacity`（0.3–1.0，默认 1.0）给整窗做 alpha 混合。三个平台各走系统现成机制，不做自绘混合：
+
+| 平台 | 做法 | 谁负责混合 |
+|---|---|---|
+| Linux/X11 | `_NET_WM_WINDOW_OPACITY`（32 位定点，`round(opacity × 2³²−1)`） | 合成器（picom/mutter/kwin）；没有合成器时属性被忽略，窗口保持不透明 |
+| Windows | `WS_EX_LAYERED` + `SetLayeredWindowAttributes(LWA_ALPHA)` | DWM |
+| macOS | `NSWindow.setAlphaValue:` | WindowServer |
+
+- **默认不碰窗口属性**：`App::window_opacity` 返回 `None`（1.0 或 0.999 以上），平台层完全跳过——加这个功能前后行为一致，也不多一次系统调用。
+- **只在变化时发请求**：平台层记住上次设过的值（X11 存定点数、Windows 存 0–255、macOS 存 f64），每轮 tick 只做一次整数比较。
+- **半透明不额外重画**：混合在合成器里做，界面只在内容变化时重绘，没有“为了透明持续刷新”的定时器，也没有离屏缓冲。
+- **失败不致命**：拿不到窗口样式、X 服务器不认属性时静默跳过，功能照常，只是窗口不透明。
+- **精度**：配置是 f64，`App::window_opacity` 返回 f32（与 Xlib 定点数和 DWM 的 8 位 alpha 同量级），所以 0.85 实际写入的是 `f32(0.85) × 2³²−1 = 3650722303`，差 0.000002%，肉眼不可见。
+- **模糊没有做**：X11 的模糊要 KWin 脚本或 picom 规则，Windows 要 `DwmEnableBlurBehindWindow`/亚克力，macOS 要 `NSVisualEffectView`——三者都是“窗口背后画什么”的整窗效果，无法在当前无头环境验证。路线图那条保持未勾选。
+
+验证方式（无头、可重复）：`ci/check-opacity-x11.sh` 起 Xvfb、跑真实程序、用 `xprop` 读回属性值：
+
+```
+$ ci/check-opacity-x11.sh
+X11 整窗不透明度（:93）
+  ✓ opacity=0.5 → _NET_WM_WINDOW_OPACITY=2147483648
+  ✓ opacity=0.85 → _NET_WM_WINDOW_OPACITY=3650722303
+  ✓ 默认 1.0 → 不设属性
+结论：通过
+```
+
+这验证的是“发给合成器的那个值”——Xvfb 里没有合成器，所以看不到真的半透明画面；macOS/Windows 两条路径只有交叉编译检查。
+
+## 7. 测试
 
 | 测试 | 覆盖 |
 |---|---|
@@ -107,9 +137,12 @@ command-marks = true
 | `config::theme::tests::every_theme_round_trips_through_name_index_and_preview_order` | 三个主题的 name/parse/index/at 互相对得上，越界下标回到合法主题 |
 | `integration_tests::reset_theme_action_restores_the_configured_theme` | 按动作名绑定 F5，循环到别的主题后按 F5 回到 midnight，且配色确实变了 |
 | `config::tests::appearance_parses_cursor_blink_and_reset_returns_to_the_configured_theme` | `cursor-blink` / `command-marks` 的解析与默认值；`reset_theme` 回到配置值而不是编译默认；键名进了 schema |
+| `config::tests::opacity_parses_within_range_and_warns_outside_it` | 默认 1.0；0.85 生效；0.05 与 3 只告警并保留默认值 |
+| `workspace::tests::window_opacity_is_only_reported_when_configured` | 1.0 返回 `None`（不碰窗口属性）、0.5 返回 `Some(0.5)`、0.9995 视为不透明 |
+| `ci/check-opacity-x11.sh`（不是 cargo 测试） | Xvfb 里跑真实程序，`xprop` 读回 `_NET_WM_WINDOW_OPACITY`：0.5/0.85 的定点数正确，默认 1.0 不设属性 |
 | `integration_tests::every_theme_paints_its_own_palette` | 三个主题各自把背景、前景和 1–6 号调色板**按位**画到帧上；背景互不相同；浅色偏亮、深色偏暗；`CONGMINAL_THEME_PREVIEW_DIR` 可导出三张帧做人工比对 |
 
-## 7. 主题截图回归
+## 8. 主题截图回归
 
 `integration_tests::every_theme_paints_its_own_palette` 是自动化的主题截图回归：
 
@@ -125,15 +158,17 @@ command-marks = true
 
 像素级金标准比对（跨平台逐像素 diff）没有做：字体栅格化在 Linux/macOS/Windows 上不同，把某一平台的帧当金标准会让 CI 在别的平台必然失败。
 
-## 8. 未验收
+## 9. 未验收
 
 - 只在 Linux 上运行过测试与预览帧；macOS/Windows 只做了交叉 clippy，不算真机验证。
 - 主题预览是整窗实时预览（看得见真实内容），没有单独的色板对比面板；F13 里“提供主题预览和恢复默认”两项都已提供。
 - 标签/侧栏/状态栏样式、图标回退、可读性选项（对比度/字重）仍是待办。
 - 命令标记只有一种样式（左边缘竖条），F13 说的“命令标记样式”还不支持换样式或换成图标。
-- 透明度与模糊未做。
+- 模糊（背景毛玻璃）未做：三平台都是整窗效果，当前环境无法验证，见第 6 节。
+- 不透明度只在 Linux/X11 上真机验证过（`ci/check-opacity-x11.sh`）；macOS 的 `setAlphaValue:` 与 Windows 的分层窗口只有交叉 clippy。
+- 没有 Wayland 原生后端：Wayland 下走 XWayland，`_NET_WM_WINDOW_OPACITY` 由 XWayland 转给合成器，效果取决于合成器；没有在真 Wayland 会话里验证。
 
-## 9. 预览
+## 10. 预览
 
 主题预览：整窗换成候选主题（这里是“浅色”），底部提示条说明按键：
 

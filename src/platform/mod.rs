@@ -215,6 +215,14 @@ pub trait App {
     /// 光标的像素区域 (x, y, 宽, 高)，原点在窗口内容区左上角。输入法用它摆放候选词窗口。
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     fn ime_cursor_area(&self) -> (u32, u32, u32, u32);
+    /// 整窗不透明度（0.0–1.0）；`None` 表示保持平台默认的不透明窗口。
+    ///
+    /// 平台层每轮 tick 后读一次，只有值变了才真的去设属性，不会每帧发请求。
+    /// 半透明要窗口管理器（合成器）配合：X11 用 `_NET_WM_WINDOW_OPACITY`，
+    /// 没有合成器时属性被忽略、窗口保持不透明——功能不因此失效。
+    fn window_opacity(&self) -> Option<f32> {
+        None
+    }
 }
 
 /// macOS 上 Option 键是否当作 Alt（其他平台没有这个问题，忽略）

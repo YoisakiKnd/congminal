@@ -104,6 +104,10 @@ const WM_MBUTTONDOWN: u32 = 0x0207;
 const WM_MBUTTONUP: u32 = 0x0208;
 const WM_MOUSEWHEEL: u32 = 0x020A;
 const WM_APP_WAKE: u32 = 0x8000 + 1;
+/// 分层窗口：整窗 alpha 混合要求窗口带 WS_EX_LAYERED，再给 SetLayeredWindowAttributes 设值。
+const GWL_EXSTYLE: i32 = -20;
+const WS_EX_LAYERED: isize = 0x0008_0000;
+const LWA_ALPHA: u32 = 0x0000_0002;
 /// 滚轮一格的 delta 值
 const WHEEL_DELTA: f64 = 120.0;
 const CF_UNICODETEXT: u32 = 13;
@@ -166,6 +170,9 @@ unsafe extern "system" {
     fn GetKeyState(key: i32) -> i16;
     fn SetWindowTextW(hwnd: Hwnd, text: *const u16) -> i32;
     fn SetProcessDPIAware() -> i32;
+    fn GetWindowLongPtrW(hwnd: Hwnd, index: i32) -> isize;
+    fn SetWindowLongPtrW(hwnd: Hwnd, index: i32, value: isize) -> isize;
+    fn SetLayeredWindowAttributes(hwnd: Hwnd, key: u32, alpha: u8, flags: u32) -> i32;
     fn SetCapture(hwnd: Hwnd) -> Hwnd;
     fn MsgWaitForMultipleObjects(
         count: u32,
@@ -262,6 +269,8 @@ pub struct Window {
     scale: f64,
     /// 上次告诉输入法的光标位置
     ime_area: Option<(u32, u32, u32, u32)>,
+    /// 已经设过的整窗 alpha（0–255），只在变化时才改窗口样式。
+    alpha: Option<u8>,
 }
 
 /// 跨线程唤醒：PostMessageW 是线程安全的
@@ -327,7 +336,7 @@ impl Window {
                 return Err("CreateWindowExW 失败".into());
             }
             ShowWindow(hwnd, SW_SHOW);
-            Ok(Window { hwnd, scale, ime_area: None })
+            Ok(Window { hwnd, scale, ime_area: None, alpha: None })
         }
     }
 
@@ -337,6 +346,27 @@ impl Window {
 
     pub fn waker(&self) -> Waker {
         Waker(self.hwnd)
+    }
+
+    /// 整窗 alpha：先给窗口加 WS_EX_LAYERED（只在第一次），再设 LWA_ALPHA。
+    /// 分层窗口由 DWM 负责混合，和 X11 一样是“平台提供、失败不影响其它功能”。
+    fn apply_opacity(&mut self, opacity: f32) {
+        let alpha = (opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+        if self.alpha == Some(alpha) {
+            return;
+        }
+        unsafe {
+            if self.alpha.is_none() {
+                let style = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE);
+                if SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED) == 0 {
+                    // 失败就记下当前值，避免每帧重试。
+                    self.alpha = Some(alpha);
+                    return;
+                }
+            }
+            SetLayeredWindowAttributes(self.hwnd, 0, alpha, LWA_ALPHA);
+        }
+        self.alpha = Some(alpha);
     }
 
     pub fn run(mut self, app: &mut dyn App) {
@@ -356,6 +386,9 @@ impl Window {
             }
             if let Some(title) = app.take_title() {
                 unsafe { SetWindowTextW(self.hwnd, wide(&title).as_ptr()) };
+            }
+            if let Some(opacity) = app.window_opacity() {
+                self.apply_opacity(opacity);
             }
             if app.needs_redraw()
                 && let Some((fb, damage)) = app.draw()

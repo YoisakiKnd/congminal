@@ -2773,6 +2773,13 @@ impl App for Workspace {
             h.min((self.height as u32).saturating_sub(y)).max(1),
         )
     }
+
+    fn window_opacity(&self) -> Option<f32> {
+        // 平台层驱动的是 Workspace（不是外层的 Congminal），所以整窗属性在这里给。
+        // 1.0 是默认值：返回 None 让平台层完全不碰窗口属性，避免每轮多一次系统调用。
+        let opacity = self.driver.config.opacity;
+        (opacity < 0.999).then_some(opacity as f32)
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -2781,6 +2788,19 @@ mod tests {
     fn workspace() -> Workspace {
         Workspace::new(crate::integration_tests::app("")).unwrap()
     }
+
+    #[test]
+    fn window_opacity_is_only_reported_when_configured() {
+        // 1.0 表示“别碰窗口属性”：平台层拿到 None 就完全不发请求。
+        let mut app = workspace();
+        assert_eq!(app.window_opacity(), None);
+        app.driver.config.opacity = 0.5;
+        assert_eq!(app.window_opacity(), Some(0.5));
+        // 0.999 以上视为不透明，避免四舍五入后仍是 1.0 却还去设一遍属性。
+        app.driver.config.opacity = 0.9995;
+        assert_eq!(app.window_opacity(), None);
+    }
+
     fn text(app: &Workspace, id: u64) -> String {
         let index = app.index(id).unwrap();
         let term = if index == app.loaded {
@@ -3383,6 +3403,29 @@ exec /bin/cat
             }
             std::fs::write(path, ppm).unwrap();
         }
+    }
+
+    /// 配置里关掉进程列表后：不再向采样源要进程，也不把旧列表留在侧栏里。
+    #[test]
+    fn monitor_processes_can_be_switched_off_from_the_configuration() {
+        let mut app = workspace();
+        let refreshes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = refreshes.clone();
+        app.monitor = monitor_panel::Panel::with_source(std::sync::Arc::new(move || {
+            Box::new(ProcessSource(counter.clone())) as Box<dyn monitor::Sampling>
+        }));
+        app.width = 1200;
+        app.height = 700;
+        app.driver.config.monitor.processes = false;
+        app.action(Action::ShowMonitorPanel);
+        wait(&mut app, |a| a.monitor.samples() > 1);
+        assert_eq!(refreshes.load(std::sync::atomic::Ordering::SeqCst), 0, "关掉后不该刷新进程表");
+        let view = app.monitor.view(30);
+        assert!(!view.content.iter().any(|line| line.starts_with("进程")), "{:?}", view.content);
+        // 打开后立刻恢复：不用等满一个 5 秒周期。
+        app.driver.config.monitor.processes = true;
+        wait(&mut app, |a| a.monitor.processes.len() == 2);
+        assert!(refreshes.load(std::sync::atomic::Ordering::SeqCst) >= 1);
     }
 
     #[test]

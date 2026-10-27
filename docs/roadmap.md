@@ -302,7 +302,7 @@ IO余量补充：同16MiB池内独立限制请求元数据，Service启动前保
 ### M8：美化、通知完善与发布回归
 
 - [ ] F13：主题配置档、标签/侧栏/状态栏样式、图标回退、光标闪烁、命令成功/失败标记和可读性选项。（部分完成：界面图标在字体缺字时回退成 ASCII（只作用于侧栏/页签/状态栏，终端内容不替换），`[appearance] cursor-blink` 可开关光标闪烁，默认关闭以保证静止界面零重绘；`[appearance] command-marks` 在提示行左侧画成功/失败/中断色条；`reset-theme` 动作可回到配置里写的主题。见 [外观设计](design-appearance.md)。）
-- [ ] 透明度与模糊按平台能力逐项实现，提供关闭选项；装饰效果不要求持续全屏重画，不支持的平台保留完整基本功能。
+- [ ] 透明度与模糊按平台能力逐项实现，提供关闭选项；装饰效果不要求持续全屏重画，不支持的平台保留完整基本功能。（部分完成：整窗不透明度 `[appearance] opacity`（0.3–1.0，默认 1.0 完全不碰窗口属性）已实现——X11 走 `_NET_WM_WINDOW_OPACITY`（无合成器时忽略，窗口保持不透明）、Windows 走 `WS_EX_LAYERED` + `SetLayeredWindowAttributes`、macOS 走 `NSWindow.setAlphaValue:`，只在值变化时发一次请求、混合交给合成器，不额外重画；`ci/check-opacity-x11.sh` 在 Xvfb 里用 `xprop` 读回属性值做无头验证。**模糊未做**：三平台都是整窗效果，当前无头环境无法验证，macOS/Windows 只有交叉 clippy。见[外观设计](design-appearance.md)。）
 - [x] 提供主题预览和恢复默认；shell 提示符美化通过可选集成配置，不自动覆盖用户 shell 配置。（恢复默认 `reset-theme`、主题预览 `preview-themes`（整窗实时预览 + Enter 应用/Esc 取消）、提示符美化均已提供：`congminal --print-shell-integration bash|zsh` 打印可选脚本，默认只加 OSC 133/OSC 7、不动用户提示符，显式设置 `CONGMINAL_PROMPT=pretty` 才换成两行紧凑提示符（分支名 2 秒缓存，`CONGMINAL_PROMPT_GIT=0` 关闭），应用从不改写 rc 文件。见 [M3 使用说明](execution-m3.md)。）
 - [ ] F12：接入 SSH、SFTP、Git 与监控事件，增加按主机/类别静音、去重、限速和点击定位相关会话。（部分完成：Git 写操作、监控采样失败、SFTP 远程写操作、会话结束与**工作区各窗格的命令完成**已接入，按来源类别与 `mute-hosts` 按主机静音、同类去重、10 秒窗口限速、浮层回车定位命令输出及工作区状态页点击通知行跳页已实现；`hide-context` 可隐藏摘要里的主机与工作目录，通知可用 `clear-notifications` 动作或状态页“点击清空”行清理，见 [通知设计](design-notifications.md)；SSH 断开、连接失败（按 ssh 自己打印的特征归类为认证失败/主机校验失败/解析失败/拒绝/超时）与重连失败也已接入，`[notifications] ssh` 可关，状态页点该行切到连接页。）
 - [ ] 通知默认只展示必要摘要；命令正文、远程路径等敏感上下文提供隐藏选项；历史和通知日志可清理。

@@ -21,6 +21,9 @@ pub static EXAMPLE: &str = include_str!("../../assets/congminal.example.toml");
 
 pub const DEFAULT_FONT_FAMILIES: [&str; 4] = ["Maple Mono NF CN", "Maple Mono NF", "Maple Mono CN", "Maple Mono"];
 
+/// 不透明度的下限：再低就基本看不清文字，不再往下放。
+pub const MIN_OPACITY: f64 = 0.3;
+
 #[derive(Debug, PartialEq)]
 #[cfg_attr(test, derive(Clone))]
 pub struct Config {
@@ -45,6 +48,8 @@ pub struct Config {
     pub cursor_blink: bool,
     /// 命令行标记：在提示行左侧画结果色条（需要 shell 集成上报 OSC 133）
     pub command_marks: bool,
+    /// 整窗不透明度，0.3–1.0；1.0 表示不透明（默认，走平台默认路径）。
+    pub opacity: f64,
     pub shell: ShellConfig,
     pub connections: profiles::Profiles,
     /// [env] 里的额外环境变量
@@ -134,6 +139,7 @@ impl Default for Config {
             cursor_shape: CursorShape::Block,
             cursor_blink: false,
             command_marks: true,
+            opacity: 1.0,
             shell: ShellConfig::default(),
             connections: profiles::Profiles::default(),
             env: Vec::new(),
@@ -160,7 +166,7 @@ impl Default for Colors {
 
 /// 允许出现的分组和键。[env] 里可以写任意环境变量。
 const SCHEMA: &[(&str, &[&str])] = &[
-    ("appearance", &["theme", "cursor-blink", "command-marks"]),
+    ("appearance", &["theme", "cursor-blink", "command-marks", "opacity"]),
     ("keybindings", &[]),
     ("font", &["family", "size", "line-height", "ligatures"]),
     ("window", &["columns", "rows", "padding"]),
@@ -177,6 +183,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
             "alert-memory",
             "alert-disk",
             "alert-seconds",
+            "processes",
         ],
     ),
     ("sftp", &["enabled", "helper", "ssh-config"]),
@@ -412,6 +419,9 @@ impl Config {
         }
         if let Some(marks) = r.boolean("appearance", "command-marks") {
             config.command_marks = marks;
+        }
+        if let Some(opacity) = r.number("appearance", "opacity", MIN_OPACITY, 1.0) {
+            config.opacity = opacity;
         }
         if let Some(shape) = r.string("cursor", "shape") {
             match shape.as_str() {
@@ -679,6 +689,24 @@ fn xterm_palette() -> [u32; 256] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opacity_parses_within_range_and_warns_outside_it() {
+        // 默认 1.0：不碰窗口属性，行为与加这个功能之前完全一样。
+        let (config, warnings) = Config::parse("");
+        assert_eq!(config.opacity, 1.0);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let (config, warnings) = Config::parse("[appearance]\nopacity = 0.85");
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!((config.opacity - 0.85).abs() < 1e-9);
+        // 低于下限与高于 1.0 都只告警并保留默认值，不会让窗口“看不见”或反相。
+        let (config, warnings) = Config::parse("[appearance]\nopacity = 0.05");
+        assert_eq!(config.opacity, 1.0);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        let (config, warnings) = Config::parse("[appearance]\nopacity = 3");
+        assert_eq!(config.opacity, 1.0);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+    }
 
     #[test]
     fn appearance_parses_cursor_blink_and_reset_returns_to_the_configured_theme() {
