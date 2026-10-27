@@ -181,6 +181,7 @@ impl Session {
         let pty = Pty::spawn(&command, term.cols() as u16, term.rows() as u16, sink)
             .map_err(|e| format!("启动 shell 失败：{e}"))?;
         term.set_default_cursor_shape(config.cursor_shape);
+        term.set_palette(crate::palette_from(config));
         term.set_scrollback_limit(config.scrollback);
         Ok(Self {
             _shutdown: shutdown,
@@ -433,6 +434,24 @@ mod tests {
         Parser::new().advance(&mut session.term, &vec![b'x'; 750_000]);
         session
     }
+    #[test]
+    fn terminal_answers_color_queries_from_the_config() {
+        // 程序用 OSC 4/10/11/12 问颜色时必须按配置回答，否则用反色/真彩的应用会自己猜。
+        let mut config = Config::default();
+        config.shell.program = Some("/bin/sh".into());
+        config.shell.args = vec!["-c".into(), "exec cat".into()];
+        config.colors.foreground = 0x00_40_50_60;
+        config.colors.background = 0x00_10_20_30;
+        config.colors.cursor = 0x00_70_80_90;
+        config.colors.palette[3] = 0x00_a0_b0_c0;
+        let mut session = Session::spawn(&config, Arc::new(|| {})).unwrap();
+        Parser::new().advance(&mut session.term, b"\x1b]4;3;?\x07\x1b]10;?\x07\x1b]11;?\x07\x1b]12;?\x07");
+        assert_eq!(
+            session.term.take_response(),
+            b"\x1b]4;3;rgb:a0a0/b0b0/c0c0\x1b\\\x1b]10;rgb:4040/5050/6060\x1b\\\x1b]11;rgb:1010/2020/3030\x1b\\\x1b]12;rgb:7070/8080/9090\x1b\\"
+        );
+    }
+
     fn screen_text(s: &Session) -> String {
         (0..s.term.rows()).flat_map(|i| s.term.visible_row(i).cells.iter().map(|c| c.c)).collect()
     }

@@ -1159,6 +1159,18 @@ fn apply_runtime_settings(config: &Config, term: &mut Terminal) {
     platform::set_option_as_alt(config.option_as_alt);
     term.set_default_cursor_shape(config.cursor_shape);
     term.set_scrollback_limit(config.scrollback);
+    term.set_palette(palette_from(config));
+}
+
+/// OSC 4/10/11/12 的颜色查询按配置里的调色板回答。这里只拷值，
+/// 终端模块不持有配置，配置重载后再调用一次即可刷新。
+fn palette_from(config: &Config) -> term::Palette {
+    term::Palette {
+        foreground: config.colors.foreground,
+        background: config.colors.background,
+        cursor: config.colors.cursor,
+        palette: config.colors.palette,
+    }
 }
 
 /// CONGMINAL_SCALE 可以覆盖系统报告的缩放比例
@@ -1391,6 +1403,21 @@ mod integration_tests {
     }
 
     use super::*;
+
+    #[test]
+    fn reloading_config_refreshes_color_query_answers() {
+        // 配置重载后，新颜色要立刻生效，不能等下次新建窗格。
+        let mut config = Config::default();
+        config.colors.background = 0x00_11_22_33;
+        let mut term = Terminal::new(20, 4);
+        apply_runtime_settings(&config, &mut term);
+        vt::Parser::new().advance(&mut term, b"\x1b]11;?\x07");
+        assert_eq!(term.take_response(), b"\x1b]11;rgb:1111/2222/3333\x1b\\");
+        config.colors.background = 0x00_aa_bb_cc;
+        apply_runtime_settings(&config, &mut term);
+        vt::Parser::new().advance(&mut term, b"\x1b]11;?\x07");
+        assert_eq!(term.take_response(), b"\x1b]11;rgb:aaaa/bbbb/cccc\x1b\\");
+    }
 
     #[test]
     fn grid_preflight_denial_keeps_the_previous_canvas_and_terminal_dimensions() {
