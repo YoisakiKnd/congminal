@@ -54,7 +54,27 @@ command-marks = true
 - 每画一行做一次二分查找（`Shell::outcome_at`，命令按提示行升序保存，最多 1024 条），不扫描全部历史。
 - 行指纹包含该行的标记状态，命令结束时即使文本没变也只重画那一行。
 
-## 3. 主题复位（`reset-theme`）
+## 3. 主题预览（`preview-themes`）
+
+### 入口
+
+默认键位 `Primary+F5`（macOS 上是 Cmd+F5，其他平台 Ctrl+Shift+F5），动作名 `preview-themes`，可以在 `[bindings]` 里改。
+
+### 行为
+
+- 按下后进入预览：底部提示条显示「主题预览：深色/浅色/午夜（← → 切换 · Enter 应用 · Esc 取消）」。
+- 方向键（←/→/↑/↓）在 `dark → light → midnight` 之间循环，**窗口立刻换成候选主题**——预览看到的是真实终端内容在真实配色下的样子，不是色块示意。
+- Enter 或再按一次预览键：留下当前主题，关闭预览。
+- Esc：退回打开预览前的主题，关闭预览。
+- 预览期间除方向键/Enter/Esc 外的按键与文字输入一律吞掉，不会漏进 shell。
+- 预览只改运行中的 `config.theme`，不写回配置文件；想固定下来仍然要改 `[appearance] theme`。
+
+### 代价
+
+- 没有新增线程、子进程或缓存；每次换主题只重算一次颜色表并让渲染器整屏重画（和 `next-theme` 一样）。
+- 预览状态只有「原主题 + 下标」两个字段，退出即释放。
+
+## 4. 主题复位（`reset-theme`）
 
 `Primary+F6` 的循环切换会改 `Config::theme`，但配置文件里的值不受影响。新增：
 
@@ -64,7 +84,7 @@ command-marks = true
 
 复位后立即调用 `renderer.apply_style`，配色、界面颜色与终端调色板一起更新；`[colors]` 里显式覆盖的值仍然保留（与循环切换的语义一致）。
 
-## 4. 测试
+## 5. 测试
 
 | 测试 | 覆盖 |
 |---|---|
@@ -73,18 +93,24 @@ command-marks = true
 | `render::boundary_tests::command_marks_paint_a_result_bar_in_the_left_padding` | 失败红、成功绿、中断黄；关掉 `command-marks` 后不再画 |
 | `integration_tests::command_marks_show_each_result_in_the_left_margin` | 应用层三条命令的色条在左边缘依次出现，顺序与结果一致 |
 | `shell::tests::outcome_at_finds_the_mark_for_a_prompt_line_only` | 二分查找到提示行才返回结果；越界或不在文本里的行号返回 None |
+| `integration_tests::theme_preview_shows_each_theme_before_committing` | 打开预览不改主题；方向键换主题并立刻改变窗口底色；预览期间打字不进 shell；Esc 退回、Enter 留下、再按预览键也能结束 |
+| `config::theme::tests::every_theme_round_trips_through_name_index_and_preview_order` | 三个主题的 name/parse/index/at 互相对得上，越界下标回到合法主题 |
 | `integration_tests::reset_theme_action_restores_the_configured_theme` | 按动作名绑定 F5，循环到别的主题后按 F5 回到 midnight，且配色确实变了 |
 | `config::tests::appearance_parses_cursor_blink_and_reset_returns_to_the_configured_theme` | `cursor-blink` / `command-marks` 的解析与默认值；`reset_theme` 回到配置值而不是编译默认；键名进了 schema |
 
-## 5. 未验收
+## 6. 未验收
 
 - 只在 Linux 上运行过测试与预览帧；macOS/Windows 只做了交叉 clippy，不算真机验证。
-- 主题预览面板（切换前先看效果）没有做，F13 里“提供主题预览和恢复默认”只完成了“恢复默认”。
+- 主题预览是整窗实时预览（看得见真实内容），没有单独的色板对比面板；F13 里“提供主题预览和恢复默认”两项都已提供。
 - 标签/侧栏/状态栏样式、图标回退、可读性选项（对比度/字重）仍是待办。
 - 命令标记只有一种样式（左边缘竖条），F13 说的“命令标记样式”还不支持换样式或换成图标。
 - 透明度与模糊未做。
 
-## 6. 预览
+## 7. 预览
+
+主题预览：整窗换成候选主题（这里是“浅色”），底部提示条说明按键：
+
+![主题预览](previews/m8-theme-preview.png)
 
 命令标记（成功绿、失败红、中断黄）在提示行左侧的样子：
 

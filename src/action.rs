@@ -39,6 +39,8 @@ pub enum Action {
     FontDecrease,
     FontReset,
     NextTheme,
+    /// 主题预览：在当前窗口里先看效果，确认后才留下
+    PreviewThemes,
     /// 回到配置里写的主题（轮换按多了以后复位）
     ResetTheme,
     ShowResources,
@@ -192,6 +194,7 @@ impl Default for Bindings {
             ("Primary+Minus", Action::FontDecrease),
             ("Primary+0", Action::FontReset),
             ("Primary+F6", Action::NextTheme),
+            ("Primary+F5", Action::PreviewThemes),
             ("Primary+F12", Action::ShowResources),
             ("Primary+T", Action::NewTab),
             ("Primary+W", Action::ClosePane),
@@ -280,6 +283,7 @@ fn parse_action(value: &Value) -> Result<Action, String> {
         "font-decrease" => Action::FontDecrease,
         "font-reset" => Action::FontReset,
         "next-theme" => Action::NextTheme,
+        "preview-themes" => Action::PreviewThemes,
         "reset-theme" => Action::ResetTheme,
         "show-resources" => Action::ShowResources,
         "search" => Action::Search,

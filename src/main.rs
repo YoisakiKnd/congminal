@@ -119,6 +119,14 @@ struct Congminal {
     blink_anchor: Instant,
     /// 上一帧光标是不是亮的，用来判断相位翻转要不要重绘。
     last_cursor_on: bool,
+    /// 主题预览：正在预览时记住原来的主题，取消就退回去。
+    theme_preview: Option<ThemePreview>,
+}
+
+/// 主题预览的临时状态。预览直接改 `config.theme`，所以窗口里看到的就是真效果。
+struct ThemePreview {
+    original: crate::config::theme::Theme,
+    index: usize,
 }
 
 impl Congminal {
@@ -296,6 +304,7 @@ impl Congminal {
                 self.config.cycle_theme();
                 self.renderer.apply_style(&self.config, self.scale);
             }
+            Action::PreviewThemes => self.preview_themes(),
             Action::ResetTheme => {
                 self.config.reset_theme();
                 self.renderer.apply_style(&self.config, self.scale);
@@ -723,6 +732,63 @@ impl Congminal {
         }
         self.dirty = true;
     }
+    /// 打开主题预览。不立刻换主题：先记住原来的，取消时原样退回去。
+    fn preview_themes(&mut self) {
+        if self.theme_preview.is_some() {
+            // 已经在预览里，再按一次就当确认，避免困在预览状态
+            self.preview_finish(true);
+            return;
+        }
+        let original = self.config.theme;
+        self.theme_preview = Some(ThemePreview { original, index: original.index() });
+        self.dirty = true;
+    }
+    /// 预览里换到上/下一个主题，直接应用到窗口上，看到的就是真效果。
+    fn preview_step(&mut self, delta: isize) {
+        let Some(preview) = self.theme_preview.as_mut() else {
+            return;
+        };
+        let count = crate::config::theme::Theme::ALL.len() as isize;
+        preview.index = (preview.index as isize + delta).rem_euclid(count) as usize;
+        self.apply_preview_theme();
+    }
+    fn apply_preview_theme(&mut self) {
+        let Some(preview) = &self.theme_preview else {
+            return;
+        };
+        self.config.theme = crate::config::theme::Theme::at(preview.index);
+        self.config.refresh_theme();
+        self.renderer.apply_style(&self.config, self.scale);
+        self.dirty = true;
+    }
+    /// 结束预览：`apply` 为假就退回原来的主题。
+    fn preview_finish(&mut self, apply: bool) {
+        let Some(preview) = self.theme_preview.take() else {
+            return;
+        };
+        if !apply {
+            self.config.theme = preview.original;
+            self.config.refresh_theme();
+            self.renderer.apply_style(&self.config, self.scale);
+        }
+        self.dirty = true;
+    }
+    /// 预览期间的按键：方向键换主题，回车确认，Esc 取消，其它键一律吞掉，
+    /// 免得在“看主题”的时候把字符送进 shell。
+    fn theme_preview_key(&mut self, key: Key, mods: Mods) {
+        match key {
+            Key::Escape => self.preview_finish(false),
+            Key::Enter => self.preview_finish(true),
+            Key::Up | Key::Left => self.preview_step(-1),
+            Key::Down | Key::Right => self.preview_step(1),
+            _ => {
+                if matches!(self.config.bindings.action(key, mods), Some(Action::PreviewThemes)) {
+                    self.preview_finish(true);
+                }
+            }
+        }
+    }
+
     /// 状态栏的 Shell 摘要；`notifications.hide-context` 打开时不含主机与工作目录。
     fn shell_status(&self) -> String {
         self.session
@@ -753,6 +819,9 @@ impl Congminal {
             state.search(&self.search, self.session.term.cols());
         } else if self.notifications.open {
             state.message(format_args!("{}", self.notifications.description(self.config.notifications.muted)));
+        } else if let Some(preview) = &self.theme_preview {
+            let theme = crate::config::theme::Theme::at(preview.index);
+            state.message(format_args!("主题预览：{}（← → 切换 · Enter 应用 · Esc 取消）", theme.label()));
         } else if let Some(status) = status {
             state.message(format_args!("{status}"));
         } else if let Some(hit) = &self.hover {
@@ -918,6 +987,10 @@ impl App for Congminal {
             Event::Key { key, mods } => {
                 if self.focus.active && self.notifications.open {
                     self.notification_key(key, mods);
+                    return true;
+                }
+                if self.focus.active && self.theme_preview.is_some() {
+                    self.theme_preview_key(key, mods);
                     return true;
                 }
                 if key == Key::Escape && self.command_view && !self.search.active {
@@ -1356,6 +1429,7 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         status_scratch: String::new(),
         blink_anchor: Instant::now(),
         last_cursor_on: true,
+        theme_preview: None,
     };
     {
         let warnings = app.renderer.take_font_warnings();
@@ -1578,6 +1652,7 @@ mod integration_tests {
             status_scratch: String::new(),
             blink_anchor: Instant::now(),
             last_cursor_on: true,
+            theme_preview: None,
         };
         app.resize(width, height);
         wait_until(&mut app, |app| screen(app).contains("READY"));
@@ -1937,6 +2012,56 @@ mod integration_tests {
         }
         samples.sort_unstable();
         eprintln!("INPUT: p50={}ns p95={}ns p99={}ns n={}", samples[499], samples[949], samples[989], samples.len());
+    }
+
+    #[test]
+    fn theme_preview_shows_each_theme_before_committing() {
+        let mut app = app("");
+        let primary = if cfg!(target_os = "macos") {
+            Mods { logo: true, ..Mods::default() }
+        } else {
+            Mods { ctrl: true, shift: true, ..Mods::default() }
+        };
+        let original = app.config.theme;
+        let background = |app: &mut Congminal| {
+            app.draw();
+            app.framebuffer.pixels[2 * app.framebuffer.width + 2]
+        };
+        let original_pixel = background(&mut app);
+        // 打开预览：主题先不变，状态栏给出提示
+        app.event(Event::Key { key: Key::F(5), mods: primary });
+        assert!(app.theme_preview.is_some());
+        assert_eq!(app.config.theme, original);
+        assert_eq!(background(&mut app), original_pixel);
+        // 方向键换主题，窗口配色立刻跟着变
+        app.event(Event::Key { key: Key::Right, mods: Mods::default() });
+        let next = crate::config::theme::Theme::at(original.index() + 1);
+        assert_eq!(app.config.theme, next);
+        assert_eq!(background(&mut app), next.colors().background);
+        assert_ne!(background(&mut app), original_pixel);
+        // 预览期间打字不会进 shell
+        let before = app.session.term.text_stamp();
+        app.event(Event::Text("secret".into()));
+        app.event(Event::Key { key: Key::Char('x'), mods: Mods::default() });
+        app.tick();
+        assert_eq!(before, app.session.term.text_stamp());
+        // Esc 退回原来的主题
+        app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
+        assert!(app.theme_preview.is_none());
+        assert_eq!(app.config.theme, original);
+        assert_eq!(background(&mut app), original_pixel);
+        // 再预览一次，这次回车确认
+        app.event(Event::Key { key: Key::F(5), mods: primary });
+        app.event(Event::Key { key: Key::Right, mods: Mods::default() });
+        app.event(Event::Key { key: Key::Enter, mods: Mods::default() });
+        assert!(app.theme_preview.is_none());
+        assert_eq!(app.config.theme, next);
+        assert_eq!(background(&mut app), next.colors().background);
+        // 再按一次预览键也能结束预览（确认），不会困在预览里
+        app.event(Event::Key { key: Key::F(5), mods: primary });
+        app.event(Event::Key { key: Key::F(5), mods: primary });
+        assert!(app.theme_preview.is_none());
+        assert_eq!(app.config.theme, next);
     }
 
     #[test]

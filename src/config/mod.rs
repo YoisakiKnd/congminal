@@ -475,7 +475,8 @@ impl Config {
         }
     }
 
-    fn refresh_theme(&mut self) {
+    /// 换了主题之后重算颜色；主题预览也会直接调它。
+    pub fn refresh_theme(&mut self) {
         self.colors = self.theme.colors();
         self.color_overrides.apply(&mut self.colors);
     }
