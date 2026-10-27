@@ -42,6 +42,9 @@ impl Fixture {
         // 否则宿主机没配全局 user.name 时写操作测试会随环境漂移。
         self.git(&["config", "user.name", "t"]);
         self.git(&["config", "user.email", "t@t"]);
+        // 写回内容按字节比较：关掉换行转换，否则 Windows 上 checkout 会写 CRLF。
+        self.git(&["config", "core.autocrlf", "false"]);
+        self.git(&["config", "core.safecrlf", "false"]);
         std::fs::write(self.0.join("committed.txt"), b"one\n").unwrap();
         std::fs::write(self.0.join("modified.txt"), b"two\n").unwrap();
         self.git(&["add", "committed.txt", "modified.txt"]);
@@ -558,6 +561,81 @@ fn pull_fast_forwards_and_refuses_to_merge_diverged_history() {
     assert!(matches!(error, Error::Failed(_)), "{error:?}");
     let log = work.git(&["log", "-1", "--pretty=%s"]);
     assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "local", "分叉时不能生成合并提交");
+    wait_released(&pool);
+}
+
+/// 制造一次真实的合并冲突：两个分支改同一个文件，`git merge` 会失败并留下未合并条目。
+fn conflicted_fixture(name: &str) -> Fixture {
+    let fixture = Fixture::new(name);
+    fixture.repo();
+    let base = fixture.branch();
+    fixture.git(&["checkout", "-q", "-b", "feature"]);
+    std::fs::write(fixture.path().join("committed.txt"), b"theirs\n").unwrap();
+    fixture.git(&["commit", "-qam", "theirs"]);
+    fixture.git(&["checkout", "-q", &base]);
+    std::fs::write(fixture.path().join("committed.txt"), b"ours\n").unwrap();
+    fixture.git(&["commit", "-qam", "ours"]);
+    // 冲突时 merge 以非零退出，夹具里的 `git()` 会断言成功，这里单独跑一次。
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(fixture.path())
+        .args(["merge", "feature"])
+        .env("GIT_CONFIG_GLOBAL", NULL_DEVICE)
+        .env("GIT_CONFIG_SYSTEM", NULL_DEVICE)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@t")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@t")
+        .output()
+        .expect("需要本机 git 才能运行 Git 适配测试");
+    assert!(!output.status.success(), "合并应当冲突");
+    fixture
+}
+
+#[test]
+fn resolve_writes_the_chosen_side_back_and_marks_it_resolved() {
+    for (side, expected) in [(Side::Ours, "ours\n"), (Side::Theirs, "theirs\n")] {
+        let fixture = conflicted_fixture(&format!("resolve-{}", side.describe()));
+        let pool = pool();
+        // 快照自己持着额度，取完需要的字段就放手，免得挡住后面的额度归零断言。
+        let path = {
+            let snapshot = read_status(&pool, fixture.path());
+            assert_eq!(snapshot.counts.conflicted, 1);
+            let entry = snapshot.entries.iter().find(|entry| entry.conflicted()).expect("应有冲突条目");
+            assert_eq!(entry.path, std::ffi::OsString::from("committed.txt"));
+            entry.path.clone()
+        };
+        let summary =
+            run_write_summary(&pool, fixture.path(), WriteOp::Resolve { paths: vec![path], side, count: 1 }).unwrap();
+        assert_eq!(summary, format!("已{} 1 个文件并标记已解决", side.describe()));
+        assert_eq!(std::fs::read_to_string(fixture.path().join("committed.txt")).unwrap(), expected);
+        // 冲突消失：保留我方时内容与 HEAD 相同，条目直接从状态里消失；保留对方则留下一条待提交的改动。
+        let snapshot = read_status(&pool, fixture.path());
+        assert_eq!(snapshot.counts.conflicted, 0);
+        assert!(snapshot.entries.iter().all(|entry| !entry.conflicted()));
+        let staged = snapshot.entries.iter().any(|entry| entry.path == "committed.txt");
+        assert_eq!(staged, side == Side::Theirs, "{:?}", snapshot.entries.iter().map(|e| &e.label).collect::<Vec<_>>());
+        // 快照自己持着额度，先放手再等额度归零。
+        drop(snapshot);
+        wait_released(&pool);
+    }
+}
+
+#[test]
+fn resolve_fails_loudly_when_the_chosen_side_has_no_version() {
+    // 索引里没有这个路径时 `git checkout --ours -- <path>` 会报错；把 git 的原话交回去，
+    // 不假装解决成功（界面上会显示失败摘要）。
+    let fixture = Fixture::new("resolve-clean");
+    fixture.repo();
+    let pool = pool();
+    let error = run_write_summary(
+        &pool,
+        fixture.path(),
+        WriteOp::Resolve { paths: vec![std::ffi::OsString::from("no-such-file.txt")], side: Side::Ours, count: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(error, Error::Failed(_)), "{error:?}");
+    assert!(!error.message().is_empty());
     wait_released(&pool);
 }
 

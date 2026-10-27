@@ -3242,6 +3242,104 @@ program="/definitely/missing/congminal-shell"
     fn git_row(index: usize) -> usize {
         git_panel::LIST_TOP + index
     }
+
+    /// 有真实冲突的仓库：两个分支改同一个文件后合并失败。
+    fn git_conflict_fixture() -> layout::TestDir {
+        let dir = layout::TestDir::new();
+        let repo = dir.0.join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let run = |args: &[&str], expect_success: bool| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_CONFIG_SYSTEM", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .output()
+                .expect("Git 面板测试需要本机 git");
+            if expect_success {
+                assert!(output.status.success(), "git {args:?}");
+            } else {
+                assert!(!output.status.success(), "git {args:?} 应当失败");
+            }
+            output
+        };
+        run(&["init", "-q", "."], true);
+        run(&["config", "user.name", "t"], true);
+        run(&["config", "user.email", "t@t"], true);
+        std::fs::write(repo.join("tracked.txt"), b"base\n").unwrap();
+        run(&["add", "tracked.txt"], true);
+        run(&["commit", "-qm", "init"], true);
+        let branch =
+            String::from_utf8_lossy(&run(&["symbolic-ref", "--short", "HEAD"], true).stdout).trim().to_string();
+        run(&["checkout", "-q", "-b", "feature"], true);
+        std::fs::write(repo.join("tracked.txt"), b"theirs\n").unwrap();
+        run(&["commit", "-qam", "theirs"], true);
+        run(&["checkout", "-q", &branch], true);
+        std::fs::write(repo.join("tracked.txt"), b"ours\n").unwrap();
+        run(&["commit", "-qam", "ours"], true);
+        run(&["merge", "feature"], false);
+        dir
+    }
+
+    #[test]
+    fn git_panel_resolves_a_conflict_from_the_sidebar() {
+        let dir = git_conflict_fixture();
+        let repo = dir.0.join("repo");
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let snapshot = app.git.snapshot.as_ref().unwrap();
+        assert_eq!(snapshot.counts.conflicted, 1, "{:?}", snapshot.counts.describe());
+        let index = snapshot.entries.iter().position(|entry| entry.conflicted()).unwrap();
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        click(&mut app, 6, git_row(index));
+        assert_eq!(app.git.selected, Some(index));
+        // 选中冲突条目后第三列直接显示“解决”，点进去选保留哪一侧。
+        assert_eq!(app.git.view(12, 0).buttons[2], "解决");
+        // 冲突条目点“暂存”位置进的是解决页，不会直接暂存冲突内容。
+        click(&mut app, r.w / 3 + 4, 1);
+        assert_eq!(app.git.resolve, Some(index));
+        assert_eq!(app.git.view(12, 0).buttons[1], "保留我方");
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_RESOLVE_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 提交在冲突未解决前仍被拦下：不打开输入框，只给一句原因。
+        assert!(app.git.open_commit());
+        assert!(!app.git.capturing());
+        assert!(app.git.write_note.as_deref().is_some_and(|note| note.contains("冲突")), "{:?}", app.git.write_note);
+        // “保留我方”写回工作区并标记已解决。
+        click(&mut app, r.w / 4 + 4, 1);
+        wait(&mut app, |a| a.git.snapshot.as_ref().is_some_and(|s| s.counts.conflicted == 0));
+        assert!(app.git.resolve.is_none(), "解决完回到列表");
+        assert_eq!(std::fs::read_to_string(repo.join("tracked.txt")).unwrap(), "ours\n");
+        // 冲突清掉之后可以正常打开提交输入。
+        assert!(app.git.open_commit());
+        assert!(app.git.capturing());
+        assert!(app.git.capture_key(Key::Escape, Mods::default(), app.driver.notify.clone()));
+        // 关栏释放全部额度。
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
+    }
     #[test]
     fn git_panel_reads_the_active_directory_opens_diffs_and_releases_when_closed() {
         let dir = git_fixture();

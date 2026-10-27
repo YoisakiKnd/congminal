@@ -24,6 +24,11 @@ pub fn char_width(c: char) -> usize {
 /// 按显示列裁剪一行文本：超出 `width` 列的部分直接丢掉。
 ///
 /// 右栏面板只能画固定列数，长行必须在进入绘制前裁掉，否则会挤到下一行。
+/// 一段文字占多少个显示列；CJK 等宽字符按 2 列算，与控制台绘制一致。
+pub fn display_width(text: &str) -> usize {
+    text.chars().map(char_width).sum()
+}
+
 pub fn clip(text: &str, width: usize) -> String {
     let mut out = String::with_capacity(text.len().min(width * 3));
     let mut used = 0;
