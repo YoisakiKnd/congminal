@@ -41,6 +41,14 @@ pub(super) struct Panel {
     pub(super) error: Option<Error>,
     /// 采样失败只发一次通知；恢复成功后重新武装。
     pub(super) failure_notice: bool,
+    /// 三个阈值（CPU/内存/磁盘百分比，0 表示关闭），由配置在 tick 里刷新。
+    pub(super) thresholds: [u8; 3],
+    /// 同一条告警的最短间隔。
+    pub(super) alert_cooldown: std::time::Duration,
+    /// 待发的阈值告警；取走即清空，冷却期内不再置位。
+    pub(super) alert_pending: Option<monitor::Alert>,
+    /// 上一条告警发出的时刻，用来算冷却。
+    pub(super) alert_at: Option<Instant>,
     pub(super) lease: Option<Tracked<()>>,
     pub(super) paused: bool,
     pub(super) revision: u64,
@@ -69,6 +77,10 @@ impl Panel {
             generation: 0,
             error: None,
             failure_notice: false,
+            thresholds: [0; 3],
+            alert_cooldown: std::time::Duration::from_secs_f64(crate::config::monitor::DEFAULT_ALERT_SECONDS),
+            alert_pending: None,
+            alert_at: None,
             lease: None,
             paused: false,
             revision: 0,
@@ -121,6 +133,7 @@ impl Panel {
         self.paused = false;
         self.next = None;
         self.last_disk = None;
+        self.alert_pending = None;
         if changed {
             self.revision = self.revision.wrapping_add(1);
         }
@@ -164,6 +177,8 @@ impl Panel {
         }
         self.active = true;
         self.paused = false;
+        self.thresholds = settings.thresholds();
+        self.alert_cooldown = settings.alert_cooldown();
         // 从暂停/关闭恢复时没有排定的采样点，补一个“现在”，否则会一直等不到下一轮。
         if self.next.is_none() && !self.loading {
             self.next = Some(Instant::now());
@@ -173,7 +188,45 @@ impl Panel {
             self.next = None;
             changed |= self.sample(notify);
         }
+        self.check_alerts();
         changed
+    }
+
+    /// 采样结果超过阈值就置一次告警；冷却期内不重复，阈值 0 表示关闭。
+    fn check_alerts(&mut self) {
+        if self.alert_pending.is_some() {
+            return;
+        }
+        let now = Instant::now();
+        if self.alert_at.is_some_and(|at| now.saturating_duration_since(at) < self.alert_cooldown) {
+            return;
+        }
+        let Some(raw) = self.history.as_ref().and_then(History::last).map(|sample| sample.raw) else {
+            return;
+        };
+        let readings = [
+            raw.cpu,
+            monitor::percent(raw.mem_used, raw.mem_total).map_or(0.0, f32::from),
+            // 这一轮没刷新磁盘时读数是 0，按“没有读数”处理，不能当成 0% 用量。
+            if raw.disk_total == 0 {
+                -1.0
+            } else {
+                monitor::percent(raw.disk_used, raw.disk_total).map_or(0.0, f32::from)
+            },
+        ];
+        for (index, alert) in monitor::Alert::ALL.into_iter().enumerate() {
+            let threshold = self.thresholds[index];
+            if threshold > 0 && readings[index] >= f32::from(threshold) {
+                self.alert_pending = Some(alert);
+                self.alert_at = Some(now);
+                return;
+            }
+        }
+    }
+
+    /// 取出待发的阈值告警；取过就不再重复。
+    pub(super) fn take_alert(&mut self) -> Option<monitor::Alert> {
+        self.alert_pending.take()
     }
 
     /// 立即采样一次（“刷新”按钮）。

@@ -70,6 +70,12 @@ interval-seconds = 1
 history-seconds = 300
 # 磁盘刷新间隔（秒），5–120；磁盘刷新比 CPU/内存贵一个数量级。
 disk-seconds = 10
+# 超过阈值时发一条通知（百分比，0 = 不告警）。默认全关，按自己的机器和负载再打开。
+alert-cpu = 0
+alert-memory = 0
+alert-disk = 0
+# 同一条告警的最短间隔（秒），30–3600；避免读数在阈值附近抖动时刷屏。
+alert-seconds = 300
 
 [memory]
 # 共享准入额度，128–4096 MiB；不是完整堆/RSS 上限。下次启动生效。
