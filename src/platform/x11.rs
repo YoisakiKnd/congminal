@@ -6,7 +6,7 @@
 //! 事件循环：用 `poll` 同时等待 X 服务器的连接和一个唤醒用的 socket。
 
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
-use crate::input::{Key, Mods};
+use crate::input::{Key, Keypad, Mods};
 use crate::render::{Damage, Framebuffer};
 use std::ffi::{CStr, CString, c_char, c_int, c_long, c_uint, c_ulong, c_void};
 use std::io::{ErrorKind, Read, Write};
@@ -876,7 +876,17 @@ fn named_key(keysym: KeySym) -> Option<Key> {
     Some(match keysym {
         0xff08 => Key::Backspace,
         0xff09 | 0xfe20 => Key::Tab, // Tab、ISO_Left_Tab（Shift+Tab）
-        0xff0d | 0xff8d => Key::Enter,
+        0xff0d => Key::Enter,
+        // 小键盘：应用程序键区模式下 input 层改发 SS3，普通模式发数字/运算符
+        0xff8d => Key::Keypad(Keypad::Enter),
+        k @ 0xffb0..=0xffb9 => Key::Keypad(Keypad::Digit((k - 0xffb0) as u8)),
+        0xffae => Key::Keypad(Keypad::Decimal),
+        0xffac => Key::Keypad(Keypad::Separator),
+        0xffab => Key::Keypad(Keypad::Add),
+        0xffad => Key::Keypad(Keypad::Subtract),
+        0xffaa => Key::Keypad(Keypad::Multiply),
+        0xffaf => Key::Keypad(Keypad::Divide),
+        0xffbd => Key::Keypad(Keypad::Equal),
         0xff1b => Key::Escape,
         0xff50 | 0xff95 => Key::Home,
         0xff51 | 0xff96 => Key::Left,
@@ -891,4 +901,27 @@ fn named_key(keysym: KeySym) -> Option<Key> {
         k @ 0xffbe..=0xffc9 => Key::F((k - 0xffbe + 1) as u8),
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn keypad_keysyms_are_distinguished_from_main_keyboard() {
+        assert_eq!(named_key(0xffb0), Some(Key::Keypad(Keypad::Digit(0))));
+        assert_eq!(named_key(0xffb9), Some(Key::Keypad(Keypad::Digit(9))));
+        assert_eq!(named_key(0xffae), Some(Key::Keypad(Keypad::Decimal)));
+        assert_eq!(named_key(0xffac), Some(Key::Keypad(Keypad::Separator)));
+        assert_eq!(named_key(0xffab), Some(Key::Keypad(Keypad::Add)));
+        assert_eq!(named_key(0xffad), Some(Key::Keypad(Keypad::Subtract)));
+        assert_eq!(named_key(0xffaa), Some(Key::Keypad(Keypad::Multiply)));
+        assert_eq!(named_key(0xffaf), Some(Key::Keypad(Keypad::Divide)));
+        assert_eq!(named_key(0xffbd), Some(Key::Keypad(Keypad::Equal)));
+        // 小键盘回车（KP_Enter 0xff8d）要和主键盘回车区分开
+        assert_eq!(named_key(0xff8d), Some(Key::Keypad(Keypad::Enter)));
+        assert_eq!(named_key(0xff0d), Some(Key::Enter));
+        // 主键盘数字仍然是普通字符，不受键区模式影响
+        assert_eq!(named_key(0x31), None);
+        assert_eq!(named_key(0xff52), Some(Key::Up));
+    }
 }

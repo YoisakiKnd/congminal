@@ -89,6 +89,8 @@ pub struct Session {
     output: Option<Arc<ByteQueue>>,
     pending_output: Option<(Vec<u8>, usize)>,
     pub output_pending: bool,
+    /// 已经报告过的丢弃应答字节数，避免重复打印
+    reported_dropped: usize,
     pub preedit: String,
     pub selection: Option<Selection>,
     pub selecting: bool,
@@ -194,6 +196,7 @@ impl Session {
             output: Some(output),
             pending_output: None,
             output_pending: false,
+            reported_dropped: 0,
             preedit: String::new(),
             selection: None,
             selecting: false,
@@ -363,6 +366,12 @@ impl Session {
                 && let Err(e) = self.write(&response)
             {
                 error = Some(e.to_string());
+            }
+            // 查询积压超过上限时终端会丢应答；这里只报一次，便于排查程序为什么等不到回复。
+            let dropped = self.term.dropped_responses();
+            if dropped > self.reported_dropped {
+                self.reported_dropped = dropped;
+                crate::term::trace(format_args!("终端应答缓冲已满，累计丢弃 {dropped} 字节"));
             }
         }
         if parsed > 0 {

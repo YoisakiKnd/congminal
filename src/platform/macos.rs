@@ -12,7 +12,7 @@
 
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::config::OptionAsAlt;
-use crate::input::{Key, Mods};
+use crate::input::{Key, Keypad, Mods};
 use crate::render::Framebuffer;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -662,7 +662,25 @@ unsafe fn key_events(event: Id, flags: usize) -> Vec<Event> {
 /// macOS 虚拟键码（来自 Carbon 的 Events.h，和键盘布局无关）
 fn named_key(code: u16) -> Option<Key> {
     Some(match code {
-        36 | 76 => Key::Enter,
+        36 => Key::Enter,
+        // 小键盘：应用程序键区模式下 input 层改发 SS3，普通模式发数字/运算符
+        76 => Key::Keypad(Keypad::Enter),
+        65 => Key::Keypad(Keypad::Decimal),
+        67 => Key::Keypad(Keypad::Multiply),
+        69 => Key::Keypad(Keypad::Add),
+        75 => Key::Keypad(Keypad::Divide),
+        78 => Key::Keypad(Keypad::Subtract),
+        81 => Key::Keypad(Keypad::Equal),
+        82 => Key::Keypad(Keypad::Digit(0)),
+        83 => Key::Keypad(Keypad::Digit(1)),
+        84 => Key::Keypad(Keypad::Digit(2)),
+        85 => Key::Keypad(Keypad::Digit(3)),
+        86 => Key::Keypad(Keypad::Digit(4)),
+        87 => Key::Keypad(Keypad::Digit(5)),
+        88 => Key::Keypad(Keypad::Digit(6)),
+        89 => Key::Keypad(Keypad::Digit(7)),
+        91 => Key::Keypad(Keypad::Digit(8)),
+        92 => Key::Keypad(Keypad::Digit(9)),
         48 => Key::Tab,
         51 => Key::Backspace,
         53 => Key::Escape,
@@ -1227,6 +1245,26 @@ mod termination_tests {
             assert!(matches!(state.events.pop_front(), Some(Event::CloseRequested)));
             assert!(state.events.is_empty());
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn keypad_keycodes_are_distinguished_from_main_keyboard() {
+        assert_eq!(named_key(82), Some(Key::Keypad(Keypad::Digit(0))));
+        assert_eq!(named_key(92), Some(Key::Keypad(Keypad::Digit(9))));
+        assert_eq!(named_key(65), Some(Key::Keypad(Keypad::Decimal)));
+        assert_eq!(named_key(67), Some(Key::Keypad(Keypad::Multiply)));
+        assert_eq!(named_key(69), Some(Key::Keypad(Keypad::Add)));
+        assert_eq!(named_key(75), Some(Key::Keypad(Keypad::Divide)));
+        assert_eq!(named_key(78), Some(Key::Keypad(Keypad::Subtract)));
+        assert_eq!(named_key(81), Some(Key::Keypad(Keypad::Equal)));
+        // 小键盘回车（keycode 76）要和主键盘回车区分开
+        assert_eq!(named_key(76), Some(Key::Keypad(Keypad::Enter)));
+        assert_eq!(named_key(36), Some(Key::Enter));
+        assert_eq!(named_key(0), None);
     }
 }
 

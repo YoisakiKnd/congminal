@@ -896,6 +896,17 @@ impl Workspace {
         }
         let Some(form) = state.form.as_mut() else { return false };
         let op = form.op;
+        // 文字先落进输入框：X11 与 Windows 把可打印字符作为 Key::Char 送来（macOS 走 Event::Text），
+        // 数字小键盘则由 Key::text() 折算成字符。Ctrl/Command 组合仍留给快捷键。
+        if let Some(c) = key.text().filter(|c| !c.is_control())
+            && !mods.ctrl
+            && !mods.logo
+        {
+            if form.insert(c.encode_utf8(&mut [0; 4])) {
+                self.chrome_dirty = true;
+            }
+            return true;
+        }
         match key {
             Key::Enter => {
                 form.preedit.clear();
@@ -921,11 +932,6 @@ impl Workspace {
             }
             Key::End => {
                 form.caret = form.text.len();
-                self.chrome_dirty = true;
-            }
-            // X11 与 Windows 把可打印字符作为 Key::Char 送来（macOS 走 Event::Text），
-            // 表单独占键盘时这些字符只能在这里进输入框。
-            Key::Char(c) if !mods.ctrl && !mods.logo && !c.is_control() && form.insert(c.encode_utf8(&mut [0; 4])) => {
                 self.chrome_dirty = true;
             }
             _ => {}
@@ -1285,11 +1291,14 @@ mod tests {
         app.event(Event::Key { key: Key::Char('x'), mods: Mods::default() });
         // Ctrl 组合是快捷键，不能当文字塞进名称。
         app.event(Event::Key { key: Key::Char('c'), mods: Mods { ctrl: true, ..Mods::default() } });
+        // 数字小键盘同样进输入框（Key::text 折算成字符）。
+        app.event(Event::Key { key: Key::Keypad(crate::input::Keypad::Digit(4)), mods: Mods::default() });
+        assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text, "nestedx4");
         app.event(Event::Key { key: Key::Backspace, mods: Mods::default() });
         assert_eq!(
             app.sftp.as_ref().unwrap().form.as_ref().unwrap().text,
-            "nested",
-            "字符进入名称、Ctrl 组合被忽略、退格删掉最后字符"
+            "nestedx",
+            "字符与小键盘数字进入名称、Ctrl 组合被忽略、退格删掉最后字符"
         );
         assert_eq!(screen(&app), before, "输入期间名称不能写进终端");
         app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
