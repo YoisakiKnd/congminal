@@ -207,6 +207,47 @@ mod interoperability {
         drop(channel);
         assert_eq!(server.pool.snapshot().used, 0);
     }
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "本地sftp-server：目录排序（名称/大小/时间）的协议互操作；无SSH/网络，文件都在临时目录"]
+    fn local_subsystem_sorts_directory_entries_the_way_the_panel_asks() {
+        use super::client::{Channel, Source};
+        use super::model::Sort;
+        use crate::tasks::Cancellation;
+        let mut server = Server::new();
+        let source = Source { session: 92, generation: 5 };
+        let cancel = Cancellation::default();
+        // 目录恒在前；文件大小与 mtime 明确区分，避免同键时靠名字排的干扰。
+        std::fs::create_dir(server.path.join("z-dir")).unwrap();
+        std::fs::write(server.path.join("small"), b"x").unwrap();
+        std::fs::write(server.path.join("large"), vec![b'y'; 4096]).unwrap();
+        let root = std::fs::canonicalize(&server.path).unwrap();
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        let listing = |channel: &mut Channel<_>, sort| {
+            super::operations::directory(
+                channel,
+                super::model::RemotePath::new(&server.pool, root.as_os_str().as_encoded_bytes()).unwrap(),
+                false,
+                sort,
+                &cancel,
+            )
+            .unwrap()
+            .entries
+            .iter()
+            .map(|entry| String::from_utf8_lossy(&entry.name).into_owned())
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(listing(&mut channel, Sort::Name), ["z-dir", "large", "small"]);
+        assert_eq!(listing(&mut channel, Sort::NameDesc), ["z-dir", "small", "large"]);
+        assert_eq!(listing(&mut channel, Sort::Size), ["z-dir", "large", "small"]);
+        // 同一秒内创建的两个文件 mtime 可能相同：只要目录在前、集合完整即可。
+        let by_time = listing(&mut channel, Sort::Time);
+        assert_eq!(by_time.len(), 3);
+        assert_eq!(by_time[0], "z-dir");
+        drop(channel);
+        assert_eq!(server.pool.snapshot().used, 0);
+    }
     #[test]
     #[ignore = "本地 sftp-server：通道关联、原名字节及目录模型，无 SSH/网络"]
     fn local_subsystem_channel_lists_raw_names_and_streams_binary_data() {
@@ -224,9 +265,14 @@ mod interoperability {
         let cancel = Cancellation::default();
         let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
         let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
-        let listing =
-            super::operations::directory(&mut channel, RemotePath::new(&server.pool, b".").unwrap(), false, &cancel)
-                .unwrap();
+        let listing = super::operations::directory(
+            &mut channel,
+            RemotePath::new(&server.pool, b".").unwrap(),
+            false,
+            super::model::Sort::Name,
+            &cancel,
+        )
+        .unwrap();
         assert_eq!((listing.owner, listing.generation), (source.session, source.generation));
         assert_eq!(
             listing.path.bytes(),
@@ -264,7 +310,9 @@ mod interoperability {
             assert_eq!(attrs.permissions.unwrap() & 0o170000, 0o120000, "LSTAT does not follow the target");
         }
         let missing = RemotePath::new(&server.pool, b"does-not-exist").unwrap();
-        let error = super::operations::directory(&mut channel, missing, false, &cancel).err().unwrap();
+        let error = super::operations::directory(&mut channel, missing, false, super::model::Sort::Name, &cancel)
+            .err()
+            .unwrap();
         assert!(matches!(error, super::operations::Error::Remote(2)));
         assert!(error.to_string().contains('2'));
         assert!(matches!(channel.receive(&cancel), Err(super::client::Error::Closed)));

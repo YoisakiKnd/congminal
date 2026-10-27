@@ -193,6 +193,57 @@ impl Listing {
         self.memory.bytes()
     }
 }
+/// 目录排序方式。目录恒在文件前面，其余按所选键排序；键相同再按名字，结果稳定可复现。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Sort {
+    #[default]
+    Name,
+    NameDesc,
+    Size,
+    Time,
+}
+impl Sort {
+    pub const ALL: [Sort; 4] = [Sort::Name, Sort::NameDesc, Sort::Size, Sort::Time];
+    /// 完整标签（宽面板）、短标签（窄面板）；单字档用 `short`。
+    /// 面板本身是 Unix 专用模块，Windows 构建里只有协议层，标签没人读。
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub fn label(self) -> &'static str {
+        match self {
+            Sort::Name => "名称↑",
+            Sort::NameDesc => "名称↓",
+            Sort::Size => "大小↓",
+            Sort::Time => "时间↓",
+        }
+    }
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub fn short(self) -> &'static str {
+        match self {
+            Sort::Name => "名↑",
+            Sort::NameDesc => "名↓",
+            Sort::Size => "大↓",
+            Sort::Time => "时↓",
+        }
+    }
+    pub fn next(self) -> Sort {
+        let index = Self::ALL.iter().position(|sort| *sort == self).unwrap_or(0);
+        Self::ALL[(index + 1) % Self::ALL.len()]
+    }
+    fn compare(self, a: &Entry, b: &Entry) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        let directories = (a.kind != FileKind::Directory).cmp(&(b.kind != FileKind::Directory));
+        let key = match self {
+            Sort::Name | Sort::NameDesc => Ordering::Equal,
+            Sort::Size => b.attrs.size.unwrap_or(0).cmp(&a.attrs.size.unwrap_or(0)),
+            Sort::Time => {
+                b.attrs.times.map(|times| times.1).unwrap_or(0).cmp(&a.attrs.times.map(|times| times.1).unwrap_or(0))
+            }
+        };
+        directories.then(key).then_with(|| match self {
+            Sort::NameDesc => b.name.cmp(&a.name),
+            _ => a.name.cmp(&b.name),
+        })
+    }
+}
 pub struct Scan {
     owner: u64,
     generation: u64,
@@ -202,14 +253,15 @@ pub struct Scan {
     skipped: usize,
     entries: Vec<Entry>,
     limited: bool,
+    sort: Sort,
     memory: Lease,
 }
 impl Scan {
-    pub fn new(owner: u64, generation: u64, path: RemotePath, hidden: bool) -> Result<Self, Error> {
+    pub fn new(owner: u64, generation: u64, path: RemotePath, hidden: bool, sort: Sort) -> Result<Self, Error> {
         let memory = path.0.memory.budget().lease(Kind::Sftp, WORK_BYTES).map_err(|_| Error::Budget)?;
         let mut entries = Vec::new();
         entries.try_reserve_exact(ENTRY_LIMIT).map_err(|_| Error::Allocation)?;
-        Ok(Self { owner, generation, path, hidden, scanned: 0, skipped: 0, entries, limited: false, memory })
+        Ok(Self { owner, generation, path, hidden, scanned: 0, skipped: 0, entries, limited: false, sort, memory })
     }
     /// true 表示达到上限，应关闭目录句柄；空 NAME 页不能伪装成 EOF 或无限重试。
     pub fn push(&mut self, names: &Names<'_>, cancel: &Cancellation) -> Result<bool, Error> {
@@ -271,9 +323,9 @@ impl Scan {
         self.limited = true;
     }
     pub fn finish(mut self, eof: bool) -> Result<Listing, Error> {
-        self.entries.sort_unstable_by(|a, b| {
-            (a.kind != FileKind::Directory).cmp(&(b.kind != FileKind::Directory)).then_with(|| a.name.cmp(&b.name))
-        });
+        // 排序在已准入的条目集合上原地做，不额外分配；键相同时回落到名字，顺序稳定。
+        let sort = self.sort;
+        self.entries.sort_unstable_by(|a, b| sort.compare(a, b));
         let bytes = self.entries.capacity() * std::mem::size_of::<Entry>()
             + self.entries.iter().map(|e| e.name.capacity() + e.label.capacity()).sum::<usize>()
             + 128;
@@ -293,6 +345,37 @@ impl Scan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// 排序测试的一行：(名称, 权限位, 大小, mtime)。
+    type SortedRow<'a> = (&'a [u8], u32, Option<u64>, Option<u32>);
+    /// 带大小与 mtime 的 NAME 页：排序测试需要这两个属性。
+    fn names_with_attrs(entries: &[SortedRow<'_>]) -> Vec<u8> {
+        let mut data = vec![104, 0, 0, 0, 1];
+        data.extend_from_slice(&(entries.len() as u32).to_be_bytes());
+        for (name, mode, size, mtime) in entries {
+            data.extend_from_slice(&(name.len() as u32).to_be_bytes());
+            data.extend_from_slice(name);
+            // longname 长度为 0：不提供长格式名。
+            data.extend_from_slice(&0u32.to_be_bytes());
+            let mut flags: u32 = 4; // permissions
+            if size.is_some() {
+                flags |= 1;
+            }
+            if mtime.is_some() {
+                flags |= 8;
+            }
+            data.extend_from_slice(&flags.to_be_bytes());
+            if let Some(size) = size {
+                data.extend_from_slice(&size.to_be_bytes());
+            }
+            data.extend_from_slice(&mode.to_be_bytes());
+            if let Some(mtime) = mtime {
+                // ACMODTIME 是 (atime, mtime)；排序看的是第二个。
+                data.extend_from_slice(&0u32.to_be_bytes());
+                data.extend_from_slice(&mtime.to_be_bytes());
+            }
+        }
+        data
+    }
     fn names(entries: &[(&[u8], Option<u32>)]) -> Vec<u8> {
         let mut data = vec![104, 0, 0, 0, 1];
         data.extend_from_slice(&(entries.len() as u32).to_be_bytes());
@@ -357,7 +440,7 @@ mod tests {
             (b"bad\0", None),
         ]);
         let wire::Response::Names { names, .. } = wire::parse(&bytes).unwrap() else { panic!() };
-        let mut scan = Scan::new(7, 99, root, false).unwrap();
+        let mut scan = Scan::new(7, 99, root, false, Sort::Name).unwrap();
         assert!(!scan.push(&names, &Cancellation::default()).unwrap());
         let listing = scan.finish(true).unwrap();
         assert_eq!((listing.owner, listing.generation), (7, 99));
@@ -376,12 +459,42 @@ mod tests {
         assert_eq!(pool.snapshot().used, 0);
     }
     #[test]
+    fn directory_sort_modes_keep_directories_first_and_break_ties_by_name() {
+        let pool = Budget::new(8 * 1024 * 1024, 0);
+        let root = RemotePath::new(&pool, b"/").unwrap();
+        let names = |names: &Names<'_>, sort: Sort| {
+            let mut scan = Scan::new(1, 1, root.clone(), true, sort).unwrap();
+            scan.push(names, &Cancellation::default()).unwrap();
+            let listing = scan.finish(true).unwrap();
+            listing.entries.iter().map(|entry| String::from_utf8_lossy(&entry.name).into_owned()).collect::<Vec<_>>()
+        };
+        // 目录恒在前；大小/时间相同时按名字，保证顺序可复现。
+        let bytes = names_with_attrs(&[
+            (b"zeta".as_slice(), 0o100644, Some(10), Some(300)),
+            (b"alpha", 0o100644, Some(30), Some(100)),
+            (b"beta", 0o100644, Some(10), Some(200)),
+            (b"dir-small", 0o040755, Some(1), Some(50)),
+            (b"dir-big", 0o040755, Some(900), Some(400)),
+        ]);
+        let wire::Response::Names { names: entries, .. } = wire::parse(&bytes).unwrap() else { panic!() };
+        assert_eq!(names(&entries, Sort::Name), ["dir-big", "dir-small", "alpha", "beta", "zeta"]);
+        assert_eq!(names(&entries, Sort::NameDesc), ["dir-small", "dir-big", "zeta", "beta", "alpha"]);
+        assert_eq!(names(&entries, Sort::Size), ["dir-big", "dir-small", "alpha", "beta", "zeta"]);
+        assert_eq!(names(&entries, Sort::Time), ["dir-big", "dir-small", "zeta", "beta", "alpha"]);
+        // 循环顺序固定，界面按钮每点一次前进一格。
+        assert_eq!(Sort::default(), Sort::Name);
+        assert_eq!(Sort::Name.next(), Sort::NameDesc);
+        assert_eq!(Sort::NameDesc.next(), Sort::Size);
+        assert_eq!(Sort::Size.next(), Sort::Time);
+        assert_eq!(Sort::Time.next(), Sort::Name);
+    }
+    #[test]
     fn entry_and_hidden_only_scan_limits_cannot_claim_a_complete_directory() {
         let pool = Budget::new(8 * 1024 * 1024, 0);
         let path = RemotePath::new(&pool, b"/").unwrap();
         let bytes = names(&vec![(b"file".as_slice(), None); ENTRY_LIMIT + 1]);
         let wire::Response::Names { names, .. } = wire::parse(&bytes).unwrap() else { panic!() };
-        let mut scan = Scan::new(1, 2, path.clone(), true).unwrap();
+        let mut scan = Scan::new(1, 2, path.clone(), true, Sort::Name).unwrap();
         assert!(scan.push(&names, &Cancellation::default()).unwrap());
         let listing = scan.finish(true).unwrap();
         assert!(listing.incomplete);
@@ -389,7 +502,7 @@ mod tests {
         drop(listing);
         let bytes = self::names(&vec![(b".hidden".as_slice(), None); SCAN_LIMIT]);
         let wire::Response::Names { names, .. } = wire::parse(&bytes).unwrap() else { panic!() };
-        let mut scan = Scan::new(1, 3, path.clone(), false).unwrap();
+        let mut scan = Scan::new(1, 3, path.clone(), false, Sort::Name).unwrap();
         assert!(scan.push(&names, &Cancellation::default()).unwrap());
         let listing = scan.finish(true).unwrap();
         assert!(listing.incomplete && listing.entries.is_empty());
@@ -402,13 +515,13 @@ mod tests {
         let pool = Budget::new(4096, 0);
         let path = RemotePath::new(&pool, b"/").unwrap();
         let before = pool.snapshot().used;
-        assert!(matches!(Scan::new(1, 1, path.clone(), false), Err(Error::Budget)));
+        assert!(matches!(Scan::new(1, 1, path.clone(), false, Sort::Name), Err(Error::Budget)));
         assert_eq!(pool.snapshot().used, before);
         drop(path);
         assert_eq!(pool.snapshot().used, 0);
         let pool = Budget::new(8 * 1024 * 1024, 0);
         let path = RemotePath::new(&pool, b"/").unwrap();
-        let mut scan = Scan::new(1, 1, path, false).unwrap();
+        let mut scan = Scan::new(1, 1, path, false, Sort::Name).unwrap();
         let bytes = names(&[]);
         let wire::Response::Names { names, .. } = wire::parse(&bytes).unwrap() else { panic!() };
         assert_eq!(scan.push(&names, &Cancellation::default()), Err(Error::EmptyPage));

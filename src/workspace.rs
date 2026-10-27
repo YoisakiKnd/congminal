@@ -2044,8 +2044,15 @@ impl Workspace {
                         } else if self.left_page == LeftPage::Files {
                             #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
                             {
-                                // 操作行有六个按钮槽位，其余行沿用三列；列号按行换算后交给面板。
-                                let slots = if row == 3 { 6 } else { 3 };
+                                // 操作行有六个按钮槽位、第一行四个（上级/刷新/隐藏/排序），其余行沿用三列；
+                                // 列号按行换算后交给面板。
+                                let slots = if row == 3 {
+                                    6
+                                } else if row == 1 {
+                                    4
+                                } else {
+                                    3
+                                };
                                 let column = (x as usize - self.left_rect.x) * slots / self.left_rect.w.max(1);
                                 if self.sftp_click(row, column.min(slots - 1)) {
                                     return true;

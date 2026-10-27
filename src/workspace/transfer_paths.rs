@@ -948,9 +948,14 @@ pub(super) mod tests {
         });
         let state = app.sftp.as_mut().unwrap();
         let v = state.view.as_mut().unwrap();
-        let mut scan =
-            crate::sftp::model::Scan::new(v.binding.owner.session, v.binding.owner.generation, v.target.clone(), false)
-                .unwrap();
+        let mut scan = crate::sftp::model::Scan::new(
+            v.binding.owner.session,
+            v.binding.owner.generation,
+            v.target.clone(),
+            false,
+            crate::sftp::model::Sort::Name,
+        )
+        .unwrap();
         scan.push_entry(
             name,
             crate::sftp::model::Attributes {
