@@ -43,6 +43,8 @@ pub struct Upload<'a> {
     pub destination: &'a [u8],
     pub length: u64,
     pub replace: bool,
+    /// 临时文件里已经写好的字节数：>0 时不清空临时文件，跳过源文件前这么多字节再续写。
+    pub resume: u64,
 }
 /// v3只提供秒级mtime；相同大小/同秒变化仍可能不可见，不是不可变快照。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,14 +110,19 @@ pub fn upload_observed<I: Read + Write, R: Read>(
         if target.replace && !channel.capabilities().posix_rename {
             return Err(super::wire::Error::UnsupportedExtension.into());
         }
+        if target.resume > target.length {
+            return Err(Error::Changed);
+        }
         let _memory = channel.reserve(CHUNK_LIMIT)?;
         let mut buffer = [0u8; CHUNK_LIMIT];
+        // 续传时不能截断临时文件，否则已写好的部分会被清掉。
+        let flags = if target.resume > 0 { 2 | 8 } else { 2 | 8 | 32 };
         channel.issue(
             Expected::Handle,
             |id| Request::Open {
                 id,
                 path: target.temporary,
-                flags: 2 | 8 | 32,
+                flags,
                 attrs: Attributes { permissions: Some(0o600), ..Attributes::default() },
             },
             cancel,
@@ -125,7 +132,23 @@ pub fn upload_observed<I: Read + Write, R: Read>(
         let Response::Handle { handle, .. } = response else {
             return Err(remote(response));
         };
-        let mut offset = 0;
+        // 断点之前的源字节直接丢掉：调用者按断点续写，偏移与远端临时文件保持一致。
+        let mut offset = target.resume;
+        let mut skipped = 0;
+        while skipped < offset {
+            check(cancel)?;
+            let want = (offset - skipped).min(CHUNK_LIMIT as u64) as usize;
+            match input.read(&mut buffer[..want]) {
+                Ok(0) => return Err(Error::Changed),
+                Ok(count) => skipped += count as u64,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        // 只有续传才需要先报一次断点，避免普通传输多一次 0 进度回调。
+        if target.resume > 0 {
+            progress(offset);
+        }
         while offset < target.length {
             check(cancel)?;
             let length = (target.length - offset).min(CHUNK_LIMIT as u64) as usize;
@@ -326,6 +349,55 @@ mod tests {
         assert_eq!(offset, bytes.len());
         result
     }
+    /// 取第 n 个请求（按类型与字段解析），用于核对续传时的 OPEN 标志与 WRITE 偏移。
+    fn request(bytes: &[u8], index: usize) -> (u8, &[u8]) {
+        let mut offset = 0;
+        for _ in 0..index {
+            let length = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+            offset += length + 4;
+        }
+        let length = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        (bytes[offset + 4], &bytes[offset + 5..offset + 4 + length])
+    }
+    #[test]
+    fn resume_keeps_the_temporary_file_and_skips_already_written_source_bytes() {
+        let pool = Budget::new(256 * 1024, 0);
+        let cancel = Cancellation::default();
+        // 远端临时文件已有 2 字节，源文件 5 字节：只应写入后 3 字节，且不带 TRUNC。
+        let (io, output) = peer(5);
+        let mut channel = Channel::connect(io, Source { session: 1, generation: 1 }, pool.clone(), &cancel).unwrap();
+        let mut reported = Vec::new();
+        let result = upload(
+            &mut channel,
+            &mut Cursor::new(b"abcde"),
+            Upload { temporary: b"part", destination: b"done", length: 5, replace: false, resume: 2 },
+            &cancel,
+            |bytes| reported.push(bytes),
+        );
+        assert_eq!(result.unwrap(), 5);
+        // OPEN 的 flags 不能带 32（TRUNC），否则已写好的 2 字节会被清空。
+        let sent = output.borrow().clone();
+        // 0 是 INIT，1 是 OPEN，2 是唯一的 WRITE。
+        let (kind, body) = request(&sent, 1);
+        assert_eq!(kind, 3);
+        let path_length = u32::from_be_bytes(body[4..8].try_into().unwrap()) as usize;
+        let flags = u32::from_be_bytes(body[8 + path_length..12 + path_length].try_into().unwrap());
+        assert_eq!(flags & 32, 0, "续传不能截断临时文件：{flags}");
+        // 唯一的 WRITE 从偏移 2 开始，内容是源文件被跳过 2 字节之后的部分。
+        let (kind, body) = request(&sent, 2);
+        assert_eq!(kind, 6);
+        let handle = u32::from_be_bytes(body[4..8].try_into().unwrap()) as usize;
+        let offset_at = 8 + handle;
+        let offset = u64::from_be_bytes(body[offset_at..offset_at + 8].try_into().unwrap());
+        assert_eq!(offset, 2);
+        let data_length = u32::from_be_bytes(body[offset_at + 8..offset_at + 12].try_into().unwrap()) as usize;
+        let data_at = offset_at + 12;
+        assert_eq!(&body[data_at..data_at + data_length], b"cde");
+        // 进度从断点开始上报，界面不会显示成 0。
+        assert_eq!(reported, [2, 5]);
+        drop(channel);
+        assert_eq!(pool.snapshot().used, 0);
+    }
     #[test]
     fn source_verification_follows_close_ack_and_failure_or_cancel_never_sends_rename() {
         for failure in [false, true] {
@@ -338,7 +410,7 @@ mod tests {
             let result = upload_checked(
                 &mut channel,
                 &mut Cursor::new(b"x"),
-                Upload { temporary: b"part", destination: b"done", length: 1, replace: false },
+                Upload { temporary: b"part", destination: b"done", length: 1, replace: false, resume: 0 },
                 &cancel,
                 |_| {},
                 |_| {
@@ -366,7 +438,7 @@ mod tests {
         let result = upload_checked(
             &mut channel,
             &mut Cursor::new(b"x"),
-            Upload { temporary: b"part", destination: b"done", length: 1, replace: false },
+            Upload { temporary: b"part", destination: b"done", length: 1, replace: false, resume: 0 },
             &cancel,
             |_| {},
             |_| {
@@ -487,7 +559,7 @@ mod tests {
             let result = upload_observed(
                 &mut channel,
                 &mut Cursor::new(b"x"),
-                Upload { temporary: b"part", destination: b"done", length: 1, replace: false },
+                Upload { temporary: b"part", destination: b"done", length: 1, replace: false, resume: 0 },
                 &cancel,
                 |bytes| progress.advance(bytes).unwrap(),
                 |_| {

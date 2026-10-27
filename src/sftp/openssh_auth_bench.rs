@@ -113,7 +113,8 @@ fn identical_encrypted_authentication_and_data_workload_measures_incremental_ipc
                 temporary: temporary.as_os_str().as_encoded_bytes(),
                 destination: destination.as_os_str().as_encoded_bytes(),
                 length,
-                replace: false
+                replace: false,
+                resume: 0
             },
             &cancel,
             |_| {}

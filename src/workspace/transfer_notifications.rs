@@ -288,6 +288,7 @@ pub(super) mod tests {
             remote: b"/not-a-target",
             length: 1,
             replace: service::Replace::No,
+            resume: None,
         }
     }
     fn completed(app: &mut Workspace) -> Ticket {

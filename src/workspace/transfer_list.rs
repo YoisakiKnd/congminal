@@ -12,7 +12,25 @@ enum Action {
     Cleanup,
     /// 把打开过的临时副本传回远端原路径（覆盖，需第二次点击确认）。
     Return,
+    /// 复用上次的临时文件从断点继续上传（需第二次点击确认）。
+    Resume,
 }
+/// 按钮行：顺序决定命中下标，新按钮只往末尾加。
+const ACTIONS: [(Action, &str); 7] = [
+    (Action::Cancel, "[取消]"),
+    (Action::Forget, "[清除]"),
+    (Action::Details, "[详情]"),
+    (Action::Retry, "[重试]"),
+    (Action::Cleanup, "[清理]"),
+    (Action::Return, "[回传]"),
+    (Action::Resume, "[续传]"),
+];
+/// 命中表：标题 1 格 + 按钮各一格 + 记录 SLOTS 格。
+const HITS: usize = 1 + ACTIONS.len() + SLOTS;
+/// 记录行的第一个命中下标。
+const RECORD_HITS: usize = 1 + ACTIONS.len();
+/// 续传要复用的临时文件按第二次点击确认，窗口过期就作废。
+const RESUME_CONFIRM: Duration = Duration::from_secs(10);
 /// 清理残留临时文件是删除远端文件，按第二次点击确认；窗口过期就作废。
 const CLEANUP_CONFIRM: Duration = Duration::from_secs(10);
 /// 回传会覆盖远端原文件，同样按第二次点击确认。
@@ -29,6 +47,7 @@ mod tests {
             remote: b"/unused-target",
             length: 100,
             replace: service::Replace::No,
+            resume: None,
         }
     }
     fn draw(app: &mut Workspace) {
@@ -190,7 +209,7 @@ mod tests {
         assert!(app.sftp.as_ref().unwrap().tasks.hits[6].is_none(), "nothing to return without an opened copy");
         record_open(&mut app, &local);
         draw(&mut app);
-        let row = app.sftp.as_ref().unwrap().tasks.hits[7].unwrap().rect;
+        let row = app.sftp.as_ref().unwrap().tasks.hits[8].unwrap().rect;
         mouse(&mut app, true, row);
         mouse(&mut app, false, row);
         draw(&mut app);
@@ -238,7 +257,7 @@ mod tests {
         assert!(app.sftp.as_ref().unwrap().tasks.hits[5].is_none(), "no residual means nothing to clean");
         record_partial(&mut app);
         draw(&mut app);
-        let row = app.sftp.as_ref().unwrap().tasks.hits[7].unwrap().rect;
+        let row = app.sftp.as_ref().unwrap().tasks.hits[8].unwrap().rect;
         mouse(&mut app, true, row);
         mouse(&mut app, false, row);
         draw(&mut app);
@@ -264,6 +283,56 @@ mod tests {
         assert!(matches!(mutation.origin, Origin::Cleanup(t) if t == ticket));
         // 回收未确认的记录会挡住退出，先清掉记录再关闭。
         app.sftp.as_mut().unwrap().mutation = None;
+        assert!(app.forget_remote_transfer(ticket));
+        close(&mut app);
+        drop(app);
+        released(&parent);
+    }
+    #[test]
+    fn resume_is_offered_only_for_uploads_with_a_partial_and_needs_a_second_click() {
+        let parent = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(parent.clone());
+        let mut app = workspace();
+        app.start_remote_files(paths(), b".").unwrap();
+        let ticket = app.submit_remote_transfer(upload()).unwrap();
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().files[0].as_ref().unwrap().complete
+        });
+        app.show_transfer_list();
+        // 没有临时文件时「续传」不可点。
+        draw(&mut app);
+        assert!(app.sftp.as_ref().unwrap().tasks.hits[7].is_none(), "no partial means nothing to resume");
+        record_partial(&mut app);
+        let row = app.sftp.as_ref().unwrap().tasks.hits[8].unwrap().rect;
+        mouse(&mut app, true, row);
+        mouse(&mut app, false, row);
+        draw(&mut app);
+        let resume = app.sftp.as_ref().unwrap().tasks.hits[7].expect("resume enabled with a partial").rect;
+        mouse(&mut app, true, resume);
+        mouse(&mut app, false, resume);
+        draw(&mut app);
+        preview(&app, "CONGMINAL_SFTP_RESUME_PREVIEW_PATH");
+        let state = app.sftp.as_ref().unwrap();
+        assert_eq!(state.tasks.resume_pending.map(|(t, _)| t), Some(ticket));
+        assert!(state.preparation.is_none(), "first click only arms the confirmation");
+        // 换选记录（或取消选中）后确认窗口作废，避免把确认用到另一条记录上。
+        app.sftp.as_mut().unwrap().tasks.selected = None;
+        app.chrome_dirty = true;
+        draw(&mut app);
+        assert!(app.sftp.as_ref().unwrap().tasks.resume_pending.is_none());
+        // 过期的确认按未确认处理：再点一次只是重新起窗口，不会提交续传。
+        app.sftp.as_mut().unwrap().tasks.selected = Some(ticket);
+        app.sftp.as_mut().unwrap().tasks.resume_pending = Some((ticket, Instant::now() - Duration::from_secs(1)));
+        app.chrome_dirty = true;
+        draw(&mut app);
+        let resume = app.sftp.as_ref().unwrap().tasks.hits[7].expect("resume still offered").rect;
+        mouse(&mut app, true, resume);
+        mouse(&mut app, false, resume);
+        let state = app.sftp.as_ref().unwrap();
+        assert!(state.preparation.is_none(), "过期的确认不能直接提交");
+        assert!(state.tasks.resume_pending.is_some_and(|(t, until)| t == ticket && until > Instant::now()));
+        // 记录还在等续传，先清掉再关闭右栏，否则关闭会等它结束。
         assert!(app.forget_remote_transfer(ticket));
         close(&mut app);
         drop(app);
@@ -312,7 +381,7 @@ mod tests {
         });
         app.show_transfer_list();
         draw(&mut app);
-        let rect = app.sftp.as_ref().unwrap().tasks.hits[7].unwrap().rect;
+        let rect = app.sftp.as_ref().unwrap().tasks.hits[8].unwrap().rect;
         mouse(&mut app, true, rect);
         assert!(app.forget_remote_transfer(first));
         app.chrome_dirty = true;
@@ -349,13 +418,15 @@ pub(super) struct List {
     offset: usize,
     scroll: f64,
     next: Option<Instant>,
-    hits: [Option<Hit>; SLOTS + 7],
+    hits: [Option<Hit>; HITS],
     pressed: Option<Hit>,
     bounds: Rect,
     /// 已点过一次「清理」的记录与确认期限；过期或换选记录都作废。
     cleanup_pending: Option<(Ticket, Instant)>,
     /// 回传确认窗口（覆盖远端原文件，第二次点击才提交）。
     return_pending: Option<(Ticket, Instant)>,
+    /// 续传确认窗口（复用上次的临时文件，第二次点击才提交）。
+    resume_pending: Option<(Ticket, Instant)>,
     /// 一次性提示（清理成功/失败），下一次绘制后清掉。
     pub(super) note: Option<String>,
 }
@@ -367,11 +438,12 @@ impl Default for List {
             offset: 0,
             scroll: 0.,
             next: None,
-            hits: [None; SLOTS + 7],
+            hits: [None; HITS],
             pressed: None,
             bounds: Rect::default(),
             cleanup_pending: None,
             return_pending: None,
+            resume_pending: None,
             note: None,
         }
     }
@@ -454,7 +526,7 @@ impl State {
     pub(in crate::workspace) fn invalidate_transfer_clicks(&mut self) {
         self.notices.invalidate();
         self.tasks.pressed = None;
-        self.tasks.hits = [None; SLOTS + 7];
+        self.tasks.hits = [None; HITS];
     }
     pub(in crate::workspace) fn review_active(&self) -> bool {
         #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -543,7 +615,7 @@ impl Workspace {
             list.pressed = None;
             list.bounds = r;
         }
-        list.hits = [None; SLOTS + 7];
+        list.hits = [None; HITS];
         let title = "传输任务 · 点击返回状态";
         let title_rect = Rect { x: r.x, y: r.y, w: r.w, h };
         if self.driver.renderer.auth_text(&mut self.frame, [r.x, r.y, r.w, h], title, false) {
@@ -551,6 +623,9 @@ impl Workspace {
         }
         let selected = list.selected.and_then(|t| state.files.iter().flatten().find(|f| f.ticket == t));
         let cleanable = selected.is_some_and(|f| f.complete && f.status.partial().is_some());
+        let resumable = selected.is_some_and(|f| {
+            retryable && f.status.direction() == service::TransferDirection::Upload && f.status.partial().is_some()
+        });
         let returnable = selected.is_some_and(|f| f.complete && f.failure.is_none() && f.open.is_some());
         if list.return_pending.is_some_and(|(ticket, _)| Some(ticket) != list.selected) {
             list.return_pending = None;
@@ -563,14 +638,11 @@ impl Workspace {
         }
         let confirming =
             list.cleanup_pending.is_some_and(|(ticket, until)| Some(ticket) == list.selected && Instant::now() < until);
-        const ACTIONS: [(Action, &str); 6] = [
-            (Action::Cancel, "[取消]"),
-            (Action::Forget, "[清除]"),
-            (Action::Details, "[详情]"),
-            (Action::Retry, "[重试]"),
-            (Action::Cleanup, "[清理]"),
-            (Action::Return, "[回传]"),
-        ];
+        if list.resume_pending.is_some_and(|(ticket, _)| Some(ticket) != list.selected) {
+            list.resume_pending = None;
+        }
+        let resuming =
+            list.resume_pending.is_some_and(|(ticket, until)| Some(ticket) == list.selected && Instant::now() < until);
         let button_rows = ACTIONS.len().div_ceil(2);
         for (i, (action, text)) in ACTIONS.into_iter().enumerate() {
             let rect = Rect { x: r.x + (i % 2) * r.w / 2, y: r.y + (1 + i / 2) * h, w: r.w / 2, h };
@@ -580,11 +652,13 @@ impl Workspace {
                 Action::Retry => !exiting && retryable,
                 Action::Cleanup => !exiting && cleanable,
                 Action::Return => !exiting && returnable,
+                Action::Resume => !exiting && resumable,
                 _ => true,
             });
             let text = match action {
                 Action::Cleanup if confirming => "[确认]",
                 Action::Return if returning => "[确认]",
+                Action::Resume if resuming => "[确认]",
                 _ => text,
             };
             if r.h >= (2 + i / 2) * h
@@ -602,8 +676,12 @@ impl Workspace {
                 "再点一次「确认」删除残留".into()
             } else if returning {
                 "再点一次「确认」回传覆盖".into()
+            } else if resuming {
+                "再点一次「确认」从断点续传".into()
             } else if returnable {
                 "回传会把临时副本覆盖远端原文件".into()
+            } else if resumable {
+                "续传复用上次的临时文件".into()
             } else if cleanable {
                 "清理只删远端临时文件".into()
             } else {
@@ -641,7 +719,8 @@ impl Workspace {
                 amount.as_str(),
                 list.selected == Some(file.ticket),
             );
-            list.hits[line + 7] = Some(Hit { ticket: Some(file.ticket), action: Action::Select, rect, generation });
+            list.hits[line + RECORD_HITS] =
+                Some(Hit { ticket: Some(file.ticket), action: Action::Select, rect, generation });
         }
         state.tasks.note = None;
         true
@@ -669,6 +748,39 @@ impl Workspace {
             Err(Failure::Budget) => self.notice("清理残留暂不可用：额度不足"),
             Err(Failure::Cancelled) => self.notice("清理残留暂不可用：连接正在关闭"),
             Err(_) => self.notice("清理残留暂不可用：记录或临时文件已变化"),
+        }
+    }
+    /// 从断点继续上传：第一次点击起 10 秒确认，第二次才复用上次的临时文件提交。
+    fn resume_transfer(&mut self, record: Ticket) {
+        let now = Instant::now();
+        let confirming = self
+            .sftp
+            .as_ref()
+            .is_some_and(|s| s.tasks.resume_pending.is_some_and(|(ticket, until)| ticket == record && now < until));
+        if !confirming {
+            if let Some(state) = self.sftp.as_mut() {
+                state.tasks.resume_pending = Some((record, now + RESUME_CONFIRM));
+                state.tasks.note = None;
+            }
+            self.chrome_dirty = true;
+            return;
+        }
+        if let Some(state) = self.sftp.as_mut() {
+            state.tasks.resume_pending = None;
+        }
+        match self.resume_remote_transfer(record) {
+            Ok(_) => {
+                // 临时文件已经交给新记录：旧记录不再提供清理/续传，避免两边同时动它。
+                if let Some(state) = self.sftp.as_ref()
+                    && let Some(file) = state.files.iter().flatten().find(|f| f.ticket == record)
+                {
+                    file.status.forget_partial();
+                }
+                self.chrome_dirty = true;
+            }
+            Err(Failure::Budget) => self.notice("续传暂不可用：额度不足"),
+            Err(Failure::Cancelled) => self.notice("续传暂不可用：连接正在关闭"),
+            Err(_) => self.notice("续传暂不可用：记录没有可复用的临时文件"),
         }
     }
     /// 把打开过的临时副本传回远端原路径：第一次点击起 10 秒确认，第二次才提交覆盖上传。
@@ -711,6 +823,7 @@ impl Workspace {
             remote: &remote,
             length,
             replace: service::Replace::ExplicitlyApproved,
+            resume: None,
         };
         match self.submit_remote_transfer(selection) {
             Ok(_) => {
@@ -770,7 +883,7 @@ impl Workspace {
             }
             event @ (Event::Resize { .. } | Event::Focus(_)) => {
                 list.pressed = None;
-                list.hits = [None; SLOTS + 7];
+                list.hits = [None; HITS];
                 return Some(event);
             }
             event => return Some(event),
@@ -779,7 +892,7 @@ impl Workspace {
             if self.sftp.as_ref().unwrap().exiting
                 && matches!(
                     hit.action,
-                    Action::Cancel | Action::Forget | Action::Retry | Action::Cleanup | Action::Return
+                    Action::Cancel | Action::Forget | Action::Retry | Action::Cleanup | Action::Return | Action::Resume
                 )
             {
                 return None;
@@ -815,6 +928,11 @@ impl Workspace {
                 Action::Return => {
                     if let Some(ticket) = hit.ticket {
                         self.return_opened(ticket);
+                    }
+                }
+                Action::Resume => {
+                    if let Some(ticket) = hit.ticket {
+                        self.resume_transfer(ticket);
                     }
                 }
                 Action::Details => {
