@@ -54,6 +54,8 @@ pub(super) struct Panel {
     pub(super) revision: u64,
     pub(super) pool: Arc<Budget>,
     factory: monitor::Factory,
+    /// 远端采样目标；`None` 表示读本机。切换主机要清历史，避免两条主机的曲线混在一起。
+    pub(super) target: Option<monitor::remote::Target>,
 }
 
 impl Panel {
@@ -86,6 +88,7 @@ impl Panel {
             revision: 0,
             pool: crate::resources::current(),
             factory,
+            target: None,
         }
     }
 
@@ -99,6 +102,43 @@ impl Panel {
         let history = self.history.as_ref().map_or(0, History::bytes);
         if self.lease.is_some() { monitor::RESERVED + history } else { history }
     }
+    /// 采样间隔：远端要起 `ssh` 进程，至少 `REMOTE_MIN_INTERVAL`，不能按本地节奏跑。
+    pub(super) fn interval(&self) -> std::time::Duration {
+        if self.target.is_some() {
+            self.limits.interval.max(monitor::REMOTE_MIN_INTERVAL)
+        } else {
+            self.limits.interval.max(monitor::MIN_INTERVAL)
+        }
+    }
+
+    /// 切换采样目标（本机 ↔ 远端主机）。目标变了就取消在途采样、清空历史并重新排期，
+    /// 不让上一台主机的读数留在曲线上。返回是否发生变化。
+    pub(super) fn set_target(&mut self, target: Option<monitor::remote::Target>) -> bool {
+        if self.target == target {
+            return false;
+        }
+        // 丢掉在途任务会取消它的工作器（正在跑的 ssh 会被杀掉）。
+        self.task = None;
+        self.loading = false;
+        self.history = None;
+        self.points = 0;
+        self.mount = None;
+        self.error = None;
+        self.last_disk = None;
+        self.failure_notice = false;
+        self.alert_pending = None;
+        self.alert_at = None;
+        self.factory = match &target {
+            Some(target) => monitor::remote_factory(target.clone()),
+            None => monitor::factory(),
+        };
+        self.target = target;
+        self.generation = self.generation.wrapping_add(1);
+        self.next = Some(Instant::now());
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
     pub(super) fn samples(&self) -> usize {
         self.history.as_ref().map_or(0, History::len)
     }
@@ -239,7 +279,7 @@ impl Panel {
     }
 
     fn sample(&mut self, notify: Notify) -> bool {
-        if !monitor::SUPPORTED {
+        if !monitor::SUPPORTED && self.target.is_none() {
             self.error = Some(Error::Unsupported);
             return true;
         }
@@ -248,7 +288,7 @@ impl Panel {
         }
         let now = Instant::now();
         let disk = self.last_disk.is_none_or(|at| now.saturating_duration_since(at) >= self.limits.disk_interval);
-        let points = self.limits.samples();
+        let points = monitor::Limits { interval: self.interval(), ..self.limits }.samples();
         if self.points != points || self.history.is_none() {
             self.points = points;
             self.history = Some(History::new(points));
@@ -265,12 +305,15 @@ impl Panel {
         if self.task.is_none() {
             let factory = self.factory.clone();
             let mut source: Option<Box<dyn monitor::Sampling>> = None;
-            match LatestTask::new_named_in(&self.pool, "monitor", notify, move |request: Request, _cancel| {
+            match LatestTask::new_named_in(&self.pool, "monitor", notify, move |request: Request, cancel| {
                 let source = source.get_or_insert_with(|| factory());
                 let at = Instant::now();
-                let raw = source.sample(request.disk);
+                let (raw, error) = match source.sample(request.disk, cancel) {
+                    Ok(raw) => (raw, None),
+                    Err(error) => (monitor::Raw::default(), Some(error)),
+                };
                 let mount = source.mount();
-                Ok(Reply { generation: request.generation, sample: Sample { at, raw }, mount })
+                Ok(Reply { generation: request.generation, sample: Sample { at, raw }, mount, error })
             }) {
                 Ok(task) => self.task = Some(task),
                 Err(_) => {
@@ -281,7 +324,7 @@ impl Panel {
         }
         self.generation = self.generation.wrapping_add(1);
         self.loading = true;
-        self.next = Some(now + self.limits.interval.max(monitor::MIN_INTERVAL));
+        self.next = Some(now + self.interval());
         self.revision = self.revision.wrapping_add(1);
         let request = Request { generation: self.generation, disk };
         if let Err(error) = self.task.as_ref().unwrap().try_submit(request) {
@@ -304,6 +347,10 @@ impl Panel {
         };
         self.loading = false;
         match result {
+            Ok(reply) if reply.generation == self.generation && reply.error.is_some() => {
+                // 远端读数失败：不进历史，避免曲线里混进零值。
+                self.fail(reply.error.unwrap());
+            }
             Ok(reply) if reply.generation == self.generation => {
                 self.error = None;
                 self.mount = reply.mount;
@@ -357,6 +404,9 @@ impl Panel {
         match last {
             Some(sample) => {
                 let raw = sample.raw;
+                if let Some(target) = &self.target {
+                    headline.push(format!("远程 {}", target.label()));
+                }
                 headline.push(format!("CPU {:.0}% · {} 核", raw.cpu, raw.cores));
                 let memory = monitor::percent(raw.mem_used, raw.mem_total)
                     .map(|percent| format!("（{percent}%）"))
@@ -384,7 +434,8 @@ impl Panel {
             }
             None => headline.push(if self.loading { "正在采样…".into() } else { "等待第一次采样".into() }),
         }
-        let interval = self.limits.interval.max(monitor::MIN_INTERVAL);
+        // 显示的是实际采样节奏：远端被抬到 `REMOTE_MIN_INTERVAL`，不能还写配置里的 1 秒。
+        let interval = self.interval();
         let status = if self.loading {
             "正在采样…".to_string()
         } else if self.paused {
