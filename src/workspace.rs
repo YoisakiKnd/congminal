@@ -3178,7 +3178,7 @@ program="/definitely/missing/congminal-shell"
         assert_eq!(snapshot.counts.untracked, 1);
         assert_eq!(snapshot.counts.staged, 0);
         assert!(app.git.bytes() > 0);
-        let view = app.git.view(12);
+        let view = app.git.view(12, 0);
         assert!(view.headline[0].contains("repo"), "{:?}", view.headline);
         assert!(view.content.iter().any(|(text, _)| text.starts_with(" M tracked.txt")));
         assert!(view.content.iter().any(|(text, _)| text == "?? new file.txt"));
@@ -3209,8 +3209,8 @@ program="/definitely/missing/congminal-shell"
         click(&mut app, 6, git_row(index));
         assert_eq!(app.git.selected, Some(index));
         assert!(!app.git.diff_open);
-        // 选中只是高亮；“差异”按钮才真正打开这一条的 diff。
-        click(&mut app, r.w / 4 + 4, 1);
+        // 选中只是高亮；“差异”按钮（第二列）才真正打开这一条的 diff。
+        click(&mut app, r.w / 6 + 4, 1);
         wait(&mut app, |a| a.git.diff.is_some() || a.git.diff_error.is_some());
         let diff = app.git.diff.as_ref().unwrap();
         assert!(diff.text.contains("+changed"), "{}", diff.text);
@@ -3262,8 +3262,8 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
-        // 按钮四列等分：刷新 / 差异 / 暂存 / 提交。
-        let slot = |index: usize| index * (r.w / 4) + 4;
+        // 按钮六列等分：刷新 / 差异 / 暂存 / 提交 / 拉取 / 推送。
+        let slot = |index: usize| index * (r.w / 6) + 4;
         let index = app
             .git
             .snapshot
@@ -3274,7 +3274,7 @@ program="/definitely/missing/congminal-shell"
             .position(|entry| entry.path.as_os_str() == "new file.txt")
             .unwrap();
         click(&mut app, 6, git_row(index));
-        assert_eq!(app.git.view(6).buttons[2], "暂存");
+        assert_eq!(app.git.view(6, 0).buttons[2], "暂存");
         click(&mut app, slot(2), 1);
         wait(&mut app, |a| {
             a.git.snapshot.as_ref().is_some_and(|snapshot| {
@@ -3283,7 +3283,7 @@ program="/definitely/missing/congminal-shell"
         });
         assert!(app.git.write_note.as_deref().is_some_and(|note| note.contains("已暂存")), "{:?}", app.git.write_note);
         // 已经全部进入索引的条目：同一个按钮变成“取消暂存”。
-        assert_eq!(app.git.view(6).buttons[2], "取消暂存");
+        assert_eq!(app.git.view(6, 0).buttons[2], "取消暂存");
         // 打开提交输入，输入法结果与按键都由面板吃掉，不进入终端。
         click(&mut app, slot(3), 1);
         assert!(app.git.capturing());
@@ -3324,6 +3324,169 @@ program="/definitely/missing/congminal-shell"
         app.tick();
         assert_eq!(app.git.bytes(), 0);
         assert!(app.git.write_note.is_none());
+    }
+
+    /// 带本地裸仓库上游的夹具：拉取/推送全走文件路径，不需要网络或凭据。
+    fn git_remote_fixture() -> (layout::TestDir, PathBuf, PathBuf) {
+        let dir = layout::TestDir::new();
+        let repo = dir.0.join("repo");
+        let bare = dir.0.join("remote.git");
+        std::fs::create_dir(&repo).unwrap();
+        let git = |cwd: &Path, args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(cwd)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_CONFIG_SYSTEM", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .status()
+                .expect("Git 面板测试需要本机 git");
+            assert!(status.success(), "git {args:?}");
+        };
+        git(&dir.0, &["init", "-q", "--bare", "remote.git"]);
+        git(&repo, &["init", "-q", "."]);
+        git(&repo, &["config", "user.name", "t"]);
+        git(&repo, &["config", "user.email", "t@t"]);
+        std::fs::write(repo.join("tracked.txt"), b"one\n").unwrap();
+        git(&repo, &["add", "tracked.txt"]);
+        git(&repo, &["commit", "-qm", "init"]);
+        git(&repo, &["remote", "add", "origin", bare.to_str().unwrap()]);
+        git(&repo, &["push", "-q", "-u", "origin", "HEAD"]);
+        (dir, repo, bare)
+    }
+
+    #[test]
+    fn git_panel_pushes_only_after_a_second_click_and_reports_the_outcome() {
+        let (_dir, repo, bare) = git_remote_fixture();
+        std::fs::write(repo.join("tracked.txt"), b"one\npushed\n").unwrap();
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_CONFIG_SYSTEM", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .status()
+                .expect("Git 面板测试需要本机 git");
+            assert!(status.success(), "git {args:?}");
+        };
+        git(&["commit", "-qam", "本地提交"]);
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        // 六列等分：刷新 / 差异 / 暂存 / 提交 / 拉取 / 推送。
+        let slot = |index: usize| index * (r.w / 6) + 4;
+        // 第一次点击只进入确认态，不执行任何 git 命令。
+        click(&mut app, slot(5), 1);
+        assert!(app.git.pending.is_some());
+        let note = app.git.write_note.clone().unwrap_or_default();
+        assert!(note.contains("再点一次") && note.contains("推送"), "{note}");
+        assert!(!app.git.write_loading);
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_CONFIRM_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 第二次点击才真正推送；上游分支指向本地 HEAD。
+        click(&mut app, slot(5), 1);
+        wait(&mut app, |a| !a.git.write_loading && a.git.write_note.is_some());
+        assert!(app.git.write_note.as_deref().unwrap_or("").contains("已推送"), "{:?}", app.git.write_note);
+        let head = std::process::Command::new("git").arg("-C").arg(&repo).args(["rev-parse", "HEAD"]).output().unwrap();
+        let remote = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&bare)
+            .args(["rev-parse", "--verify", "HEAD"])
+            .output()
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&remote.stdout).trim(),
+            String::from_utf8_lossy(&head.stdout).trim(),
+            "推送后上游应指向本地 HEAD"
+        );
+        // 结局进通知中心：固定文案，不含路径或提交正文。
+        let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(texts.iter().any(|text| text == "Git · 推送完成"), "{texts:?}");
+        // 关闭右栏：写任务已结束，快照与票据全部归还。
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
+    }
+
+    #[test]
+    fn git_panel_pulls_after_a_second_click_and_fast_forwards() {
+        let (_dir, repo, bare) = git_remote_fixture();
+        // 另一个克隆往上游推一个提交，工作仓库应当快进拿到它。
+        let other = _dir.0.join("other");
+        std::fs::create_dir(&other).unwrap();
+        let git = |cwd: &Path, args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(cwd)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_CONFIG_SYSTEM", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .status()
+                .expect("Git 面板测试需要本机 git");
+            assert!(status.success(), "git {args:?}");
+        };
+        git(&other, &["clone", "-q", bare.to_str().unwrap(), "."]);
+        git(&other, &["config", "user.name", "t"]);
+        git(&other, &["config", "user.email", "t@t"]);
+        std::fs::write(other.join("from-other.txt"), b"o\n").unwrap();
+        git(&other, &["add", "from-other.txt"]);
+        git(&other, &["commit", "-qm", "other"]);
+        git(&other, &["push", "-q", "origin", "HEAD"]);
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        let slot = |index: usize| index * (r.w / 6) + 4;
+        click(&mut app, slot(4), 1);
+        let note = app.git.write_note.clone().unwrap_or_default();
+        assert!(note.contains("再点一次") && note.contains("拉取"), "{note}");
+        click(&mut app, slot(4), 1);
+        wait(&mut app, |a| !a.git.write_loading && a.git.write_note.is_some());
+        assert!(app.git.write_note.as_deref().unwrap_or("").contains("已拉取"), "{:?}", app.git.write_note);
+        assert!(repo.join("from-other.txt").exists(), "快进后应拿到上游文件");
+        let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(texts.iter().any(|text| text == "Git · 拉取完成"), "{texts:?}");
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
     }
 
     #[test]
@@ -3422,7 +3585,7 @@ program="/definitely/missing/congminal-shell"
         app.width = 1200;
         app.height = 700;
         app.action(Action::ShowGitPanel);
-        wait(&mut app, |a| a.git.view(6).headline.iter().any(|line| line.contains("git 可执行程序")));
+        wait(&mut app, |a| a.git.view(6, 0).headline.iter().any(|line| line.contains("git 可执行程序")));
         assert!(app.git.snapshot.is_none() && app.git.diff.is_none());
         // 目录票据仍保留（用于重试），关闭右栏后必须全部归还。
         assert!(app.git.bytes() > 0);
@@ -3432,7 +3595,7 @@ program="/definitely/missing/congminal-shell"
         app.driver.config.git.enabled = false;
         app.action(Action::ShowGitPanel);
         app.tick();
-        let view = app.git.view(6);
+        let view = app.git.view(6, 0);
         assert!(view.headline[0].contains("已停用"), "{:?}", view.headline);
         assert_eq!(app.git.bytes(), 0);
         assert!(app.git.deadline().is_none());

@@ -372,8 +372,29 @@ fn truncated_status_output_is_marked_incomplete() {
 }
 
 fn run_write(pool: &Arc<Budget>, dir: &Path, op: WriteOp) -> Result<(), Error> {
+    run_write_summary(pool, dir, op).map(|_| ())
+}
+/// 与 `run_write` 相同，但把成功摘要也交回来，便于断言远端操作的结果。
+fn run_write_summary(pool: &Arc<Budget>, dir: &Path, op: WriteOp) -> Result<String, Error> {
     let request = WriteRequest::new(1, 1, dir, op, &base_limits(), pool).unwrap();
-    write(request, &Cancellation::default()).result
+    let reply = write(request, &Cancellation::default());
+    match reply.result {
+        Ok(()) => Ok(reply.summary),
+        Err(error) => Err(error),
+    }
+}
+
+/// 工作仓库 + 本地裸仓库上游：全部走文件路径，不需要网络或凭据。
+fn remote_pair(name: &str) -> (Fixture, Fixture) {
+    let work = Fixture::new(&format!("{name}-work"));
+    work.repo();
+    let bare = Fixture::new(&format!("{name}-bare"));
+    bare.git(&["init", "-q", "--bare", "."]);
+    let url = bare.path().to_str().unwrap().to_string();
+    work.git(&["remote", "add", "origin", &url]);
+    // 先建上游，产品里的 `git push` / `git pull` 都按上游走，不依赖 push.default。
+    work.git(&["push", "-q", "-u", "origin", "HEAD"]);
+    (work, bare)
 }
 
 #[test]
@@ -476,6 +497,77 @@ fn cancelled_write_never_starts_git() {
     assert!(snapshot.entries.iter().any(|entry| entry.path == path && entry.untracked()));
     drop(snapshot);
     wait_released(&pool);
+}
+
+#[test]
+fn push_sends_the_current_branch_to_its_upstream() {
+    let (work, bare) = remote_pair("write-push");
+    std::fs::write(work.path().join("pushed.txt"), b"x\n").unwrap();
+    work.git(&["add", "pushed.txt"]);
+    work.git(&["commit", "-qm", "pushed"]);
+    let pool = pool();
+    let summary = run_write_summary(&pool, work.path(), WriteOp::Push).unwrap();
+    assert!(!summary.is_empty(), "推送成功要有可显示的摘要");
+    let branch = work.branch();
+    let remote = bare.git(&["rev-parse", "--verify", &branch]);
+    let local = work.git(&["rev-parse", "HEAD"]);
+    assert_eq!(
+        String::from_utf8_lossy(&remote.stdout).trim(),
+        String::from_utf8_lossy(&local.stdout).trim(),
+        "上游分支应指向本地 HEAD"
+    );
+    wait_released(&pool);
+}
+
+#[test]
+fn push_without_an_upstream_fails_with_a_readable_reason() {
+    let fixture = Fixture::new("write-push-no-upstream");
+    fixture.repo();
+    let pool = pool();
+    // 没有远端时 git 自己会拒绝；界面必须拿到错误而不是假装成功。
+    let error = run_write_summary(&pool, fixture.path(), WriteOp::Push).unwrap_err();
+    assert!(matches!(error, Error::Failed(_)), "{error:?}");
+    assert!(!error.message().is_empty());
+    wait_released(&pool);
+}
+
+#[test]
+fn pull_fast_forwards_and_refuses_to_merge_diverged_history() {
+    let (work, bare) = remote_pair("write-pull");
+    // 另一个克隆往上游推一个提交，工作仓库应当快进拿到它。
+    let other = Fixture::new("write-pull-other");
+    other.git(&["clone", "-q", bare.path().to_str().unwrap(), "."]);
+    other.git(&["config", "user.name", "t"]);
+    other.git(&["config", "user.email", "t@t"]);
+    std::fs::write(other.path().join("from-other.txt"), b"o\n").unwrap();
+    other.git(&["add", "from-other.txt"]);
+    other.git(&["commit", "-qm", "other"]);
+    other.git(&["push", "-q", "origin", "HEAD"]);
+    let pool = pool();
+    run_write_summary(&pool, work.path(), WriteOp::Pull).unwrap();
+    assert!(work.path().join("from-other.txt").exists(), "快进后应拿到上游文件");
+    // 分叉：本地与上游各有一个提交，`--ff-only` 必须失败而不是生成合并提交。
+    std::fs::write(work.path().join("local.txt"), b"l\n").unwrap();
+    work.git(&["add", "local.txt"]);
+    work.git(&["commit", "-qm", "local"]);
+    std::fs::write(other.path().join("other2.txt"), b"o2\n").unwrap();
+    other.git(&["add", "other2.txt"]);
+    other.git(&["commit", "-qm", "other2"]);
+    other.git(&["push", "-q", "origin", "HEAD"]);
+    let error = run_write_summary(&pool, work.path(), WriteOp::Pull).unwrap_err();
+    assert!(matches!(error, Error::Failed(_)), "{error:?}");
+    let log = work.git(&["log", "-1", "--pretty=%s"]);
+    assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "local", "分叉时不能生成合并提交");
+    wait_released(&pool);
+}
+
+#[test]
+fn network_writes_get_a_longer_but_still_bounded_timeout() {
+    // 远端操作比本地读写慢，但同样有上限：超时后由 `run` 杀掉子进程。
+    assert!(NETWORK_TIMEOUT > DEFAULT_TIMEOUT);
+    assert!(NETWORK_TIMEOUT <= MAX_TIMEOUT);
+    assert!(WriteOp::Pull.network() && WriteOp::Push.network());
+    assert!(!WriteOp::Commit { message: "x".into() }.network());
 }
 
 #[test]
