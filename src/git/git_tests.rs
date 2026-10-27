@@ -70,6 +70,78 @@ fn base_limits() -> Limits {
     Limits::default()
 }
 /// 全局执行槽是进程级固定表，并行跑测试时可能一时占满；等一会儿再取，避免把资源竞争当成功能失败。
+/// 大仓库实测成本：默认 2 万个文件，`#[ignore]`，只在需要采样时手动跑。
+/// `CONGMINAL_LARGE_REPO_FILES` 可以改规模；数值写进 `docs/evaluations/m7-git-large-repo.md`。
+#[cfg(unix)]
+#[test]
+#[ignore]
+fn large_repository_status_and_diff_cost() {
+    let files: usize =
+        std::env::var("CONGMINAL_LARGE_REPO_FILES").ok().and_then(|value| value.parse().ok()).unwrap_or(20_000);
+    let fixture = Fixture::new("large");
+    fixture.repo();
+    let many = fixture.path().join("many");
+    std::fs::create_dir_all(&many).unwrap();
+    for index in 0..files {
+        std::fs::write(many.join(format!("f{index:06}.txt")), b"x\n").unwrap();
+    }
+    fixture.git(&["add", "many"]);
+    fixture.git(&["commit", "-qm", "many"]);
+    // 默认每十个改一个：让 status 真有东西要报，又不是全部（`CONGMINAL_LARGE_REPO_STRIDE=1` 走截断路径）。
+    let stride: usize =
+        std::env::var("CONGMINAL_LARGE_REPO_STRIDE").ok().and_then(|value| value.parse().ok()).unwrap_or(10);
+    for index in (0..files).step_by(stride.max(1)) {
+        std::fs::write(many.join(format!("f{index:06}.txt")), b"y\n").unwrap();
+    }
+    let pool = pool();
+    let limits = Limits { files: MAX_FILES, ..Limits::default() };
+    let mut elapsed = Vec::new();
+    let mut snapshot = None;
+    for generation in 0..3 {
+        let request = StatusRequest::new(0, generation, fixture.path(), &limits, None, &pool).unwrap();
+        let reply = status(request, &Cancellation::default());
+        let snapshot_now = reply.result.expect("大仓库 status 应成功");
+        elapsed.push(snapshot_now.elapsed);
+        snapshot = Some(snapshot_now);
+    }
+    elapsed.sort();
+    let snapshot = snapshot.unwrap();
+    let tracked = snapshot.counts.unstaged;
+    let listed = snapshot.entries.len();
+    drop(snapshot);
+    // 先测一次 diff：对一个大仓库里改过的文件取受限 diff。
+    let request = StatusRequest::new(0, 9, fixture.path(), &limits, None, &pool).unwrap();
+    let reply = status(request, &Cancellation::default());
+    let snapshot = reply.result.unwrap();
+    let entry = snapshot
+        .entries
+        .iter()
+        .find(|entry| entry.path.as_os_str().as_encoded_bytes().starts_with(b"many/"))
+        .expect("应有未暂存条目");
+    let request = DiffRequest::new(0, 1, &snapshot.root, entry, false, &limits, &pool).unwrap();
+    let diff_started = Instant::now();
+    let diff = diff(request, &Cancellation::default()).result.expect("diff 应成功");
+    let diff_elapsed = diff_started.elapsed();
+    let diff_bytes = diff.text.len();
+    let owner = snapshot.owner;
+    drop(diff);
+    drop(snapshot);
+    eprintln!(
+        "files={files} tracked={tracked} listed={listed} limited={} status median={:?} max={:?} diff={:?} diff_bytes={diff_bytes} owner={owner}",
+        listed >= limits.files(),
+        elapsed[1],
+        elapsed[2],
+        diff_elapsed,
+    );
+    // 上限生效：列出的条目不超过 `max-files`，且标记为不完整。
+    assert!(listed <= limits.files(), "条目数超上限：{listed}");
+    // 2 万文件在本机应在 20 秒内完成，超时说明有回退。
+    assert!(elapsed[2] < Duration::from_secs(20), "status 太慢：{:?}", elapsed[2]);
+    // 采样结束时额度全部归还（大仓库最容易漏账）。
+    let used = crate::resources::current().snapshot().used;
+    assert!(used < 4 * 1024 * 1024, "额度未归还：{used}");
+}
+
 #[cfg(unix)]
 fn retry_worker<T>(mut run: impl FnMut() -> Result<T, Error>) -> Result<T, Error> {
     let until = Instant::now() + Duration::from_secs(5);
