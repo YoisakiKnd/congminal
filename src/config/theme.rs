@@ -9,13 +9,31 @@ pub enum Theme {
     Midnight,
 }
 impl Theme {
-    pub fn parse(name: &str) -> Option<Self> {
-        match name {
-            "dark" => Some(Self::Dark),
-            "light" => Some(Self::Light),
-            "midnight" => Some(Self::Midnight),
-            _ => None,
+    /// 主题预览按这个顺序轮换，配置里的名字也用 `name`。
+    pub const ALL: [Self; 3] = [Self::Dark, Self::Light, Self::Midnight];
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Light => "light",
+            Self::Midnight => "midnight",
         }
+    }
+    /// 预览条上显示的中文名
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "深色",
+            Self::Light => "浅色",
+            Self::Midnight => "午夜",
+        }
+    }
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|theme| *theme == self).unwrap_or(0)
+    }
+    pub fn at(index: usize) -> Self {
+        Self::ALL[index % Self::ALL.len()]
+    }
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|theme| theme.name() == name)
     }
     pub fn next(self) -> Self {
         match self {
@@ -95,5 +113,29 @@ impl Overrides {
         for &(index, value) in &self.palette {
             colors.palette[index] = value;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn every_theme_round_trips_through_name_index_and_preview_order() {
+        assert_eq!(Theme::ALL.len(), 3);
+        for (index, theme) in Theme::ALL.into_iter().enumerate() {
+            assert_eq!(theme.index(), index);
+            assert_eq!(Theme::at(index), theme);
+            assert_eq!(Theme::parse(theme.name()), Some(theme));
+            assert!(!theme.label().is_empty());
+        }
+        // 预览按 ALL 顺序循环，越界也回到合法主题
+        assert_eq!(Theme::at(Theme::ALL.len()), Theme::ALL[0]);
+        assert_eq!(Theme::at(Theme::ALL.len() + 1), Theme::ALL[1]);
+        assert_eq!(Theme::parse("Solarized"), None);
+        // 名字互不重复，否则 parse 会挑错
+        let mut names: Vec<_> = Theme::ALL.into_iter().map(Theme::name).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), Theme::ALL.len());
     }
 }

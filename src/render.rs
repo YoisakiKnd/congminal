@@ -106,6 +106,8 @@ pub struct Renderer {
     /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
     last_frame: u64,
     ui: crate::ui::State,
+    /// 命令行标记：在提示行左侧画一条结果色条（成功绿、失败红、中断黄）
+    command_marks: bool,
 }
 
 /// 每个窗格的脏行/装饰状态；字体和缓存留在唯一的 Renderer 中。
@@ -198,6 +200,7 @@ impl Renderer {
             work: work::Work::default(),
             last_frame: 0,
             ui: crate::ui::State::default(),
+            command_marks: config.command_marks,
         }
     }
 
@@ -355,6 +358,7 @@ impl Renderer {
         self.generation = self.generation.wrapping_add(1);
         self.padding = (config.window.padding * scale as f32).round() as usize;
         self.colors = config.colors.clone();
+        self.command_marks = config.command_marks;
         self.invalidate();
     }
 
@@ -405,12 +409,14 @@ impl Renderer {
     /// `preedit` 是输入法正在输入、还没上屏的文字（比如拼音），画在光标处。
     /// `selection` 是选中的范围（稳定行号表示的起点和终点，都包含在内）。
     /// `focused`：窗口有没有键盘焦点，没有时方块光标画成空心。
+    /// `cursor_on`：闪烁的“亮”相位；false 时这一帧不画光标。
     pub fn draw(
         &mut self,
         term: &Terminal,
         preedit: &str,
         selection: Option<(Point, Point)>,
         focused: bool,
+        cursor_on: bool,
         fb: &mut Framebuffer,
     ) -> Option<Damage> {
         let (default_fg, default_bg) = if term.modes().reverse_video {
@@ -435,7 +441,7 @@ impl Renderer {
             row: cursor_row,
             col: cursor_col,
             shape: term.cursor_shape(),
-            visible: at_bottom && term.modes().cursor_visible,
+            visible: at_bottom && term.modes().cursor_visible && cursor_on,
             focused,
             preedit,
         };
@@ -492,6 +498,7 @@ impl Renderer {
                 self.draw_cursor(fb, term, &cursor);
             }
             for r in start..end {
+                self.draw_command_mark(fb, term, r);
                 self.draw_ui_decorations(fb, term, r);
             }
             if end == rows {
@@ -525,6 +532,10 @@ impl Renderer {
         line.cells[..term.cols().min(line.cells.len())].hash(&mut hasher);
         if cursor.visible && row == cursor.row {
             (cursor.col, cursor.shape, cursor.focused, cursor.preedit).hash(&mut hasher);
+        }
+        // 命令行标记也参与指纹：命令结束时文本没变，这一行仍要重画才能出现色条
+        if self.command_marks {
+            term.shell.outcome_at(term.line_id(row)).hash(&mut hasher);
         }
         // 选区在这一行覆盖的范围
         let id = term.line_id(row);
@@ -671,6 +682,22 @@ impl Renderer {
         }
     }
 
+    /// 提示行左侧的结果色条。画在左内边距里，不压住第一个字。
+    fn draw_command_mark(&self, fb: &mut Framebuffer, term: &Terminal, row: usize) {
+        if !self.command_marks {
+            return;
+        }
+        let color = match term.shell.outcome_at(term.line_id(row)) {
+            Some(crate::shell::Outcome::Exit(0)) => self.colors.palette[2],
+            Some(crate::shell::Outcome::Exit(130 | 143)) => self.colors.palette[3],
+            Some(crate::shell::Outcome::Exit(_)) => self.colors.palette[1],
+            // 退出状态未知时宁可不画，也不误导成成功或失败
+            Some(crate::shell::Outcome::Unknown) | None => return,
+        };
+        let (x, y) = self.cell_origin(row, 0);
+        let width = self.fonts.cell_width.clamp(1, 3);
+        fb.fill_rect(x.saturating_sub(width), y + 1, width, self.fonts.cell_height.saturating_sub(2), color);
+    }
     fn draw_ui_decorations(&self, fb: &mut Framebuffer, term: &Terminal, row: usize) {
         for decoration in &self.ui.decorations.data {
             if decoration.kind == DecorationKind::Match {
@@ -1078,12 +1105,12 @@ mod bench {
             parser.advance(&mut term, format!("{line}\x1b[0m").as_bytes());
         }
         let mut fb = Framebuffer::new(width as usize, height as usize);
-        renderer.draw(&term, "", None, true, &mut fb);
+        renderer.draw(&term, "", None, true, true, &mut fb);
         let frames = 30;
         let started = Instant::now();
         for _ in 0..frames {
             renderer.invalidate();
-            renderer.draw(&term, "", None, true, &mut fb);
+            renderer.draw(&term, "", None, true, true, &mut fb);
         }
         let per_frame = started.elapsed() / frames;
         eprintln!("{}×{} 像素、{cols}×{rows} 字符：整屏重画每帧 {per_frame:?}", width, height);
@@ -1093,7 +1120,7 @@ mod bench {
         let started = Instant::now();
         for _ in 0..frames {
             renderer.invalidate();
-            renderer.draw(&blank, "", None, true, &mut fb);
+            renderer.draw(&blank, "", None, true, true, &mut fb);
         }
         eprintln!("全是空格：每帧 {:?}", started.elapsed() / frames);
 
@@ -1101,7 +1128,7 @@ mod bench {
         let started = Instant::now();
         for i in 0..frames {
             parser.advance(&mut term, format!("\x1b[30;{}Hx", i + 1).as_bytes());
-            renderer.draw(&term, "", None, true, &mut fb);
+            renderer.draw(&term, "", None, true, true, &mut fb);
         }
         eprintln!("只改一行：每帧 {:?}", started.elapsed() / frames);
     }
@@ -1159,10 +1186,10 @@ mod tests {
         let mut parser = Parser::new();
         let (w, h) = renderer.pixel_size(20, 4);
         let mut fb = Framebuffer::new(w as usize, h as usize);
-        renderer.draw(&term, "", None, true, &mut fb);
+        renderer.draw(&term, "", None, true, true, &mut fb);
         for row in [1, 4, 12, 24] {
             parser.advance(&mut term, format!("\x1b[{row};1Hx").as_bytes());
-            if let Some(damage) = renderer.draw(&term, "", None, true, &mut fb) {
+            if let Some(damage) = renderer.draw(&term, "", None, true, true, &mut fb) {
                 assert!(damage.y + damage.height <= fb.height);
             }
         }
@@ -1206,9 +1233,9 @@ mod tests {
             parser.advance(&mut term, step.as_bytes());
             let selection = selections[i % 2];
             let focused = i != 5;
-            incremental.draw(&term, "", selection, focused, &mut fb);
+            incremental.draw(&term, "", selection, focused, true, &mut fb);
             fresh.invalidate();
-            fresh.draw(&term, "", selection, focused, &mut reference);
+            fresh.draw(&term, "", selection, focused, true, &mut reference);
             if let Some(p) = fb.pixels.iter().zip(&reference.pixels).position(|(a, b)| a != b) {
                 panic!("第 {i} 步之后，像素 ({}, {}) 不一样", p % fb.width, p / fb.width);
             }
@@ -1245,12 +1272,12 @@ mod tests {
             renderer.set_ui(decorations.clone(), bar.clone());
             fresh.set_ui(decorations, bar);
             fresh.invalidate();
-            renderer.draw(&term, "", None, true, &mut frame);
+            renderer.draw(&term, "", None, true, true, &mut frame);
             let mut expected = Framebuffer::new(w as usize, h as usize);
-            fresh.draw(&term, "", None, true, &mut expected);
+            fresh.draw(&term, "", None, true, true, &mut expected);
             assert_eq!(frame.pixels, expected.pixels);
         }
-        assert!(renderer.draw(&term, "", None, true, &mut frame).is_none());
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_none());
     }
 
     #[test]
@@ -1273,7 +1300,7 @@ mod tests {
             }],
             Some(Bar::link("old")),
         );
-        renderer.draw(&term, "", None, true, &mut frame);
+        renderer.draw(&term, "", None, true, true, &mut frame);
         let mut view = ViewState::default();
         let paid = pool.snapshot().kinds[Kind::Ui as usize];
         assert!(paid > 0);
@@ -1287,14 +1314,14 @@ mod tests {
         let diagnostic = renderer.ui.bar().unwrap().text.to_string();
         drop(hold);
         fresh.set_ui(vec![], Some(Bar { text: diagnostic, caret: None, preedit: None }));
-        renderer.draw(&term, "", None, true, &mut frame);
-        fresh.draw(&term, "", None, true, &mut expected);
+        renderer.draw(&term, "", None, true, true, &mut frame);
+        fresh.draw(&term, "", None, true, true, &mut expected);
         assert_eq!(frame.pixels, expected.pixels);
         renderer.reclaim_caches();
         assert!(renderer.ui.bar().is_none());
-        renderer.draw(&term, "", None, true, &mut frame);
+        renderer.draw(&term, "", None, true, true, &mut frame);
         fresh.set_ui(vec![], None);
-        fresh.draw(&term, "", None, true, &mut expected);
+        fresh.draw(&term, "", None, true, true, &mut expected);
         assert_eq!(frame.pixels, expected.pixels);
         drop((renderer, fresh, view, term, frame, expected));
         assert_eq!(pool.snapshot().used, 0);
@@ -1311,7 +1338,7 @@ mod tests {
             Parser::new().advance(&mut term, text.as_bytes());
             let mut fb = Framebuffer::new(width as usize, height as usize);
             renderer.invalidate();
-            renderer.draw(&term, "", None, true, &mut fb);
+            renderer.draw(&term, "", None, true, true, &mut fb);
             fb.pixels
         };
         assert_eq!(draw("e\u{301}\x1b[?25l"), draw("é\x1b[?25l"));
@@ -1359,7 +1386,7 @@ mod boundary_tests {
         for (index, text) in [b"\x1b[1;1HA", b"\x1b[1;1HB"].into_iter().enumerate() {
             parser.advance(&mut term, text);
             renderer.invalidate();
-            renderer.draw(&term, "", None, true, &mut frame);
+            renderer.draw(&term, "", None, true, true, &mut frame);
             expected[index] = hash(&frame.pixels);
         }
         assert_ne!(expected[0], expected[1]);
@@ -1375,14 +1402,74 @@ mod boundary_tests {
         let hold = pool.lease(crate::resources::Kind::Queue, pool.snapshot().limit - pool.snapshot().used).unwrap();
         for (index, text) in [b"\x1b[1;1HA", b"\x1b[1;1HB", b"\x1b[1;1HA"].into_iter().enumerate() {
             parser.advance(&mut term, text);
-            assert!(renderer.draw(&term, "", None, true, &mut frame).is_some());
+            assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
             assert_eq!(hash(&frame.pixels), expected[index % 2]);
             assert!(renderer.last_rows.is_empty());
         }
         drop(hold);
-        assert!(renderer.draw(&term, "", None, true, &mut frame).is_some());
-        assert!(renderer.draw(&term, "", None, true, &mut frame).is_none());
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_none());
         drop((renderer, term, frame));
         assert_eq!(pool.snapshot().kinds[crate::resources::Kind::Render as usize], 0);
+    }
+
+    #[test]
+    fn command_marks_paint_a_result_bar_in_the_left_padding() {
+        // 第一行提示符 + 一条结束的命令；返回（帧缓冲, 提示行左侧色条的像素下标）
+        fn render_with(code: &str, marks: bool) -> (Framebuffer, usize, crate::config::Colors) {
+            let mut config = crate::config::Config::default();
+            config.command_marks = marks;
+            let mut renderer = Renderer::new(&config, 1.0);
+            let mut term = Terminal::new(20, 4);
+            let script = format!("\x1b]133;A\x07$ \x1b]133;B\x07false\r\n\x1b]133;C\x07oops\r\n\x1b]133;D;{code}\x07");
+            crate::vt::Parser::new().advance(&mut term, script.as_bytes());
+            assert_eq!(
+                term.shell.outcome_at(term.line_id(0)),
+                Some(crate::shell::Outcome::Exit(code.parse().unwrap()))
+            );
+            let (w, h) = renderer.pixel_size(20, 4);
+            let mut frame = Framebuffer::new(w as usize, h as usize);
+            assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+            // 色条画在左内边距里，从格子顶端下 1 像素开始
+            let width = renderer.fonts.cell_width.clamp(1, 3);
+            let x = renderer.padding.saturating_sub(width);
+            let index = (renderer.padding + 1) * frame.width + x;
+            (frame, index, config.colors)
+        }
+
+        // 失败用调色板红，成功用绿，中断（130/143）用黄
+        let (frame, index, colors) = render_with("1", true);
+        assert_eq!(frame.pixels[index], colors.palette[1]);
+        let (frame, index, colors) = render_with("0", true);
+        assert_eq!(frame.pixels[index], colors.palette[2]);
+        let (frame, index, colors) = render_with("130", true);
+        assert_eq!(frame.pixels[index], colors.palette[3]);
+        // 关掉标记：同样的画面不再有色条
+        let (frame, index, colors) = render_with("0", false);
+        assert_ne!(frame.pixels[index], colors.palette[2]);
+    }
+
+    #[test]
+    fn blink_phase_decides_whether_the_cursor_is_painted() {
+        // cursor_on = false 的那半周期不画光标：只重画光标所在行，画面必须真的变。
+        let config = crate::config::Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let mut term = Terminal::new(12, 4);
+        crate::vt::Parser::new().advance(&mut term, b"ab");
+        let (w, h) = renderer.pixel_size(12, 4);
+        let mut frame = Framebuffer::new(w as usize, h as usize);
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+        let on = hash(&frame.pixels);
+        assert!(renderer.draw(&term, "", None, true, false, &mut frame).is_some());
+        let off = hash(&frame.pixels);
+        assert_ne!(on, off);
+        // 再切回亮相位：又画一次，且和第一次一致
+        assert!(renderer.draw(&term, "", None, true, true, &mut frame).is_some());
+        assert_eq!(hash(&frame.pixels), on);
+        // 没焦点时画的是空心框，`cursor_on` 一样能把它整个关掉
+        assert!(renderer.draw(&term, "", None, false, true, &mut frame).is_some());
+        let unfocused = hash(&frame.pixels);
+        assert!(renderer.draw(&term, "", None, false, false, &mut frame).is_some());
+        assert_ne!(hash(&frame.pixels), unfocused);
     }
 }
