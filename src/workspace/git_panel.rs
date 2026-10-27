@@ -1,13 +1,17 @@
-//! 右栏 Git 页：只读快照与按需 diff。
+//! 右栏 Git 页：状态快照、按需 diff 与显式写操作。
 //!
-//! 所有查询都在后台任务里跑（`git::status` / `git::diff`），界面线程只读已发布的结果：
-//! 切换窗格、目录变化或命令结束时去抖刷新；两次查询至少间隔 1 秒；旧请求的结果按
-//! 窗格和代次丢弃；面板关闭时取消在途查询并释放快照与 diff。
+//! 所有查询都在后台任务里跑（`git::status` / `git::diff` / `git::write`），界面线程只读
+//! 已发布的结果：切换窗格、目录变化或命令结束时去抖刷新；两次查询至少间隔 1 秒；旧请求
+//! 的结果按窗格和代次丢弃；面板关闭时取消在途查询并释放快照与 diff。
+//!
+//! 写操作（暂存、取消暂存、提交）只由用户点击触发，同一时间只有一个在途；即使面板被
+//! 关闭也要等它跑完再释放任务，避免中途杀进程留下 `index.lock`。
 use super::{Rect, Workspace};
 use crate::{
     config::git::Settings,
-    git::{self, Diff, Error, Limits, Snapshot, StatusReply, StatusRequest},
-    resources::{Budget, Tracked},
+    git::{self, Diff, Error, Limits, Snapshot, StatusReply, StatusRequest, WriteReply, WriteRequest},
+    input::{Key, Mods},
+    resources::{Budget, Kind, Tracked},
     session::Notify,
     tasks::{LatestTask, SubmitError},
 };
@@ -23,6 +27,10 @@ const DEBOUNCE: Duration = Duration::from_millis(300);
 const MIN_INTERVAL: Duration = Duration::from_secs(1);
 /// 内容起始行：0 是页签，1 是按钮，2/3 是分支与统计。
 pub(super) const LIST_TOP: usize = 4;
+/// 提交信息的字节上限：超出后不再接受输入，与显示宽度无关。
+const COMMIT_BYTES: usize = 4096;
+/// 输入法组合串的显示上限。
+const PREEDIT_BYTES: usize = 256;
 const SCROLL_LIMIT: f64 = 1.0e6;
 
 /// 一帧要画的 Git 页内容；由界面线程负责实际绘制。
@@ -30,6 +38,13 @@ pub(super) struct View {
     pub buttons: Vec<&'static str>,
     pub headline: Vec<String>,
     pub content: Vec<(String, bool)>,
+}
+
+/// 提交信息输入：只在用户点击“提交”后打开，打开期间按键不会进入终端。
+pub(super) struct CommitInput {
+    pub(super) text: Tracked<String>,
+    pub(super) caret: usize,
+    pub(super) preedit: String,
 }
 
 pub(super) struct Panel {
@@ -63,6 +78,11 @@ pub(super) struct Panel {
     pub(super) enabled: bool,
     pub(super) revision: u64,
     pub(super) pool: Arc<Budget>,
+    pub(super) write: Option<LatestTask<WriteRequest, WriteReply>>,
+    pub(super) write_loading: bool,
+    pub(super) write_generation: u64,
+    pub(super) write_note: Option<String>,
+    pub(super) input: Option<CommitInput>,
 }
 
 impl Panel {
@@ -98,6 +118,11 @@ impl Panel {
             enabled: true,
             revision: 0,
             pool: crate::resources::current(),
+            write: None,
+            write_loading: false,
+            write_generation: 0,
+            write_note: None,
+            input: None,
         }
     }
 
@@ -112,6 +137,8 @@ impl Panel {
             + self.diff.as_ref().map_or(0, |diff| diff.memory.bytes())
             + self.dir.as_ref().map_or(0, |dir| dir.memory.bytes())
             + self.diff_label.as_ref().map_or(0, String::capacity)
+            + self.input.as_ref().map_or(0, |input| input.text.memory.bytes())
+            + self.write_note.as_ref().map_or(0, String::capacity)
     }
     pub(super) fn open(&mut self) -> bool {
         if self.active && self.next.is_some() {
@@ -131,15 +158,20 @@ impl Panel {
     }
 
     /// 隐藏：取消在途查询并释放快照、diff 与任务线程。
+    ///
+    /// 在途写操作是例外：中途杀 `git` 可能留下 `index.lock`，所以保留任务直到它自己
+    /// 结束，只释放显示状态。`tick` 在面板隐藏时也会结算这个任务。
     fn close(&mut self) -> bool {
-        if self.status.is_none()
-            && self.diff_task.is_none()
-            && self.snapshot.is_none()
-            && self.diff.is_none()
-            && self.error.is_none()
-            && self.dir.is_none()
-            && self.next.is_none()
-        {
+        let had = self.status.is_some()
+            || self.diff_task.is_some()
+            || self.snapshot.is_some()
+            || self.diff.is_some()
+            || self.error.is_some()
+            || self.dir.is_some()
+            || self.next.is_some()
+            || self.input.is_some()
+            || self.write_note.is_some();
+        if !had && !self.write_loading {
             return false;
         }
         self.active = false;
@@ -160,8 +192,13 @@ impl Panel {
         self.diff_offset = 0;
         self.next = None;
         self.last_key = None;
+        self.input = None;
+        self.write_note = None;
+        if !self.write_loading {
+            self.write = None;
+        }
         self.revision = self.revision.wrapping_add(1);
-        true
+        had
     }
 
     /// 页面不在前台或窗口失焦：取消在途查询，保留最近结果，停止排新查询。
@@ -195,9 +232,11 @@ impl Panel {
         focused: bool,
         settings: &Settings,
     ) -> bool {
+        // 写操作不受页面可见性影响：面板隐藏后仍要把它跑完并结算。
+        let mut changed = self.poll_write(notify.clone());
         if !visible {
             self.active = false;
-            return self.close();
+            return self.close() | changed;
         }
         self.enabled = settings.enabled;
         self.limits = settings.limits();
@@ -205,10 +244,10 @@ impl Panel {
         // 右栏还在、只是切到别的页：保留结果，停掉在途查询，切回来不用重跑。
         if !page || !focused || !self.enabled {
             self.active = false;
-            return self.suspend();
+            return self.suspend() | changed;
         }
         self.active = true;
-        let mut changed = self.poll(owner);
+        changed |= self.poll(owner);
         // 目录或窗格变化：同一仓库且已有结果时复用，不重复查询。
         let same_dir = match (&self.dir, dir) {
             (Some(current), Some(next)) => current.as_path() == next,
@@ -477,11 +516,17 @@ impl Panel {
         self.open_diff(index, Some(!self.diff_staged), notify)
     }
 
-    fn select(&mut self, index: usize, notify: Notify) -> bool {
+    /// 列表里点一行只改变选中项；“差异”按钮才打开该条目的 diff。
+    fn select(&mut self, index: usize) -> bool {
         if self.snapshot.as_ref().is_none_or(|snapshot| index >= snapshot.entries.len()) {
             return false;
         }
-        self.open_diff(index, None, notify)
+        if self.selected == Some(index) {
+            return false;
+        }
+        self.selected = Some(index);
+        self.revision = self.revision.wrapping_add(1);
+        true
     }
 
     fn scroll(&mut self, delta: f64, rows: usize) -> bool {
@@ -543,39 +588,51 @@ impl Panel {
             }
             return View { buttons: vec!["刷新", side, "返回"], headline, content };
         }
-        let buttons = vec!["刷新", "打开差异"];
-        match &self.snapshot {
-            Some(snapshot) => {
+        let input_open = self.input.is_some();
+        let fully_staged = self
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| self.selected.and_then(|index| snapshot.entries.get(index)))
+            .is_some_and(|entry| entry.fully_staged());
+        let buttons = if input_open {
+            vec!["提交", "取消"]
+        } else if fully_staged {
+            vec!["刷新", "差异", "取消暂存", "提交"]
+        } else {
+            vec!["刷新", "差异", "暂存", "提交"]
+        };
+        match (&self.snapshot, &self.input) {
+            (_, Some(input)) => {
+                headline.push(format!("提交信息 › {}{}", input.text.data, input.preedit));
+                headline.push(self.write_note.clone().unwrap_or_else(|| "Enter 提交 · Esc 取消".into()));
+            }
+            (Some(snapshot), None) => {
                 let name = snapshot
                     .root
                     .file_name()
                     .map(|name| crate::path_text::escape(name.as_encoded_bytes(), ""))
                     .unwrap_or_else(|| snapshot.label.clone());
                 headline.push(format!("{} · {name}", snapshot.head.describe()));
-                headline.push(format!(
-                    "{}{}{}",
-                    snapshot.counts.describe(),
-                    if snapshot.limited { " · 已截断" } else { "" },
-                    // 慢查询值得提示；正常几十毫秒不占宽度。
-                    if snapshot.elapsed >= Duration::from_secs(1) {
-                        format!(" · 慢 {:.1}s", snapshot.elapsed.as_secs_f64())
-                    } else {
-                        String::new()
-                    }
-                ));
-                if snapshot.bare {
-                    content.push(("裸仓库：没有工作区文件".into(), false));
-                } else if snapshot.entries.is_empty() {
-                    content.push(("工作区没有变更".into(), false));
-                } else {
-                    for (offset, entry) in snapshot.entries.iter().enumerate().skip(self.offset).take(rows) {
-                        content.push((entry.label.clone(), self.selected == Some(offset)));
-                    }
-                }
+                headline.push(match &self.write_note {
+                    Some(note) => note.clone(),
+                    None => format!(
+                        "{}{}{}",
+                        snapshot.counts.describe(),
+                        if snapshot.limited { " · 已截断" } else { "" },
+                        // 慢查询值得提示；正常几十毫秒不占宽度。
+                        if snapshot.elapsed >= Duration::from_secs(1) {
+                            format!(" · 慢 {:.1}s", snapshot.elapsed.as_secs_f64())
+                        } else {
+                            String::new()
+                        }
+                    ),
+                });
             }
-            None => {
+            (None, None) => {
                 if let Some(error) = &self.error {
                     headline.push(error.message().to_string());
+                } else if let Some(note) = &self.write_note {
+                    headline.push(note.clone());
                 } else if self.loading {
                     headline.push("正在读取 Git 状态…".into());
                 } else if self.dir.is_none() {
@@ -585,7 +642,263 @@ impl Panel {
                 }
             }
         }
+        if let Some(snapshot) = &self.snapshot {
+            if snapshot.bare {
+                content.push(("裸仓库：没有工作区文件".into(), false));
+            } else if snapshot.entries.is_empty() {
+                content.push(("工作区没有变更".into(), false));
+            } else {
+                for (offset, entry) in snapshot.entries.iter().enumerate().skip(self.offset).take(rows) {
+                    content.push((entry.label.clone(), self.selected == Some(offset)));
+                }
+            }
+        }
         View { buttons, headline, content }
+    }
+
+    /// 当前这一帧的按钮数；绘制与点击必须用同一个数字，否则点击列会错位。
+    pub(super) fn button_count(&self) -> usize {
+        if self.input.is_some() {
+            2
+        } else if self.diff_open {
+            3
+        } else {
+            4
+        }
+    }
+
+    /// 提交输入是否吃掉了键盘；打开期间按键不进入终端。
+    pub(super) fn capturing(&self) -> bool {
+        self.input.is_some()
+    }
+
+    pub(super) fn capture_key(&mut self, key: Key, mods: Mods, notify: Notify) -> bool {
+        if self.input.is_none() {
+            return false;
+        }
+        // 输入法组合期间只接受 Escape；其余字符由平台以文本事件送进来。
+        if self.input.as_ref().is_some_and(|input| !input.preedit.is_empty()) {
+            if key == Key::Escape {
+                if let Some(input) = &mut self.input {
+                    input.preedit.clear();
+                }
+                self.revision = self.revision.wrapping_add(1);
+            }
+            return true;
+        }
+        let previous = |input: &CommitInput| {
+            input.text.data[..input.caret].char_indices().next_back().map_or(0, |(index, _)| index)
+        };
+        let next = |input: &CommitInput| {
+            input.text.data[input.caret..].chars().next().map_or(input.caret, |c| input.caret + c.len_utf8())
+        };
+        match key {
+            Key::Escape => {
+                self.input = None;
+                self.write_note = None;
+            }
+            Key::Enter => return self.submit_input(notify),
+            Key::Backspace => {
+                let caret = previous(self.input.as_ref().unwrap());
+                if caret < self.input.as_ref().unwrap().caret {
+                    let input = self.input.as_mut().unwrap();
+                    input.text.data.replace_range(caret..input.caret, "");
+                    input.caret = caret;
+                }
+            }
+            Key::Delete => {
+                let caret = next(self.input.as_ref().unwrap());
+                if caret > self.input.as_ref().unwrap().caret {
+                    let input = self.input.as_mut().unwrap();
+                    input.text.data.replace_range(input.caret..caret, "");
+                }
+            }
+            Key::Left => self.input.as_mut().unwrap().caret = previous(self.input.as_ref().unwrap()),
+            Key::Right => self.input.as_mut().unwrap().caret = next(self.input.as_ref().unwrap()),
+            Key::Home => self.input.as_mut().unwrap().caret = 0,
+            Key::End => self.input.as_mut().unwrap().caret = self.input.as_ref().unwrap().text.data.len(),
+            // 小键盘数字与运算符在数字锁定下也当作文字，和搜索框、SFTP 名称输入一致。
+            Key::Char(_) | Key::Keypad(_) if !mods.ctrl && !mods.alt && !mods.logo => {
+                if let Some(c) = key.text().filter(|c| !c.is_control()) {
+                    let mut buffer = [0u8; 4];
+                    self.insert(c.encode_utf8(&mut buffer));
+                }
+            }
+            _ => {}
+        }
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    pub(super) fn capture_text(&mut self, text: &str) -> bool {
+        if self.input.is_none() {
+            return false;
+        }
+        self.insert(text);
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    pub(super) fn capture_preedit(&mut self, text: &str) -> bool {
+        let Some(input) = &mut self.input else { return false };
+        input.preedit.clear();
+        for c in text.chars().take(PREEDIT_BYTES) {
+            input.preedit.push(c);
+        }
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    /// 只在额度内插入；超出上限的部分丢弃，不扩容也不阻塞界面。
+    fn insert(&mut self, text: &str) {
+        let Some(input) = &mut self.input else { return };
+        let room = COMMIT_BYTES.saturating_sub(input.text.data.len());
+        if room == 0 {
+            return;
+        }
+        let mut take = text;
+        if take.len() > room {
+            let mut end = room;
+            while !take.is_char_boundary(end) {
+                end -= 1;
+            }
+            take = &take[..end];
+        }
+        if take.is_empty() || input.text.data.try_reserve(take.len()).is_err() {
+            return;
+        }
+        input.text.data.insert_str(input.caret, take);
+        input.caret += take.len();
+        input.preedit.clear();
+    }
+
+    /// 打开提交输入：显式的用户动作，先准入一段固定额度。
+    pub(super) fn open_commit(&mut self) -> bool {
+        if self.input.is_some() || self.write_loading || !self.enabled {
+            return false;
+        }
+        if self.snapshot.is_none() {
+            return false;
+        }
+        let memory = match self.pool.lease(Kind::Git, COMMIT_BYTES + 256) {
+            Ok(memory) => memory,
+            Err(_) => {
+                self.write_note = Some("额度不足，无法打开提交输入".into());
+                return true;
+            }
+        };
+        let mut text = String::new();
+        if text.try_reserve(COMMIT_BYTES).is_err() {
+            self.write_note = Some("额度不足，无法打开提交输入".into());
+            return true;
+        }
+        self.input = Some(CommitInput { text: Tracked::new(text, memory), caret: 0, preedit: String::new() });
+        self.write_note = None;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    fn submit_input(&mut self, notify: Notify) -> bool {
+        let Some(input) = self.input.take() else { return false };
+        let message = input.text.data.trim().to_string();
+        self.revision = self.revision.wrapping_add(1);
+        if message.is_empty() {
+            self.write_note = Some("提交信息为空，已取消".into());
+            return true;
+        }
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+            self.write_note = Some("没有可提交的仓库".into());
+            return true;
+        };
+        self.start_write(git::WriteOp::Commit { message }, &root, notify)
+    }
+
+    /// 暂存 / 取消暂存当前条目；已经全部进入索引的条目再点一次就是取消暂存。
+    pub(super) fn toggle_stage(&mut self, notify: Notify) -> bool {
+        let Some(snapshot) = &self.snapshot else { return false };
+        let Some(entry) = self.selected.and_then(|index| snapshot.entries.get(index)) else { return false };
+        if snapshot.bare {
+            self.write_note = Some("裸仓库没有工作区文件".into());
+            return true;
+        }
+        let paths = vec![entry.path.clone()];
+        let op = if entry.fully_staged() {
+            git::WriteOp::Unstage { paths, count: 1, unborn: snapshot.head.unborn() }
+        } else {
+            git::WriteOp::Stage { paths, count: 1 }
+        };
+        let root = snapshot.root.clone();
+        self.start_write(op, &root, notify)
+    }
+
+    fn start_write(&mut self, op: git::WriteOp, root: &Path, notify: Notify) -> bool {
+        if self.write_loading {
+            // 同一时间只有一个写操作：防重复点击，也避免两次 git 抢同一个索引。
+            return false;
+        }
+        if !self.enabled {
+            return false;
+        }
+        let description = op.describe();
+        self.write_generation = self.write_generation.wrapping_add(1);
+        let request = match WriteRequest::new(self.owner, self.write_generation, root, op, &self.limits, &self.pool) {
+            Ok(request) => request,
+            Err(error) => {
+                self.write_note = Some(error.message().to_string());
+                return true;
+            }
+        };
+        if self.write.is_none() {
+            match LatestTask::new_named_in(&self.pool, "git-write", notify, |request, cancel| {
+                Ok(git::write(request, cancel))
+            }) {
+                Ok(task) => self.write = Some(task),
+                Err(error) => {
+                    self.write_note = Some(if error.kind() == std::io::ErrorKind::OutOfMemory {
+                        "额度不足，写操作未启动".into()
+                    } else {
+                        "Git 写任务启动失败".into()
+                    });
+                    return true;
+                }
+            }
+        }
+        self.write_loading = true;
+        self.write_note = Some(format!("正在{description}…"));
+        self.revision = self.revision.wrapping_add(1);
+        if let Err(error) = self.write.as_ref().unwrap().try_submit(request) {
+            self.write_loading = false;
+            self.write_note = Some(match error {
+                SubmitError::Budget => "额度不足，写操作未启动".into(),
+                _ => "Git 写任务启动失败".into(),
+            });
+        }
+        true
+    }
+
+    /// 结算在途写操作：成功或失败都给出提示，成功后立刻重读状态。
+    fn poll_write(&mut self, notify: Notify) -> bool {
+        if !self.write_loading {
+            return false;
+        }
+        let Some(result) = self.write.as_ref().and_then(LatestTask::take) else { return false };
+        self.write_loading = false;
+        let mut changed = true;
+        match result {
+            Ok(reply) if reply.owner == self.owner && reply.generation == self.write_generation => {
+                let success = reply.result.is_ok();
+                self.write_note = Some(reply.summary);
+                if success {
+                    changed |= self.refresh_now(notify);
+                } else {
+                    self.schedule(DEBOUNCE);
+                }
+            }
+            Ok(_) => {}
+            Err(_) => self.write_note = Some("Git 写任务失败".into()),
+        }
+        self.revision = self.revision.wrapping_add(1);
+        changed
     }
 }
 
@@ -609,7 +922,7 @@ impl Workspace {
     pub(super) fn git_paint(&mut self, r: Rect, h: usize) {
         let rows = (r.h / h).max(1);
         let view = self.git.view(rows.saturating_sub(LIST_TOP));
-        let third = r.w / 3;
+        let third = r.w / view.buttons.len().max(1);
         for (index, text) in view.buttons.iter().enumerate() {
             let x = r.x + index * third;
             let width = if index + 1 == view.buttons.len() { r.w - index * third } else { third };
@@ -631,12 +944,19 @@ impl Workspace {
         }
     }
 
-    /// 右栏 Git 页的按钮与条目点击；`third` 是按钮列。
-    pub(super) fn git_click(&mut self, row: usize, third: usize) -> bool {
+    /// 右栏 Git 页的按钮与条目点击；`slot` 是按钮列（按当帧按钮数等分）。
+    pub(super) fn git_click(&mut self, row: usize, slot: usize) -> bool {
         let notify = self.driver.notify.clone();
         if row == 0 || row < LIST_TOP {
             if row == 1 {
-                return match (third, self.git.diff_open) {
+                if self.git.capturing() {
+                    return match slot {
+                        0 => self.git.capture_key(Key::Enter, Mods::default(), notify),
+                        1 => self.git.capture_key(Key::Escape, Mods::default(), notify),
+                        _ => false,
+                    };
+                }
+                return match (slot, self.git.diff_open) {
                     (0, _) => self.git.refresh_now(notify),
                     (1, false) => match self.git.selected {
                         Some(index) => self.git.open_diff(index, None, notify),
@@ -644,13 +964,15 @@ impl Workspace {
                     },
                     (1, true) => self.git.toggle_side(notify),
                     (2, true) => self.git.back(),
+                    (2, false) => self.git.toggle_stage(notify),
+                    (3, false) => self.git.open_commit(),
                     _ => false,
                 };
             }
             return false;
         }
         if !self.git.diff_open {
-            return self.git.select(self.git.offset + row - LIST_TOP, notify);
+            return self.git.select(self.git.offset + row - LIST_TOP);
         }
         false
     }
@@ -669,7 +991,7 @@ mod tests {
         assert!(panel.open());
         assert!(panel.active);
         let view = panel.view(10);
-        assert_eq!(view.buttons, vec!["刷新", "打开差异"]);
+        assert_eq!(view.buttons, vec!["刷新", "差异", "暂存", "提交"]);
         assert!(view.headline[0].contains("工作目录未知"));
         assert!(view.content.is_empty());
         assert!(panel.bytes() == 0);
@@ -678,5 +1000,134 @@ mod tests {
         assert!(panel.deadline().is_none());
         assert!(!panel.close());
         assert_eq!(panel.view(10).headline[0], "工作目录未知，等待 shell 报告目录");
+    }
+
+    fn notify() -> Notify {
+        Arc::new(|| {})
+    }
+    fn entry(path: &str, index: u8, worktree: u8) -> crate::git::Entry {
+        crate::git::Entry {
+            path: path.into(),
+            label: format!("{}{path}", index as char),
+            index,
+            worktree,
+            source: None,
+        }
+    }
+    fn panel_with(entries: Vec<crate::git::Entry>) -> Panel {
+        let pool = crate::resources::current();
+        let memory = pool.lease(Kind::Git, 512).unwrap();
+        let mut panel = Panel::new();
+        assert!(panel.open());
+        panel.snapshot = Some(Snapshot {
+            owner: 0,
+            generation: 0,
+            root: PathBuf::from("/tmp/congminal-git-panel"),
+            label: "repo".into(),
+            head: git::Head::Branch("main".into()),
+            counts: Default::default(),
+            entries,
+            limited: false,
+            bare: false,
+            version: "2.43.0".into(),
+            elapsed: Duration::ZERO,
+            memory,
+        });
+        panel
+    }
+
+    #[test]
+    fn typing_only_reaches_the_commit_input_after_it_opens() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        // 未打开输入时不抢键：字符照常进入终端。
+        assert!(!panel.capturing());
+        assert!(!panel.capture_key(Key::Char('x'), Mods::default(), notify()));
+        assert!(!panel.capture_text("x"));
+        assert!(panel.open_commit());
+        assert!(panel.capturing());
+        assert!(panel.capture_key(Key::Char('x'), Mods::default(), notify()));
+        assert!(panel.capture_text("y"));
+        // 数字锁定下的小键盘数字也算文字；带 Ctrl 的组合不进输入框。
+        assert!(panel.capture_key(Key::Keypad(crate::input::Keypad::Digit(7)), Mods::default(), notify()));
+        assert!(panel.capture_key(
+            Key::Keypad(crate::input::Keypad::Digit(8)),
+            Mods { ctrl: true, ..Mods::default() },
+            notify()
+        ));
+        let input = panel.input.as_ref().unwrap();
+        assert_eq!(input.text.data, "xy7");
+        assert_eq!(input.caret, 3);
+        // 回车把文字交给写任务：这里只验证输入被消费并清空，不启动真实 git。
+        assert!(panel.capture_key(Key::Escape, Mods::default(), notify()));
+        assert!(!panel.capturing());
+        assert!(panel.bytes() == 0 || panel.bytes() > 0);
+    }
+
+    #[test]
+    fn commit_input_edits_and_stops_at_the_byte_limit() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        assert!(panel.open_commit());
+        let notify = notify();
+        panel.capture_text("abc");
+        panel.capture_key(Key::Left, Mods::default(), notify.clone());
+        panel.capture_text("X");
+        assert_eq!(panel.input.as_ref().unwrap().text.data, "abXc");
+        panel.capture_key(Key::Backspace, Mods::default(), notify.clone());
+        assert_eq!(panel.input.as_ref().unwrap().text.data, "abc");
+        panel.capture_key(Key::Home, Mods::default(), notify.clone());
+        panel.capture_key(Key::Delete, Mods::default(), notify.clone());
+        assert_eq!(panel.input.as_ref().unwrap().text.data, "bc");
+        // 超长输入被截断，不扩容也不进入终端。
+        panel.capture_text(&"z".repeat(COMMIT_BYTES * 2));
+        assert!(panel.input.as_ref().unwrap().text.data.len() <= COMMIT_BYTES);
+        assert!(panel.view(6).headline[0].starts_with("提交信息 › "));
+    }
+
+    #[test]
+    fn button_count_matches_the_painted_buttons() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        panel.selected = Some(0);
+        for state in 0..3 {
+            match state {
+                0 => {
+                    panel.input = None;
+                    panel.diff_open = false;
+                }
+                1 => {
+                    assert!(panel.open_commit());
+                }
+                _ => {
+                    panel.input = None;
+                    panel.diff_open = true;
+                }
+            }
+            assert_eq!(panel.button_count(), panel.view(6).buttons.len(), "状态 {state}");
+        }
+    }
+
+    #[test]
+    fn stage_button_reflects_whether_the_selection_is_already_staged() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M'), entry("b.txt", b'M', b' ')]);
+        panel.selected = Some(0);
+        assert_eq!(panel.view(6).buttons, vec!["刷新", "差异", "暂存", "提交"]);
+        // 已全部进入索引的条目：同一个按钮变成“取消暂存”。
+        panel.selected = Some(1);
+        assert_eq!(panel.view(6).buttons, vec!["刷新", "差异", "取消暂存", "提交"]);
+    }
+
+    #[test]
+    fn closing_releases_the_input_but_keeps_an_in_flight_write() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        assert!(panel.open_commit());
+        // 模拟写操作仍在执行：关闭时保留任务，只释放显示状态。
+        panel.write_loading = true;
+        panel.write_note = Some("正在暂存…".into());
+        assert!(panel.close());
+        assert!(!panel.capturing());
+        assert!(panel.write_loading);
+        // 没有可释放的东西时不再报告变化。
+        assert!(!panel.close());
+        panel.write_loading = false;
+        assert!(!panel.close());
     }
 }

@@ -104,6 +104,9 @@ pub enum Head {
     Unknown,
 }
 impl Head {
+    pub fn unborn(&self) -> bool {
+        matches!(self, Self::Unborn(_))
+    }
     pub fn describe(&self) -> String {
         match self {
             Self::Branch(name) => format!("分支 {name}"),
@@ -156,6 +159,10 @@ impl Entry {
     }
     pub fn unstaged(&self) -> bool {
         !self.untracked() && !self.conflicted() && self.worktree != b' '
+    }
+    /// 索引与工作区一致且已进入索引：这种条目再点一次就是“取消暂存”。
+    pub fn fully_staged(&self) -> bool {
+        self.staged() && !self.unstaged()
     }
 }
 
@@ -851,6 +858,120 @@ fn run(
         code: status.code(),
         _reservation: reservation,
     })
+}
+
+// ---- 写操作：暂存、取消暂存、提交 ----
+
+/// 写操作种类。每个变体都来自一次明确的用户动作，不接受来自仓库内容的推断。
+pub(crate) enum WriteOp {
+    Stage { paths: Vec<OsString>, count: usize },
+    Unstage { paths: Vec<OsString>, count: usize, unborn: bool },
+    Commit { message: String },
+}
+impl WriteOp {
+    fn bytes(&self) -> usize {
+        match self {
+            Self::Stage { paths, .. } | Self::Unstage { paths, .. } => {
+                paths.iter().map(|path| path.len().saturating_add(std::mem::size_of::<OsString>())).sum()
+            }
+            Self::Commit { message } => message.capacity(),
+        }
+    }
+    /// 写操作在界面上的名字，用于防重复与结果提示。
+    pub(crate) fn describe(&self) -> &'static str {
+        match self {
+            Self::Stage { .. } => "暂存",
+            Self::Unstage { .. } => "取消暂存",
+            Self::Commit { .. } => "提交",
+        }
+    }
+}
+
+/// 一次写请求：根目录、操作与额度都由这一份租约持有，直到回复被消费。
+pub(crate) struct WriteRequest {
+    pub(crate) owner: u64,
+    pub(crate) generation: u64,
+    root: PathBuf,
+    op: WriteOp,
+    limits: Limits,
+    memory: Lease,
+}
+pub(crate) struct WriteReply {
+    pub(crate) owner: u64,
+    pub(crate) generation: u64,
+    pub(crate) result: Result<(), Error>,
+    /// 成功摘要或失败原因，可直接显示。
+    pub(crate) summary: String,
+    /// 持有到回复被消费为止，与其它结果对象一致。
+    _memory: Lease,
+}
+impl WriteRequest {
+    pub(crate) fn new(
+        owner: u64,
+        generation: u64,
+        root: &Path,
+        op: WriteOp,
+        limits: &Limits,
+        pool: &Arc<Budget>,
+    ) -> Result<Self, Error> {
+        let bytes = root.as_os_str().len().saturating_add(op.bytes()).saturating_add(512);
+        let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
+        Ok(Self { owner, generation, root: PathBuf::from(root), op, limits: limits.clone(), memory })
+    }
+}
+
+pub(crate) fn write(request: WriteRequest, cancel: &Cancellation) -> WriteReply {
+    let applied = apply(&request, cancel);
+    let (result, summary) = match applied {
+        Ok(summary) => (Ok(()), summary),
+        Err(error) => {
+            let summary = error.message().to_string();
+            (Err(error), summary)
+        }
+    };
+    WriteReply { owner: request.owner, generation: request.generation, result, summary, _memory: request.memory }
+}
+
+fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error> {
+    let pool = request.memory.budget().clone();
+    let limits = &request.limits;
+    let root = request.root.as_path();
+    match &request.op {
+        WriteOp::Stage { paths, count } => {
+            // `-A` 让删除与改名也进入暂存区；`--` 之后的路径一律按字面处理。
+            let mut args: Vec<&OsStr> = vec![OsStr::new("add"), OsStr::new("-A"), OsStr::new("--")];
+            args.extend(paths.iter().map(OsString::as_os_str));
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output));
+            }
+            Ok(format!("已暂存 {count} 个文件"))
+        }
+        WriteOp::Unstage { paths, count, unborn } => {
+            // 还没有提交时没有 HEAD 可回退，只能用 `rm --cached` 把条目移出索引。
+            let mut args: Vec<&OsStr> = if *unborn {
+                vec![OsStr::new("rm"), OsStr::new("--cached"), OsStr::new("-r"), OsStr::new("-q"), OsStr::new("--")]
+            } else {
+                vec![OsStr::new("restore"), OsStr::new("--staged"), OsStr::new("--")]
+            };
+            args.extend(paths.iter().map(OsString::as_os_str));
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output));
+            }
+            Ok(format!("已取消暂存 {count} 个文件"))
+        }
+        WriteOp::Commit { message } => {
+            let args = [OsStr::new("commit"), OsStr::new("-m"), OsStr::new(message)];
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output));
+            }
+            let text = String::from_utf8_lossy(&output.stdout);
+            let line = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("");
+            Ok(if line.is_empty() { "已提交".to_string() } else { line.chars().take(MESSAGE_LIMIT).collect() })
+        }
+    }
 }
 
 #[cfg(test)]
