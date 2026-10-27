@@ -65,7 +65,7 @@ shell 程序和参数、工作目录、环境变量，以及 macOS 上 Option �
 保存后自动生效（字体、主题、颜色、快捷键、内边距、光标、光标闪烁、Option 键）；shell 和窗口大小在下次启动时生效。
 光标闪烁默认关闭：静止界面不会为了光标持续重绘，打开后每 530 ms 醒一次，且只重画光标所在的那一格。
 命令行标记默认开启（`[appearance] command-marks`）：配置了 shell 集成（OSC 133）后，每条命令的提示行左侧会有一条结果色条——成功绿、失败红、中断黄，退出状态未知时不画。
-轮换主题按多了可以用 `reset-theme` 动作回到配置文件里写的主题（例如 `F3 = "reset-theme"`）。
+轮换主题按多了可以用 `reset-theme` 动作回到配置文件里写的主题（例如 `F3 = "reset-theme"`）。三个主题的配色有自动化截图回归（`every_theme_paints_its_own_palette` 按位核对背景/前景/调色板，`CONGMINAL_THEME_PREVIEW_DIR` 可导出三张帧人工比对），见 [外观设计](docs/design-appearance.md)。
 不确定要哪个主题时按主题预览（`preview-themes`，默认 Cmd/Ctrl+Shift+F5）：窗口当场换成候选主题，方向键在 dark / light / midnight 之间循环，Enter 留下，Esc 退回原来那个；预览期间其它按键不会送进 shell。
 写错的地方会用黄色文字显示在终端里，那一项保持默认值，不影响其他设置。
 

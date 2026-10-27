@@ -107,8 +107,25 @@ command-marks = true
 | `config::theme::tests::every_theme_round_trips_through_name_index_and_preview_order` | 三个主题的 name/parse/index/at 互相对得上，越界下标回到合法主题 |
 | `integration_tests::reset_theme_action_restores_the_configured_theme` | 按动作名绑定 F5，循环到别的主题后按 F5 回到 midnight，且配色确实变了 |
 | `config::tests::appearance_parses_cursor_blink_and_reset_returns_to_the_configured_theme` | `cursor-blink` / `command-marks` 的解析与默认值；`reset_theme` 回到配置值而不是编译默认；键名进了 schema |
+| `integration_tests::every_theme_paints_its_own_palette` | 三个主题各自把背景、前景和 1–6 号调色板**按位**画到帧上；背景互不相同；浅色偏亮、深色偏暗；`CONGMINAL_THEME_PREVIEW_DIR` 可导出三张帧做人工比对 |
 
-## 7. 未验收
+## 7. 主题截图回归
+
+`integration_tests::every_theme_paints_its_own_palette` 是自动化的主题截图回归：
+
+- 对 `dark`/`light`/`midnight` 各起一个应用，写一段固定的「标题 + 六个反显色块 + 一行文字」，然后检查帧里
+  背景色占多数、前景色出现、`palette[1..=6]` 六种颜色**按位精确**出现——也就是配色真的来自主题，没有被硬编码或被别的主题串掉。
+- 三个主题的背景色必须互不相同，浅色主题亮度 > 128、深色与午夜 < 128，防止「主题名换了但配色没换」这类回归。
+- 反显空格整格填充：字形边缘会与背景混色，只有整格填充才能按位比较；也刻意不加粗，因为加粗会把 `30+i` 映射到亮色 `palette[i+8]`。
+- 设 `CONGMINAL_THEME_PREVIEW_DIR=<目录> cargo test --locked every_theme_paints_its_own_palette` 会导出 `theme-dark.ppm`、`theme-light.ppm`、`theme-midnight.ppm`，人工看一眼即可确认排版与对比度（下面是三个主题的同内容截图）。
+
+| 深色 | 浅色 | 午夜 |
+|---|---|---|
+| ![深色](previews/m8-theme-dark.png) | ![浅色](previews/m8-theme-light.png) | ![午夜](previews/m8-theme-midnight.png) |
+
+像素级金标准比对（跨平台逐像素 diff）没有做：字体栅格化在 Linux/macOS/Windows 上不同，把某一平台的帧当金标准会让 CI 在别的平台必然失败。
+
+## 8. 未验收
 
 - 只在 Linux 上运行过测试与预览帧；macOS/Windows 只做了交叉 clippy，不算真机验证。
 - 主题预览是整窗实时预览（看得见真实内容），没有单独的色板对比面板；F13 里“提供主题预览和恢复默认”两项都已提供。
@@ -116,7 +133,7 @@ command-marks = true
 - 命令标记只有一种样式（左边缘竖条），F13 说的“命令标记样式”还不支持换样式或换成图标。
 - 透明度与模糊未做。
 
-## 8. 预览
+## 9. 预览
 
 主题预览：整窗换成候选主题（这里是“浅色”），底部提示条说明按键：
 
