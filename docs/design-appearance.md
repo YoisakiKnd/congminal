@@ -84,7 +84,17 @@ command-marks = true
 
 复位后立即调用 `renderer.apply_style`，配色、界面颜色与终端调色板一起更新；`[colors]` 里显式覆盖的值仍然保留（与循环切换的语义一致）。
 
-## 5. 测试
+## 5. 图标回退
+
+侧栏、页签、状态栏里的图标（`·` `…` `→` `✓` `●` 等）在字体缺字时会画成缺字方框。界面文字统一走
+`Renderer::chrome`，那里对每个非 ASCII 字符先问 `Fonts::has_glyph`（主字体 + 后备字体），有字形就照原样画，
+没有就换成 `ui::icon_fallback` 给的 ASCII（`●`→`*`、`✓`→`v`、`→`→`>`、`…`/`·`→`.`、`—`→`-`），表里没有的字换成 `?`。
+
+- **只作用于界面**：终端内容不做替换——程序输出缺字时显示缺字方框才是正确行为，替换会骗过看输出的人。
+- **缓存有界**：字符 → 实际字形记在 `Renderer.icons`，最多 128 条，字体重新加载（`reclaim_caches`）时清空；ASCII 不进缓存。
+- **不改变宽度**：回退字符的显示宽度不大于原图标，所以侧栏列宽与点击槽位不变（`ui::icon_tests` 断言这一点）。
+
+## 6. 测试
 
 | 测试 | 覆盖 |
 |---|---|
@@ -98,7 +108,7 @@ command-marks = true
 | `integration_tests::reset_theme_action_restores_the_configured_theme` | 按动作名绑定 F5，循环到别的主题后按 F5 回到 midnight，且配色确实变了 |
 | `config::tests::appearance_parses_cursor_blink_and_reset_returns_to_the_configured_theme` | `cursor-blink` / `command-marks` 的解析与默认值；`reset_theme` 回到配置值而不是编译默认；键名进了 schema |
 
-## 6. 未验收
+## 7. 未验收
 
 - 只在 Linux 上运行过测试与预览帧；macOS/Windows 只做了交叉 clippy，不算真机验证。
 - 主题预览是整窗实时预览（看得见真实内容），没有单独的色板对比面板；F13 里“提供主题预览和恢复默认”两项都已提供。
@@ -106,7 +116,7 @@ command-marks = true
 - 命令标记只有一种样式（左边缘竖条），F13 说的“命令标记样式”还不支持换样式或换成图标。
 - 透明度与模糊未做。
 
-## 7. 预览
+## 8. 预览
 
 主题预览：整窗换成候选主题（这里是“浅色”），底部提示条说明按键：
 
