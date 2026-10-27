@@ -22,7 +22,7 @@ use super::{
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use super::{
     local_transfer::{self, Download, LocalPath, Source as LocalSource},
-    transfer,
+    plan, transfer,
     transfer_state::{self, Direction, Progress},
     wire::{Expected, PathOp, Request as WireRequest, Response},
 };
@@ -64,6 +64,8 @@ pub enum Failure {
 }
 pub enum Output {
     Directory(Listing),
+    /// 目录批量传输的影响范围预览。
+    Plan(plan::Plan),
     /// 写操作（建目录/重命名/删除）已由服务端确认，调用方需要重新读取目录。
     Changed,
     Transfer {
@@ -177,6 +179,9 @@ enum Action {
         path: RemotePath,
         hidden: bool,
         sort: model::Sort,
+    },
+    Plan {
+        path: RemotePath,
     },
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     Transfer(FileRequest),
@@ -352,6 +357,22 @@ impl Service {
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
         let path = RemotePath::new(self.budget(), path).map_err(model_failure)?;
         self.submit(owner, profiles, profile, paths, Action::Directory { path, hidden, sort }, timeout)
+    }
+    /// 目录批量传输预览：只读目录元数据，不读文件内容，不创建任何目标。
+    #[allow(clippy::too_many_arguments)]
+    pub fn plan(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        path: &[u8],
+        timeout: Duration,
+    ) -> Result<(Ticket, Authentication), Failure> {
+        self.validate(owner, paths, timeout)?;
+        let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        let path = RemotePath::new(self.budget(), path).map_err(model_failure)?;
+        self.submit(owner, profiles, profile, paths, Action::Plan { path }, timeout)
     }
     /// 建目录：只在服务端确认后返回；名称规则与目录读取一致，不做路径规范化。
     #[allow(clippy::too_many_arguments)]
@@ -748,6 +769,10 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
             { operations::directory(&mut channel, path.clone(), *hidden, *sort, cancel) }
                 .map(Output::Directory)
                 .map_err(operation_failure)
+        }
+        Action::Plan { path } => {
+            let mut walker = plan::Walker { channel: &mut channel, cancel };
+            plan::walk(&mut walker, path, cancel).map(Output::Plan).map_err(operation_failure)
         }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         Action::InspectRemote { path, selected } => operations::attributes(&mut channel, path.bytes(), cancel)

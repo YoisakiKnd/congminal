@@ -23,12 +23,17 @@ const OPS_LABELS: [[&str; 7]; 3] = [
 /// 文件页操作行的槽数（与 `OPS_LABELS` 一一对应）。
 pub(super) const OPS_SLOTS: usize = 7;
 const FORM_LABELS: [[&str; 2]; 3] = [["[确定]", "[取消]"], ["确定", "取消"], ["确", "取"]];
+/// 批量预览/批次的两档按钮：确认与取消。
+const BATCH_LABELS: [[&str; 2]; 3] = [["[开始]", "[取消]"], ["开始", "取消"], ["开", "取"]];
 const CONFIRM_LABELS: [[&str; 2]; 3] = [["[删除]", "[取消]"], ["删除", "取消"], ["删", "取"]];
 #[cfg(feature = "sftp-preview")]
 #[path = "sftp_entry.rs"]
 mod entry;
 #[cfg(feature = "sftp-preview")]
 pub(super) use entry::Entry;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[path = "remote_batch.rs"]
+mod batch;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 #[path = "transfer_paths.rs"]
 mod paths_form;
@@ -378,6 +383,12 @@ pub(super) struct State {
     attempted: Option<(u64, Profiles, usize)>,
     error: Option<Failure>,
     exiting: bool,
+    /// 在途的批量下载枚举请求。
+    plan: Option<batch::PlanTask>,
+    /// 枚举完成后的影响范围预览。
+    preview: Option<batch::Preview>,
+    /// 正在提交的批量下载。
+    batch: Option<batch::Batch>,
     shutdown: Shutdown,
     exit_reported: bool,
     exit: transfer_exit::Exit,
@@ -420,6 +431,9 @@ impl State {
             attempted: None,
             error: None,
             exiting: false,
+            plan: None,
+            preview: None,
+            batch: None,
             shutdown: Shutdown::Open,
             exit_reported: false,
             exit: transfer_exit::Exit::default(),
@@ -428,6 +442,13 @@ impl State {
     }
     fn cancel_directories(&mut self, active: Option<Ticket>) -> bool {
         let mut dismiss = false;
+        // 预览与批次随目录视图一起作废：换窗格/换配置档后不再提交。
+        self.preview = None;
+        self.batch = None;
+        if let Some(task) = self.plan.take() {
+            dismiss |= active == Some(task.ticket);
+            self.service.cancel(task.ticket);
+        }
         for pending in &mut self.pending {
             if let Some(task) = pending.take() {
                 dismiss |= active == Some(task.ticket);
@@ -609,6 +630,7 @@ impl Workspace {
             state.error = None;
         }
         self.remote_transfer_tick(&mut state);
+        self.batch_pump(&mut state);
         let valid =
             state.view.as_ref().is_some_and(|v| v.binding.valid(self) && v.binding.owner.session == self.selected);
         let visible = self.left_page == LeftPage::Files
@@ -636,6 +658,7 @@ impl Workspace {
             let Some(completion) = self.transfer_paths_result(&mut state, completion) else { continue };
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             let Some(completion) = self.transfer_preparation_result(&mut state, completion) else { continue };
+            let Some(completion) = self.plan_result(&mut state, completion) else { continue };
             let Some(completion) = self.remote_transfer_result(&mut state, completion) else { continue };
             if state.mutation.as_ref().is_some_and(|m| m.ticket == completion.ticket) {
                 let mutation = state.mutation.take().unwrap();
@@ -771,6 +794,13 @@ impl Workspace {
             {
                 front = mutation.authentication.take_ready().map(|front| (mutation.ticket, front));
             }
+            // 批量枚举同样要过前台认证：认证完成后才继续读目录树。
+            if front.is_none()
+                && let Some(task) =
+                    state.plan.as_mut().filter(|p| p.binding.valid(self) && p.binding.owner.session == self.selected)
+            {
+                front = task.authentication.take_ready().map(|front| (task.ticket, front));
+            }
             if let Some((ticket, front)) = front {
                 state.invalidate_transfer_clicks();
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -905,6 +935,14 @@ impl Workspace {
                     || s.view.as_ref().is_none_or(|v| v.loading || v.error.is_some())
             })
         {
+            return true;
+        }
+        // 批量预览/批次占用操作行：左半确认、右半取消。
+        if row == 3 && self.sftp.as_ref().is_some_and(|s| s.preview.is_some() || s.batch.is_some()) {
+            if let Some(mut state) = self.sftp.take() {
+                self.batch_click(&mut state, column);
+                self.sftp = Some(state);
+            }
             return true;
         }
         if row == 3 && self.sftp.as_ref().is_some_and(|s| s.form.is_some() || s.confirm.is_some()) {
@@ -1402,8 +1440,10 @@ impl Workspace {
                 self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, prefix, h], "[不完整]", true);
             }
             let width = (r.w - prefix) / self.driver.renderer.cell_size().0.max(1);
-            let line = match (&state.form, &state.confirm) {
-                (Some(form), _) => {
+            let batch = self.batch_line(state);
+            let line = match (&state.form, &state.confirm, batch) {
+                (_, _, Some(batch)) => crate::term::clip(&batch, width),
+                (Some(form), _, _) => {
                     let prompt = match form.op {
                         Op::NewFolder => "新目录名",
                         _ => "新名称",
@@ -1414,7 +1454,7 @@ impl Workspace {
                     let tail = format!("{}{preedit}", form.text);
                     target_line(&head, &tail, width)
                 }
-                (_, Some(confirm)) => {
+                (_, Some(confirm), _) => {
                     let verb = if confirm.directory { "删除目录" } else { "删除文件" };
                     target_line(&format!("{verb} {}:", confirm.host), &confirm.label, width)
                 }
@@ -1449,7 +1489,8 @@ impl Workspace {
         };
         if r.h >= 4 * h {
             let busy = error.is_some() || state.exiting || state.mutation.is_some() || view.is_some_and(|v| v.loading);
-            let count = if state.form.is_some() || state.confirm.is_some() {
+            let batch = self.batch_labels(state);
+            let count = if state.form.is_some() || state.confirm.is_some() || batch.is_some() {
                 2
             } else if busy {
                 0
@@ -1473,12 +1514,31 @@ impl Workspace {
                     &FORM_LABELS[tier]
                 } else if state.confirm.is_some() {
                     &CONFIRM_LABELS[tier]
+                } else if batch.is_some() {
+                    &BATCH_LABELS[tier]
                 } else {
                     &OPS_LABELS[tier]
                 };
+                let batch = self.batch_labels(state);
                 for (i, text) in tiered.iter().take(count).enumerate() {
+                    let text = match &batch {
+                        Some(labels) => labels.get(i).copied().unwrap_or(text),
+                        None => text,
+                    };
                     self.driver.renderer.chrome(&mut self.frame, [r.x + i * slot, r.y + 3 * h, slot, h], text, false);
                 }
+            }
+        }
+        // 预览时列表区显示将要传输的相对路径（最多几条），比空列表更能说明影响范围。
+        if r.h >= 5 * h {
+            for (i, path) in self.batch_paths(state).into_iter().enumerate() {
+                let width = r.w / self.driver.renderer.cell_size().0.max(1);
+                self.driver.renderer.chrome(
+                    &mut self.frame,
+                    [r.x, r.y + (4 + i) * h, r.w, h],
+                    &crate::term::clip(&path, width),
+                    false,
+                );
             }
         }
         if let Some(view) = view
@@ -1942,6 +2002,50 @@ mod tests {
         close(&mut app);
         drop((app, child));
         released(&pool);
+    }
+    #[test]
+    fn batch_preview_reports_the_scope_and_cancel_stops_before_anything_is_submitted() {
+        let mut app = workspace();
+        let _ticket = app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("folder", true)]);
+        let mut state = app.sftp.take().unwrap();
+        state.preview = Some(batch::Preview::for_test(
+            state.service.budget(),
+            b"/tmp/folder",
+            b"/local/dir",
+            &[(b"/tmp/folder/a.txt", 3), (b"/tmp/folder/sub/b.txt", 5)],
+        ));
+        // 预览行要说清数量、总大小、主机与本地目标。
+        let line = app.batch_line(&state).unwrap();
+        assert!(line.contains("批量下载 2 个文件"), "{line}");
+        assert!(line.contains("8 B"), "{line}");
+        assert!(line.contains("fixture"), "{line}");
+        assert!(line.contains("/local/dir"), "{line}");
+        assert_eq!(app.batch_labels(&state), Some(["开始", "取消"]));
+        assert_eq!(app.batch_paths(&state), ["a.txt (3 B)", "sub/b.txt (5 B)"]);
+        // 右半是取消：预览直接作废，不留任何传输记录。
+        assert!(app.batch_click(&mut state, 3));
+        assert!(state.preview.is_none());
+        assert!(state.batch.is_none());
+        assert!(state.files.iter().all(Option::is_none));
+        // 再来一次，左半是开始：条目进入批次，状态行改成提交进度。
+        state.preview = Some(batch::Preview::for_test(
+            state.service.budget(),
+            b"/tmp/folder",
+            b"/local/dir",
+            &[(b"/tmp/folder/a.txt", 3)],
+        ));
+        assert!(app.batch_click(&mut state, 0));
+        assert!(state.preview.is_none());
+        let line = app.batch_line(&state).unwrap();
+        assert!(line.starts_with("正在提交批量下载 0/1"), "{line}");
+        assert_eq!(app.batch_labels(&state), Some(["—", "取消"]));
+        // 取消批次后不再提交任何条目。
+        assert!(app.batch_click(&mut state, 4));
+        assert!(state.batch.is_none());
+        assert!(state.files.iter().all(Option::is_none));
+        app.sftp = Some(state);
+        close(&mut app);
     }
     #[test]
     fn close_gate_stays_responsive_until_reaper_notification_returns_and_has_a_completion_deadline() {
