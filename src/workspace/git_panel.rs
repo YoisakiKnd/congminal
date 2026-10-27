@@ -717,9 +717,12 @@ impl Panel {
             Key::Right => self.input.as_mut().unwrap().caret = next(self.input.as_ref().unwrap()),
             Key::Home => self.input.as_mut().unwrap().caret = 0,
             Key::End => self.input.as_mut().unwrap().caret = self.input.as_ref().unwrap().text.data.len(),
-            Key::Char(c) if !mods.ctrl && !mods.alt && !mods.logo && !c.is_control() => {
-                let mut buffer = [0u8; 4];
-                self.insert(c.encode_utf8(&mut buffer));
+            // 小键盘数字与运算符在数字锁定下也当作文字，和搜索框、SFTP 名称输入一致。
+            Key::Char(_) | Key::Keypad(_) if !mods.ctrl && !mods.alt && !mods.logo => {
+                if let Some(c) = key.text().filter(|c| !c.is_control()) {
+                    let mut buffer = [0u8; 4];
+                    self.insert(c.encode_utf8(&mut buffer));
+                }
             }
             _ => {}
         }
@@ -1044,9 +1047,16 @@ mod tests {
         assert!(panel.capturing());
         assert!(panel.capture_key(Key::Char('x'), Mods::default(), notify()));
         assert!(panel.capture_text("y"));
+        // 数字锁定下的小键盘数字也算文字；带 Ctrl 的组合不进输入框。
+        assert!(panel.capture_key(Key::Keypad(crate::input::Keypad::Digit(7)), Mods::default(), notify()));
+        assert!(panel.capture_key(
+            Key::Keypad(crate::input::Keypad::Digit(8)),
+            Mods { ctrl: true, ..Mods::default() },
+            notify()
+        ));
         let input = panel.input.as_ref().unwrap();
-        assert_eq!(input.text.data, "xy");
-        assert_eq!(input.caret, 2);
+        assert_eq!(input.text.data, "xy7");
+        assert_eq!(input.caret, 3);
         // 回车把文字交给写任务：这里只验证输入被消费并清空，不启动真实 git。
         assert!(panel.capture_key(Key::Escape, Mods::default(), notify()));
         assert!(!panel.capturing());
