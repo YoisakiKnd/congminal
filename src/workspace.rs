@@ -1535,8 +1535,11 @@ impl Workspace {
                         config::profiles::Connection::Local(_) => "本地",
                         config::profiles::Connection::Ssh(_) => "SSH",
                     };
+                    // 已经用这个配置档连过的窗格把当前阶段写在名字后面：启动中/活动/断开/失败。
+                    let phase =
+                        self.profile_phase(index).map(|phase| format!(" · {}", phase.label())).unwrap_or_default();
                     let text = format!(
-                        "{kind} · {}{}{}",
+                        "{kind} · {}{}{}{phase}",
                         profile.group,
                         if profile.group.is_empty() { "" } else { " / " },
                         profile.name
@@ -1583,6 +1586,25 @@ impl Workspace {
         }
     }
 
+    /// 某个配置档当前连接的阶段：优先当前窗格，其次第一个用它的窗格。
+    fn profile_phase(&self, profile: usize) -> Option<remote::Phase> {
+        let profiles = &self.driver.config.connections;
+        let loaded = self.index(self.selected);
+        let mut found = None;
+        for (index, pane) in self.panes.iter().enumerate() {
+            let Some((owner, at)) = &pane.profile else { continue };
+            if *at != profile || !owner.shares(profiles) {
+                continue;
+            }
+            let Some(state) = &pane.remote else { continue };
+            if Some(index) == loaded {
+                return Some(state.phase());
+            }
+            found = found.or(Some(state.phase()));
+        }
+        found
+    }
+
     /// 状态页文本行：远程会话、本地 shell/命令、任务数、最近通知。
     /// 同时记下通知行号与来源，点击就能跳到对应页面。
     fn status_rows(&mut self) -> Vec<String> {
@@ -1591,6 +1613,10 @@ impl Workspace {
         let mut rows = Vec::new();
         if let Some(remote) = &self.panes[self.loaded].remote {
             rows.push(remote.describe());
+            // 重连在准备阶段失败时旧会话还在，单独一行说明，不覆盖当前阶段。
+            if let Some(error) = remote.retry_error() {
+                rows.push(format!("重连失败 · {error}"));
+            }
         }
         rows.push(
             self.driver
@@ -2331,7 +2357,16 @@ impl App for Workspace {
             self.driver.session.set_resize_allowed(Some(index) == slot);
             let resize_turn = self.driver.session.resize_turn();
             {
-                if !self.driver.tick() && !self.panes[index].ended {
+                let ticked = self.driver.tick();
+                // 有过输出就说明远端已经连上并开始交互：之后的状态才算“活动”。
+                if self.driver.session.output_bytes() > 0
+                    && let Some(remote) = &mut self.panes[index].remote
+                    && remote.phase() == remote::Phase::Starting
+                {
+                    remote.mark_output();
+                    self.chrome_dirty = true;
+                }
+                if !ticked && !self.panes[index].ended {
                     self.panes[index].ended = true;
                     if let Some(remote) = &mut self.panes[index].remote {
                         remote.finish(self.driver.session.exit_status().flatten());
@@ -2869,7 +2904,7 @@ mod tests {
             force_draw(&mut app);
             let snap = pool.snapshot();
             assert_eq!(app.panes.len(), 2);
-            assert!(app.panes[app.loaded].remote.as_ref().unwrap().describe().contains("未知"));
+            assert!(app.panes[app.loaded].remote.as_ref().unwrap().describe().contains("活动"));
             eprintln!(
                 "SSH_NATIVE round={round} ready_us={ready_us} echo_us={echo_us} submit_us={submit_us} spawn_us={spawn_us} max_tick_us={max_tick_us} used={} peak={}",
                 snap.used, snap.peak
@@ -2923,7 +2958,7 @@ mod tests {
         );
         eprintln!("SSH_NATIVE_INTERRUPT_REQUEST");
         wait(&mut app, |a| a.panes[a.loaded].ended);
-        assert!(app.panes[app.loaded].remote.as_ref().unwrap().describe().contains("已结束"));
+        assert!(app.panes[app.loaded].remote.as_ref().unwrap().describe().contains("断开"));
         eprintln!("SSH_NATIVE_RESTART_REQUEST");
         wait(&mut app, |_| ready.exists());
         app.reconnect_remote();
@@ -3046,7 +3081,8 @@ exec /bin/cat
         app.add_with_profile(None, Some(0));
         wait(&mut app, |a| a.panes.len() == 2);
         wait(&mut app, |a| text(a, 2).contains("REMOTE_READY"));
-        assert!(app.panes[app.loaded].remote.as_ref().unwrap().describe().contains("未知"));
+        wait(&mut app, |a| a.panes[a.loaded].remote.as_ref().unwrap().phase() == remote::Phase::Active);
+        assert!(app.panes[app.loaded].remote.as_ref().unwrap().describe().contains("活动"));
         app.event(Event::PasteRequest);
         assert!(matches!(app.take_clipboard_request(), Some(ClipboardRequest::Paste(_))));
         assert_eq!(app.paste_target, Some(2));
@@ -3072,6 +3108,88 @@ exec /bin/cat
         app.event(Event::Text("STILL_ALIVE_AFTER_RECONNECT_FAILURE\n".into()));
         wait(&mut app, |a| text(a, new).contains("STILL_ALIVE_AFTER_RECONNECT_FAILURE"));
     }
+    /// 假 ssh：`-G` 探测直接成功，交互阶段按脚本输出并退出/常驻，用来观察连接阶段。
+    #[cfg(unix)]
+    fn fake_ssh(dir: &std::path::Path, name: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\ncase \"$1\" in -G) exit 0;; esac\n{body}")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_panes_report_active_and_failed_connections_without_guessing_authentication() {
+        let dir = layout::TestDir::new();
+        let active = fake_ssh(&dir.0, "fake-ssh-active", "printf 'REMOTE_READY'\nexec /bin/cat\n");
+        let failing = fake_ssh(&dir.0, "fake-ssh-fail", "printf 'REMOTE_DENIED'\nexit 3\n");
+        let (mut configured, mut warnings) = Config::parse(&format!(
+            "[connections.active]\nkind='ssh'\nhost='fixture'\nprogram={active:?}\n\
+             [connections.failing]\nkind='ssh'\nhost='fixture'\nprogram={failing:?}\n"
+        ));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.connections = configured.connections;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+        // 常驻的假 ssh：收到输出后进入“活动”，状态页第一行写清阶段与时长。
+        app.add_with_profile(None, Some(0));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Active));
+        let rows = app.status_rows();
+        assert!(rows[0].starts_with("SSH 活动 · "), "{}", rows[0]);
+        assert_eq!(app.panes[app.loaded].remote.as_ref().unwrap().phase(), remote::Phase::Active);
+        if let Ok(path) = std::env::var("CONGMINAL_SSH_PHASE_PREVIEW_PATH") {
+            force_draw(&mut app);
+            let mut bytes = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for pixel in &app.frame.pixels {
+                bytes.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, *pixel as u8]);
+            }
+            std::fs::write(path, bytes).unwrap();
+        }
+        // 退出码非零的假 ssh：结束后面板写“失败”并提示去连接页重连。
+        app.add_with_profile(None, Some(1));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        wait(&mut app, |a| a.panes[a.loaded].ended);
+        let rows = app.status_rows();
+        assert!(rows[0].contains("SSH 失败 · 退出码 3"), "{}", rows[0]);
+        assert!(rows[0].contains("连接页可重连"), "{}", rows[0]);
+        assert_eq!(app.profile_phase(1), Some(remote::Phase::Failed));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_reconnect_keeps_the_running_session_and_reports_why() {
+        let dir = layout::TestDir::new();
+        let tool = fake_ssh(&dir.0, "fake-ssh-vanish", "printf 'REMOTE_READY'\nexec /bin/cat\n");
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[connections.vanish]\nkind='ssh'\nhost='fixture'\nprogram={tool:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.connections = configured.connections;
+        app.action(Action::ToggleLeftSidebar);
+        app.add_with_profile(None, Some(0));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Active));
+        let id = app.selected;
+        // 程序在连接后消失：重连的准备阶段就会失败，旧会话必须继续可用。
+        std::fs::remove_file(&tool).unwrap();
+        app.reconnect_remote();
+        wait(&mut app, |a| a.panes[a.loaded].remote.as_ref().is_some_and(|r| r.retry_error().is_some()));
+        assert_eq!(app.selected, id, "重连失败不应替换会话");
+        assert_eq!(app.profile_phase(0), Some(remote::Phase::Active));
+        let rows = app.status_rows();
+        assert!(rows[0].starts_with("SSH 活动 · "), "{}", rows[0]);
+        assert_eq!(rows[1], "重连失败 · 找不到 SSH 程序，请检查程序路径");
+        // 旧会话仍能收发。
+        app.event(Event::Text("STILL_ALIVE\n".into()));
+        wait(&mut app, |a| text(a, id).contains("STILL_ALIVE"));
+    }
+
     #[test]
     fn connection_profiles_launch_local_tabs_and_keep_old_settings_across_reload() {
         let mut app = workspace();

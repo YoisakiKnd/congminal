@@ -74,27 +74,83 @@ impl Connector {
         Some(result.unwrap_or(Ready { request, launch: Err(Error::Process) }))
     }
 }
+/// 连接状态：只报能判断的阶段，认证过程不猜。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Phase {
+    /// ssh 进程已启动，还没有任何输出：可能在认证、可能在等远端首屏。
+    Starting,
+    /// 已经收到输出，远端开始交互。
+    Active,
+    /// 进程正常退出（退出码 0 或未知）：连接结束。
+    Disconnected,
+    /// 进程以非零退出码结束，或准备阶段就失败：连接失败。
+    Failed,
+}
+impl Phase {
+    pub fn label(self) -> &'static str {
+        match self {
+            Phase::Starting => "启动中",
+            Phase::Active => "活动",
+            Phase::Disconnected => "断开",
+            Phase::Failed => "失败",
+        }
+    }
+}
+
 pub(super) struct State {
     started: Instant,
     finished: Option<Duration>,
     exit: Option<i32>,
     check: Duration,
+    /// 收到过输出后置位，进程退出后保留，用于区分“断开”与“从未连上”。
+    output: bool,
+    /// 最近一次重连在准备阶段失败的原因；旧会话仍在跑时如实写成“重连失败”。
+    retry: Option<String>,
 }
 impl State {
     pub fn new(check: Duration) -> Self {
-        Self { started: Instant::now(), finished: None, exit: None, check }
+        Self { started: Instant::now(), finished: None, exit: None, check, output: false, retry: None }
+    }
+    /// 重连在准备阶段失败（工具缺失、参数非法）：旧会话照旧，失败原因留给状态页。
+    pub fn retry_failed(&mut self, message: String) {
+        self.retry = Some(message);
+    }
+    pub fn retry_error(&self) -> Option<&str> {
+        self.retry.as_deref()
+    }
+    pub fn mark_output(&mut self) {
+        self.output = true;
     }
     pub fn finish(&mut self, status: Option<i32>) {
         self.exit = status;
         self.finished = Some(self.started.elapsed());
     }
-    pub fn describe(&self) -> String {
+    pub fn phase(&self) -> Phase {
         match self.finished {
-            None => format!("SSH · 认证/活动状态未知 · 工具检查 {} ms", self.check.as_millis()),
-            Some(elapsed) => match self.exit {
-                Some(code) => format!("SSH 已结束 · 退出码 {code} · {} s", elapsed.as_secs()),
-                None => format!("SSH 已结束 · 原因未知 · {} s", elapsed.as_secs()),
+            None if self.output => Phase::Active,
+            None => Phase::Starting,
+            Some(_) if self.exit.is_some_and(|code| code != 0) => Phase::Failed,
+            Some(_) => Phase::Disconnected,
+        }
+    }
+    pub fn elapsed(&self) -> Duration {
+        self.finished.unwrap_or_else(|| self.started.elapsed())
+    }
+    /// 状态页那一行：阶段 + 时长，失败时带上原因或退出码与重连提示。
+    pub fn describe(&self) -> String {
+        let phase = self.phase();
+        let seconds = self.elapsed().as_secs();
+        match phase {
+            Phase::Starting => format!("SSH 启动中 · 等待首屏输出 · 工具检查 {} ms", self.check.as_millis()),
+            Phase::Active => format!("SSH 活动 · {seconds} s"),
+            Phase::Disconnected => match self.exit {
+                Some(code) => format!("SSH 断开 · 退出码 {code} · {seconds} s"),
+                None => format!("SSH 断开 · 原因未知 · {seconds} s"),
             },
+            Phase::Failed => {
+                let why = self.exit.map_or_else(|| "原因未知".into(), |code| format!("退出码 {code}"));
+                format!("SSH 失败 · {why} · {seconds} s · 连接页可重连")
+            }
         }
     }
 }
@@ -143,6 +199,14 @@ impl Workspace {
             Ok(launch) => launch,
             Err(error) => {
                 self.notice(error.message());
+                // 重连失败要把原因留在状态页，否则用户只看到一条一闪而过的提示。
+                if let Target::Replace(id) = request.target
+                    && let Some(index) = self.index(id)
+                    && let Some(remote) = &mut self.panes[index].remote
+                {
+                    remote.retry_failed(error.message().to_string());
+                    self.chrome_dirty = true;
+                }
                 return;
             }
         };
@@ -243,5 +307,47 @@ impl Workspace {
         self.status = None;
         drop(fresh);
         drop(memory);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn phases_follow_output_and_exit_status_without_guessing_authentication() {
+        // 刚启动、还没有任何输出：只能说“启动中”，不猜认证阶段。
+        let mut state = State::new(Duration::from_millis(12));
+        assert_eq!(state.phase(), Phase::Starting);
+        assert_eq!(state.describe(), "SSH 启动中 · 等待首屏输出 · 工具检查 12 ms");
+        // 收到输出后进入活动。
+        state.mark_output();
+        assert_eq!(state.phase(), Phase::Active);
+        assert!(state.describe().starts_with("SSH 活动 · "), "{}", state.describe());
+        // 正常退出：断开，带退出码与总时长。
+        state.finish(Some(0));
+        assert_eq!(state.phase(), Phase::Disconnected);
+        assert!(state.describe().starts_with("SSH 断开 · 退出码 0 · "), "{}", state.describe());
+        // 非零退出：失败，并提示去连接页重连。
+        let mut failed = State::new(Duration::from_millis(3));
+        failed.finish(Some(255));
+        assert_eq!(failed.phase(), Phase::Failed);
+        let text = failed.describe();
+        assert!(text.contains("退出码 255") && text.contains("连接页可重连"), "{text}");
+        // 从未连上就退出且没有退出码：算断开，不谎称失败原因。
+        let mut unknown = State::new(Duration::from_millis(3));
+        unknown.finish(None);
+        assert_eq!(unknown.phase(), Phase::Disconnected);
+        assert!(unknown.describe().contains("原因未知"), "{}", unknown.describe());
+        // 重连在准备阶段失败：旧会话状态不变，失败原因单独留给状态页。
+        let mut retried = State::new(Duration::from_millis(1));
+        retried.mark_output();
+        retried.retry_failed("找不到 ssh 程序".into());
+        assert_eq!(retried.phase(), Phase::Active);
+        assert_eq!(retried.retry_error(), Some("找不到 ssh 程序"));
+        assert!(retried.describe().starts_with("SSH 活动 · "), "{}", retried.describe());
+        // 阶段名只用于界面，不参与判断。
+        assert_eq!(Phase::Starting.label(), "启动中");
+        assert_eq!(Phase::Failed.label(), "失败");
     }
 }

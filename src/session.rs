@@ -89,6 +89,8 @@ pub struct Session {
     output: Option<Arc<ByteQueue>>,
     pending_output: Option<(Vec<u8>, usize)>,
     pub output_pending: bool,
+    /// 从 PTY 读入并交给终端解析的字节数；SSH 面板据此判断“已经有输出”。
+    output_bytes: u64,
     /// 已经报告过的丢弃应答字节数，避免重复打印
     reported_dropped: usize,
     pub preedit: String,
@@ -197,6 +199,7 @@ impl Session {
             output: Some(output),
             pending_output: None,
             output_pending: false,
+            output_bytes: 0,
             reported_dropped: 0,
             preedit: String::new(),
             selection: None,
@@ -321,6 +324,11 @@ impl Session {
         (changed, error)
     }
 
+    /// 已经解析的输出字节数；只增不减，SSH 连接状态用它区分“还没有输出”。
+    pub fn output_bytes(&self) -> u64 {
+        self.output_bytes
+    }
+
     pub fn warning(&mut self, message: &str) {
         let line = format!("\x1b[33m[congminal] {message}\x1b[0m\r\n");
         self.parser.advance(&mut self.term, line.as_bytes());
@@ -358,6 +366,7 @@ impl Session {
             }
             self.parser.advance(&mut self.term, &data[*offset..end]);
             parsed += end - *offset;
+            self.output_bytes = self.output_bytes.saturating_add((end - *offset) as u64);
             *offset = end;
             if end == data.len() {
                 self.pending_output = None;
