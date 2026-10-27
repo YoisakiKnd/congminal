@@ -4,6 +4,7 @@
 //! 完整的选项说明见 `assets/congminal.example.toml`（也就是 `congminal --print-config` 的输出）。
 
 pub mod git;
+pub mod monitor;
 pub mod profiles;
 #[cfg(any(test, all(feature = "sftp-preview", unix)))]
 pub mod sftp;
@@ -31,6 +32,7 @@ pub struct Config {
     pub bindings: crate::action::Bindings,
     pub notifications: crate::notifications::Settings,
     pub git: git::Settings,
+    pub monitor: monitor::Settings,
     #[cfg(any(test, all(feature = "sftp-preview", unix)))]
     pub sftp: sftp::Settings,
     /// 布局持久化在下次启动生效；默认关闭，不增加单终端的 I/O 或线程。
@@ -117,6 +119,7 @@ impl Default for Config {
             bindings: crate::action::Bindings::default(),
             notifications: crate::notifications::Settings::default(),
             git: git::Settings::default(),
+            monitor: monitor::Settings::default(),
             #[cfg(any(test, all(feature = "sftp-preview", unix)))]
             sftp: sftp::Settings::default(),
             restore_layout: false,
@@ -154,6 +157,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
     ("window", &["columns", "rows", "padding"]),
     ("workspace", &["restore-layout"]),
     ("git", &["enabled", "program", "refresh-seconds", "timeout-seconds", "max-files", "diff-mib"]),
+    ("monitor", &["enabled", "interval-seconds", "history-seconds", "disk-seconds"]),
     ("sftp", &["enabled", "helper", "ssh-config"]),
     ("memory", &["managed-mib", "mapped-font-mib"]),
     (
@@ -226,6 +230,7 @@ impl Config {
         let mut r = Reader { root: &root, warnings: Vec::new() };
         r.check_unknown_keys();
         config.git = git::read(&mut r);
+        config.monitor = monitor::read(&mut r);
         #[cfg(any(test, all(feature = "sftp-preview", unix)))]
         {
             config.sftp = sftp::read(&mut r);

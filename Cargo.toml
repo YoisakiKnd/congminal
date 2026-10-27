@@ -26,5 +26,11 @@ required-features = ["ssh-auth-helper"]
 libssh2-sys = { version = "=0.3.3", optional = true, default-features = false }
 libc = { version = "=0.2.191", optional = true }
 
+# 本地状态监控的薄适配层（src/monitor）：只读 CPU/内存/磁盘，不启用进程、网络、
+# 组件与用户表，也不启用 multithread（不额外建线程）。版本与成本见
+# docs/evaluations/m7-monitor.md。
+[target.'cfg(any(target_os = "linux", target_os = "macos", windows))'.dependencies]
+sysinfo = { version = "=0.38.4", default-features = false, features = ["system", "disk"] }
+
 [profile.release]
 debug = 1

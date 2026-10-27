@@ -8,6 +8,7 @@ mod authentication;
 mod files;
 mod git_panel;
 mod layout;
+mod monitor_panel;
 mod remote;
 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
 mod remote_files;
@@ -248,6 +249,14 @@ enum LeftPage {
     Connections,
     Files,
 }
+/// 右栏页：状态（会话/通知）、Git、监控。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+enum RightPage {
+    #[default]
+    Status,
+    Git,
+    Monitor,
+}
 struct Pane {
     #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
     auth_generation: u64,
@@ -304,6 +313,8 @@ pub struct Workspace {
     sftp_entry: remote_files::Entry,
     local_files: files::Browser,
     git: git_panel::Panel,
+    monitor: monitor_panel::Panel,
+    right_page: RightPage,
     right: bool,
     left_width: usize,
     right_width: usize,
@@ -383,6 +394,8 @@ impl Workspace {
             sftp_entry: remote_files::Entry::default(),
             local_files: files::Browser::default(),
             git: git_panel::Panel::new(),
+            monitor: monitor_panel::Panel::new(),
+            right_page: RightPage::Status,
             right: false,
             left_width: (220.0 * scale) as usize,
             right_width: (280.0 * scale) as usize,
@@ -649,6 +662,7 @@ impl Workspace {
                 | Action::ToggleLeftSidebar
                 | Action::ToggleRightSidebar
                 | Action::ShowGitPanel
+                | Action::ShowMonitorPanel
         )
     }
     fn enable(&mut self) -> bool {
@@ -723,6 +737,7 @@ impl Workspace {
             .chain(self.save_due)
             .chain(self.driver.font_deadline)
             .chain(self.git.deadline())
+            .chain(self.monitor.deadline())
             .min()
     }
     fn terminal_focused(&self) -> bool {
@@ -1152,6 +1167,7 @@ impl Workspace {
                 | Action::ToggleLeftSidebar
                 | Action::ToggleRightSidebar
                 | Action::ShowGitPanel
+                | Action::ShowMonitorPanel
         ) && !self.enable()
         {
             return true;
@@ -1204,8 +1220,18 @@ impl Workspace {
                 }
             }
             Action::ShowGitPanel => {
-                let opened = self.git.open();
                 self.right = true;
+                self.right_page = RightPage::Git;
+                let opened = self.git.open();
+                self.chrome_dirty |= opened;
+                if let Err(e) = self.relayout() {
+                    self.notice(&e);
+                }
+            }
+            Action::ShowMonitorPanel => {
+                self.right = true;
+                self.right_page = RightPage::Monitor;
+                let opened = self.monitor.open();
                 self.chrome_dirty |= opened;
                 if let Err(e) = self.relayout() {
                     self.notice(&e);
@@ -1233,7 +1259,8 @@ impl Workspace {
                 + self.driver.output_copy.as_ref().map_or(0, shell::CopyOutput::resource_bytes);
         }
         self.restore();
-        totals[5] += self.local_files.bytes() + self.git.bytes() + self.driver.config.connections.bytes();
+        totals[5] +=
+            self.local_files.bytes() + self.git.bytes() + self.monitor.bytes() + self.driver.config.connections.bytes();
         let (_, glyphs) = self.driver.renderer.resource_bytes(&self.driver.framebuffer);
         self.driver.show_warnings(&[format!("工作区资源（分项字节，非 RSS）：sessions={}/8 grid={} history={}/{} marks={} queues={} canvases={} metadata={} glyphs={} font-files={}；{}",self.panes.len(),totals[0],totals[1],HISTORY_POOL,totals[2],totals[3],totals[4]+self.frame.pixels.capacity()*4,totals[5],glyphs,Fonts::file_bytes(),crate::resources::current().snapshot().describe())]);
     }
@@ -1283,7 +1310,8 @@ impl Workspace {
         self.driver.notifications.revision().hash(&mut hash);
         self.driver.notifications.system_error.hash(&mut hash);
         self.git.revision().hash(&mut hash);
-        self.git.page.hash(&mut hash);
+        self.monitor.revision().hash(&mut hash);
+        self.right_page.hash(&mut hash);
         hash.finish()
     }
     fn point_pane(&self, x: f64, y: f64) -> Option<u64> {
@@ -1489,23 +1517,13 @@ impl Workspace {
             let transfer_painted = self.transfer_list_paint(r, h);
             #[cfg(not(all(any(test, feature = "sftp-preview"), unix)))]
             let transfer_painted = false;
-            if !transfer_painted && self.git_tabs_paint(r, h) {
-                self.git_paint(r, h);
-            } else if !transfer_painted {
-                let mut rows = Vec::new();
-                if let Some(remote) = &self.panes[self.loaded].remote {
-                    rows.push(remote.describe());
+            if !transfer_painted {
+                self.right_tabs_paint(r, h);
+                match self.right_page {
+                    RightPage::Git => self.git_paint(r, h),
+                    RightPage::Monitor => self.monitor_paint(r, h),
+                    RightPage::Status => self.status_paint(r, h),
                 }
-                rows.push(self.driver.session.term.shell.describe(self.driver.selected_command));
-                rows.extend(self.driver.notifications.recent());
-                for (i, text) in rows.iter().enumerate() {
-                    let y = r.y + (i + 1) * h;
-                    if y + h <= r.y + r.h {
-                        self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, false);
-                    }
-                }
-                #[cfg(all(any(test, feature = "sftp-preview"), unix))]
-                self.transfer_notifications_paint(r, h, rows.len() + 1);
             }
         }
         for d in &self.dividers {
@@ -1514,6 +1532,73 @@ impl Workspace {
         }
         for r in [self.left_edge, self.right_edge] {
             self.frame.fill_rect(r.x, r.y, r.w, r.h, self.driver.config.colors.selection_background);
+        }
+    }
+
+    /// 右栏“状态”页：远程描述、当前命令与最近通知。
+    /// 状态页文本行：远程会话、本地 shell/命令、任务数、最近通知。
+    fn status_rows(&self) -> Vec<String> {
+        let mut rows = Vec::new();
+        if let Some(remote) = &self.panes[self.loaded].remote {
+            rows.push(remote.describe());
+        }
+        rows.push(self.driver.session.term.shell.describe(self.driver.selected_command));
+        let stats = crate::resources::current().snapshot();
+        rows.push(format!("任务 {} 个在跑 · 最新任务 {}", stats.managed_workers, stats.latest_tasks));
+        rows.extend(self.driver.notifications.recent());
+        rows
+    }
+
+    fn status_paint(&mut self, r: Rect, h: usize) {
+        let rows = self.status_rows();
+        for (i, text) in rows.iter().enumerate() {
+            let y = r.y + (i + 1) * h;
+            if y + h <= r.y + r.h {
+                self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, false);
+            }
+        }
+        #[cfg(all(any(test, feature = "sftp-preview"), unix))]
+        self.transfer_notifications_paint(r, h, rows.len() + 1);
+    }
+
+    /// 画右栏三页页签：状态、Git、监控。
+    fn right_tabs_paint(&mut self, r: Rect, h: usize) {
+        let third = r.w / 3;
+        for (index, (page, text)) in
+            [(RightPage::Status, "状态"), (RightPage::Git, "Git"), (RightPage::Monitor, "监控")].into_iter().enumerate()
+        {
+            let width = if index == 2 { r.w - 2 * third } else { third };
+            self.driver.renderer.chrome(
+                &mut self.frame,
+                [r.x + index * third, r.y, width, h.min(r.h)],
+                text,
+                self.right_page == page,
+            );
+        }
+    }
+
+    /// 右栏点击：第 0 行切页，其余按当前页分发。
+    fn right_click(&mut self, row: usize, third: usize) -> bool {
+        if row == 0 {
+            let page = match third {
+                0 => RightPage::Status,
+                1 => RightPage::Git,
+                _ => RightPage::Monitor,
+            };
+            if page == self.right_page {
+                return false;
+            }
+            self.right_page = page;
+            return match page {
+                RightPage::Git => self.git.open(),
+                RightPage::Monitor => self.monitor.open(),
+                RightPage::Status => true,
+            };
+        }
+        match self.right_page {
+            RightPage::Git => self.git_click(row, third),
+            RightPage::Monitor => self.monitor_click(row),
+            RightPage::Status => false,
         }
     }
 }
@@ -1701,9 +1786,8 @@ impl Workspace {
                     }
                     if self.right_rect.contains(x, y) {
                         let row = (y as usize - self.right_rect.y) / h;
-                        let half = ((x as usize - self.right_rect.x) * 2 / self.right_rect.w.max(1)).min(1);
                         let third = ((x as usize - self.right_rect.x) * 3 / self.right_rect.w.max(1)).min(2);
-                        self.chrome_dirty |= self.git_click(row, half, third);
+                        self.chrome_dirty |= self.right_click(row, third);
                         return true;
                     }
                     if self.left_rect.contains(x, y) {
@@ -1878,7 +1962,7 @@ impl Workspace {
                     }
                     return true;
                 }
-                if self.right_rect.contains(x, y) && self.git.page == git_panel::Page::Git {
+                if self.right_rect.contains(x, y) && self.right_page == RightPage::Git {
                     let h = self.driver.renderer.cell_size().1;
                     let lines = match delta {
                         ScrollDelta::Lines(lines) => lines * 3.0,
@@ -2150,14 +2234,23 @@ impl App for Workspace {
         }
         let git_dir = self.git_directory();
         let git_key = self.git_key();
+        let visible = self.right && self.right_rect.visible();
         self.chrome_dirty |= self.git.tick(
             self.selected,
             git_dir.as_deref(),
             git_key,
             self.driver.notify.clone(),
-            self.right && self.right_rect.visible(),
+            visible,
+            visible && self.right_page == RightPage::Git,
             self.window_focus,
             &self.driver.config.git,
+        );
+        self.chrome_dirty |= self.monitor.tick(
+            visible,
+            visible && self.right_page == RightPage::Monitor,
+            self.window_focus,
+            &self.driver.config.monitor,
+            self.driver.notify.clone(),
         );
         let keep = !self.quit && (self.multiple || !self.panes[0].ended);
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
@@ -2908,7 +3001,7 @@ program="/definitely/missing/congminal-shell"
         app.width = 1200;
         app.height = 700;
         app.action(Action::ShowGitPanel);
-        assert!(app.right && app.git.page == git_panel::Page::Git);
+        assert!(app.right && app.right_page == RightPage::Git);
         wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
         let snapshot = app.git.snapshot.as_ref().unwrap();
         // macOS 的临时目录是 /var → /private/var 的符号链接，git 报告的是解析后的路径。
@@ -2964,14 +3057,14 @@ program="/definitely/missing/congminal-shell"
         assert!(app.git.diff.is_none());
         assert!(app.git.snapshot.is_some());
         // 切到状态页：保留结果但停止查询。
-        click(&mut app, r.w / 4, 0);
-        assert_eq!(app.git.page, git_panel::Page::Status);
+        click(&mut app, r.w / 6, 0);
+        assert_eq!(app.right_page, RightPage::Status);
         app.tick();
         assert!(app.git.deadline().is_none());
         assert!(app.git.snapshot.is_some());
         // 回到 Git 页后立即重排刷新。
-        click(&mut app, 3 * r.w / 4, 0);
-        assert_eq!(app.git.page, git_panel::Page::Git);
+        click(&mut app, r.w / 2, 0);
+        assert_eq!(app.right_page, RightPage::Git);
         assert!(app.git.deadline().is_some());
         // 关掉右栏：取消任务并释放快照、diff 与目录票据。
         app.action(Action::ToggleRightSidebar);
@@ -3004,6 +3097,147 @@ program="/definitely/missing/congminal-shell"
         assert!(view.headline[0].contains("已停用"), "{:?}", view.headline);
         assert_eq!(app.git.bytes(), 0);
         assert!(app.git.deadline().is_none());
+    }
+
+    /// 可控采样源：不读真实 /proc，便于断言节奏与暂停行为。
+    struct FakeSource(std::sync::Arc<std::sync::atomic::AtomicUsize>);
+    impl monitor::Sampling for FakeSource {
+        fn sample(&mut self, disk: bool) -> monitor::Raw {
+            let step = self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst) as u32;
+            monitor::Raw {
+                cpu: (step % 100) as f32,
+                cores: 4,
+                mem_used: 1 << 30,
+                mem_total: 2 << 30,
+                // 只有真正刷新磁盘的那一轮才带磁盘读数，和真实适配层一致。
+                disk_used: if disk { 5 << 30 } else { 0 },
+                disk_total: if disk { 10 << 30 } else { 0 },
+            }
+        }
+        fn mount(&self) -> Option<String> {
+            Some("/".into())
+        }
+    }
+    fn fake_monitor(app: &mut Workspace) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let source = counter.clone();
+        app.monitor = monitor_panel::Panel::with_source(std::sync::Arc::new(move || {
+            Box::new(FakeSource(source.clone())) as Box<dyn monitor::Sampling>
+        }));
+        counter
+    }
+    #[test]
+    fn monitor_panel_samples_pauses_on_focus_loss_and_releases_when_closed() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        let counter = fake_monitor(&mut app);
+        app.driver.config.monitor.disk_seconds = 5.0;
+        app.action(Action::ShowMonitorPanel);
+        assert!(app.right && app.right_page == RightPage::Monitor);
+        assert!(app.monitor.deadline().is_some());
+        wait(&mut app, |a| a.monitor.samples() >= 1);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // 下一轮按 1 秒节奏排定，不会忙轮询。
+        let next = app.monitor.deadline().unwrap();
+        assert!(next.saturating_duration_since(std::time::Instant::now()) <= std::time::Duration::from_secs(1));
+        assert!(app.monitor.bytes() >= monitor::RESERVED);
+        // 磁盘只在第一轮刷新，之后沿用上一轮读数。
+        assert!(app.monitor.last_disk.is_some());
+        let view = app.monitor.view(40);
+        assert_eq!(view.buttons, vec!["刷新"]);
+        assert!(view.headline[0].contains("CPU"), "{:?}", view.headline);
+        assert!(view.headline[1].contains("内存"), "{:?}", view.headline);
+        assert!(view.headline[2].starts_with("磁盘"), "{:?}", view.headline);
+        assert!(view.headline[2].contains("5.0 GiB"), "{:?}", view.headline);
+        assert!(view.headline[3].contains("每 1 秒"), "{:?}", view.headline);
+        assert_eq!(view.content.len(), 3, "{:?}", view.content);
+        // 标签按显示宽度对齐（中文占两列），三条曲线都铺满剩下的 35 列。
+        assert!(view.content[0].starts_with("CPU"));
+        assert!(view.content[1].starts_with("内存"));
+        assert!(view.content[2].starts_with("磁盘"));
+        for (line, label) in view.content.iter().zip(["CPU", "内存", "磁盘"]) {
+            let curve = line.trim_start_matches(label).trim_start();
+            assert_eq!(curve.chars().count(), 35, "{line:?}");
+        }
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_MONITOR_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 失焦：停止采样、保留历史、释放采样线程，deadline 归空。
+        let samples = app.monitor.samples();
+        app.window_focus = false;
+        app.tick();
+        assert!(app.monitor.paused);
+        assert!(app.monitor.task.is_none());
+        assert!(app.monitor.deadline().is_none());
+        assert_eq!(app.monitor.samples(), samples);
+        let paused = app.monitor.view(40);
+        assert!(paused.headline[3].contains("已暂停"), "{:?}", paused.headline);
+        // 回到前台：立刻补一次采样，之后回到 1 秒节奏。
+        app.window_focus = true;
+        app.tick();
+        assert!(!app.monitor.paused);
+        assert!(app.monitor.deadline().is_some());
+        wait(&mut app, |a| a.monitor.samples() > samples);
+        let resumed = app.monitor.samples();
+        // “刷新”按钮不等排定时间，立刻采样一次。
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let (x, y) = ((r.x + 2) as f64, (r.y + h + h / 2) as f64);
+        assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        wait(&mut app, |a| a.monitor.samples() > resumed);
+        // 切到状态页：停止采样、释放采样线程，但保留历史曲线（切回来接着画）。
+        let kept = app.monitor.samples();
+        let (x, y) = ((r.x + 2) as f64, (r.y + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        assert_eq!(app.right_page, RightPage::Status);
+        app.tick();
+        // 状态页仍给出会话、任务数与通知，不因切页丢内容。
+        let rows = app.status_rows();
+        assert!(rows.iter().any(|row| row.starts_with("任务 ") && row.contains("个在跑")), "{rows:?}");
+        assert!(app.monitor.paused);
+        assert!(app.monitor.task.is_none());
+        assert!(app.monitor.deadline().is_none());
+        assert_eq!(app.monitor.samples(), kept);
+        assert!(app.monitor.bytes() > 0);
+        // 切回监控页：立刻续采，历史还在。
+        let (x, y) = ((r.x + 2 * (r.w / 3) + 4) as f64, (r.y + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        assert_eq!(app.right_page, RightPage::Monitor);
+        assert!(app.monitor.deadline().is_some());
+        wait(&mut app, |a| a.monitor.samples() > kept);
+        // 关右栏：取消任务、释放历史与额度。
+        app.action(Action::ToggleRightSidebar);
+        assert!(!app.right);
+        app.tick();
+        assert_eq!(app.monitor.bytes(), 0);
+        assert!(app.monitor.history.is_none());
+        assert!(app.monitor.deadline().is_none());
+    }
+    #[test]
+    fn monitor_panel_reports_disabled_config_without_starting_work() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        let counter = fake_monitor(&mut app);
+        app.driver.config.monitor.enabled = false;
+        app.action(Action::ShowMonitorPanel);
+        app.tick();
+        let view = app.monitor.view(20);
+        assert!(view.headline[0].contains("已停用"), "{:?}", view.headline);
+        assert!(view.buttons.is_empty());
+        assert!(view.content.is_empty());
+        assert_eq!(app.monitor.bytes(), 0);
+        assert!(app.monitor.deadline().is_none());
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     fn saved_tabs(count: usize) -> layout::Layout {

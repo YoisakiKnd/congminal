@@ -25,13 +25,6 @@ const MIN_INTERVAL: Duration = Duration::from_secs(1);
 pub(super) const LIST_TOP: usize = 4;
 const SCROLL_LIMIT: f64 = 1.0e6;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(super) enum Page {
-    #[default]
-    Status,
-    Git,
-}
-
 /// 一帧要画的 Git 页内容；由界面线程负责实际绘制。
 pub(super) struct View {
     pub buttons: Vec<&'static str>,
@@ -40,7 +33,6 @@ pub(super) struct View {
 }
 
 pub(super) struct Panel {
-    pub(super) page: Page,
     pub(super) owner: u64,
     pub(super) dir: Option<Tracked<PathBuf>>,
     pub(super) snapshot: Option<Snapshot>,
@@ -76,7 +68,6 @@ pub(super) struct Panel {
 impl Panel {
     pub(super) fn new() -> Self {
         Self {
-            page: Page::default(),
             owner: 0,
             dir: None,
             snapshot: None,
@@ -123,10 +114,9 @@ impl Panel {
             + self.diff_label.as_ref().map_or(0, String::capacity)
     }
     pub(super) fn open(&mut self) -> bool {
-        if self.page == Page::Git {
+        if self.active && self.next.is_some() {
             return false;
         }
-        self.page = Page::Git;
         self.active = true;
         self.schedule(Duration::ZERO);
         self.revision = self.revision.wrapping_add(1);
@@ -201,6 +191,7 @@ impl Panel {
         key: u64,
         notify: Notify,
         visible: bool,
+        page: bool,
         focused: bool,
         settings: &Settings,
     ) -> bool {
@@ -211,7 +202,8 @@ impl Panel {
         self.enabled = settings.enabled;
         self.limits = settings.limits();
         self.interval = settings.refresh().max(MIN_INTERVAL);
-        if self.page != Page::Git || !focused || !self.enabled {
+        // 右栏还在、只是切到别的页：保留结果，停掉在途查询，切回来不用重跑。
+        if !page || !focused || !self.enabled {
             self.active = false;
             return self.suspend();
         }
@@ -614,15 +606,6 @@ fn inside_root(dir: &Path, root: &Path) -> bool {
 }
 
 impl Workspace {
-    /// 画右栏页签；返回 true 表示当前停在 Git 页。
-    pub(super) fn git_tabs_paint(&mut self, r: Rect, h: usize) -> bool {
-        let half = r.w / 2;
-        let git = self.git.page == Page::Git;
-        self.driver.renderer.chrome(&mut self.frame, [r.x, r.y, half, h], "状态", !git);
-        self.driver.renderer.chrome(&mut self.frame, [r.x + half, r.y, r.w - half, h], "Git", git);
-        git
-    }
-
     pub(super) fn git_paint(&mut self, r: Rect, h: usize) {
         let rows = (r.h / h).max(1);
         let view = self.git.view(rows.saturating_sub(LIST_TOP));
@@ -648,38 +631,25 @@ impl Workspace {
         }
     }
 
-    /// 右栏点击：页签、按钮、条目。
-    pub(super) fn git_click(&mut self, row: usize, half: usize, third: usize) -> bool {
+    /// 右栏 Git 页的按钮与条目点击；`third` 是按钮列。
+    pub(super) fn git_click(&mut self, row: usize, third: usize) -> bool {
         let notify = self.driver.notify.clone();
-        if row == 0 {
-            let page = if half == 0 { Page::Status } else { Page::Git };
-            if page == self.git.page {
-                return false;
+        if row == 0 || row < LIST_TOP {
+            if row == 1 {
+                return match (third, self.git.diff_open) {
+                    (0, _) => self.git.refresh_now(notify),
+                    (1, false) => match self.git.selected {
+                        Some(index) => self.git.open_diff(index, None, notify),
+                        None => false,
+                    },
+                    (1, true) => self.git.toggle_side(notify),
+                    (2, true) => self.git.back(),
+                    _ => false,
+                };
             }
-            self.git.page = page;
-            self.git.active = page == Page::Git;
-            if page == Page::Git {
-                self.git.next = Some(Instant::now());
-            }
-            self.git.revision = self.git.revision.wrapping_add(1);
-            return true;
-        }
-        if self.git.page != Page::Git {
             return false;
         }
-        if row == 1 {
-            return match (third, self.git.diff_open) {
-                (0, _) => self.git.refresh_now(notify),
-                (1, false) => match self.git.selected {
-                    Some(index) => self.git.open_diff(index, None, notify),
-                    None => false,
-                },
-                (1, true) => self.git.toggle_side(notify),
-                (2, true) => self.git.back(),
-                _ => false,
-            };
-        }
-        if row >= LIST_TOP && !self.git.diff_open {
+        if !self.git.diff_open {
             return self.git.select(self.git.offset + row - LIST_TOP, notify);
         }
         false
@@ -697,7 +667,7 @@ mod tests {
     fn view_states_are_explicit_before_any_result() {
         let mut panel = Panel::new();
         assert!(panel.open());
-        assert_eq!(panel.page, Page::Git);
+        assert!(panel.active);
         let view = panel.view(10);
         assert_eq!(view.buttons, vec!["刷新", "打开差异"]);
         assert!(view.headline[0].contains("工作目录未知"));

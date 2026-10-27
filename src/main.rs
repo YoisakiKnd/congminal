@@ -24,6 +24,7 @@ mod input;
 mod launcher;
 mod links;
 mod local_directory;
+mod monitor;
 mod mouse;
 mod notifications;
 mod path_text;
@@ -314,7 +315,8 @@ impl Congminal {
             | Action::PreviousPane
             | Action::ToggleLeftSidebar
             | Action::ToggleRightSidebar
-            | Action::ShowGitPanel => return false,
+            | Action::ShowGitPanel
+            | Action::ShowMonitorPanel => return false,
             Action::Ignore => {}
             Action::PassThrough => return false,
         }

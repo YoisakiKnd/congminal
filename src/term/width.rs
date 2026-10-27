@@ -21,6 +21,23 @@ pub fn char_width(c: char) -> usize {
     }
 }
 
+/// 按显示列裁剪一行文本：超出 `width` 列的部分直接丢掉。
+///
+/// 右栏面板只能画固定列数，长行必须在进入绘制前裁掉，否则会挤到下一行。
+pub fn clip(text: &str, width: usize) -> String {
+    let mut out = String::with_capacity(text.len().min(width * 3));
+    let mut used = 0;
+    for c in text.chars() {
+        let cells = char_width(c);
+        if used + cells > width {
+            break;
+        }
+        out.push(c);
+        used += cells;
+    }
+    out
+}
+
 fn in_table(cp: u32, table: &[(u32, u32)]) -> bool {
     table
         .binary_search_by(|&(lo, hi)| {
