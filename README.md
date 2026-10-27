@@ -183,7 +183,7 @@ Maple Mono 不随程序分发，需要另外安装。
 
 M2 已实现搜索与链接，使用方法、资源边界及剩余验证见 [M2 执行记录](docs/execution-m2.md)。
 
-Shell 集成与命令输出导航已加入：可选 source zsh/Bash 脚本，Primary+↑/↓ 跳命令，Primary+F7/F8 选择/复制输出，Primary+F9 查看状态，Primary+F10 查看通知，Primary+F11 静音。Primary 在 macOS 为 Cmd，其他平台为 Ctrl+Shift。系统通知适配默认关闭，资源边界、启用方式与未验证项目见 [M3 使用说明](docs/execution-m3.md)。
+Shell 集成与命令输出导航已加入：`congminal --print-shell-integration bash|zsh` 直接打印可选脚本（`source <(congminal --print-shell-integration bash)`，不自动改 rc 文件），默认只加 OSC 133 标记与目录上报，`CONGMINAL_PROMPT=pretty` 才换成两行紧凑提示符（分支名 2 秒缓存）；Primary+↑/↓ 跳命令，Primary+F7/F8 选择/复制输出，Primary+F9 查看状态，Primary+F10 查看通知，Primary+F11 静音。Primary 在 macOS 为 Cmd，其他平台为 Ctrl+Shift。系统通知适配默认关闭，资源边界、启用方式与未验证项目见 [M3 使用说明](docs/execution-m3.md)。
 
 工作区首批功能已接入：Primary+T 新标签，Primary+D / Primary+Enter 左右/上下分屏，Ctrl+Tab 切换标签，Primary+W 关闭窗格，Primary+B/I 切换侧栏。字体和缓存共享，会话最多 8 个，历史共用 64 MiB 配额。首次使用这些功能时启用工作区，普通单终端沿用直接绘制路径。详见 [M4 操作说明](docs/execution-m4.md)。
 

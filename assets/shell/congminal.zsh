@@ -19,15 +19,39 @@ _congminal_zsh_preexec() {
     typeset -g _congminal_zsh_running=1
     printf '\033]133;C\007'
 }
+# 可选的美化提示符：`CONGMINAL_PROMPT=pretty` 才替换 PROMPT，默认保留用户自己的提示符。
+# 分支名每 2 秒最多查一次 git；`CONGMINAL_PROMPT_GIT=0` 彻底关掉。
+_congminal_zsh_branch() {
+    [[ ${CONGMINAL_PROMPT_GIT-1} == 0 ]] && return 0
+    local now=$EPOCHSECONDS
+    if [[ ${_congminal_zsh_branch_at-} == "$now" ]]; then return 0; fi
+    typeset -g _congminal_zsh_branch_at=$now
+    typeset -g _congminal_zsh_branch_name=''
+    (( $+commands[git] )) || return 0
+    local name
+    name=$(git symbolic-ref --short HEAD 2>/dev/null) || name=$(git rev-parse --short HEAD 2>/dev/null) || name=''
+    typeset -g _congminal_zsh_branch_name=$name
+}
+_congminal_zsh_pretty() {
+    _congminal_zsh_branch
+    local branch='' status_mark=''
+    [[ -n ${_congminal_zsh_branch_name-} ]] && branch=" [${_congminal_zsh_branch_name}]"
+    [[ ${_congminal_zsh_status-0} != 0 ]] && status_mark=" (!${_congminal_zsh_status})"
+    typeset -g _congminal_zsh_pretty_line="%F{242}%n@%m%f %~${branch}${status_mark}"$'\n'"%# "
+}
 _congminal_zsh_precmd() {
     local status_code=$?
     if [[ ${_congminal_zsh_running-0} == 1 ]]; then
         printf '\033]133;D;%d\007' "$status_code"
     fi
     typeset -g _congminal_zsh_running=0
+    typeset -g _congminal_zsh_status=$status_code
     _congminal_zsh_cwd
     # 重复 precmd/异步重画不嵌套包装；主题变更后采用新 PS1。
-    if [[ $PS1 != "${_congminal_zsh_wrapped-}" ]]; then
+    if [[ ${CONGMINAL_PROMPT-} == pretty ]]; then
+        _congminal_zsh_pretty
+        typeset -g _congminal_zsh_base=$_congminal_zsh_pretty_line
+    elif [[ $PS1 != "${_congminal_zsh_wrapped-}" ]]; then
         typeset -g _congminal_zsh_base=$PS1
     fi
     typeset -g _congminal_zsh_wrapped=$'%{\e]133;A\a%}'"$_congminal_zsh_base"$'%{\e]133;B\a%}'
