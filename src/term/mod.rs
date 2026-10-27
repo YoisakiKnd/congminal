@@ -34,6 +34,8 @@ pub fn grid_dimensions(cols: usize, rows: usize) -> (usize, usize) {
 
 /// 默认保留的回滚行数（配置文件可以改）
 pub const DEFAULT_SCROLLBACK: usize = 10_000;
+/// 主屏内容在这个体量以内才走同步重排；超过就交给步进作业，事件里不扫全部历史。
+pub(crate) const SYNC_REFLOW_LIMIT: usize = 256 * 1024;
 
 /// 组合字符表最多存多少种不同的组合
 const MAX_MARKS: usize = 1 << 16;
@@ -673,31 +675,58 @@ impl Terminal {
 
         self.shell.invalidate_positions();
         self.text_epoch = self.text_epoch.wrapping_add(1);
-        let old_rows = self.rows();
-        let mut pending_wrap = false;
-        // 宽度变了：主屏幕连同回滚历史一起重新折行（备用屏幕上的程序会自己重画，不用管）
-        if cols != self.cols() && !self.alt_active {
-            pending_wrap = self.reflow(cols, reuse, funding);
-        }
-        // 变矮时把光标上方的内容往上推，保证光标所在的行仍然可见；推出去的行进入回滚历史
-        if self.cursor.row >= rows {
-            let shift = self.cursor.row + 1 - rows;
-            for row in self.grid.take_top_rows(shift) {
-                if !self.alt_active {
-                    self.history.push_funded(row, funding);
-                }
-            }
-            self.cursor.row -= shift;
-        }
-        self.grid.resize(cols, rows);
-        self.alt_grid.resize(cols, rows);
-        // 变高时把历史里最近的几行拉回屏幕
-        if rows > old_rows && !self.alt_active {
-            for _ in 0..rows - old_rows {
-                let Some(row) = self.history.pop_newest() else { break };
-                self.grid.push_top(row);
-                self.cursor.row += 1;
-            }
+        // 主屏（连同回滚历史）按新尺寸重排；备用屏上的程序会自己重画，只做裁剪/补白。
+        // 备用屏激活时主屏内容不在屏幕上，但退出备用屏后要按新宽度显示，所以现在就重排它。
+        let limit = self.history.byte_limit();
+        // 备用屏激活时主屏不在屏幕上，但退出备用屏后要按新宽度显示。体量在同步上限内就现在重排；
+        // 更大的历史仍只裁剪（步进作业目前只处理可见屏），等后续把作业扩展到隐藏主屏。
+        let primary_bytes = self.history.used_bytes().saturating_add(self.alt_grid.allocated_bytes());
+        let reflow_hidden = cols != self.alt_grid.cols() && primary_bytes <= SYNC_REFLOW_LIMIT;
+        if self.alt_active {
+            let saved = self.saved[0];
+            let cursor = reflow::CursorPos {
+                row: self.history.len() + saved.row.min(self.rows() - 1),
+                col: saved.col,
+                pending_wrap: saved.pending_wrap,
+            };
+            let (row, col, pending_wrap) = Self::resize_primary(
+                &mut self.history,
+                &mut self.alt_grid,
+                limit,
+                cursor,
+                cols,
+                rows,
+                reflow_hidden,
+                reuse,
+                funding,
+            );
+            let saved = &mut self.saved[0];
+            saved.row = row;
+            saved.col = col;
+            saved.pending_wrap = pending_wrap;
+            self.grid.resize(cols, rows);
+        } else {
+            let cursor = reflow::CursorPos {
+                row: self.history.len() + self.cursor.row,
+                col: self.cursor.col,
+                pending_wrap: self.cursor.pending_wrap,
+            };
+            let reflow_visible = cols != self.grid.cols();
+            let (row, col, pending_wrap) = Self::resize_primary(
+                &mut self.history,
+                &mut self.grid,
+                limit,
+                cursor,
+                cols,
+                rows,
+                reflow_visible,
+                reuse,
+                funding,
+            );
+            self.cursor.row = row;
+            self.cursor.col = col;
+            self.cursor.pending_wrap = pending_wrap;
+            self.alt_grid.resize(cols, rows);
         }
         self.display_offset = self.display_offset.min(self.history.len());
 
@@ -711,25 +740,66 @@ impl Terminal {
         self.scroll_bottom = rows - 1;
         self.cursor.row = self.cursor.row.min(rows - 1);
         self.cursor.col = self.cursor.col.min(cols - 1);
-        self.cursor.pending_wrap = pending_wrap;
         self.links.reflow(self.text_bounds().2);
     }
 
-    /// 按新宽度重新折行，行数不变。返回光标是否处于"写满一行、等下一个字再换行"的状态。
-    fn reflow(&mut self, cols: usize, reuse: Option<bool>, funding: &mut crate::resources::Lease) -> bool {
-        let rows = self.rows();
-        let screen_start = self.history.len();
-        let (mut all, memory) = self.history.take_rows().into_parts();
+    /// 让一组主屏内容（历史 + 屏幕 + 光标）适配新尺寸，返回屏幕内的光标位置与挂起换行状态。
+    /// 光标用“历史 + 屏幕”的绝对行号表示：把行推进历史或从历史拉回时，绝对行号不变，
+    /// 屏幕行号自然跟着历史长度变化，不用逐步加减。
+    #[allow(clippy::too_many_arguments)]
+    fn resize_primary(
+        history: &mut History,
+        grid: &mut Grid,
+        limit: usize,
+        cursor: reflow::CursorPos,
+        cols: usize,
+        rows: usize,
+        reflow: bool,
+        reuse: Option<bool>,
+        funding: &mut crate::resources::Lease,
+    ) -> (usize, usize, bool) {
+        let mut cursor =
+            if reflow { Self::reflow_rows(history, grid, limit, cursor, cols, reuse, funding) } else { cursor };
+        let old_rows = grid.rows();
+        // 变矮时把光标上方的内容往上推，保证光标所在的行仍然可见；推出去的行进入回滚历史
+        let screen_row = cursor.row - history.len();
+        if screen_row >= rows {
+            let shift = screen_row + 1 - rows;
+            for row in grid.take_top_rows(shift) {
+                history.push_funded(row, funding);
+            }
+        }
+        grid.resize(cols, rows);
+        // 变高时把历史里最近的几行拉回屏幕
+        if rows > old_rows {
+            for _ in 0..rows - old_rows {
+                let Some(row) = history.pop_newest() else { break };
+                grid.push_top(row);
+            }
+        }
+        cursor.row = (cursor.row - history.len()).min(rows - 1);
+        cursor.col = cursor.col.min(cols - 1);
+        (cursor.row, cursor.col, cursor.pending_wrap)
+    }
+
+    /// 按新宽度重新折行，行数不变。光标用绝对行号（历史 + 屏幕）进出，返回新的绝对位置与挂起换行状态。
+    fn reflow_rows(
+        history: &mut History,
+        grid: &mut Grid,
+        limit: usize,
+        cursor: reflow::CursorPos,
+        cols: usize,
+        reuse: Option<bool>,
+        funding: &mut crate::resources::Lease,
+    ) -> reflow::CursorPos {
+        let rows = grid.rows();
+        let screen_start = history.len();
+        let (mut all, memory) = history.take_rows().into_parts();
         funding.absorb_from(memory);
-        all.reserve_exact(self.grid.rows());
-        all.extend(self.grid.take_rows());
-        let cursor = reflow::CursorPos {
-            row: screen_start + self.cursor.row,
-            col: self.cursor.col,
-            pending_wrap: self.cursor.pending_wrap,
-        };
-        let result = reflow::reflow_with_hint(all, screen_start, cursor, cols, self.history.byte_limit(), reuse);
-        self.history.discard(result.discarded);
+        all.reserve_exact(grid.rows());
+        all.extend(grid.take_rows());
+        let result = reflow::reflow_with_hint(all, screen_start, cursor, cols, limit, reuse);
+        history.discard(result.discarded);
 
         // 屏幕从原来屏幕第一行的内容开始；光标被挤到屏幕外面时，把上面的行推进历史
         let (cursor_row, cursor_col) = result.cursor;
@@ -740,11 +810,13 @@ impl Terminal {
         let mut new_rows = result.rows;
         let mut screen: Vec<Row> = new_rows.drain(top..).take(rows).collect();
         screen.resize_with(rows, || Row::new(cols));
-        self.history.replace_rows_funded(new_rows, funding);
-        self.grid.set_rows(screen, cols);
-        self.cursor.row = cursor_row - top;
-        self.cursor.col = cursor_col;
-        result.pending_wrap
+        history.replace_rows_funded(new_rows, funding);
+        grid.set_rows(screen, cols);
+        reflow::CursorPos {
+            row: history.len() + (cursor_row - top),
+            col: cursor_col,
+            pending_wrap: result.pending_wrap,
+        }
     }
 
     // ---- 写字符 ----
@@ -2281,6 +2353,55 @@ mod tests {
         // 删除行（DL）也不进历史
         let t = run(5, 2, "1\r\n2\x1b[H\x1b[M");
         assert_eq!(t.history().len(), 0);
+    }
+
+    #[test]
+    fn resize_while_the_alternate_screen_is_active_reflows_the_primary_screen() {
+        // 主屏写一行 10 列宽的内容，切到备用屏后把窗口改窄：退出备用屏时主屏必须已经按新宽度折行。
+        let mut t = run(10, 4, "abcdefghij\r\nsecond");
+        t.resize(5, 4);
+        assert_eq!(screen(&t), ["abcde", "fghij", "secon", "d"]);
+        let mut t = run(10, 4, "abcdefghij\r\nsecond");
+        Parser::new().advance(&mut t, b"\x1b[?1049h\x1b[Hfull screen app");
+        assert_eq!(screen(&t), ["full scree", "n app", "", ""]);
+        // 备用屏激活期间改窄：可见的备用屏只裁剪（程序自己会重画），隐藏的主屏连同光标一起重排。
+        t.resize(5, 4);
+        assert_eq!(screen(&t), ["full", "n app", "", ""]);
+        Parser::new().advance(&mut t, b"\x1b[?1049l");
+        assert_eq!(screen(&t), ["abcde", "fghij", "secon", "d"]);
+        assert_eq!(t.cursor_position(), (3, 1));
+    }
+
+    #[test]
+    fn huge_primary_histories_are_not_reflowed_inside_the_resize_event() {
+        // 主屏历史超过同步上限时，缩放事件里只裁剪隐藏主屏（步进作业目前只处理可见屏），
+        // 不能在事件里扫全部历史；这里的断言锁定“事件里不做重排”这条边界。
+        let mut t = run(20, 4, "");
+        Parser::new().advance(&mut t, &b"0123456789abcdefghij\r\n".repeat(4000));
+        assert!(t.history.used_bytes() + t.alt_grid.allocated_bytes() > SYNC_REFLOW_LIMIT);
+        Parser::new().advance(&mut t, b"\x1b[?1049h\x1b[Happ");
+        let started = std::time::Instant::now();
+        t.resize(10, 4);
+        assert!(started.elapsed() < std::time::Duration::from_millis(200), "缩放事件里不应重排大历史");
+        Parser::new().advance(&mut t, b"\x1b[?1049l");
+        // 旧行按 20 列写入，没被重排：退出后仍按原折行显示，只是右侧被裁掉。
+        assert!(screen(&t)[0].starts_with("0123456789"));
+    }
+
+    #[test]
+    fn resize_while_the_alternate_screen_is_active_keeps_the_primary_cursor_line_visible() {
+        // 主屏光标在第 4 行，切到备用屏后变矮：退出时不能把光标所在行挤出屏幕。
+        let mut t = run(6, 4, "one\r\ntwo\r\nthree\r\nfour");
+        Parser::new().advance(&mut t, b"\x1b[?1049h\x1b[Happ");
+        t.resize(6, 2);
+        Parser::new().advance(&mut t, b"\x1b[?1049l");
+        assert_eq!(screen(&t), ["three", "four"]);
+        assert_eq!(t.history().len(), 2);
+        assert_eq!(t.cursor_position(), (1, 4));
+        // 再变高：历史里的行回到屏幕，光标行号跟着下移。
+        t.resize(6, 4);
+        assert_eq!(screen(&t), ["one", "two", "three", "four"]);
+        assert_eq!(t.cursor_position(), (3, 4));
     }
 
     #[test]

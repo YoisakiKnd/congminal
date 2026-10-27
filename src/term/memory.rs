@@ -30,20 +30,25 @@ impl Terminal {
         // 小网格沿用同步捷径；长历史路径不在事件中扫描所有历史行。
         let stepped = cols != self.cols()
             && !self.alt_active
-            && self.history.used_bytes().saturating_add(self.grid.allocated_bytes()) > 256 * 1024;
+            && self.history.used_bytes().saturating_add(self.grid.allocated_bytes()) > super::SYNC_REFLOW_LIMIT;
         self.prepare_resize_inner(cols, rows, stepped)
     }
 
     fn prepare_resize_inner(&self, cols: usize, rows: usize, stepped: bool) -> Result<ResizePlan, Denied> {
         let (cols, rows) = grid_dimensions(cols, rows);
         let changed = (cols, rows) != (self.cols(), self.rows());
+        // 备用屏激活时也会重排隐藏的主屏（体量在同步上限内），预留按“要重排”处理。
+        let reflowing = cols != self.cols()
+            && (!self.alt_active
+                || self.history.used_bytes().saturating_add(self.alt_grid.allocated_bytes())
+                    <= super::SYNC_REFLOW_LIMIT);
         let target = grid::grid_reservation(cols, rows);
         let pool = self.grid_memory.budget();
         // 旧容量仍存活时预留完整目标容量，覆盖 Vec 重新分配的新旧缓冲峰值。
         let growth = pool.lease(Kind::Grid, if changed { target } else { 0 })?;
         // 可直接转移的硬行不构造逻辑长行；把检查结果交给重排避免重复扫描。
         // 失败/取消时此处尚未取走任何一行。
-        let added = if changed && cols != self.cols() && !self.alt_active && !stepped {
+        let added = if changed && reflowing && !stepped {
             let history = if cols <= self.history.capacity_floor() {
                 // 所有历史行都已有足够容量，不在每行谓词上串联容量求和。
                 super::reflow::reusable(self.history.iter(), cols).then_some(0usize)
@@ -59,7 +64,7 @@ impl Terminal {
         let reuse = added.map(|_| true);
         let scratch = if changed {
             let indices = (self.history.len() + self.rows()) * std::mem::size_of::<grid::Row>();
-            if cols != self.cols() && !self.alt_active {
+            if reflowing {
                 let input = self.history.allocated_bytes().saturating_add(self.grid.allocated_bytes());
                 let input_cells = input / std::mem::size_of::<grid::Cell>();
                 let possible = input_cells.saturating_mul(2) / cols + self.history.len() + self.rows() + 1;
@@ -100,11 +105,8 @@ impl Terminal {
             0
         };
         // 输入历史已持有容量票据；消费重排时将其移到 scratch，不能再次收取整份输入。
-        let scratch = if changed && cols != self.cols() && !self.alt_active {
-            scratch.saturating_sub(self.history.allocated_bytes())
-        } else {
-            scratch
-        };
+        let scratch =
+            if changed && reflowing { scratch.saturating_sub(self.history.allocated_bytes()) } else { scratch };
         Ok(ResizePlan {
             cols,
             rows,
