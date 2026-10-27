@@ -2434,6 +2434,15 @@ impl App for Workspace {
                 None,
             );
         }
+        if let Some(alert) = self.monitor.take_alert() {
+            self.submit_notice(
+                crate::notifications::Source::Monitor,
+                crate::notifications::Category::MonitorAlert,
+                alert.label(),
+                crate::shell::Outcome::Unknown,
+                None,
+            );
+        }
         let keep = !self.quit && (self.multiple || !self.panes[0].ended);
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         let keep = self.sftp_exit_gate(keep);
@@ -3702,6 +3711,135 @@ program="/definitely/missing/congminal-shell"
         }));
         counter
     }
+    /// 读数恒定偏高的采样源，用来验证阈值告警。
+    struct HighSource;
+    impl monitor::Sampling for HighSource {
+        fn sample(&mut self, disk: bool) -> monitor::Raw {
+            monitor::Raw {
+                cpu: 95.0,
+                cores: 4,
+                mem_used: 9,
+                mem_total: 10,
+                disk_used: if disk { 96 } else { 0 },
+                disk_total: if disk { 100 } else { 0 },
+            }
+        }
+        fn mount(&self) -> Option<String> {
+            Some("/".into())
+        }
+    }
+    fn high_monitor(app: &mut Workspace) {
+        app.monitor = monitor_panel::Panel::with_source(std::sync::Arc::new(|| {
+            Box::new(HighSource) as Box<dyn monitor::Sampling>
+        }));
+    }
+    fn monitor_notices(app: &Workspace) -> Vec<String> {
+        app.driver
+            .notifications
+            .recent_notices()
+            .map(|notice| notice.text())
+            .filter(|text| text.starts_with("监控 · "))
+            .collect()
+    }
+
+    #[test]
+    fn monitor_alerts_fire_once_per_cooldown_and_respect_disabled_thresholds() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        high_monitor(&mut app);
+        app.driver.config.monitor.alert_cpu = 90;
+        app.driver.config.monitor.alert_memory = 80;
+        app.driver.config.monitor.alert_disk = 95;
+        app.driver.config.monitor.alert_seconds = 30.0;
+        app.action(Action::ShowMonitorPanel);
+        wait(&mut app, |a| !monitor_notices(a).is_empty());
+        assert_eq!(monitor_notices(&app), vec!["监控 · CPU 超过阈值".to_string()]);
+        // 冷却期内继续采样也不再发第二条。
+        let samples = app.monitor.samples();
+        wait(&mut app, |a| a.monitor.samples() >= samples + 2);
+        assert_eq!(monitor_notices(&app).len(), 1);
+        // 停用监控来源后连阈值告警也不再进通知中心。
+        app.driver.config.notifications.monitor = false;
+        app.monitor.alert_at = Some(Instant::now() - Duration::from_secs(60));
+        let before = monitor_notices(&app).len();
+        let samples = app.monitor.samples();
+        wait(&mut app, |a| a.monitor.samples() >= samples + 2);
+        assert_eq!(monitor_notices(&app).len(), before);
+    }
+
+    /// 直接驱动面板，避开通知中心的 10 秒限速窗口，专测阈值判定与冷却。
+    #[test]
+    fn monitor_thresholds_pick_the_metric_and_honor_cooldown_and_zero() {
+        let app = workspace();
+        let notify = app.driver.notify.clone();
+        let panel = monitor_panel::Panel::with_source(std::sync::Arc::new(|| {
+            Box::new(HighSource) as Box<dyn monitor::Sampling>
+        }));
+        let drive = |panel: &mut monitor_panel::Panel, settings: &crate::config::monitor::Settings| {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                panel.tick(true, true, true, settings, notify.clone());
+                if panel.take_alert().is_some() {
+                    return true;
+                }
+                assert!(Instant::now() < deadline, "monitor alert timeout");
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        };
+        // CPU 优先于内存与磁盘
+        let mut panel = panel;
+        let settings =
+            crate::config::monitor::Settings { alert_cpu: 90, alert_memory: 80, alert_disk: 95, ..Default::default() };
+        panel.open();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let first = loop {
+            panel.tick(true, true, true, &settings, notify.clone());
+            if let Some(alert) = panel.take_alert() {
+                break alert;
+            }
+            assert!(Instant::now() < deadline, "monitor alert timeout");
+            std::thread::sleep(Duration::from_millis(2));
+        };
+        assert_eq!(first, monitor::Alert::Cpu);
+        // 冷却期内（默认 300 秒）再采样也不告警
+        let deadline = Instant::now() + Duration::from_millis(200);
+        while Instant::now() < deadline {
+            panel.tick(true, true, true, &settings, notify.clone());
+            assert!(panel.take_alert().is_none(), "冷却期内不应重复告警");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        // 关掉 CPU 阈值、冷却推到过期后轮到内存
+        let memory_only = crate::config::monitor::Settings {
+            alert_cpu: 0,
+            alert_memory: 80,
+            alert_disk: 0,
+            alert_seconds: 30.0,
+            ..settings.clone()
+        };
+        panel.alert_at = Some(Instant::now() - Duration::from_secs(60));
+        assert!(drive(&mut panel, &memory_only));
+        // 三个阈值都为 0 时，冷却过期也不告警
+        let off = crate::config::monitor::Settings { alert_cpu: 0, alert_memory: 0, alert_disk: 0, ..settings.clone() };
+        panel.alert_at = None;
+        let deadline = Instant::now() + Duration::from_millis(200);
+        while Instant::now() < deadline {
+            panel.tick(true, true, true, &off, notify.clone());
+            assert!(panel.take_alert().is_none(), "阈值 0 表示不告警");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        // 只开磁盘阈值：第一轮带磁盘读数，应当告警
+        let disk_only = crate::config::monitor::Settings {
+            alert_cpu: 0,
+            alert_memory: 0,
+            alert_disk: 95,
+            alert_seconds: 30.0,
+            ..settings
+        };
+        panel.alert_at = None;
+        assert!(drive(&mut panel, &disk_only));
+    }
+
     #[test]
     fn monitor_panel_samples_pauses_on_focus_loss_and_releases_when_closed() {
         let mut app = workspace();

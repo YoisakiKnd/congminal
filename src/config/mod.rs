@@ -166,7 +166,19 @@ const SCHEMA: &[(&str, &[&str])] = &[
     ("window", &["columns", "rows", "padding"]),
     ("workspace", &["restore-layout"]),
     ("git", &["enabled", "program", "refresh-seconds", "timeout-seconds", "max-files", "diff-mib"]),
-    ("monitor", &["enabled", "interval-seconds", "history-seconds", "disk-seconds"]),
+    (
+        "monitor",
+        &[
+            "enabled",
+            "interval-seconds",
+            "history-seconds",
+            "disk-seconds",
+            "alert-cpu",
+            "alert-memory",
+            "alert-disk",
+            "alert-seconds",
+        ],
+    ),
     ("sftp", &["enabled", "helper", "ssh-config"]),
     ("memory", &["managed-mib", "mapped-font-mib"]),
     (

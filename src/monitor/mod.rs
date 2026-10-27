@@ -37,6 +37,25 @@ pub struct Raw {
     pub disk_total: u64,
 }
 
+/// 超过阈值的指标；只用来选通知文案，不带读数，避免把数值拼进静态文本。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Alert {
+    Cpu,
+    Memory,
+    Disk,
+}
+impl Alert {
+    pub const ALL: [Self; 3] = [Self::Cpu, Self::Memory, Self::Disk];
+    /// 通知里的固定文案（不含主机、路径等上下文）
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Cpu => "CPU 超过阈值",
+            Self::Memory => "内存超过阈值",
+            Self::Disk => "磁盘超过阈值",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Sample {
     pub at: Instant,

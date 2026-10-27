@@ -71,13 +71,15 @@ pub enum Category {
     #[allow(dead_code)]
     SftpWrite,
     MonitorFailed,
+    /// 监控指标超过配置阈值
+    MonitorAlert,
     #[cfg(any(test, all(feature = "sftp-preview", unix)))]
     Transfers(TransferCounts),
 }
 impl Category {
     /// 同类合并只用于不带载荷的类别：传输批次各自带计数，合并会丢信息。
     fn mergeable(self) -> bool {
-        matches!(self, Self::GitWrite | Self::SftpWrite | Self::MonitorFailed)
+        matches!(self, Self::GitWrite | Self::SftpWrite | Self::MonitorFailed | Self::MonitorAlert)
     }
 }
 #[cfg(any(test, all(feature = "sftp-preview", unix)))]
@@ -171,6 +173,7 @@ impl Notice {
                 return format!("SFTP: remote write {}", if self.succeeded() { "completed" } else { "failed" });
             }
             Category::MonitorFailed => return "Monitor: sampling failed".into(),
+            Category::MonitorAlert => return "Monitor: threshold exceeded".into(),
             _ => {}
         }
         format!(
@@ -212,6 +215,10 @@ impl std::fmt::Display for Notice {
             }
             Category::MonitorFailed => {
                 f.write_str("监控 · 采样失败")?;
+                return self.repeat_suffix(f);
+            }
+            Category::MonitorAlert => {
+                write!(f, "监控 · {}", self.detail)?;
                 return self.repeat_suffix(f);
             }
             _ => {}
@@ -863,6 +870,29 @@ mod tests {
         assert_eq!(notice.text(), "Git · 暂存完成");
         let notice = center.submit(monitor, &settings, None, start).unwrap();
         assert_eq!(notice.text(), "监控 · 采样失败");
+        // 阈值告警复用监控来源，但文案带具体指标；同类在窗口内合并成 ×N。
+        let alert =
+            Notice { category: Category::MonitorAlert, detail: crate::monitor::Alert::Memory.label(), ..monitor };
+        // 这一段要连着提交多条，放开限速只看文案与合并。
+        let settings = Settings { burst: u32::MAX, ..Settings::default() };
+        let start = now();
+        let notice = center.submit(alert, &settings, None, start).unwrap();
+        assert_eq!(notice.text(), "监控 · 内存超过阈值");
+        assert_eq!(alert.system_text(), "Monitor: threshold exceeded");
+        assert!(alert.system_text().is_ascii());
+        // 合并时不新建条目，只把次数加到上一条上。
+        assert!(center.submit(alert, &settings, None, start + Duration::from_secs(1)).is_none());
+        let merged = center.items.data.back().unwrap();
+        assert_eq!(merged.repeat, 2);
+        assert_eq!(merged.text(), "监控 · 内存超过阈值 ×2");
+        // 不同指标不合并：先清空再提交 CPU 告警。
+        center.clear();
+        let cpu = Notice { detail: crate::monitor::Alert::Cpu.label(), ..alert };
+        assert!(center.submit(alert, &settings, None, now()).is_some());
+        let second = center.submit(cpu, &settings, None, now()).unwrap();
+        assert_eq!(second.repeat, 1);
+        assert_eq!(center.items.data.len(), 2);
+        assert_eq!(second.text(), "监控 · CPU 超过阈值");
         // 系统通知只用固定 ASCII 模板，不含路径或提交正文。
         assert_eq!(git("提交", false).system_text(), "Git: write failed");
         assert!(git("提交", false).system_text().is_ascii());
