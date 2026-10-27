@@ -340,11 +340,9 @@ impl Shell {
             + self.events.capacity() * std::mem::size_of::<Completion>()
             + self.directory.as_ref().map_or(0, |d| d.memory.bytes())
     }
-    pub fn describe(&self, selected: Option<u64>) -> String {
-        self.description(selected).to_string()
-    }
-    pub fn description(&self, selected: Option<u64>) -> impl std::fmt::Display + '_ {
-        struct Description<'a>(&'a Shell, Option<u64>);
+    /// `hide_context` 为真时只给状态摘要，不写主机名与工作目录路径。
+    pub fn description_with(&self, selected: Option<u64>, hide_context: bool) -> impl std::fmt::Display + '_ {
+        struct Description<'a>(&'a Shell, Option<u64>, bool);
         impl std::fmt::Display for Description<'_> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 if let Some(c) = self.1.and_then(|id| self.0.command(id)) {
@@ -357,7 +355,9 @@ impl Shell {
                         Phase::Completed => "命令结束",
                     })?;
                 }
-                if let Some(d) = &self.0.directory {
+                if self.2 {
+                    f.write_str(" | 目录已隐藏")?;
+                } else if let Some(d) = &self.0.directory {
                     write!(f, " | {}:{}", d.host, d.path)?;
                 } else {
                     f.write_str(" | 工作目录未知")?;
@@ -371,7 +371,7 @@ impl Shell {
                 Ok(())
             }
         }
-        Description(self, selected)
+        Description(self, selected, hide_context)
     }
 }
 
@@ -457,7 +457,7 @@ mod tests {
         assert_eq!(shell.phase, Phase::Completed);
         assert_eq!((shell.lost_commands, shell.lost_events), (1, 1));
         assert!(shell.commands.is_empty() && shell.take_event().is_none());
-        assert!(shell.describe(None).contains("未保留命令1 事件丢弃1"));
+        assert!(shell.description_with(None, false).to_string().contains("未保留命令1 事件丢弃1"));
         drop(hold);
         shell.marker(&[b"D", b"0"], Point::default());
         assert!(shell.take_event().is_none());
@@ -508,6 +508,19 @@ mod tests {
         assert_eq!(owner.snapshot().used, 0);
     }
     #[test]
+    fn hidden_context_keeps_the_summary_but_drops_host_and_path() {
+        let mut shell = Shell::default();
+        shell.set_directory(&[b"file://secret-host/very/private/path"]);
+        let shown = shell.description_with(None, false).to_string();
+        assert!(shown.contains("secret-host:/very/private/path"), "{shown}");
+        let hidden = shell.description_with(None, true).to_string();
+        assert!(!hidden.contains("secret-host") && !hidden.contains("private"), "{hidden}");
+        assert!(hidden.contains("目录已隐藏"), "{hidden}");
+        // 命令状态本身仍保留，只是不再带目录。
+        assert!(hidden.contains("Shell 状态未知"), "{hidden}");
+    }
+
+    #[test]
     fn directory_replacement_overlap_denial_invalid_utf8_and_fragment_bounds_are_explicit() {
         use crate::resources::Scope;
         let pool = Budget::new(64 * 1024, 0);
@@ -518,7 +531,7 @@ mod tests {
         let hold = pool.lease(Kind::Queue, pool.snapshot().limit - pool.snapshot().used).unwrap();
         shell.set_directory(&[b"file://h/b"]);
         assert!(shell.directory.is_none() && shell.directory_limited);
-        assert!(shell.describe(None).contains("工作目录额度不足"));
+        assert!(shell.description_with(None, false).to_string().contains("工作目录额度不足"));
         drop(hold);
         assert_eq!(pool.snapshot().used, 0);
         shell.set_directory(&[b"file://h/%E4", b"%B8%AD"]); // 插入的分号不能修复 UTF-8。

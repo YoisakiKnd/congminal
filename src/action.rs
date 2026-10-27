@@ -52,6 +52,8 @@ pub enum Action {
     ShowShellStatus,
     ShowNotifications,
     ToggleNotifications,
+    /// 清空通知记录；默认不绑定按键，按名字 `clear-notifications` 配置。
+    ClearNotifications,
     NewTab,
     ClosePane,
     NextTab,
@@ -289,6 +291,7 @@ fn parse_action(value: &Value) -> Result<Action, String> {
         "show-shell-status" => Action::ShowShellStatus,
         "show-notifications" => Action::ShowNotifications,
         "toggle-notifications" => Action::ToggleNotifications,
+        "clear-notifications" => Action::ClearNotifications,
         "new-tab" => Action::NewTab,
         "close-pane" => Action::ClosePane,
         "next-tab" => Action::NextTab,

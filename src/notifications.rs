@@ -22,6 +22,8 @@ pub struct Settings {
     pub long_seconds: u64,
     /// 同类事件在该窗口内只保留一条，后面的累加次数。
     pub dedupe_seconds: u64,
+    /// 隐藏状态栏与状态页里的命令正文、主机与工作目录等敏感上下文。
+    pub hide_context: bool,
     /// 10 秒窗口内最多产生多少条本地通知，超出只计数不排队。
     pub burst: u32,
 }
@@ -38,6 +40,7 @@ impl Default for Settings {
             monitor: true,
             long_seconds: 10,
             dedupe_seconds: 5,
+            hide_context: false,
             burst: 12,
         }
     }
@@ -466,6 +469,13 @@ impl Center {
     }
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+    /// 当前记录条数（环形窗口内）。
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
     }
     /// 最近 8 条通知（新的在前），供状态页绘制与点击定位。
     pub fn recent_notices(&self) -> impl Iterator<Item = Notice> + '_ {

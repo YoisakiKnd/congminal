@@ -28,6 +28,13 @@
 
 记录仍是固定的 128 槽环形窗口，首次准入、满后复用、`clear()` 释放；额度走既有的 notifications 资源项。
 
+## 敏感上下文与清理
+
+- 通知本身只含固定动作词，从不写命令正文、路径、分支名或提交正文。
+- `hide-context = true` 时，状态栏（命令视图）与右栏状态页的 Shell 摘要不再显示 `主机:工作目录`，改为 `| 目录已隐藏`；命令状态、退出码与耗时仍保留。远程会话行本来就只有状态与退出码，无需处理。
+- 清理：通知浮层里 `Delete` 清空；右栏状态页在有通知时多出一行 `通知 N 条 · 点击清空`，点它清空记录、限速计数与行号表。
+- 动作名 `clear-notifications` 可用 `[keybindings]` 绑定（默认不占按键），工作区模式下也能用。
+
 ## 定位入口
 
 - **单窗口**：`Primary+F10` 打开通知浮层，↑/↓ 浏览，**回车**跳到该条通知对应的命令输出（复用命令选择与复制路径，不新开解析），Esc 关闭。工作区面板类通知在单窗口下没有对应页面，回车只给出提示。
@@ -44,6 +51,7 @@ muted = false
 system = false
 dedupe-seconds = 5    # 0 视为 1，同类事件在该窗口内合并
 burst = 12            # 10 秒窗口内的本地通知上限，至少 1
+hide-context = false  # 隐藏状态栏与状态页里的主机名、工作目录
 ```
 
 ## 测试
@@ -53,16 +61,19 @@ burst = 12            # 10 秒窗口内的本地通知上限，至少 1
 - `workspace::tests::status_page_notice_rows_jump_to_the_related_page_and_monitor_failure_is_reported_once`：状态页点击 Git 通知行切到 Git 页并重新打开面板；监控失败只上报一次。
 - `workspace::tests::monitor_failure_notice_fires_once_per_failure_and_rearms_after_recovery`：失败持续不重复、恢复后重新置位。
 - `integration_tests::command_navigation_copy_notifications_and_focus_use_the_same_session`：浮层回车定位到命令输出并关闭浮层。
+- `shell::tests::hidden_context_keeps_the_summary_but_drops_host_and_path`：隐藏上下文后摘要仍在、主机与路径消失。
+- `config::tests::notification_settings_parse_hidden_context_and_clamp_rate_limits`：`hide-context` 生效，`dedupe-seconds`/`burst` 越界时保留默认并给警告。
+- `integration_tests::hidden_context_and_clear_notifications_follow_the_configuration`：配置打开时状态栏不含主机与路径；`F5 = 'clear-notifications'` 按名字绑定后能清空记录。
 
 ## 预览
 
 ![状态页通知行](previews/m8-notice-status.png)
 
-1200×700 窗口、右栏 280 px 时“状态”页的样子：第三行是任务数，第四行起是最近通知；点击 `Git · 提交完成` 那一行会切到 Git 页。
+1200×700 窗口、右栏 280 px 时“状态”页的样子：第三行是任务数，第四行是 `通知 N 条 · 点击清空`，之后是最近通知；点击 `Git · 提交完成` 那一行会切到 Git 页，点击清空行会清掉记录。
 
 ## 未验收
 
 - 按主机静音（现在只有按来源类别静音）。
-- 命令正文、远程路径的“隐藏敏感上下文”选项与通知日志清理界面（M8 另一条）。
+- 命令正文（状态栏之外的输入行本身）无法隐藏；`hide-context` 只覆盖摘要行。
 - 真实系统通知权限、送达与峰值内存（M3 遗留，需要真机）。
 - 工作区模式下没有通知浮层，只有状态页的行；键盘浏览浮层仍只在单窗口可用。

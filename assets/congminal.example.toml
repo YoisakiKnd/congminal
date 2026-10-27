@@ -155,6 +155,8 @@ long-seconds = 10
 dedupe-seconds = 5
 # 10 秒窗口内最多产生多少条本地通知，超出只计数不排队。
 burst = 12
+# 隐藏状态栏与右栏状态页里的主机名、工作目录等敏感上下文（通知本身只含固定动作词）。
+hide-context = false
 
 # 工作区快捷键（Primary：macOS 为 Cmd，其他为 Ctrl+Shift）：
 # Primary+T=new-tab，Primary+W=close-pane，Ctrl+Tab/Shift+Ctrl+Tab 切换标签。

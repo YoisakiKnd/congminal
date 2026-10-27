@@ -187,6 +187,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
             "long-seconds",
             "dedupe-seconds",
             "burst",
+            "hide-context",
         ],
     ),
     ("cursor", &["shape"]),
@@ -305,6 +306,7 @@ impl Config {
             ("transfers", &mut config.notifications.transfers),
             ("git", &mut config.notifications.git),
             ("monitor", &mut config.notifications.monitor),
+            ("hide-context", &mut config.notifications.hide_context),
         ] {
             if let Some(value) = r.boolean("notifications", key) {
                 *slot = value;
@@ -613,6 +615,26 @@ fn xterm_palette() -> [u32; 256] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn notification_settings_parse_hidden_context_and_clamp_rate_limits() {
+        let (config, warnings) = Config::parse(
+            r#"
+[notifications]
+hide-context = true
+dedupe-seconds = 900
+burst = 0
+"#,
+        );
+        assert!(config.notifications.hide_context);
+        // 越界值不生效，保留默认并各给一条警告。
+        assert_eq!(config.notifications.dedupe_seconds, 5);
+        assert_eq!(config.notifications.burst, 12);
+        assert_eq!(warnings.len(), 2, "{warnings:?}");
+        let (default, warnings) = Config::parse("");
+        assert!(!default.notifications.hide_context);
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
 
     #[test]
     fn themes_keep_explicit_overrides_and_reject_bad_names() {

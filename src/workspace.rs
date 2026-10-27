@@ -317,6 +317,8 @@ pub struct Workspace {
     right_page: RightPage,
     /// 状态页里来自通知中心的行：行号 → 来源，用于点击定位。
     notice_rows: Vec<(usize, crate::notifications::Source)>,
+    /// 状态页“清空通知”那一行；没有通知时为 None。
+    clear_row: Option<usize>,
     right: bool,
     left_width: usize,
     right_width: usize,
@@ -399,6 +401,7 @@ impl Workspace {
             monitor: monitor_panel::Panel::new(),
             right_page: RightPage::Status,
             notice_rows: Vec::new(),
+            clear_row: None,
             right: false,
             left_width: (220.0 * scale) as usize,
             right_width: (280.0 * scale) as usize,
@@ -666,6 +669,7 @@ impl Workspace {
                 | Action::ToggleRightSidebar
                 | Action::ShowGitPanel
                 | Action::ShowMonitorPanel
+                | Action::ClearNotifications
         )
     }
     fn enable(&mut self) -> bool {
@@ -1270,6 +1274,10 @@ impl Workspace {
                     self.notice(&e);
                 }
             }
+            Action::ClearNotifications => {
+                self.driver.notifications.clear();
+                self.chrome_dirty = true;
+            }
             _ => return false,
         }
         true
@@ -1572,13 +1580,26 @@ impl Workspace {
     /// 同时记下通知行号与来源，点击就能跳到对应页面。
     fn status_rows(&mut self) -> Vec<String> {
         self.notice_rows.clear();
+        self.clear_row = None;
         let mut rows = Vec::new();
         if let Some(remote) = &self.panes[self.loaded].remote {
             rows.push(remote.describe());
         }
-        rows.push(self.driver.session.term.shell.describe(self.driver.selected_command));
+        rows.push(
+            self.driver
+                .session
+                .term
+                .shell
+                .description_with(self.driver.selected_command, self.driver.config.notifications.hide_context)
+                .to_string(),
+        );
         let stats = crate::resources::current().snapshot();
         rows.push(format!("任务 {} 个在跑 · 最新任务 {}", stats.managed_workers, stats.latest_tasks));
+        if !self.driver.notifications.is_empty() {
+            // 第 0 行是页签，内容行从 1 开始。
+            self.clear_row = Some(rows.len() + 1);
+            rows.push(format!("通知 {} 条 · 点击清空", self.driver.notifications.len()));
+        }
         for notice in self.driver.notifications.recent_notices() {
             // 第 0 行是页签，内容行从 1 开始。
             self.notice_rows.push((rows.len() + 1, notice.source));
@@ -1631,6 +1652,13 @@ impl Workspace {
 
     /// 状态页里点击某条通知：按来源跳到 Git、监控或文件页。
     fn notice_click(&mut self, row: usize) -> bool {
+        if self.clear_row == Some(row) {
+            self.driver.notifications.clear();
+            self.notice_rows.clear();
+            self.clear_row = None;
+            self.chrome_dirty = true;
+            return true;
+        }
         let Some(source) = self.notice_rows.iter().find(|(r, _)| *r == row).map(|(_, s)| *s) else {
             return false;
         };
@@ -3353,6 +3381,18 @@ program="/definitely/missing/congminal-shell"
         app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
         assert_eq!(app.right_page, RightPage::Git);
         assert!(app.git.bytes() > 0);
+        // 回到状态页：第一行是“通知 N 条 · 点击清空”，点它就清空记录。
+        let (x, y) = ((r.x + 2) as f64, (r.y + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        force_draw(&mut app);
+        let row = app.clear_row.expect("状态页应有清空行");
+        let (x, y) = ((r.x + 4) as f64, (r.y + row * h + h / 2) as f64);
+        assert!(app.driver.notifications.len() >= 2);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        assert!(app.driver.notifications.is_empty());
+        assert!(app.notice_rows.is_empty() && app.clear_row.is_none());
     }
 
     #[test]
