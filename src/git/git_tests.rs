@@ -407,17 +407,30 @@ fn cancellation_and_timeout_kill_the_child_and_return_credit() {
     let pool = pool();
     let _scope = Scope::enter(pool.clone());
     let limits = Limits { program: Some(program.clone()), ..base_limits() };
-    let request = StatusRequest::new(1, 1, fixture.path(), &limits, None, &pool).unwrap();
-    let cancel = Cancellation::default();
-    let stopper = cancel.clone();
-    let handle = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(60));
-        stopper.cancel();
-    });
+    // 全局执行槽可能被别的用例瞬时占满（Worker）：只有这种情况重来，取消语义本身照旧断言。
+    let until = Instant::now() + Duration::from_secs(5);
     let started = Instant::now();
-    assert_eq!(status(request, &cancel).result.unwrap_err(), Error::Cancelled);
+    let error = loop {
+        let request = match StatusRequest::new(1, 1, fixture.path(), &limits, None, &pool) {
+            Ok(request) => request,
+            Err(Error::Worker) if Instant::now() < until => continue,
+            Err(error) => panic!("{error:?}"),
+        };
+        let cancel = Cancellation::default();
+        let stopper = cancel.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(60));
+            stopper.cancel();
+        });
+        let result = status(request, &cancel).result;
+        handle.join().unwrap();
+        match result {
+            Err(Error::Worker) if Instant::now() < until => continue,
+            other => break other.unwrap_err(),
+        }
+    };
+    assert_eq!(error, Error::Cancelled);
     assert!(started.elapsed() < Duration::from_secs(5), "取消没有及时返回：{:?}", started.elapsed());
-    handle.join().unwrap();
     let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
     let gone = Instant::now() + Duration::from_secs(5);
     while std::process::Command::new("kill")
@@ -432,9 +445,13 @@ fn cancellation_and_timeout_kill_the_child_and_return_credit() {
         std::thread::sleep(Duration::from_millis(10));
     }
     let limits = Limits { program: Some(program), timeout: Duration::from_millis(100), ..base_limits() };
-    let request = StatusRequest::new(1, 1, fixture.path(), &limits, None, &pool).unwrap();
     let started = Instant::now();
-    assert_eq!(status(request, &Cancellation::default()).result.unwrap_err(), Error::Timeout);
+    let error = retry_worker(|| {
+        let request = StatusRequest::new(1, 1, fixture.path(), &limits, None, &pool)?;
+        status(request, &Cancellation::default()).result
+    })
+    .unwrap_err();
+    assert_eq!(error, Error::Timeout);
     assert!(started.elapsed() < Duration::from_secs(5));
     drop(_scope);
     wait_released(&pool);
