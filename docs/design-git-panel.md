@@ -68,6 +68,18 @@ diff-mib = 8              # 上限 32
 
 代次隔离：每次查询递增 `generation`，回包必须同时匹配 `owner`（窗格 id）与 `generation`，切窗格/切目录后的迟到结果直接丢弃。
 
+## 远程仓库（只读）
+
+SSH 窗格里的 Git 页不改用终端的连接，而是每次查询另起一个独立 `ssh` 进程：
+`ssh -o BatchMode=yes -o ConnectTimeout=10 -o LogLevel=ERROR -o ServerAliveInterval=15 [-p 端口] [-l 用户] [-i 密钥] -- 主机 git -C <远端目录> <子命令>`。
+远端目录取自远端 shell 报告的 OSC 7 目录，只作为参数传递，不经过 shell 拼接。
+
+- **认证与主机校验不简化**：`BatchMode=yes` 只是让需要密码时立即失败，不会在后台等一个输不进密码的提示；`StrictHostKeyChecking` 保持 OpenSSH 默认，应用不代替用户接受新指纹。失败按 stderr 分成三类提示：主机密钥未确认 → “先在终端里连接一次并核对指纹”；`Permission denied`/`too many authentication failures`/`no such identity` → “先用终端连接一次，或加载密钥/agent”；其余走有界 stderr 摘要。
+- **只读**：按钮只保留 `刷新` 与 `差异`；`toggle_stage`、`open_commit`、`request_remote`、`open_resolve` 在远端一律拒绝并写“远程仓库暂只支持只读查看”，不启动任何写任务。
+- **标明远程**：状态行前缀 `远程 · `；标题行仍是分支与仓库名。远端目录还没报告时第一行是“远程目录未知：先在远程终端进入仓库目录”，不是“路径无效”。
+- **不复用本地快照**：通道（程序/主机/用户/端口/密钥）变化时清空快照、diff、选中项、待确认状态与提交输入，再按去抖重查；本地仓库与远端仓库永远不会共用一份结果。
+- 每个查询仍是 `git` 模块的一次 `run()`：一个子进程 + 两个读取线程（固定工作池）、账本票据覆盖 stdout/stderr 缓冲，取消或超时杀掉子进程；`ssh` 只是把命令搬到远端，线程与额度模型不变。
+
 ## 后台任务、线程、子进程、缓存与数据所有权
 
 - 每个在途查询一个 `LatestTask` 线程（`git-status` / `git-diff`，命名线程，受全局线程预算准入）；一次只有一个在途查询，新请求覆盖旧请求。

@@ -661,3 +661,85 @@ fn write_is_refused_when_the_budget_is_exhausted() {
     drop(held);
     assert_eq!(pool.snapshot().used, 0);
 }
+
+/// 假 ssh：跳过选项与目标主机，把后面的命令在本机执行，用来验证远端通道拼出的命令形状。
+#[cfg(unix)]
+fn fake_ssh(fixture: &Fixture, name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = fixture.path().join(name);
+    // 跳过 ssh 选项、`--` 与目标主机，剩下的就是远端命令。
+    let script = format!(
+        "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nexec \"$@\"\n{body}"
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+/// 假 ssh 的失败分支：跳过选项、`--` 与主机后直接写 stderr 并以 255 退出。
+#[cfg(unix)]
+fn fake_ssh_failing(fixture: &Fixture, name: &str, stderr: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = fixture.path().join(name);
+    let script = format!(
+        "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\necho '{stderr}' >&2\nexit 255\n"
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[test]
+fn remote_status_runs_git_through_ssh_with_the_remote_path() {
+    let fixture = Fixture::new("remote");
+    fixture.repo();
+    std::fs::write(fixture.path().join("modified.txt"), b"changed\n").unwrap();
+    let program = fake_ssh(&fixture, "fake-ssh", "");
+    let pool = pool();
+    let limits = Limits {
+        remote: Some(Remote {
+            program,
+            host: "fixture".into(),
+            user: Some("dev".into()),
+            port: Some(2222),
+            identity: None,
+        }),
+        ..base_limits()
+    };
+    let request = StatusRequest::new(1, 7, fixture.path(), &limits, None, &pool).unwrap();
+    let snapshot = status(request, &Cancellation::default()).result.unwrap();
+    // 远端路径原样交给 `git -C`：快照根就是夹具仓库，分支与变更都能读出来。
+    assert!(same_path(&snapshot.root, fixture.path()), "{}", snapshot.root.display());
+    assert_eq!(snapshot.counts.unstaged, 1);
+    assert!(matches!(snapshot.head, Head::Branch(_) | Head::Unborn(_)), "{:?}", snapshot.head);
+    assert_eq!(limits.remote.as_ref().unwrap().label(), "dev@fixture");
+    drop(snapshot);
+    wait_released(&pool);
+}
+
+#[cfg(unix)]
+#[test]
+fn remote_ssh_failures_are_reported_as_host_key_or_auth_not_as_git_errors() {
+    let fixture = Fixture::new("remote-fail");
+    fixture.repo();
+    let cases = [
+        ("hostkey", "Host key verification failed.", Error::HostKey),
+        ("auth", "Permission denied (publickey).", Error::Auth),
+    ];
+    for (name, stderr, expected) in cases {
+        let program = fake_ssh_failing(&fixture, &format!("fake-ssh-{name}"), stderr);
+        let pool = pool();
+        let limits = Limits {
+            remote: Some(Remote { program, host: "fixture".into(), user: None, port: None, identity: None }),
+            ..base_limits()
+        };
+        // 版本探测会先跑一次 `git --version`，这里给定版本以直接进入状态查询。
+        let request = StatusRequest::new(1, 7, fixture.path(), &limits, Some("2.43.0"), &pool).unwrap();
+        let error = status(request, &Cancellation::default()).result.unwrap_err();
+        assert_eq!(error, expected, "{name}");
+        // 提示要指向可操作的下一步，而不是把 ssh 原文直接甩出来。
+        assert!(error.message().contains("终端"), "{}", error.message());
+        wait_released(&pool);
+    }
+}
