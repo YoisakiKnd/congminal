@@ -24,6 +24,8 @@ pub struct Target {
     pub user: Option<String>,
     pub port: Option<u16>,
     pub identity: Option<String>,
+    /// 跳板机（`ssh -J`），与终端连接用同一个配置档设置。
+    pub jump: Option<String>,
 }
 impl Target {
     /// 界面上的主机标签（不含程序路径与密钥）。
@@ -53,6 +55,9 @@ impl Target {
         }
         if let Some(identity) = &self.identity {
             command.arg("-i").arg(identity);
+        }
+        if let Some(jump) = &self.jump {
+            command.arg("-J").arg(jump);
         }
         command.arg("--").arg(&self.host);
         command
@@ -309,6 +314,23 @@ mod tests {
         path
     }
 
+    #[test]
+    fn jump_hosts_are_passed_to_ssh_as_one_argument() {
+        let target = Target {
+            program: "/bin/ssh".into(),
+            host: "fixture".into(),
+            user: None,
+            port: None,
+            identity: None,
+            jump: Some("dev@bastion:2200".into()),
+        };
+        let command = target.command();
+        let args = command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>();
+        let position = args.iter().position(|arg| arg == "-J").expect("跳板机要传给 ssh");
+        assert_eq!(args[position + 1], "dev@bastion:2200");
+        assert_eq!(args[position + 2], "--");
+        assert_eq!(args[position + 3], "fixture");
+    }
     #[cfg(unix)]
     #[test]
     fn remote_source_reads_through_ssh_and_reports_disk_only_when_due() {
@@ -318,7 +340,14 @@ mod tests {
             "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\ncase \"$1\" in\ncat) cat <<'STAT'\n{STAT}{MEMINFO}{NET}STAT\n;;\ndf) cat <<'DF'\n{DF}DF\n;;\nesac\n"
         );
         let program = fake_ssh(&dir, &script);
-        let target = Target { program, host: "fixture".into(), user: Some("dev".into()), port: None, identity: None };
+        let target = Target {
+            program,
+            host: "fixture".into(),
+            user: Some("dev".into()),
+            port: None,
+            identity: None,
+            jump: None,
+        };
         let mut source = Source::new(target.clone());
         let cancel = Cancellation::default();
         let raw = source.sample(false, &cancel).unwrap();
@@ -353,7 +382,7 @@ mod tests {
             dir = dir.display()
         );
         let program = fake_ssh(&dir, &script);
-        let target = Target { program, host: "fixture".into(), user: None, port: None, identity: None };
+        let target = Target { program, host: "fixture".into(), user: None, port: None, identity: None, jump: None };
         let mut source = Source::new(target);
         let cancel = Cancellation::default();
         let first = source.sample(false, &cancel).unwrap();
@@ -376,7 +405,7 @@ mod tests {
         // 远端一直不返回：取消后必须立刻杀掉子进程。
         let program = fake_ssh(&dir, "#!/bin/sh\nsleep 30\n");
         let mut source =
-            Source::new(Target { program, host: "fixture".into(), user: None, port: None, identity: None });
+            Source::new(Target { program, host: "fixture".into(), user: None, port: None, identity: None, jump: None });
         let cancel = Cancellation::default();
         cancel.cancel();
         let started = Instant::now();
@@ -389,6 +418,7 @@ mod tests {
             user: None,
             port: None,
             identity: None,
+            jump: None,
         });
         assert_eq!(source.sample(false, &Cancellation::default()).err(), Some(Error::Remote));
         let _ = std::fs::remove_dir_all(&dir);

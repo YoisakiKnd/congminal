@@ -32,8 +32,14 @@ fn identical_encrypted_authentication_and_data_workload_measures_incremental_ipc
         let pool_copy = pool.clone();
         let cancel_copy = cancel.clone();
         let worker = scope.spawn(move || {
-            let profile =
-                Ssh { host: "fixture".into(), user: None, port: None, identity_file: None, program: Some(ssh) };
+            let profile = Ssh {
+                host: "fixture".into(),
+                user: None,
+                port: None,
+                identity_file: None,
+                jump: None,
+                program: Some(ssh),
+            };
             let pump = Pump::new(&std::env::temp_dir(), back, &pool_copy, &cancel_copy).unwrap();
             Authenticated::connect(
                 Connection {

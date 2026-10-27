@@ -98,6 +98,8 @@ pub struct Remote {
     pub user: Option<String>,
     pub port: Option<u16>,
     pub identity: Option<String>,
+    /// 跳板机（`ssh -J`），与终端连接用同一个配置档设置。
+    pub jump: Option<String>,
 }
 impl Remote {
     /// 面板上显示的目标，例如 `user@host`。
@@ -983,6 +985,9 @@ fn run(
             }
             if let Some(identity) = &remote.identity {
                 command.arg("-i").arg(identity);
+            }
+            if let Some(jump) = &remote.jump {
+                command.arg("-J").arg(jump);
             }
             command.arg("--").arg(&remote.host).arg("git");
             if let Some(dir) = dir {

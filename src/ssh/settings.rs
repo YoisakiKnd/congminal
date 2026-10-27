@@ -257,6 +257,7 @@ mod tests {
             user: Some("user".into()),
             port: Some(2222),
             identity_file: Some("literal key;$()".into()),
+            jump: None,
             program: None,
         };
         let system = command(&profile, Configuration::System);
@@ -304,6 +305,7 @@ mod tests {
                 user: None,
                 port: None,
                 identity_file: None,
+                jump: None,
                 program: Some(program.into()),
             };
             assert!(
@@ -440,6 +442,7 @@ mod tests {
             user: None,
             port: Some(2222),
             identity_file: None,
+            jump: None,
             program: Some("/usr/bin/ssh".into()),
         };
         let cancel = Cancellation::default();

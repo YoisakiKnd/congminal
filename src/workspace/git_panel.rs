@@ -1829,6 +1829,7 @@ mod tests {
             user: Some("dev".into()),
             port: None,
             identity: None,
+            jump: None,
         }
     }
 
@@ -1925,6 +1926,7 @@ mod tests {
             user: None,
             port: None,
             identity: None,
+            jump: None,
         });
         assert!(panel.open_branches(notify()));
         assert!(!panel.branches_open);
