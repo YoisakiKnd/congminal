@@ -257,6 +257,8 @@ pub struct Window {
     height: u32,
     /// 上次看到的窗口是否是键盘焦点所在（变化时通知 App）
     focused: bool,
+    /// 已经设过的窗口 alpha，只在变化时才发消息。
+    alpha: Option<f64>,
 }
 
 /// 跨线程唤醒：往主线程的事件队列里塞一个自定义事件
@@ -346,7 +348,16 @@ impl Window {
             msg![app, "activateIgnoringOtherApps:", 1i8 => i8; ()];
             objc_autoreleasePoolPop(pool);
 
-            Ok(Window { app, window, view, color_space: CGColorSpaceCreateDeviceRGB(), width, height, focused: true })
+            Ok(Window {
+                app,
+                window,
+                view,
+                color_space: CGColorSpaceCreateDeviceRGB(),
+                width,
+                height,
+                focused: true,
+                alpha: None,
+            })
         }
     }
 
@@ -408,6 +419,17 @@ impl Window {
                 }
             }
         }
+    }
+
+    /// 整窗 alpha：`NSWindow.setAlphaValue:`，系统合成器直接生效。
+    /// 设成半透明后窗口仍可交互，透明度只影响绘制。
+    fn apply_opacity(&mut self, opacity: f32) {
+        let alpha = f64::from(opacity.clamp(0.0, 1.0));
+        if self.alpha == Some(alpha) {
+            return;
+        }
+        self.alpha = Some(alpha);
+        unsafe { msg![self.window, "setAlphaValue:", alpha => f64; ()] };
     }
 
     /// 等到至少一个事件，把排队的事件处理完，然后检查尺寸、重画
@@ -505,6 +527,9 @@ impl Window {
 
             if let Some(title) = app.take_title() {
                 msg![self.window, "setTitle:", nsstring(&title) => Id; ()];
+            }
+            if let Some(opacity) = app.window_opacity() {
+                self.apply_opacity(opacity);
             }
             // 图层的内容只能整张替换，所以变化的区域用不上，送整张图
             if app.needs_redraw()

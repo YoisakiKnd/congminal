@@ -201,6 +201,7 @@ const BUTTON_RELEASE_MASK: c_long = 1 << 3;
 const POINTER_MOTION_MASK: c_long = 1 << 6;
 
 const XA_ATOM: Atom = 4;
+const XA_CARDINAL: Atom = 6;
 const XA_STRING: Atom = 31;
 const PROP_MODE_REPLACE: c_int = 0;
 const CURRENT_TIME: c_ulong = 0;
@@ -364,6 +365,8 @@ pub struct Window {
     /// 我们复制的文字。X11 的剪贴板只是"所有权"，内容一直留在复制它的程序手里，别人来要时才给。
     clipboard: Option<super::CopyText>,
     paste_read: Option<super::PasteRequest>,
+    /// 已经设过的 `_NET_WM_WINDOW_OPACITY`（32 位定点），只在变化时才发请求。
+    opacity: Option<c_ulong>,
 }
 
 struct Atoms {
@@ -480,6 +483,7 @@ impl Window {
                 atoms,
                 clipboard: None,
                 paste_read: None,
+                opacity: None,
             })
         }
     }
@@ -495,6 +499,34 @@ impl Window {
 
     pub fn waker(&self) -> Waker {
         Waker(self.wake_write.clone())
+    }
+
+    /// 设整窗不透明度：`_NET_WM_WINDOW_OPACITY` 是 EWMH 约定的 32 位定点数，
+    /// 由合成器（picom/mutter/kwin 等）读取后做混合。没有合成器时属性被忽略，
+    /// 窗口保持不透明——不报错，也不影响其它功能。
+    fn apply_opacity(&mut self, opacity: f32) {
+        let value = (opacity.clamp(0.0, 1.0) as f64 * u32::MAX as f64).round() as c_ulong;
+        if self.opacity == Some(value) {
+            return;
+        }
+        self.opacity = Some(value);
+        unsafe {
+            let atom = XInternAtom(self.display, c"_NET_WM_WINDOW_OPACITY".as_ptr(), 0);
+            if atom == 0 {
+                return;
+            }
+            XChangeProperty(
+                self.display,
+                self.window,
+                atom,
+                XA_CARDINAL,
+                32,
+                PROP_MODE_REPLACE,
+                (&value as *const c_ulong).cast(),
+                1,
+            );
+            XFlush(self.display);
+        }
     }
 
     pub fn run(mut self, app: &mut dyn App) {
@@ -546,6 +578,9 @@ impl Window {
                         }
                     }
                 }
+            }
+            if let Some(opacity) = app.window_opacity() {
+                self.apply_opacity(opacity);
             }
             if app.needs_redraw()
                 && let Some((fb, damage)) = app.draw()

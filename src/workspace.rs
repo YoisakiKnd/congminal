@@ -2773,6 +2773,13 @@ impl App for Workspace {
             h.min((self.height as u32).saturating_sub(y)).max(1),
         )
     }
+
+    fn window_opacity(&self) -> Option<f32> {
+        // 平台层驱动的是 Workspace（不是外层的 Congminal），所以整窗属性在这里给。
+        // 1.0 是默认值：返回 None 让平台层完全不碰窗口属性，避免每轮多一次系统调用。
+        let opacity = self.driver.config.opacity;
+        (opacity < 0.999).then_some(opacity as f32)
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -2781,6 +2788,19 @@ mod tests {
     fn workspace() -> Workspace {
         Workspace::new(crate::integration_tests::app("")).unwrap()
     }
+
+    #[test]
+    fn window_opacity_is_only_reported_when_configured() {
+        // 1.0 表示“别碰窗口属性”：平台层拿到 None 就完全不发请求。
+        let mut app = workspace();
+        assert_eq!(app.window_opacity(), None);
+        app.driver.config.opacity = 0.5;
+        assert_eq!(app.window_opacity(), Some(0.5));
+        // 0.999 以上视为不透明，避免四舍五入后仍是 1.0 却还去设一遍属性。
+        app.driver.config.opacity = 0.9995;
+        assert_eq!(app.window_opacity(), None);
+    }
+
     fn text(app: &Workspace, id: u64) -> String {
         let index = app.index(id).unwrap();
         let term = if index == app.loaded {

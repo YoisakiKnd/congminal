@@ -97,6 +97,10 @@ theme = "dark"
 cursor-blink = false
 # 命令行标记：提示行左侧画一条结果色条（成功绿、失败红、中断黄），需要 shell 集成上报 OSC 133。
 command-marks = true
+# 整窗不透明度，0.3–1.0；1.0（默认）表示完全不碰窗口属性。
+# X11 走 _NET_WM_WINDOW_OPACITY（需要合成器才会真的半透明），Windows 用分层窗口，
+# macOS 用 NSWindow.setAlphaValue:。数值越大越不透明，0.3 以下不接受（看不清字）。
+opacity = 1.0
 
 [colors]
 # 显式设置的颜色覆盖主题，并在切换主题时保留；以下展示 dark 的默认值。
