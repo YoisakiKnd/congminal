@@ -142,7 +142,8 @@ fn large_repository_status_and_diff_cost() {
     assert!(used < 4 * 1024 * 1024, "额度未归还：{used}");
 }
 
-#[cfg(unix)]
+/// 全局执行槽是进程级固定表，并行跑测试时可能一时占满；等一会儿再取，避免把资源竞争当成功能失败。
+/// 本地查询与（unix 上伪造的）ssh 查询都用它，所以不加平台门控。
 fn retry_worker<T>(mut run: impl FnMut() -> Result<T, Error>) -> Result<T, Error> {
     let until = Instant::now() + Duration::from_secs(5);
     loop {
@@ -832,4 +833,87 @@ fn remote_ssh_failures_are_reported_as_host_key_or_auth_not_as_git_errors() {
         assert!(error.message().contains("终端"), "{}", error.message());
         wait_released(&pool);
     }
+}
+
+fn read_branches(pool: &Arc<Budget>, dir: &Path) -> BranchList {
+    // `BranchRequest` 不是 `Clone`：全局执行槽被占满重试时重建一份，语义与首次调用一致。
+    retry_worker(|| {
+        let request = BranchRequest::new(1, 3, dir, &base_limits(), pool)?;
+        branches(request, &Cancellation::default()).result
+    })
+    .unwrap()
+}
+
+#[test]
+fn branches_list_local_refs_with_the_current_marker() {
+    let fixture = Fixture::new("branches");
+    fixture.repo();
+    fixture.git(&["branch", "feature"]);
+    fixture.git(&["branch", "release-1.0"]);
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    let list = read_branches(&pool, fixture.path());
+    let names: Vec<&str> = list.branches.iter().map(|branch| branch.name.as_str()).collect();
+    assert!(names.contains(&"feature"), "{names:?}");
+    assert!(names.contains(&"release-1.0"), "{names:?}");
+    // 当前分支有且只有一个，并且就是 HEAD 指向的那个。
+    let current: Vec<&str> =
+        list.branches.iter().filter(|branch| branch.current).map(|branch| branch.name.as_str()).collect();
+    assert_eq!(current, vec![fixture.branch().as_str()]);
+    assert!(!list.truncated);
+    drop(list);
+    wait_released(&pool);
+}
+
+#[test]
+fn checkout_switches_the_working_branch_and_reports_dirty_conflicts() {
+    let fixture = Fixture::new("checkout");
+    fixture.repo();
+    fixture.git(&["branch", "feature"]);
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    let before = fixture.branch();
+    let summary = run_write_summary(&pool, fixture.path(), WriteOp::Checkout { name: OsString::from("feature") })
+        .expect("干净工作区可以切分支");
+    assert_eq!(summary, "已切到 feature");
+    assert_eq!(fixture.branch(), "feature");
+    assert_ne!(fixture.branch(), before);
+    // 切回原分支，确认不是单向的。
+    run_write(&pool, fixture.path(), WriteOp::Checkout { name: OsString::from(before.as_str()) }).unwrap();
+    assert_eq!(fixture.branch(), before);
+
+    // 工作区有未提交改动且目标分支会覆盖它时，git 自己拒绝；摘要要能读懂。
+    std::fs::write(fixture.path().join("modified.txt"), b"two\nlocal\n").unwrap();
+    fixture.git(&["stash", "push", "-q"]);
+    fixture.git(&["switch", "-q", "feature"]);
+    std::fs::write(fixture.path().join("modified.txt"), b"two\nfeature-side\n").unwrap();
+    fixture.git(&["commit", "-qam", "feature-side"]);
+    fixture.git(&["switch", "-q", &before]);
+    std::fs::write(fixture.path().join("modified.txt"), b"two\nuncommitted\n").unwrap();
+    let error =
+        run_write_summary(&pool, fixture.path(), WriteOp::Checkout { name: OsString::from("feature") }).unwrap_err();
+    assert!(matches!(error, Error::Failed(_)), "{error:?}");
+    assert!(
+        error.message().contains("overwritten") || error.message().contains("local changes"),
+        "{}",
+        error.message()
+    );
+    // 拒绝后仍在原分支上，工作区改动没被丢。
+    assert_eq!(fixture.branch(), before);
+    assert_eq!(std::fs::read(fixture.path().join("modified.txt")).unwrap(), b"two\nuncommitted\n");
+    wait_released(&pool);
+}
+
+#[test]
+fn checkout_rejects_names_git_would_read_as_options() {
+    let fixture = Fixture::new("checkout-name");
+    fixture.repo();
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    // 以 `-` 开头的“分支名”会被 git 当成选项，必须在适配层挡住。
+    let error = run_write(&pool, fixture.path(), WriteOp::Checkout { name: OsString::from("--orphan") }).unwrap_err();
+    assert_eq!(error, Error::Path);
+    let error = run_write(&pool, fixture.path(), WriteOp::Checkout { name: OsString::from("") }).unwrap_err();
+    assert_eq!(error, Error::Path);
+    wait_released(&pool);
 }

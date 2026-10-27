@@ -3821,6 +3821,102 @@ program="/definitely/missing/congminal-shell"
         app.tick();
         assert_eq!(app.git.bytes(), 0);
     }
+    /// 端到端：右栏切分支。入口（“分支”按钮）→ 选中 → 二次确认 → 真实 git 换了 HEAD。
+    #[test]
+    fn git_panel_switches_branches_from_the_sidebar() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let branch = |name: &str| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(["symbolic-ref", "--short", "HEAD"])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), name, "HEAD 停在 {name}");
+        };
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git").arg("-C").arg(&repo).args(args).status().unwrap();
+            assert!(status.success(), "git {args:?}");
+        };
+        run(&["branch", "feature"]);
+        let start = String::from_utf8_lossy(
+            &std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(["symbolic-ref", "--short", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .trim()
+        .to_string();
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        // 列表页七列：刷新 / 差异 / 暂存 / 提交 / 拉取 / 推送 / 分支。
+        assert_eq!(app.git.button_count(), 7);
+        click(&mut app, 6 * (r.w / 7) + 4, 1);
+        assert!(app.git.branches_open, "{:?}", app.git.write_note);
+        wait(&mut app, |a| a.git.branches.is_some() || a.git.branches_error.is_some());
+        let list = app.git.branches.as_ref().unwrap();
+        assert!(
+            list.branches.iter().any(|branch| branch.name == "feature"),
+            "{:?}",
+            list.branches.iter().map(|b| &b.name).collect::<Vec<_>>()
+        );
+        let index = list.branches.iter().position(|branch| branch.name == "feature").unwrap();
+        assert_eq!(app.git.button_count(), 3);
+        // 导出一帧供人工核对分支页排版（窄侧栏里“●”与长名字是否被裁）。
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_BRANCH_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 点 feature 那一行选中它。
+        click(&mut app, 6, git_panel::LIST_TOP + index);
+        assert_eq!(app.git.branch_selected, Some(index));
+        // 第一次点“切到”只进入确认态，HEAD 不动。
+        click(&mut app, r.w / 3 + 4, 1);
+        assert!(app.git.branch_pending.is_some());
+        assert!(app.git.write_note.as_deref().is_some_and(|note| note.contains("再点一次")));
+        branch(&start);
+        // 再点一次才执行：HEAD 换成 feature，列表与状态一起刷新。
+        click(&mut app, r.w / 3 + 4, 1);
+        wait(&mut app, |a| {
+            a.git.branches.as_ref().is_some_and(|list| list.branches.iter().any(|b| b.name == "feature" && b.current))
+        });
+        branch("feature");
+        assert!(
+            app.git.write_note.as_deref().is_some_and(|note| note.contains("已切到 feature")),
+            "{:?}",
+            app.git.write_note
+        );
+        // 返回列表页后状态行显示新分支。
+        click(&mut app, 2 * (r.w / 3) + 4, 1);
+        assert!(!app.git.branches_open);
+        wait(&mut app, |a| a.git.snapshot.as_ref().is_some_and(|s| s.head.describe().contains("feature")));
+        // 关栏释放额度：分支列表、快照与目录票据都要还回去。
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
+        assert!(app.git.branches.is_none());
+    }
+
     #[test]
     fn metadata_changes_refresh_the_git_panel_without_waiting_for_the_cycle() {
         let dir = git_fixture();
