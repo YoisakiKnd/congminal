@@ -315,6 +315,8 @@ pub struct Workspace {
     git: git_panel::Panel,
     monitor: monitor_panel::Panel,
     right_page: RightPage,
+    /// 状态页里来自通知中心的行：行号 → 来源，用于点击定位。
+    notice_rows: Vec<(usize, crate::notifications::Source)>,
     right: bool,
     left_width: usize,
     right_width: usize,
@@ -396,6 +398,7 @@ impl Workspace {
             git: git_panel::Panel::new(),
             monitor: monitor_panel::Panel::new(),
             right_page: RightPage::Status,
+            notice_rows: Vec::new(),
             right: false,
             left_width: (220.0 * scale) as usize,
             right_width: (280.0 * scale) as usize,
@@ -1046,6 +1049,34 @@ impl Workspace {
         self.status = Some(message.chars().take(256).collect());
         self.chrome_dirty = true;
     }
+
+    /// 工作区级事件（Git、监控、远程写操作）进通知中心：先按来源静音、限速与同类合并过滤，
+    /// 只有真正入列的通知才会再走系统横幅的 10 秒闸门。
+    fn submit_notice(
+        &mut self,
+        source: crate::notifications::Source,
+        category: crate::notifications::Category,
+        detail: &'static str,
+        outcome: crate::shell::Outcome,
+    ) -> bool {
+        let notice = crate::notifications::Notice {
+            id: 0,
+            category,
+            elapsed: std::time::Duration::ZERO,
+            outcome,
+            source,
+            detail,
+            repeat: 1,
+        };
+        let Some(notice) =
+            self.driver.notifications.submit(notice, &self.driver.config.notifications, std::time::Instant::now())
+        else {
+            return false;
+        };
+        self.driver.notify_notice(notice);
+        self.chrome_dirty = true;
+        true
+    }
     fn visible_ids(&self) -> Vec<u64> {
         self.panes.iter().filter(|p| p.rect.visible()).map(|p| p.id).collect()
     }
@@ -1537,9 +1568,10 @@ impl Workspace {
         }
     }
 
-    /// 右栏“状态”页：远程描述、当前命令与最近通知。
     /// 状态页文本行：远程会话、本地 shell/命令、任务数、最近通知。
-    fn status_rows(&self) -> Vec<String> {
+    /// 同时记下通知行号与来源，点击就能跳到对应页面。
+    fn status_rows(&mut self) -> Vec<String> {
+        self.notice_rows.clear();
         let mut rows = Vec::new();
         if let Some(remote) = &self.panes[self.loaded].remote {
             rows.push(remote.describe());
@@ -1547,7 +1579,11 @@ impl Workspace {
         rows.push(self.driver.session.term.shell.describe(self.driver.selected_command));
         let stats = crate::resources::current().snapshot();
         rows.push(format!("任务 {} 个在跑 · 最新任务 {}", stats.managed_workers, stats.latest_tasks));
-        rows.extend(self.driver.notifications.recent());
+        for notice in self.driver.notifications.recent_notices() {
+            // 第 0 行是页签，内容行从 1 开始。
+            self.notice_rows.push((rows.len() + 1, notice.source));
+            rows.push(notice.text());
+        }
         rows
     }
 
@@ -1580,27 +1616,51 @@ impl Workspace {
     }
 
     /// 右栏点击：第 0 行切页，其余按当前页分发。
+    /// 切到右栏某一页；打开面板时才申请额度。
+    fn show_right_page(&mut self, page: RightPage) -> bool {
+        if page == self.right_page {
+            return false;
+        }
+        self.right_page = page;
+        match page {
+            RightPage::Git => self.git.open(),
+            RightPage::Monitor => self.monitor.open(),
+            RightPage::Status => true,
+        }
+    }
+
+    /// 状态页里点击某条通知：按来源跳到 Git、监控或文件页。
+    fn notice_click(&mut self, row: usize) -> bool {
+        let Some(source) = self.notice_rows.iter().find(|(r, _)| *r == row).map(|(_, s)| *s) else {
+            return false;
+        };
+        match source {
+            crate::notifications::Source::Git => self.show_right_page(RightPage::Git),
+            crate::notifications::Source::Monitor => self.show_right_page(RightPage::Monitor),
+            crate::notifications::Source::Sftp | crate::notifications::Source::Transfers => {
+                if self.left_page == LeftPage::Files {
+                    return false;
+                }
+                self.left_page = LeftPage::Files;
+                self.chrome_dirty = true;
+                true
+            }
+            crate::notifications::Source::Command(_) | crate::notifications::Source::Session => false,
+        }
+    }
+
     fn right_click(&mut self, row: usize, third: usize) -> bool {
         if row == 0 {
-            let page = match third {
+            return self.show_right_page(match third {
                 0 => RightPage::Status,
                 1 => RightPage::Git,
                 _ => RightPage::Monitor,
-            };
-            if page == self.right_page {
-                return false;
-            }
-            self.right_page = page;
-            return match page {
-                RightPage::Git => self.git.open(),
-                RightPage::Monitor => self.monitor.open(),
-                RightPage::Status => true,
-            };
+            });
         }
         match self.right_page {
             RightPage::Git => self.git_click(row, third),
             RightPage::Monitor => self.monitor_click(row),
-            RightPage::Status => false,
+            RightPage::Status => self.notice_click(row),
         }
     }
 }
@@ -2293,6 +2353,23 @@ impl App for Workspace {
             &self.driver.config.monitor,
             self.driver.notify.clone(),
         );
+        while let Some((op, ok)) = self.git.take_notice() {
+            let outcome = if ok { crate::shell::Outcome::Exit(0) } else { crate::shell::Outcome::Exit(1) };
+            self.submit_notice(
+                crate::notifications::Source::Git,
+                crate::notifications::Category::GitWrite,
+                op,
+                outcome,
+            );
+        }
+        if self.monitor.take_failure() {
+            self.submit_notice(
+                crate::notifications::Source::Monitor,
+                crate::notifications::Category::MonitorFailed,
+                "",
+                crate::shell::Outcome::Unknown,
+            );
+        }
         let keep = !self.quit && (self.multiple || !self.panes[0].ended);
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         let keep = self.sftp_exit_gate(keep);
@@ -3209,11 +3286,90 @@ program="/definitely/missing/congminal-shell"
         let log =
             std::process::Command::new("git").arg("-C").arg(&repo).args(["log", "-1", "--pretty=%s"]).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "提交自右栏");
+        // 写操作的结局进通知中心：暂存与提交各一条，固定文案不含路径或提交正文。
+        let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(texts.iter().any(|text| text == "Git · 暂存完成"), "{texts:?}");
+        assert!(texts.iter().any(|text| text == "Git · 提交完成"), "{texts:?}");
+        assert!(texts.iter().all(|text| !text.contains("new file.txt") && !text.contains("提交自右栏")));
         // 关闭右栏：写任务已结束，快照与票据全部归还。
         app.action(Action::ToggleRightSidebar);
         app.tick();
         assert_eq!(app.git.bytes(), 0);
         assert!(app.git.write_note.is_none());
+    }
+
+    #[test]
+    fn status_page_notice_rows_jump_to_the_related_page_and_monitor_failure_is_reported_once() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        app.tick();
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        // 回到状态页，模拟一次 Git 写操作成功与一次监控采样失败。
+        let (x, y) = ((r.x + 2) as f64, (r.y + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        assert_eq!(app.right_page, RightPage::Status);
+        assert!(app.submit_notice(
+            crate::notifications::Source::Git,
+            crate::notifications::Category::GitWrite,
+            "提交",
+            crate::shell::Outcome::Exit(0)
+        ));
+        app.monitor.failure_notice = true;
+        app.tick();
+        let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(texts.iter().any(|text| text == "Git · 提交完成"), "{texts:?}");
+        assert!(texts.iter().any(|text| text.starts_with("监控 · 采样失败")), "{texts:?}");
+        // 第二次 tick 不会重复上报同一次失败。
+        app.tick();
+        assert_eq!(
+            app.driver
+                .notifications
+                .recent_notices()
+                .filter(|n| n.source == crate::notifications::Source::Monitor)
+                .count(),
+            1
+        );
+        // 状态页画出通知行后，点击 Git 那条就切到 Git 页并重新打开面板。
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_NOTICE_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        let row = app
+            .notice_rows
+            .iter()
+            .find(|(_, source)| *source == crate::notifications::Source::Git)
+            .map(|(row, _)| *row)
+            .expect("状态页应有 Git 通知行");
+        let (x, y) = ((r.x + 4) as f64, (r.y + row * h + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        assert_eq!(app.right_page, RightPage::Git);
+        assert!(app.git.bytes() > 0);
+    }
+
+    #[test]
+    fn monitor_failure_notice_fires_once_per_failure_and_rearms_after_recovery() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowMonitorPanel);
+        app.monitor.fail(monitor::Error::Worker);
+        assert!(app.monitor.take_failure());
+        assert!(!app.monitor.take_failure(), "同一轮失败只上报一次");
+        // 失败持续时不再重复上报；恢复后再次失败才重新置位。
+        app.monitor.fail(monitor::Error::Worker);
+        assert!(!app.monitor.take_failure());
+        app.monitor.error = None;
+        app.monitor.fail(monitor::Error::Worker);
+        assert!(app.monitor.take_failure());
     }
 
     #[test]

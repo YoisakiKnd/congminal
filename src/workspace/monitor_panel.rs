@@ -39,6 +39,8 @@ pub(super) struct Panel {
     pub(super) loading: bool,
     pub(super) generation: u64,
     pub(super) error: Option<Error>,
+    /// 采样失败只发一次通知；恢复成功后重新武装。
+    pub(super) failure_notice: bool,
     pub(super) lease: Option<Tracked<()>>,
     pub(super) paused: bool,
     pub(super) revision: u64,
@@ -66,6 +68,7 @@ impl Panel {
             loading: false,
             generation: 0,
             error: None,
+            failure_notice: false,
             lease: None,
             paused: false,
             revision: 0,
@@ -218,7 +221,7 @@ impl Panel {
             }) {
                 Ok(task) => self.task = Some(task),
                 Err(_) => {
-                    self.error = Some(Error::Worker);
+                    self.fail(Error::Worker);
                     return true;
                 }
             }
@@ -230,7 +233,11 @@ impl Panel {
         let request = Request { generation: self.generation, disk };
         if let Err(error) = self.task.as_ref().unwrap().try_submit(request) {
             self.loading = false;
-            self.error = Some(if error == SubmitError::Budget { Error::Budget } else { Error::Worker });
+            if error == SubmitError::Budget {
+                self.error = Some(Error::Budget);
+            } else {
+                self.fail(Error::Worker);
+            }
         }
         true
     }
@@ -260,10 +267,23 @@ impl Panel {
                 }
             }
             Ok(_) => {}
-            Err(_) => self.error = Some(Error::Worker),
+            Err(_) => self.fail(Error::Worker),
         }
         self.revision = self.revision.wrapping_add(1);
         true
+    }
+
+    /// 记下失败，并且只在从正常转为失败时置一次通知标记。
+    pub(super) fn fail(&mut self, error: Error) {
+        if self.error.is_none() {
+            self.failure_notice = true;
+        }
+        self.error = Some(error);
+    }
+
+    /// 取出待发的失败通知；取过就不再重复。
+    pub(super) fn take_failure(&mut self) -> bool {
+        std::mem::take(&mut self.failure_notice)
     }
 
     /// 当前页内容；`width` 是右栏字符宽度，用于趋势图。

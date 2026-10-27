@@ -379,9 +379,27 @@ impl Congminal {
             self.notifications.system_error = true;
         }
     }
+    /// 回车定位：命令通知跳到该命令的输出；工作区面板类通知在单窗口下没有对应页面。
+    fn activate_notice(&mut self) {
+        let Some(notice) = self.notifications.current() else {
+            self.notifications.open = false;
+            self.dirty = true;
+            return;
+        };
+        match notice.source {
+            notifications::Source::Command(id) => {
+                self.notifications.open = false;
+                self.selected_command = Some(id);
+                self.command_output(false);
+                self.dirty = true;
+            }
+            _ => self.show_warning_refs(["该通知来自工作区面板：在窗口模式下点击状态页里的同一行可跳到对应页"]),
+        }
+    }
     fn notification_key(&mut self, key: Key, mods: Mods) {
         match key {
             Key::Escape => self.notifications.open = false,
+            Key::Enter => self.activate_notice(),
             Key::Up | Key::PageUp => self.notifications.move_item(true),
             Key::Down | Key::PageDown => self.notifications.move_item(false),
             Key::Delete => self.notifications.clear(),
@@ -974,13 +992,16 @@ impl App for Congminal {
         self.dirty |= update.changed;
         let notice_revision = self.notifications.revision();
         while let Some(event) = self.session.term.shell.take_event() {
-            if let Some(notice) = self.notifications.complete(event, &self.config.notifications, self.focus.active) {
+            if let Some(notice) =
+                self.notifications.complete(event, &self.config.notifications, self.focus.active, Instant::now())
+            {
                 self.notify_notice(notice);
                 self.dirty = true;
             }
         }
         if update.finished
-            && let Some(notice) = self.notifications.ended(&self.config.notifications, self.focus.active)
+            && let Some(notice) =
+                self.notifications.ended(&self.config.notifications, self.focus.active, Instant::now())
         {
             self.notify_notice(notice);
         }
@@ -1525,6 +1546,10 @@ mod integration_tests {
         app.event(Event::Paste("secret".into()));
         app.event(Event::Preedit("secret".into()));
         app.event(Event::Key { key: Key::Enter, mods: Mods::default() });
+        // 回车定位到这条通知对应的命令输出，并关掉浮层。
+        assert!(!app.notifications.open);
+        assert_eq!(app.selected_command, Some(1));
+        assert!(app.session.selection.is_some());
         app.tick();
         assert_eq!(before, app.session.term.text_stamp());
         assert!(!app.notifications.describe(false).contains("project"));

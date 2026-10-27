@@ -174,6 +174,9 @@ impl Workspace {
                 category: Category::Transfers(counts),
                 elapsed: Duration::ZERO,
                 outcome: crate::shell::Outcome::Unknown,
+                source: crate::notifications::Source::Transfers,
+                detail: "",
+                repeat: 1,
             });
         }
     }

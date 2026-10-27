@@ -484,6 +484,21 @@ impl Workspace {
         self.chrome_dirty = true;
         Ok(ticket)
     }
+    /// 远程写操作失败进通知中心；取消与超时不走这里。
+    fn submit_remote_write_failure(&mut self, op: Op) {
+        let label = match op {
+            Op::NewFolder => "新建目录",
+            Op::Rename => "重命名",
+            Op::Delete => "删除",
+        };
+        self.submit_notice(
+            crate::notifications::Source::Sftp,
+            crate::notifications::Category::SftpWrite,
+            label,
+            crate::shell::Outcome::Exit(1),
+        );
+    }
+
     pub(super) fn sftp_tick(&mut self) {
         let Some(mut state) = self.sftp.take() else { return };
         if state.exiting {
@@ -544,15 +559,29 @@ impl Workspace {
                                 state.error = None;
                                 // 写操作成功后才重新读取目录；失败保留原列表与错误。
                                 refresh = state.view.as_ref().map(|v| (v.target.clone(), v.hidden));
-                                self.notice(match mutation.op {
-                                    Op::NewFolder => "已创建目录",
-                                    Op::Rename => "已重命名",
-                                    Op::Delete => "已删除",
-                                });
+                                let (label, done) = match mutation.op {
+                                    Op::NewFolder => ("新建目录", "已创建目录"),
+                                    Op::Rename => ("重命名", "已重命名"),
+                                    Op::Delete => ("删除", "已删除"),
+                                };
+                                self.notice(done);
+                                self.submit_notice(
+                                    crate::notifications::Source::Sftp,
+                                    crate::notifications::Category::SftpWrite,
+                                    label,
+                                    crate::shell::Outcome::Exit(0),
+                                );
                             }
-                            Err(error) => state.error = Some(error),
-                            _ => state.error = Some(Failure::Protocol),
+                            Err(error) => {
+                                state.error = Some(error);
+                                self.submit_remote_write_failure(mutation.op);
+                            }
+                            _ => {
+                                state.error = Some(Failure::Protocol);
+                                self.submit_remote_write_failure(mutation.op);
+                            }
                         },
+                        // 用户主动取消不算失败，不发通知。
                         Err(_) => state.error = Some(Failure::Cancelled),
                     }
                 }

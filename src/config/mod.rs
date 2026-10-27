@@ -173,7 +173,22 @@ const SCHEMA: &[(&str, &[&str])] = &[
             "palette",
         ],
     ),
-    ("notifications", &["muted", "system", "failures", "long-commands", "background", "transfers", "long-seconds"]),
+    (
+        "notifications",
+        &[
+            "muted",
+            "system",
+            "failures",
+            "long-commands",
+            "background",
+            "transfers",
+            "git",
+            "monitor",
+            "long-seconds",
+            "dedupe-seconds",
+            "burst",
+        ],
+    ),
     ("cursor", &["shape"]),
     ("scrollback", &["lines"]),
     ("shell", &["program", "args", "working-directory"]),
@@ -288,6 +303,8 @@ impl Config {
             ("long-commands", &mut config.notifications.long_commands),
             ("background", &mut config.notifications.background),
             ("transfers", &mut config.notifications.transfers),
+            ("git", &mut config.notifications.git),
+            ("monitor", &mut config.notifications.monitor),
         ] {
             if let Some(value) = r.boolean("notifications", key) {
                 *slot = value;
@@ -295,6 +312,12 @@ impl Config {
         }
         if let Some(value) = r.number("notifications", "long-seconds", 1.0, 86400.0) {
             config.notifications.long_seconds = value as u64;
+        }
+        if let Some(value) = r.number("notifications", "dedupe-seconds", 0.0, 600.0) {
+            config.notifications.dedupe_seconds = value as u64;
+        }
+        if let Some(value) = r.number("notifications", "burst", 1.0, 1000.0) {
+            config.notifications.burst = value as u32;
         }
         let overrides = &mut config.color_overrides;
         for (key, slot) in [
