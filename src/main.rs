@@ -1607,10 +1607,11 @@ mod integration_tests {
             "\x1b[2J\x1b[H\x1b]7;file://secret-host/very/private\x07\x1b]133;A\x07$ \x1b]133;B\x07build\n\x1b]133;C\x07ok\n\x1b]133;D;7\x07".as_bytes(),
         );
         wait_until(&mut app, |a| a.session.term.shell.command(1).is_some());
+        // `Primary+F9`：macOS 只有 Cmd，其他平台是 Ctrl+Shift；多带 Shift 在 macOS 上不匹配。
         app.event(Event::Key {
             key: Key::F(9),
             mods: if cfg!(target_os = "macos") {
-                Mods { logo: true, shift: true, ..Mods::default() }
+                Mods { logo: true, ..Mods::default() }
             } else {
                 Mods { ctrl: true, shift: true, ..Mods::default() }
             },
