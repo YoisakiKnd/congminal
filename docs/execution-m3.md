@@ -4,13 +4,23 @@
 
 ## 使用
 
-脚本是可选的，不自动修改个人 Shell 配置。zsh 用户在 `.zshrc` 最后加入（替换成实际项目路径）：
+脚本是可选的，不自动修改个人 Shell 配置。最省事的方式是让程序自己打印脚本，不必找仓库路径：
 
 ```sh
-source /path/to/congminal/assets/shell/congminal.zsh
+source <(congminal --print-shell-integration bash)   # 或 zsh
 ```
 
-Bash 4.4+ 用户在 `.bashrc` 最后 source `assets/shell/congminal.bash`。Bash 使用 PS0，不安装 DEBUG trap；保留字符串/数组形式的 PROMPT_COMMAND。macOS 自带 Bash 3.2 会明确提示版本不足并保持原来的 Shell 行为；可以使用 zsh 或自行安装较新 Bash。**本机验证了 zsh 5.9，尚未在 Bash 4.4+ 真机运行集成脚本。**
+也可以先落盘再 source（`congminal --print-shell-integration zsh > ~/.config/congminal.zsh`）。zsh 用户在 `.zshrc` 最后加入：
+
+```sh
+source ~/.config/congminal.zsh
+```
+
+### 提示符美化（可选）
+
+默认**不动**用户自己的提示符，只加标记与目录上报。设置 `CONGMINAL_PROMPT=pretty` 才换成两行的紧凑提示符：第一行 `user@host 路径 [分支] (!退出码)`（退出码只在非 0 时出现），第二行 `$ `。分支名通过 `git symbolic-ref`/`git rev-parse` 取，**每 2 秒最多查一次**，同一个提示符反复重画不会重复起子进程；`CONGMINAL_PROMPT_GIT=0` 彻底关掉这次 git 调用。只使用 ASCII 字符，不依赖终端字体里的图标字形。
+
+Bash 4.4+ 用户在 `.bashrc` 最后 source `assets/shell/congminal.bash`。Bash 使用 PS0，不安装 DEBUG trap；保留字符串/数组形式的 PROMPT_COMMAND。macOS 自带 Bash 3.2 会明确提示版本不足并保持原来的 Shell 行为；可以使用 zsh 或自行安装较新 Bash。**本机验证了 zsh 5.9 的标记；Bash 5.2 在 Linux pty 里跑通标记、目录上报与 `CONGMINAL_PROMPT=pretty`（`shell_integration` 的集成测试会真起一个交互 bash）；zsh 的提示符美化未重跑（本机没有 zsh），只用 `zsh -n` 做语法检查。**
 
 两个脚本都只在交互 Shell 启用，重复 source 不重复安装钩子。zsh 使用 preexec/precmd hook，返回零以免拦截后续 hook；zsh 给各 hook 保留相同的原始退出码。已有 hook 自己返回非零会按 zsh 约定阻断后续 hook，此时不能保证集成事件完整。主题或插件后续替换整个 PS1/PROMPT_COMMAND 时，须按其加载顺序重新配置集成；不承诺兼容所有异步主题。不要同时启用多份终端集成脚本。
 

@@ -16,6 +16,26 @@ _congminal_bash_cwd() {
     done
     printf '\033]7;file://%s%s\007' "${HOSTNAME//[^a-zA-Z0-9._-]/}" "$out"
 }
+# 可选的美化提示符：`CONGMINAL_PROMPT=pretty` 才替换 PS1，默认保留用户自己的提示符。
+# 分支名每 2 秒最多查一次 git（同一个提示符反复重画不重复起子进程）；`CONGMINAL_PROMPT_GIT=0` 彻底关掉。
+_congminal_bash_branch() {
+    [[ ${CONGMINAL_PROMPT_GIT-1} == 0 ]] && return 0
+    local now=$SECONDS
+    if [[ ${_congminal_bash_branch_at-} == "$now" ]]; then return 0; fi
+    _congminal_bash_branch_at=$now
+    _congminal_bash_branch_name=''
+    command -v git >/dev/null 2>&1 || return 0
+    local name
+    name=$(git symbolic-ref --short HEAD 2>/dev/null) || name=$(git rev-parse --short HEAD 2>/dev/null) || name=''
+    _congminal_bash_branch_name=$name
+}
+_congminal_bash_pretty() {
+    _congminal_bash_branch
+    local where=${PWD/#$HOME/~} branch='' status_mark=''
+    [[ -n ${_congminal_bash_branch_name-} ]] && branch=" [${_congminal_bash_branch_name}]"
+    [[ ${_congminal_bash_status-0} != 0 ]] && status_mark=" (!${_congminal_bash_status})"
+    _congminal_bash_pretty_line="\[\e[2m\]\u@\h\[\e[0m\] ${where}${branch}${status_mark}\n\$ "
+}
 _congminal_bash_capture() {
     _congminal_bash_status=$?
     # 初次 source 之前没有本次命令的 C，解析器会忽略这个 D。
@@ -24,7 +44,12 @@ _congminal_bash_capture() {
 }
 _congminal_bash_prompt() {
     _congminal_bash_cwd
-    if [[ $PS1 != "${_congminal_bash_wrapped-}" ]]; then _congminal_bash_base=$PS1; fi
+    if [[ ${CONGMINAL_PROMPT-} == pretty ]]; then
+        _congminal_bash_pretty
+        _congminal_bash_base=$_congminal_bash_pretty_line
+    elif [[ $PS1 != "${_congminal_bash_wrapped-}" ]]; then
+        _congminal_bash_base=$PS1
+    fi
     _congminal_bash_wrapped='\[\e]133;A\a\]'"$_congminal_bash_base"'\[\e]133;B\a\]'
     PS1=$_congminal_bash_wrapped
     return "$_congminal_bash_status"

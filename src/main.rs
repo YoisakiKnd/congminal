@@ -43,6 +43,7 @@ mod runtime;
 #[cfg(any(test, all(feature = "sftp-preview", unix)))]
 mod sftp;
 mod shell;
+mod shell_integration;
 mod ssh;
 mod tasks;
 mod term;
@@ -1453,10 +1454,30 @@ const HELP: &str = "congminal：从零手写的终端模拟器
 选项：
   --config <路径>    使用指定的配置文件
   --print-config     打印带注释的默认配置（可以保存成配置文件再修改）
+  --print-shell-integration <bash|zsh>
+                     打印可选的 shell 集成脚本（OSC 133 标记、目录上报与提示符美化）
   -h, --help         显示这份帮助
   -V, --version      显示版本号
 
 配置文件默认位置：";
+
+/// 打印 shell 集成脚本并退出；缺参数或不认识的 shell 都以退出码 2 结束。
+fn print_shell_integration(shell: Option<&str>) -> ! {
+    let Some(shell) = shell else {
+        eprintln!("congminal: --print-shell-integration 后面要跟 {}", shell_integration::SHELLS.join(" 或 "));
+        std::process::exit(2);
+    };
+    match shell_integration::script(shell) {
+        Some(text) => {
+            print!("{text}");
+            std::process::exit(0);
+        }
+        None => {
+            eprintln!("congminal: 不支持的 shell“{shell}”，可选：{}", shell_integration::SHELLS.join("、"));
+            std::process::exit(2);
+        }
+    }
+}
 
 fn main() {
     // 内部目录协议使用原字节 stdin；在配置、窗口或线程初始化之前分流。
@@ -1472,6 +1493,10 @@ fn main() {
             "--print-config" => {
                 print!("{}", config::EXAMPLE);
                 return;
+            }
+            "--print-shell-integration" => print_shell_integration(args.next().as_deref()),
+            _ if arg.starts_with("--print-shell-integration=") => {
+                print_shell_integration(Some(&arg["--print-shell-integration=".len()..]))
             }
             "-h" | "--help" => {
                 let default = Config::default_path().map(|p| p.display().to_string()).unwrap_or_default();
