@@ -1780,6 +1780,14 @@ impl Workspace {
                 self.chrome_dirty = true;
                 true
             }
+            crate::notifications::Source::Ssh => {
+                if self.left_page == LeftPage::Connections {
+                    return false;
+                }
+                self.left_page = LeftPage::Connections;
+                self.chrome_dirty = true;
+                true
+            }
             crate::notifications::Source::Command(_) | crate::notifications::Source::Session => false,
         }
     }
@@ -2412,6 +2420,8 @@ impl App for Workspace {
                         remote.finish(self.driver.session.exit_status().flatten());
                     }
                     self.chrome_dirty = true;
+                    // 连接结束也进通知中心：远端断开与连接失败要能事后追溯。
+                    self.report_ssh_end(index);
                 }
                 // 命令完成通知：窗格加载时 driver 里就是它自己的通知中心，后台窗格的
                 // 完成只影响系统通知与它自己的列表，不打断当前窗格。
@@ -3204,6 +3214,66 @@ exec /bin/cat
         assert_eq!(app.profile_phase(1), Some(remote::Phase::Failed));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn ssh_connection_events_reach_the_notification_center_and_jump_to_the_connection_page() {
+        let dir = layout::TestDir::new();
+        // 认证被拒：ssh 自己打印的固定特征决定通知措辞。
+        let denied =
+            fake_ssh(&dir.0, "fake-ssh-denied", "printf 'dev@fixture: Permission denied (publickey).\\n'\nexit 255\n");
+        // 正常退出：只写“连接已断开”，不推断原因。
+        let closed = fake_ssh(&dir.0, "fake-ssh-closed", "printf 'REMOTE_READY'\nexit 0\n");
+        // 配置档按名称排序后进入列表，所以用前缀固定顺序：0 = 认证被拒，1 = 正常退出。
+        let (mut configured, mut warnings) = Config::parse(&format!(
+            "[connections.a-denied]\nkind='ssh'\nhost='fixture'\nprogram={denied:?}\n\
+             [connections.b-closed]\nkind='ssh'\nhost='other'\nprogram={closed:?}\n"
+        ));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.connections = configured.connections;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+
+        app.add_with_profile(None, Some(0));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some() && a.panes[a.loaded].ended);
+        let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(texts.iter().any(|text| text == "SSH · 认证失败"), "{texts:?}");
+        assert_eq!(app.profile_phase(0), Some(remote::Phase::Failed));
+
+        // 第二个连接要等它真的建出窗格：上一个窗格已经结束，不能拿“已结束”当新窗格就绪。
+        app.add_with_profile(None, Some(1));
+        wait(&mut app, |a| a.panes.len() == 3);
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some() && a.panes[a.loaded].ended);
+        let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(texts.iter().any(|text| text == "SSH · 连接已断开"), "{texts:?}");
+
+        // 状态页里的 SSH 通知行点击后跳到连接页，方便直接重连。
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        app.tick();
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let (x, y) = ((r.x + 2) as f64, (r.y + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        assert_eq!(app.right_page, RightPage::Status);
+        force_draw(&mut app);
+        let row = app
+            .notice_rows
+            .iter()
+            .find(|(_, source)| *source == crate::notifications::Source::Ssh)
+            .map(|(row, _)| *row)
+            .expect("状态页应有 SSH 通知行");
+        app.left_page = LeftPage::Files;
+        let (x, y) = ((r.x + 4) as f64, (r.y + row * h + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        assert_eq!(app.left_page, LeftPage::Connections);
+    }
+
     /// 假 ssh 同时充当终端与 Git 通道：`-G` 探测成功、终端模式报告远端目录后常驻、
     /// Git 模式（`-- host git …`）在本机执行，用来端到端验证远程只读 Git。
     #[cfg(unix)]
@@ -3394,6 +3464,9 @@ exec /bin/cat
         let rows = app.status_rows();
         assert!(rows[0].starts_with("SSH 活动 · "), "{}", rows[0]);
         assert_eq!(rows[1], "重连失败 · 找不到 SSH 程序，请检查程序路径");
+        // 重连失败同样进通知中心，带主机维度以便事后排查。
+        let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
+        assert!(texts.iter().any(|text| text == "SSH · 重连失败"), "{texts:?}");
         // 旧会话仍能收发。
         app.event(Event::Text("STILL_ALIVE\n".into()));
         wait(&mut app, |a| text(a, id).contains("STILL_ALIVE"));

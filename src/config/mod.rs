@@ -205,6 +205,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
             "transfers",
             "git",
             "monitor",
+            "ssh",
             "long-seconds",
             "dedupe-seconds",
             "burst",
@@ -331,6 +332,7 @@ impl Config {
             ("transfers", &mut config.notifications.transfers),
             ("git", &mut config.notifications.git),
             ("monitor", &mut config.notifications.monitor),
+            ("ssh", &mut config.notifications.ssh),
             ("hide-context", &mut config.notifications.hide_context),
         ] {
             if let Some(value) = r.boolean("notifications", key) {
@@ -723,6 +725,16 @@ burst = 0
         assert_eq!(warnings.len(), 2, "{warnings:?}");
         let (default, warnings) = Config::parse("");
         assert!(!default.notifications.hide_context);
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    #[test]
+    fn ssh_notifications_switch_is_read_and_defaults_to_on() {
+        let (config, warnings) = Config::parse("[notifications]\nssh = false\n");
+        assert!(!config.notifications.ssh);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let (default, warnings) = Config::parse("");
+        assert!(default.notifications.ssh);
         assert!(warnings.is_empty(), "{warnings:?}");
     }
 

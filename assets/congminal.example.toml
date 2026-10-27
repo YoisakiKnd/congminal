@@ -159,6 +159,8 @@ transfers = true
 # Git 写操作与监控采样失败的通知；关掉后对应事件不再进通知中心。
 git = true
 monitor = true
+# SSH 连接断开、连接失败（认证/主机校验/网络）与重连失败；关掉后这些事件不再进通知中心。
+ssh = true
 muted = false
 system = false
 failures = true

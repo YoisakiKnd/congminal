@@ -23,6 +23,8 @@ pub struct Settings {
     pub transfers: bool,
     pub git: bool,
     pub monitor: bool,
+    /// SSH 连接断开/失败与重连失败。
+    pub ssh: bool,
     pub long_seconds: u64,
     /// 同类事件在该窗口内只保留一条，后面的累加次数。
     pub dedupe_seconds: u64,
@@ -44,6 +46,7 @@ impl Default for Settings {
             transfers: true,
             git: true,
             monitor: true,
+            ssh: true,
             long_seconds: 10,
             dedupe_seconds: 5,
             hide_context: false,
@@ -73,13 +76,25 @@ pub enum Category {
     MonitorFailed,
     /// 监控指标超过配置阈值
     MonitorAlert,
+    /// SSH 连接断开：会话结束，或远端主动关闭。
+    SshDisconnected,
+    /// SSH 连接失败：认证/主机校验/网络失败，以及重连在准备阶段失败。
+    SshFailed,
     #[cfg(any(test, all(feature = "sftp-preview", unix)))]
     Transfers(TransferCounts),
 }
 impl Category {
     /// 同类合并只用于不带载荷的类别：传输批次各自带计数，合并会丢信息。
     fn mergeable(self) -> bool {
-        matches!(self, Self::GitWrite | Self::SftpWrite | Self::MonitorFailed | Self::MonitorAlert)
+        matches!(
+            self,
+            Self::GitWrite
+                | Self::SftpWrite
+                | Self::MonitorFailed
+                | Self::MonitorAlert
+                | Self::SshDisconnected
+                | Self::SshFailed
+        )
     }
 }
 #[cfg(any(test, all(feature = "sftp-preview", unix)))]
@@ -134,6 +149,8 @@ pub enum Source {
     Monitor,
     #[allow(dead_code)]
     Sftp,
+    /// SSH 连接状态变化（主机维度来自配置档，可被 `mute-hosts` 静音）。
+    Ssh,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Notice {
@@ -173,6 +190,8 @@ impl Notice {
                 return format!("SFTP: remote write {}", if self.succeeded() { "completed" } else { "failed" });
             }
             Category::MonitorFailed => return "Monitor: sampling failed".into(),
+            Category::SshDisconnected => return "SSH: connection closed".into(),
+            Category::SshFailed => return "SSH: connection failed".into(),
             Category::MonitorAlert => return "Monitor: threshold exceeded".into(),
             _ => {}
         }
@@ -217,6 +236,14 @@ impl std::fmt::Display for Notice {
                 f.write_str("监控 · 采样失败")?;
                 return self.repeat_suffix(f);
             }
+            Category::SshDisconnected => {
+                f.write_str("SSH · 连接已断开")?;
+                return self.repeat_suffix(f);
+            }
+            Category::SshFailed => {
+                write!(f, "SSH · {}", self.detail)?;
+                return self.repeat_suffix(f);
+            }
             Category::MonitorAlert => {
                 write!(f, "监控 · {}", self.detail)?;
                 return self.repeat_suffix(f);
@@ -241,6 +268,7 @@ fn source_enabled(source: Source, settings: &Settings) -> bool {
         Source::Git => settings.git,
         Source::Monitor => settings.monitor,
         Source::Sftp => settings.transfers,
+        Source::Ssh => settings.ssh,
         Source::Command(_) | Source::Session => true,
     }
 }
@@ -941,6 +969,42 @@ mod tests {
         assert_eq!(center.current().map(|n| n.id), Some(notice.id));
         assert_eq!(center.recent_notices().count(), 2);
     }
+    #[test]
+    fn ssh_connection_events_use_their_own_switch_and_host_muting() {
+        let mut center = Center::default();
+        let closed = Notice {
+            id: 0,
+            category: Category::SshDisconnected,
+            elapsed: Duration::ZERO,
+            outcome: Outcome::Exit(0),
+            source: Source::Ssh,
+            detail: "",
+            repeat: 1,
+        };
+        let failed =
+            Notice { category: Category::SshFailed, detail: "认证失败", outcome: Outcome::Exit(1), ..closed };
+        let start = Instant::now();
+        let closed = center.submit(closed, &Settings::default(), Some("web-1"), start).unwrap();
+        assert_eq!(closed.text(), "SSH · 连接已断开");
+        assert_eq!(closed.system_text(), "SSH: connection closed");
+        assert!(closed.system_text().is_ascii());
+        let failed = center.submit(failed, &Settings::default(), Some("web-1"), start).unwrap();
+        assert_eq!(failed.text(), "SSH · 认证失败");
+        assert_eq!(failed.system_text(), "SSH: connection failed");
+        // 关掉 SSH 来源或按主机静音后不再入列；本地事件不受主机静音影响。
+        let off = Settings { ssh: false, ..Settings::default() };
+        assert!(center.submit(closed, &off, Some("web-1"), start).is_none());
+        let muted = Settings { mute_hosts: vec!["web-1".into()], ..Settings::default() };
+        assert!(center.submit(closed, &muted, Some("web-1"), start).is_none());
+        assert!(center.submit(closed, &muted, None, start).is_some());
+        // 同类事件在去重窗口内合并成一条并累加次数。
+        let before = center.len();
+        let now = start + Duration::from_secs(1);
+        assert!(center.submit(closed, &Settings::default(), Some("web-1"), now).is_none());
+        assert_eq!(center.len(), before);
+        assert_eq!(center.recent_notices().next().map(|n| n.repeat), Some(2));
+    }
+
     #[cfg(unix)]
     #[test]
     fn missing_failing_and_cancelled_helpers_are_reaped() {
