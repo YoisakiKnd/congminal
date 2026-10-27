@@ -21,6 +21,7 @@ pub enum Kind {
     FontOutline,
     CacheIndex,
     Directory,
+    Git,
     Profiles,
     Ssh,
     Sftp,
@@ -38,7 +39,7 @@ pub enum Kind {
     Budget,
     Threads,
 }
-const KINDS: usize = 30;
+const KINDS: usize = 31;
 impl Kind {
     fn index(self) -> usize {
         self as usize
@@ -61,7 +62,7 @@ pub struct Stats {
 impl Stats {
     pub fn describe(&self) -> String {
         format!(
-            "共享额度 used={}/{} peak={} canvas={} queue-reserved={} glyph-model={} font-owned={} mapped={}/{} mapped-peak={} mappings={} denied={} grid-reserved={} resize-reserved={} history-reserved={} png-reserved={} image-scale-reserved={} font-raster-reserved={} font-outline-reserved={} cache-index-model={} directory-reserved={} profiles-reserved={} ssh-reserved={} sftp-reserved={} sftp-input-reserved={}/{} render-reserved={} font-discovery-reserved={} font-metadata-reserved={} ui-reserved={} search-reserved={} notifications-reserved={} shell-reserved={} clipboard-reserved={} links-reserved={} tasks-reserved={} budget-reserved={} threads-reserved={} managed-workers={}/64 latest-task-cores={}/{}（界面/任务等元数据未完整接入，非完整堆/RSS）",
+            "共享额度 used={}/{} peak={} canvas={} queue-reserved={} glyph-model={} font-owned={} mapped={}/{} mapped-peak={} mappings={} denied={} grid-reserved={} resize-reserved={} history-reserved={} png-reserved={} image-scale-reserved={} font-raster-reserved={} font-outline-reserved={} cache-index-model={} directory-reserved={} git-reserved={} profiles-reserved={} ssh-reserved={} sftp-reserved={} sftp-input-reserved={}/{} render-reserved={} font-discovery-reserved={} font-metadata-reserved={} ui-reserved={} search-reserved={} notifications-reserved={} shell-reserved={} clipboard-reserved={} links-reserved={} tasks-reserved={} budget-reserved={} threads-reserved={} managed-workers={}/64 latest-task-cores={}/{}（界面/任务等元数据未完整接入，非完整堆/RSS）",
             self.used,
             self.limit,
             self.peak,
@@ -83,6 +84,7 @@ impl Stats {
             self.kinds[Kind::FontOutline.index()],
             self.kinds[Kind::CacheIndex.index()],
             self.kinds[Kind::Directory.index()],
+            self.kinds[Kind::Git.index()],
             self.kinds[Kind::Profiles.index()],
             self.kinds[Kind::Ssh.index()],
             self.kinds[Kind::Sftp.index()],

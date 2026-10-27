@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
 mod authentication;
 mod files;
+mod git_panel;
 mod layout;
 mod remote;
 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
@@ -302,6 +303,7 @@ pub struct Workspace {
     #[cfg(all(feature = "sftp-preview", unix))]
     sftp_entry: remote_files::Entry,
     local_files: files::Browser,
+    git: git_panel::Panel,
     right: bool,
     left_width: usize,
     right_width: usize,
@@ -380,6 +382,7 @@ impl Workspace {
             #[cfg(all(feature = "sftp-preview", unix))]
             sftp_entry: remote_files::Entry::default(),
             local_files: files::Browser::default(),
+            git: git_panel::Panel::new(),
             right: false,
             left_width: (220.0 * scale) as usize,
             right_width: (280.0 * scale) as usize,
@@ -645,6 +648,7 @@ impl Workspace {
                 | Action::PreviousPane
                 | Action::ToggleLeftSidebar
                 | Action::ToggleRightSidebar
+                | Action::ShowGitPanel
         )
     }
     fn enable(&mut self) -> bool {
@@ -713,7 +717,13 @@ impl Workspace {
         if immediate {
             return Some(Instant::now());
         }
-        self.draw_time().into_iter().chain(self.layout_due).chain(self.save_due).chain(self.driver.font_deadline).min()
+        self.draw_time()
+            .into_iter()
+            .chain(self.layout_due)
+            .chain(self.save_due)
+            .chain(self.driver.font_deadline)
+            .chain(self.git.deadline())
+            .min()
     }
     fn terminal_focused(&self) -> bool {
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
@@ -1141,6 +1151,7 @@ impl Workspace {
                 | Action::SplitDown
                 | Action::ToggleLeftSidebar
                 | Action::ToggleRightSidebar
+                | Action::ShowGitPanel
         ) && !self.enable()
         {
             return true;
@@ -1192,6 +1203,14 @@ impl Workspace {
                     self.notice(&e);
                 }
             }
+            Action::ShowGitPanel => {
+                let opened = self.git.open();
+                self.right = true;
+                self.chrome_dirty |= opened;
+                if let Err(e) = self.relayout() {
+                    self.notice(&e);
+                }
+            }
             _ => return false,
         }
         true
@@ -1214,9 +1233,43 @@ impl Workspace {
                 + self.driver.output_copy.as_ref().map_or(0, shell::CopyOutput::resource_bytes);
         }
         self.restore();
-        totals[5] += self.local_files.bytes() + self.driver.config.connections.bytes();
+        totals[5] += self.local_files.bytes() + self.git.bytes() + self.driver.config.connections.bytes();
         let (_, glyphs) = self.driver.renderer.resource_bytes(&self.driver.framebuffer);
         self.driver.show_warnings(&[format!("工作区资源（分项字节，非 RSS）：sessions={}/8 grid={} history={}/{} marks={} queues={} canvases={} metadata={} glyphs={} font-files={}；{}",self.panes.len(),totals[0],totals[1],HISTORY_POOL,totals[2],totals[3],totals[4]+self.frame.pixels.capacity()*4,totals[5],glyphs,Fonts::file_bytes(),crate::resources::current().snapshot().describe())]);
+    }
+    /// 活动会话的工作目录：优先 shell 通过 OSC 7 报告的真实目录，其次配置的启动目录。
+    fn git_directory(&self) -> Option<PathBuf> {
+        let pane = &self.panes[self.loaded];
+        if pane.remote.is_some() {
+            // 远程会话的 Git 状态还没有通道，明确显示“未知”而不是读本地同名路径。
+            return None;
+        }
+        if let Some(directory) = &self.driver.session.term.shell.directory {
+            let path = PathBuf::from(directory.path());
+            if !path.as_os_str().is_empty() {
+                return Some(path);
+            }
+        }
+        pane.profile
+            .as_ref()
+            .and_then(|(profiles, index)| match &profiles[*index].connection {
+                config::profiles::Connection::Local(shell) => shell.working_directory.clone(),
+                _ => None,
+            })
+            .or_else(|| self.driver.config.shell.working_directory.clone())
+            .or_else(|| std::env::current_dir().ok())
+    }
+    /// 触发 Git 刷新去抖的输入：窗格、目录、命令与通知变化。
+    fn git_key(&self) -> u64 {
+        let mut hash = crate::hash::Fnv::default();
+        self.selected.hash(&mut hash);
+        self.driver.selected_command.hash(&mut hash);
+        self.driver.session.term.shell.phase.hash(&mut hash);
+        if let Some(directory) = &self.driver.session.term.shell.directory {
+            directory.path().hash(&mut hash);
+        }
+        self.driver.notifications.revision().hash(&mut hash);
+        hash.finish()
     }
     fn sidebar_stamp(&self) -> u64 {
         let mut hash = crate::hash::Fnv::default();
@@ -1229,6 +1282,8 @@ impl Workspace {
         self.driver.selected_command.hash(&mut hash);
         self.driver.notifications.revision().hash(&mut hash);
         self.driver.notifications.system_error.hash(&mut hash);
+        self.git.revision().hash(&mut hash);
+        self.git.page.hash(&mut hash);
         hash.finish()
     }
     fn point_pane(&self, x: f64, y: f64) -> Option<u64> {
@@ -1434,8 +1489,9 @@ impl Workspace {
             let transfer_painted = self.transfer_list_paint(r, h);
             #[cfg(not(all(any(test, feature = "sftp-preview"), unix)))]
             let transfer_painted = false;
-            if !transfer_painted {
-                self.driver.renderer.chrome(&mut self.frame, [r.x, r.y, r.w, r.h], "会话状态与通知", false);
+            if !transfer_painted && self.git_tabs_paint(r, h) {
+                self.git_paint(r, h);
+            } else if !transfer_painted {
                 let mut rows = Vec::new();
                 if let Some(remote) = &self.panes[self.loaded].remote {
                     rows.push(remote.describe());
@@ -1643,6 +1699,13 @@ impl Workspace {
                         }
                         return true;
                     }
+                    if self.right_rect.contains(x, y) {
+                        let row = (y as usize - self.right_rect.y) / h;
+                        let half = ((x as usize - self.right_rect.x) * 2 / self.right_rect.w.max(1)).min(1);
+                        let third = ((x as usize - self.right_rect.x) * 3 / self.right_rect.w.max(1)).min(2);
+                        self.chrome_dirty |= self.git_click(row, half, third);
+                        return true;
+                    }
                     if self.left_rect.contains(x, y) {
                         let row = (y as usize - self.left_rect.y) / h;
                         if row == 0 {
@@ -1813,6 +1876,16 @@ impl Workspace {
                         self.chrome_dirty |= offset != self.profiles_offset;
                         self.profiles_offset = offset;
                     }
+                    return true;
+                }
+                if self.right_rect.contains(x, y) && self.git.page == git_panel::Page::Git {
+                    let h = self.driver.renderer.cell_size().1;
+                    let lines = match delta {
+                        ScrollDelta::Lines(lines) => lines * 3.0,
+                        ScrollDelta::Pixels(pixels) => pixels / h as f64,
+                    };
+                    self.chrome_dirty |=
+                        self.git_scroll(lines, (self.right_rect.h / h).saturating_sub(git_panel::LIST_TOP));
                     return true;
                 }
                 if self.left_page == LeftPage::Files && self.left_rect.contains(x, y) {
@@ -2075,6 +2148,17 @@ impl App for Workspace {
         } else {
             self.chrome_dirty |= self.local_files.hide();
         }
+        let git_dir = self.git_directory();
+        let git_key = self.git_key();
+        self.chrome_dirty |= self.git.tick(
+            self.selected,
+            git_dir.as_deref(),
+            git_key,
+            self.driver.notify.clone(),
+            self.right && self.right_rect.visible(),
+            self.window_focus,
+            &self.driver.config.git,
+        );
         let keep = !self.quit && (self.multiple || !self.panes[0].ended);
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         let keep = self.sftp_exit_gate(keep);
@@ -2780,6 +2864,148 @@ program="/definitely/missing/congminal-shell"
         assert!(!app.left_rect.visible());
         assert_eq!(app.local_files.owner, 0);
     }
+    /// 造一个带未暂存改动与未跟踪文件的真实仓库；测试依赖本机 git。
+    fn git_fixture() -> layout::TestDir {
+        let dir = layout::TestDir::new();
+        let repo = dir.0.join("repo");
+        std::fs::create_dir(&repo).unwrap();
+        let git = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                // Windows 上没有 /dev/null；屏蔽用户 git 配置以免影响夹具。
+                .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_CONFIG_SYSTEM", if cfg!(windows) { "NUL" } else { "/dev/null" })
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .status()
+                .expect("Git 面板测试需要本机 git");
+            assert!(status.success(), "git {args:?}");
+        };
+        git(&["init", "-q", "."]);
+        // 仓库级身份：CI 主机名不带点，git 无法自动推断邮箱，面板里的 commit 会失败。
+        git(&["config", "user.name", "t"]);
+        git(&["config", "user.email", "t@t"]);
+        std::fs::write(repo.join("tracked.txt"), b"one\n").unwrap();
+        git(&["add", "tracked.txt"]);
+        git(&["commit", "-qm", "init"]);
+        std::fs::write(repo.join("tracked.txt"), b"one\nchanged\n").unwrap();
+        std::fs::write(repo.join("new file.txt"), b"x\n").unwrap();
+        dir
+    }
+    fn git_row(index: usize) -> usize {
+        git_panel::LIST_TOP + index
+    }
+    #[test]
+    fn git_panel_reads_the_active_directory_opens_diffs_and_releases_when_closed() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        assert!(app.right && app.git.page == git_panel::Page::Git);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let snapshot = app.git.snapshot.as_ref().unwrap();
+        // macOS 的临时目录是 /var → /private/var 的符号链接，git 报告的是解析后的路径。
+        assert_eq!(snapshot.root, repo.canonicalize().unwrap());
+        assert_eq!(snapshot.counts.unstaged, 1);
+        assert_eq!(snapshot.counts.untracked, 1);
+        assert_eq!(snapshot.counts.staged, 0);
+        assert!(app.git.bytes() > 0);
+        let view = app.git.view(12);
+        assert!(view.headline[0].contains("repo"), "{:?}", view.headline);
+        assert!(view.content.iter().any(|(text, _)| text.starts_with(" M tracked.txt")));
+        assert!(view.content.iter().any(|(text, _)| text == "?? new file.txt"));
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        let index = app
+            .git
+            .snapshot
+            .as_ref()
+            .unwrap()
+            .entries
+            .iter()
+            .position(|entry| entry.path.as_os_str() == "tracked.txt")
+            .unwrap();
+        click(&mut app, 6, git_row(index));
+        wait(&mut app, |a| a.git.diff.is_some() || a.git.diff_error.is_some());
+        let diff = app.git.diff.as_ref().unwrap();
+        assert!(diff.text.contains("+changed"), "{}", diff.text);
+        assert!(app.git.diff_open);
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_DIFF_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // “返回”回到列表，diff 释放但快照保留。
+        click(&mut app, 2 * (r.w / 3) + 4, 1);
+        assert!(!app.git.diff_open);
+        assert!(app.git.diff.is_none());
+        assert!(app.git.snapshot.is_some());
+        // 切到状态页：保留结果但停止查询。
+        click(&mut app, r.w / 4, 0);
+        assert_eq!(app.git.page, git_panel::Page::Status);
+        app.tick();
+        assert!(app.git.deadline().is_none());
+        assert!(app.git.snapshot.is_some());
+        // 回到 Git 页后立即重排刷新。
+        click(&mut app, 3 * r.w / 4, 0);
+        assert_eq!(app.git.page, git_panel::Page::Git);
+        assert!(app.git.deadline().is_some());
+        // 关掉右栏：取消任务并释放快照、diff 与目录票据。
+        app.action(Action::ToggleRightSidebar);
+        assert!(!app.right);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
+        assert!(app.git.snapshot.is_none());
+    }
+    #[test]
+    fn git_panel_reports_missing_tool_and_disabled_config_without_starting_work() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo);
+        app.driver.config.git.program = Some(PathBuf::from("/congminal-nonexistent-git"));
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.view(6).headline.iter().any(|line| line.contains("git 可执行程序")));
+        assert!(app.git.snapshot.is_none() && app.git.diff.is_none());
+        // 目录票据仍保留（用于重试），关闭右栏后必须全部归还。
+        assert!(app.git.bytes() > 0);
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        assert_eq!(app.git.bytes(), 0);
+        app.driver.config.git.enabled = false;
+        app.action(Action::ShowGitPanel);
+        app.tick();
+        let view = app.git.view(6);
+        assert!(view.headline[0].contains("已停用"), "{:?}", view.headline);
+        assert_eq!(app.git.bytes(), 0);
+        assert!(app.git.deadline().is_none());
+    }
+
     fn saved_tabs(count: usize) -> layout::Layout {
         let mut layout = layout::Layout::new(true, true, false, 223, 281, count - 1);
         for id in 1..=count {
