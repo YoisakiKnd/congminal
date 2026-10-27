@@ -176,6 +176,7 @@ enum Action {
     Directory {
         path: RemotePath,
         hidden: bool,
+        sort: model::Sort,
     },
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     Transfer(FileRequest),
@@ -344,12 +345,13 @@ impl Service {
         paths: Paths<'_>,
         path: &[u8],
         hidden: bool,
+        sort: model::Sort,
         timeout: Duration,
     ) -> Result<(Ticket, Authentication), Failure> {
         self.validate(owner, paths, timeout)?;
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
         let path = RemotePath::new(self.budget(), path).map_err(model_failure)?;
-        self.submit(owner, profiles, profile, paths, Action::Directory { path, hidden }, timeout)
+        self.submit(owner, profiles, profile, paths, Action::Directory { path, hidden, sort }, timeout)
     }
     /// 建目录：只在服务端确认后返回；名称规则与目录读取一致，不做路径规范化。
     #[allow(clippy::too_many_arguments)]
@@ -717,9 +719,11 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
         }
     };
     let result = match &request.action {
-        Action::Directory { path, hidden } => operations::directory(&mut channel, path.clone(), *hidden, cancel)
-            .map(Output::Directory)
-            .map_err(operation_failure),
+        Action::Directory { path, hidden, sort } => {
+            { operations::directory(&mut channel, path.clone(), *hidden, *sort, cancel) }
+                .map(Output::Directory)
+                .map_err(operation_failure)
+        }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         Action::InspectRemote { path, selected } => operations::attributes(&mut channel, path.bytes(), cancel)
             .map_err(operation_failure)
@@ -983,11 +987,33 @@ mod tests {
             (Owner { session: 1, generation: 0 }, &b"."[..]),
             (Owner { session: 1, generation: 1 }, &b"\0"[..]),
         ] {
-            assert!(service.directory(owner, profiles.clone(), 0, paths, path, false, Duration::from_secs(1)).is_err());
+            assert!(
+                service
+                    .directory(
+                        owner,
+                        profiles.clone(),
+                        0,
+                        paths,
+                        path,
+                        false,
+                        model::Sort::Name,
+                        Duration::from_secs(1)
+                    )
+                    .is_err()
+            );
             assert_eq!(service.budget().snapshot().used, initial);
         }
         let (ticket, mut auth) = service
-            .directory(Owner { session: 1, generation: 1 }, profiles, 0, paths, b".", false, Duration::from_secs(1))
+            .directory(
+                Owner { session: 1, generation: 1 },
+                profiles,
+                0,
+                paths,
+                b".",
+                false,
+                model::Sort::Name,
+                Duration::from_secs(1),
+            )
             .unwrap();
         assert!(auth.take_ready().is_none());
         let mut result = None;
@@ -1034,6 +1060,7 @@ mod tests {
                     paths,
                     b".",
                     false,
+                    model::Sort::Name,
                     Duration::from_secs(1),
                 )
                 .unwrap();
@@ -1046,7 +1073,16 @@ mod tests {
         assert!(auths.iter_mut().all(|a| a.take_ready().is_none()));
         assert!(
             service
-                .directory(Owner { session: 7, generation: 3 }, profiles, 0, paths, b".", false, Duration::from_secs(1))
+                .directory(
+                    Owner { session: 7, generation: 3 },
+                    profiles,
+                    0,
+                    paths,
+                    b".",
+                    false,
+                    model::Sort::Name,
+                    Duration::from_secs(1)
+                )
                 .is_err()
         );
         assert_eq!(service.cancel_source(7, 4), 0);
@@ -1185,8 +1221,12 @@ mod tests {
             Paths { configuration: Config::None, helper: Path::new("/never-launched"), temporary: Path::new("/tmp") };
         let owner = Owner { session: 7, generation: 3 };
         let profiles = profiles();
-        let a = service.directory(owner, profiles.clone(), 0, paths, b".", false, Duration::from_secs(1)).unwrap();
-        let b = service.directory(owner, profiles.clone(), 0, paths, b".", false, Duration::from_secs(1)).unwrap();
+        let a = service
+            .directory(owner, profiles.clone(), 0, paths, b".", false, model::Sort::Name, Duration::from_secs(1))
+            .unwrap();
+        let b = service
+            .directory(owner, profiles.clone(), 0, paths, b".", false, model::Sort::Name, Duration::from_secs(1))
+            .unwrap();
         until(|| service.stats().running == 2);
         let mut tasks: [Option<TransferTask>; 64] = std::array::from_fn(|_| None);
         for (index, slot) in tasks.iter_mut().enumerate() {
@@ -1352,6 +1392,7 @@ mod tests {
                 Paths { configuration: Config::File(&config), helper: &helper, temporary: &root },
                 remote.as_os_str().as_bytes(),
                 false,
+                model::Sort::Name,
                 Duration::from_secs(1),
             )
             .unwrap();

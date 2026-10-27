@@ -147,6 +147,7 @@ mod tests {
                 &mut channel,
                 RemotePath::new(&pool, root.join("remote/list").as_os_str().as_encoded_bytes()).unwrap(),
                 false,
+                crate::sftp::model::Sort::Name,
                 &cancel,
             );
             match scenario.as_str() {

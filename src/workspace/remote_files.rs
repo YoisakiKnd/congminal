@@ -11,6 +11,9 @@ const SLOTS: usize = 66;
 const NAME_BYTES: usize = 1024;
 const PREEDIT_BYTES: usize = 256;
 /// 操作行标签：完整、双字、单字三档，按每槽可用显示列选择。
+/// 第一行四个槽位：上级 / 刷新 / 隐藏 / 排序（显示当前排序方式）。
+const HEAD_LABELS: [[&str; 4]; 3] =
+    [["上级", "刷新", "隐藏", "排序"], ["上级", "刷新", "隐藏", "排序"], ["上", "刷", "隐", "序"]];
 const OPS_LABELS: [[&str; 6]; 3] = [
     ["[新建]", "[改名]", "[删除]", "[上传]", "[下载]", "[任务]"],
     ["新建", "改名", "删除", "上传", "下载", "任务"],
@@ -313,6 +316,8 @@ pub(super) struct State {
     tasks: transfer_list::List,
     notices: transfer_notifications::Ring,
     mutation: Option<Mutation>,
+    /// 目录排序：只影响后续读取；切换后按同一目录重读。
+    sort: crate::sftp::model::Sort,
     form: Option<NameInput>,
     confirm: Option<Confirm>,
     view: Option<View>,
@@ -354,6 +359,7 @@ impl State {
             tasks: transfer_list::List::default(),
             notices: transfer_notifications::Ring::default(),
             mutation: None,
+            sort: crate::sftp::model::Sort::default(),
             form: None,
             confirm: None,
             view: None,
@@ -466,6 +472,7 @@ impl Workspace {
             state.options.paths(),
             path,
             hidden,
+            state.sort,
             Duration::from_secs(10),
         )?;
         // 新请求准入成功才取消旧目录；不能在失败后静默丢弃已显示结果。
@@ -854,12 +861,16 @@ impl Workspace {
             self.chrome_dirty = true;
             return true;
         }
+        // 排序只改本地模式，不需要额外往返：新的目录请求会带上它。
+        let resort = row == 1 && column == 3;
         let next = (|| -> Result<Option<(PathValue, bool)>, Failure> {
             let Some(view) = self.sftp.as_mut().and_then(|s| s.view.as_mut()) else { return Ok(None) };
             if row == 1 {
                 return match column {
                     0 => view.target.parent().map(|p| p.map(|p| (p, view.hidden))).map_err(|_| Failure::Budget),
                     1 => Ok(Some((view.target.clone(), view.hidden))),
+                    // 排序槽：模式在下面改，这里只重读同一目录。
+                    3 => Ok(Some((view.target.clone(), view.hidden))),
                     _ => Ok(Some((view.target.clone(), !view.hidden))),
                 };
             }
@@ -875,6 +886,18 @@ impl Workspace {
             }
             Ok(None)
         })();
+        if resort && next.is_ok() {
+            let sort = if let Some(state) = self.sftp.as_mut() {
+                state.sort = state.sort.next();
+                Some(state.sort)
+            } else {
+                None
+            };
+            // 槽位里只放得下当前模式，点完给一行明确反馈，避免“点了没反应”的错觉。
+            if let Some(sort) = sort {
+                self.notice(&format!("目录排序：{}", sort.label()));
+            }
+        }
         let result = match next {
             Ok(Some((path, hidden))) => self.submit_remote_directory(path.bytes(), hidden).map(|_| ()),
             Ok(None) if row == 1 && column == 1 => self.submit_remote_directory(b".", false).map(|_| ()),
@@ -1113,12 +1136,34 @@ impl Workspace {
         }
         let state = self.sftp.as_ref().unwrap();
         let view = state.view.as_ref();
-        let third = r.w / 3;
-        for (i, text) in
-            ["上级", "刷新", if view.is_some_and(|v| v.hidden) { "隐藏 ✓" } else { "隐藏" }].into_iter().enumerate()
-        {
-            if r.h >= 2 * h {
-                self.driver.renderer.chrome(&mut self.frame, [r.x + i * third, r.y + h, third, h], text, false);
+        if r.h >= 2 * h {
+            let slot = (r.w / 4).max(1);
+            // 窄侧栏按每槽可用显示列降级：完整 → 双字 → 单字。
+            let per = slot / self.driver.renderer.cell_size().0.max(1);
+            let tier = if per >= 4 {
+                0
+            } else if per >= 2 {
+                1
+            } else {
+                2
+            };
+            let labels = HEAD_LABELS[tier];
+            let hidden = if view.is_some_and(|v| v.hidden) { "隐藏 ✓" } else { labels[2] };
+            // 排序槽要同时表达“这是排序”和“当前按什么排”：按实际显示宽度逐档降级，
+            // 依次尝试“排序·名称↑”→“名称↑”→“名↑”→“名”，保证不会被裁成半截。
+            let sort = state.sort;
+            let full = format!("{}·{}", labels[3], sort.label());
+            let prefixed = format!("{}{}", labels[3], sort.short());
+            let mut sort_label = sort.short();
+            for candidate in [full.as_str(), prefixed.as_str(), sort.label(), sort.short()] {
+                if crate::term::display_width(candidate) <= per {
+                    sort_label = candidate;
+                    break;
+                }
+            }
+            for (i, text) in [labels[0], labels[1], hidden, sort_label].into_iter().enumerate() {
+                let text = crate::term::clip(text, per);
+                self.driver.renderer.chrome(&mut self.frame, [r.x + i * slot, r.y + h, slot, h], &text, false);
             }
         }
         if r.h >= 3 * h {
@@ -1279,6 +1324,7 @@ mod tests {
             view.ticket.source.generation,
             view.target.clone(),
             false,
+            crate::sftp::model::Sort::Name,
         )
         .unwrap();
         for (name, directory) in names {
@@ -1346,6 +1392,40 @@ mod tests {
         app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
         assert!(!app.sftp_capturing(), "取消后交还键盘");
         assert!(app.sftp.as_ref().unwrap().form.is_none());
+        close(&mut app);
+        drop(app);
+        released(&pool);
+    }
+    /// 排序按钮在窄栏里也要能点到：点一次换一档，并按同一目录重新读取。
+    #[test]
+    fn sort_button_cycles_the_order_and_rereads_the_directory() {
+        use crate::sftp::model::Sort;
+        let pool = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(pool.clone());
+        let mut app = workspace();
+        app.start_remote_files(paths(), b"/tmp").unwrap();
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().view.as_ref().is_some_and(|v| !v.loading)
+        });
+        loaded(&mut app, &[("folder", true), ("file.txt", false)]);
+        assert_eq!(app.sftp.as_ref().unwrap().sort, Sort::Name);
+        for expected in [Sort::NameDesc, Sort::Size, Sort::Time, Sort::Name] {
+            assert!(app.sftp_click(1, 3));
+            let state = app.sftp.as_ref().unwrap();
+            assert_eq!(state.sort, expected);
+            // 槽位只放得下当前模式，点击后状态栏点名新顺序。
+            assert_eq!(app.status.as_deref(), Some(format!("目录排序：{}", expected.label()).as_str()));
+            // 换档就按同一目录重读：视图换成在途状态，旧结果不留在屏幕上冒充新顺序。
+            let view = state.view.as_ref().unwrap();
+            assert!(view.loading);
+            assert!(view.reply.is_none());
+            until(|| {
+                app.tick();
+                app.sftp.as_ref().unwrap().view.as_ref().is_some_and(|v| !v.loading)
+            });
+            loaded(&mut app, &[("folder", true), ("file.txt", false)]);
+        }
         close(&mut app);
         drop(app);
         released(&pool);
@@ -1603,6 +1683,7 @@ mod tests {
             view.binding.owner.generation,
             view.target.clone(),
             false,
+            crate::sftp::model::Sort::Name,
         )
         .unwrap();
         for i in 0..32 {

@@ -1,7 +1,7 @@
 //! 顺序目录操作；错误使独立通道失效，监督器必须关闭底层连接。
 use super::{
     client::{Channel, Error as ChannelError},
-    model::{self, Listing, RemotePath, Scan},
+    model::{self, Listing, RemotePath, Scan, Sort},
     wire::{Expected, HandleOp, PathOp, Request, Response},
 };
 use crate::tasks::Cancellation;
@@ -123,6 +123,7 @@ pub fn directory<I: Read + Write>(
     channel: &mut Channel<I>,
     path: RemotePath,
     hidden: bool,
+    sort: Sort,
     cancel: &Cancellation,
 ) -> Result<Listing, Error> {
     let result = (|| {
@@ -149,7 +150,7 @@ pub fn directory<I: Read + Write>(
         };
         // 大目录工作集先准入，不能拿到远端句柄后再因本地额度不足退出。
         let source = channel.source();
-        let mut scan = Scan::new(source.session, source.generation, path.clone(), hidden)?;
+        let mut scan = Scan::new(source.session, source.generation, path.clone(), hidden, sort)?;
         channel.issue(Expected::Handle, |id| Request::Path { id, op: PathOp::OpenDir, path: path.bytes() }, cancel)?;
         let opened = channel.receive(cancel)?;
         let response = opened.response()?;

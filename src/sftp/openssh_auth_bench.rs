@@ -85,6 +85,7 @@ fn identical_encrypted_authentication_and_data_workload_measures_incremental_ipc
         &mut channel,
         RemotePath::new(&pool, directory.as_os_str().as_encoded_bytes()).unwrap(),
         false,
+        crate::sftp::model::Sort::Name,
         &cancel,
     )
     .unwrap();

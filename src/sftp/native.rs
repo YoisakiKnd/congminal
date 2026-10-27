@@ -408,8 +408,15 @@ impl Session {
             super::model::Error::Cancelled => Error::Cancelled,
             _ => Error::Limit,
         };
-        let mut scan = super::model::Scan::new(self.source.session, self.source.generation, path.clone(), hidden)
-            .map_err(model_error)?;
+        // 原生（libssh2）后端还没接排序选项：目录读取始终按名字排，界面上的排序只影响 OpenSSH 后端。
+        let mut scan = super::model::Scan::new(
+            self.source.session,
+            self.source.generation,
+            path.clone(),
+            hidden,
+            super::model::Sort::Name,
+        )
+        .map_err(model_error)?;
         let handle = self.open_dir(path.bytes(), cancel)?;
         let result = (|| {
             let mut name = [0u8; 1025];

@@ -107,6 +107,7 @@ fn workload<I: Read + Write>(
         &mut channel,
         RemotePath::new(pool, root.join("list").as_os_str().as_encoded_bytes()).unwrap(),
         false,
+        crate::sftp::model::Sort::Name,
         cancel,
     )
     .unwrap();
