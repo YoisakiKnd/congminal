@@ -3779,6 +3779,35 @@ program="/definitely/missing/congminal-shell"
         assert_eq!(app.git.bytes(), 0);
     }
     #[test]
+    fn metadata_changes_refresh_the_git_panel_without_waiting_for_the_cycle() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        // 周期复查拉到 60 秒：下面那次刷新只可能来自仓库元数据指纹。
+        app.driver.config.git.refresh_seconds = 60.0;
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some());
+        assert_eq!(app.git.snapshot.as_ref().unwrap().counts.staged, 0);
+        // 在“终端里”暂存：只动 .git/index，工作树里的文件没变。
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["add", "tracked.txt"])
+            .status()
+            .expect("Git 面板测试需要本机 git");
+        assert!(status.success());
+        wait(&mut app, |a| a.git.snapshot.as_ref().is_some_and(|s| s.counts.staged == 1));
+        assert_eq!(app.git.snapshot.as_ref().unwrap().counts.unstaged, 0);
+        // 工作树改动不碰元数据：仍要等周期复查，指纹不该把它误报成“立刻变了”。
+        std::fs::write(repo.join("tracked.txt"), b"two\n").unwrap();
+        app.tick();
+        assert_eq!(app.git.snapshot.as_ref().unwrap().counts.unstaged, 0, "工作树改动只靠周期复查");
+    }
+
+    #[test]
     fn git_panel_reads_the_active_directory_opens_diffs_and_releases_when_closed() {
         let dir = git_fixture();
         let repo = dir.0.join("repo");
