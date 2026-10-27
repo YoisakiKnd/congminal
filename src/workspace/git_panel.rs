@@ -51,6 +51,11 @@ const INERT_LABEL: &str = "—";
 /// 解决冲突页的按钮：按槽宽降级，窄栏时只留一个字。
 const RESOLVE_LABELS: [[&str; 4]; 3] =
     [["刷新", "保留我方", "保留对方", "返回"], ["刷新", "留我方", "留对方", "返回"], ["刷", "我", "对", "返"]];
+/// 列表页第 7 个按钮：进分支页。
+const BRANCH_LABELS: [&str; 3] = ["分支", "分支", "分"];
+/// 分支页：刷新 / 切到（确认态变“确认”）/ 返回（确认态变“取消”）。
+const BRANCH_PAGE_LABELS: [[&str; 3]; 3] = [["刷新", "切到", "返回"], ["刷新", "切到", "返回"], ["刷", "切", "返"]];
+const CONFIRM_CHECKOUT_LABELS: [&str; 3] = ["确认切到", "确认", "确"];
 const CANCEL_INPUT_LABELS: [&str; 2] = ["提交", "取消"];
 const CANCEL_INPUT_LABELS_NARROW: [&str; 2] = ["提", "取"];
 
@@ -162,6 +167,18 @@ pub(super) struct Panel {
     pub(super) resolve: Option<usize>,
     /// 当前窗格的远程读取通道；`Some` 时只读，且状态行标出远端主机。
     pub(super) remote: Option<git::Remote>,
+    /// 分支页：打开时只读本地分支，切换要二次确认。
+    pub(super) branches_open: bool,
+    pub(super) branches: Option<git::BranchList>,
+    pub(super) branches_task: Option<LatestTask<git::BranchRequest, git::BranchReply>>,
+    pub(super) branches_generation: u64,
+    pub(super) branches_loading: bool,
+    pub(super) branches_error: Option<Error>,
+    pub(super) branch_selected: Option<usize>,
+    pub(super) branch_offset: usize,
+    pub(super) branch_scroll: f64,
+    /// 待确认的切换目标与失效时刻：记的是分支下标，列表变了就作废。
+    pub(super) branch_pending: Option<(usize, Instant)>,
     /// 上一次看到的仓库元数据指纹；变化说明暂存/提交/切分支，立刻排一次刷新。
     pub(super) meta: Option<[Option<Stamp>; 3]>,
     /// 上次检查指纹的时刻，把复查限到 `META_INTERVAL` 一次。
@@ -211,6 +228,16 @@ impl Panel {
             pending: None,
             resolve: None,
             remote: None,
+            branches_open: false,
+            branches: None,
+            branches_task: None,
+            branches_generation: 0,
+            branches_loading: false,
+            branches_error: None,
+            branch_selected: None,
+            branch_offset: 0,
+            branch_scroll: 0.0,
+            branch_pending: None,
             meta: None,
             meta_at: None,
         }
@@ -261,6 +288,8 @@ impl Panel {
             || self.dir.is_some()
             || self.next.is_some()
             || self.input.is_some()
+            || self.branches_open
+            || self.branches.is_some()
             || self.write_note.is_some();
         if !had && !self.write_loading {
             return false;
@@ -290,6 +319,7 @@ impl Panel {
         self.resolve = None;
         self.remote = None;
         self.limits.remote = None;
+        self.close_branches_state();
         self.write_note = None;
         if !self.write_loading {
             self.write = None;
@@ -300,15 +330,19 @@ impl Panel {
 
     /// 页面不在前台或窗口失焦：取消在途查询，保留最近结果，停止排新查询。
     fn suspend(&mut self) -> bool {
-        let changed = self.loading || self.diff_loading || self.next.is_some();
+        let changed = self.loading || self.diff_loading || self.branches_loading || self.next.is_some();
         if let Some(task) = &self.status {
             task.invalidate();
         }
         if let Some(task) = &self.diff_task {
             task.invalidate();
         }
+        if let Some(task) = &self.branches_task {
+            task.invalidate();
+        }
         self.loading = false;
         self.diff_loading = false;
+        self.branches_loading = false;
         self.next = None;
         if changed {
             self.revision = self.revision.wrapping_add(1);
@@ -338,6 +372,14 @@ impl Panel {
         {
             self.pending = None;
             self.write_note = Some(format!("{}确认已过期，未执行", op.describe()));
+            self.revision = self.revision.wrapping_add(1);
+            changed = true;
+        }
+        if let Some((_, until)) = self.branch_pending
+            && Instant::now() >= until
+        {
+            self.branch_pending = None;
+            self.write_note = Some("切换确认已过期，未执行".into());
             self.revision = self.revision.wrapping_add(1);
             changed = true;
         }
@@ -374,6 +416,7 @@ impl Panel {
             self.resolve = None;
             self.input = None;
             self.version = None;
+            self.close_branches_state();
             self.schedule(DEBOUNCE);
             self.revision = self.revision.wrapping_add(1);
             changed = true;
@@ -407,6 +450,8 @@ impl Panel {
                 self.diff = None;
                 self.diff_open = false;
                 self.diff_error = None;
+                // 换目录后分支列表与确认目标都属于上一个仓库，不能留着。
+                self.close_branches_state();
             }
             self.schedule(DEBOUNCE);
             self.revision = self.revision.wrapping_add(1);
@@ -567,6 +612,7 @@ impl Panel {
                 Err(_) => self.diff_error = Some(Error::Worker),
             }
         }
+        changed |= self.poll_branches();
         if changed {
             self.revision = self.revision.wrapping_add(1);
         }
@@ -667,6 +713,197 @@ impl Panel {
         self.query(notify)
     }
 
+    /// 进分支页：只读本地分支，切换动作单独确认。
+    pub(super) fn open_branches(&mut self, notify: Notify) -> bool {
+        if !self.enabled || self.write_loading || self.diff_open || self.input.is_some() || self.resolve.is_some() {
+            return false;
+        }
+        if self.readonly_remote() {
+            return true;
+        }
+        if self.snapshot.as_ref().is_some_and(|snapshot| snapshot.bare) {
+            self.write_note = Some("裸仓库没有工作区，不能切分支".into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        self.pending = None;
+        self.branches_open = true;
+        self.write_note = None;
+        self.branch_selected = None;
+        self.branch_offset = 0;
+        self.branch_scroll = 0.0;
+        self.revision = self.revision.wrapping_add(1);
+        self.query_branches(notify);
+        true
+    }
+
+    /// 退出分支页回到变更列表；在途查询一起取消，结果不再持有额度。
+    pub(super) fn close_branches(&mut self) -> bool {
+        if !self.branches_open {
+            return false;
+        }
+        self.close_branches_state();
+        self.write_note = None;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    fn close_branches_state(&mut self) {
+        if let Some(task) = &self.branches_task {
+            task.invalidate();
+        }
+        self.branches_open = false;
+        self.branches = None;
+        self.branches_loading = false;
+        self.branches_error = None;
+        self.branch_selected = None;
+        self.branch_offset = 0;
+        self.branch_scroll = 0.0;
+        self.branch_pending = None;
+    }
+
+    pub(super) fn query_branches(&mut self, notify: Notify) -> bool {
+        if !self.enabled || self.branches_loading {
+            return false;
+        }
+        let Some(dir) = self.dir.as_deref().map(|dir| dir.to_path_buf()) else {
+            self.branches_error = Some(Error::Path);
+            return true;
+        };
+        self.branches_generation = self.branches_generation.wrapping_add(1);
+        let request =
+            match git::BranchRequest::new(self.owner, self.branches_generation, &dir, &self.limits, &self.pool) {
+                Ok(request) => request,
+                Err(error) => {
+                    self.branches_error = Some(error);
+                    return true;
+                }
+            };
+        if self.branches_task.is_none() {
+            match LatestTask::new_named_in(&self.pool, "git-branches", notify, |request, cancel| {
+                Ok(git::branches(request, cancel))
+            }) {
+                Ok(task) => self.branches_task = Some(task),
+                Err(error) => {
+                    self.branches_error = Some(if error.kind() == std::io::ErrorKind::OutOfMemory {
+                        Error::Budget
+                    } else {
+                        Error::Worker
+                    });
+                    return true;
+                }
+            }
+        }
+        self.branches_loading = true;
+        self.branches_error = None;
+        self.revision = self.revision.wrapping_add(1);
+        if let Err(error) = self.branches_task.as_ref().unwrap().try_submit(request) {
+            self.branches_loading = false;
+            self.branches_error = Some(if error == SubmitError::Budget { Error::Budget } else { Error::Worker });
+        }
+        true
+    }
+
+    fn poll_branches(&mut self) -> bool {
+        if !self.branches_loading {
+            return false;
+        }
+        let Some(result) = self.branches_task.as_ref().and_then(LatestTask::take) else { return false };
+        self.branches_loading = false;
+        match result {
+            Ok(reply) if reply.owner == self.owner && reply.generation == self.branches_generation => {
+                match reply.result {
+                    Ok(list) => {
+                        // 当前分支默认选中：打开页面就能看到自己在哪，也方便切回去。
+                        self.branch_selected = list
+                            .branches
+                            .iter()
+                            .position(|branch| branch.current)
+                            .or_else(|| (!list.branches.is_empty()).then_some(0));
+                        self.branches = Some(list);
+                        self.branches_error = None;
+                        self.branch_offset = self.branch_offset.min(self.branch_rows());
+                    }
+                    Err(error) => self.branches_error = Some(error),
+                }
+            }
+            Ok(_) => {}
+            Err(_) => self.branches_error = Some(Error::Worker),
+        }
+        // 列表换了，之前的确认目标可能指向另一行：直接作废，不按旧下标执行。
+        self.branch_pending = None;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    fn branch_rows(&self) -> usize {
+        self.branches.as_ref().map_or(0, |list| list.branches.len())
+    }
+
+    fn select_branch(&mut self, index: usize) -> bool {
+        if self.branches.as_ref().is_none_or(|list| index >= list.branches.len()) {
+            return false;
+        }
+        if self.branch_selected == Some(index) {
+            return false;
+        }
+        self.branch_selected = Some(index);
+        // 换目标就撤掉待确认，避免确认的是上一行。
+        self.branch_pending = None;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
+    /// “切到”：第一次点击进入确认态，窗口内再点才执行。
+    pub(super) fn request_checkout(&mut self, notify: Notify) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        if self.readonly_remote() {
+            return true;
+        }
+        if self.write_loading {
+            let running = self.write_op.unwrap_or("写操作");
+            self.write_note = Some(format!("正在{running}…请等它结束"));
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        let Some(index) = self.branch_selected else {
+            self.write_note = Some("先点一行选一个分支".into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        };
+        let Some(name) = self.branches.as_ref().and_then(|list| list.branches.get(index)).map(|b| b.name.clone())
+        else {
+            return false;
+        };
+        let confirmed =
+            matches!(self.branch_pending, Some((pending, until)) if pending == index && Instant::now() < until);
+        if !confirmed {
+            self.branch_pending = Some((index, Instant::now() + REMOTE_CONFIRM));
+            self.write_note = Some(format!("再点一次“确认”切到 {name}（未提交改动会保留）"));
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        self.branch_pending = None;
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+            self.write_note = Some("还没有 Git 状态，先刷新".into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        };
+        self.start_write(git::WriteOp::Checkout { name: std::ffi::OsString::from(name) }, &root, notify)
+    }
+
+    /// 分支页的“取消”：只撤掉待确认，不离开页面。
+    pub(super) fn cancel_checkout(&mut self) -> bool {
+        if self.branch_pending.take().is_none() {
+            return false;
+        }
+        self.write_note = Some("已取消切换".into());
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+
     fn toggle_side(&mut self, notify: Notify) -> bool {
         if !self.diff_open {
             return self.open_diff(self.selected.unwrap_or(0), None, notify);
@@ -754,6 +991,45 @@ impl Panel {
             }
             return View { buttons: vec!["刷新", side, "返回"], headline, content };
         }
+        if self.branches_open {
+            let current = self
+                .branches
+                .as_ref()
+                .and_then(|list| list.branches.iter().find(|branch| branch.current))
+                .map(|branch| branch.name.clone())
+                .or_else(|| self.snapshot.as_ref().map(|snapshot| snapshot.head.describe()));
+            headline.push(match &current {
+                Some(name) => format!("分支 › {name}"),
+                None => "分支".to_string(),
+            });
+            headline.push(match &self.write_note {
+                Some(note) => note.clone(),
+                None => match (&self.branches_error, self.branches_loading) {
+                    (Some(error), _) => error.message().to_string(),
+                    (None, true) => "正在读取分支…".into(),
+                    (None, false) => match &self.branches {
+                        Some(list) if list.truncated => {
+                            format!("点一行选中，再点“切到” · 只列出前 {} 个", list.branches.len())
+                        }
+                        _ => "点一行选中，再点“切到”".into(),
+                    },
+                },
+            });
+            if let Some(list) = &self.branches {
+                if list.branches.is_empty() {
+                    content.push(("没有本地分支（可能还没有提交）".into(), false));
+                } else {
+                    for (offset, branch) in list.branches.iter().enumerate().skip(self.branch_offset).take(rows) {
+                        // `●` 标出当前分支；选中行靠反显，两者不冲突。
+                        let text =
+                            if branch.current { format!("● {}", branch.name) } else { format!("  {}", branch.name) };
+                        content.push((text, self.branch_selected == Some(offset)));
+                    }
+                }
+            }
+            let buttons = self.labels(tier);
+            return View { buttons, headline, content };
+        }
         if let Some(index) = self.resolve {
             let label = self
                 .snapshot
@@ -839,6 +1115,14 @@ impl Panel {
         if self.resolve.is_some() {
             return RESOLVE_LABELS[tier].to_vec();
         }
+        if self.branches_open {
+            // 待确认时“切到”位置变“确认”，“返回”位置变“取消”：两个动作都留在原槽位。
+            return if self.branch_pending.is_some() {
+                vec![BRANCH_PAGE_LABELS[tier][0], CONFIRM_CHECKOUT_LABELS[tier], "取消"]
+            } else {
+                BRANCH_PAGE_LABELS[tier].to_vec()
+            };
+        }
         if self.remote.is_some() {
             // 远端只读：只留“刷新”和“差异”，写操作按钮不显示，避免点了才被拒。
             return vec!["刷新", "差异"];
@@ -853,16 +1137,17 @@ impl Panel {
         }
         // 待确认时“提交”位置换成“取消”，只让被点的那个远端按钮变成“确认”，
         // 另一个位置留空，避免误触。
+        let branch = BRANCH_LABELS[tier];
         match self.pending.map(|(op, _)| op) {
             Some(RemoteOp::Pull) => {
-                vec![buttons[0], buttons[1], buttons[2], "取消", CONFIRM_REMOTE_LABELS[tier], INERT_LABEL]
+                vec![buttons[0], buttons[1], buttons[2], "取消", CONFIRM_REMOTE_LABELS[tier], INERT_LABEL, branch]
             }
             Some(RemoteOp::Push) => {
-                vec![buttons[0], buttons[1], buttons[2], "取消", INERT_LABEL, CONFIRM_PUSH_LABELS[tier]]
+                vec![buttons[0], buttons[1], buttons[2], "取消", INERT_LABEL, CONFIRM_PUSH_LABELS[tier], branch]
             }
             None => {
                 buttons[3] = STATUS_LABELS[tier][3];
-                vec![buttons[0], buttons[1], buttons[2], buttons[3], REMOTE_LABELS[tier], PUSH_LABELS[tier]]
+                vec![buttons[0], buttons[1], buttons[2], buttons[3], REMOTE_LABELS[tier], PUSH_LABELS[tier], branch]
             }
         }
     }
@@ -875,8 +1160,13 @@ impl Panel {
             3
         } else if self.resolve.is_some() {
             4
+        } else if self.branches_open {
+            3
+        } else if self.remote.is_some() {
+            // 远端只读：只有“刷新”“差异”。
+            2
         } else {
-            6
+            7
         }
     }
 
@@ -1218,7 +1508,11 @@ impl Panel {
                 if success {
                     // 冲突解决完就回到列表，剩下的冲突还能接着处理。
                     self.resolve = None;
-                    changed |= self.refresh_now(notify);
+                    changed |= self.refresh_now(notify.clone());
+                    // 切分支改的是 HEAD：分支页还开着就一起重读，否则当前标记会停在旧分支上。
+                    if self.branches_open {
+                        changed |= self.query_branches(notify);
+                    }
                 } else {
                     self.schedule(DEBOUNCE);
                 }
@@ -1293,6 +1587,20 @@ impl Workspace {
                         _ => false,
                     };
                 }
+                if self.git.branches_open {
+                    return match slot {
+                        0 => self.git.query_branches(notify),
+                        1 => self.git.request_checkout(notify),
+                        2 => {
+                            if self.git.branch_pending.is_some() {
+                                self.git.cancel_checkout()
+                            } else {
+                                self.git.close_branches()
+                            }
+                        }
+                        _ => false,
+                    };
+                }
                 if self.git.resolve.is_some() {
                     return match slot {
                         0 => self.git.refresh_now(notify),
@@ -1321,10 +1629,14 @@ impl Workspace {
                     (3, false) => self.git.open_commit(),
                     (4, false) => self.git.request_remote(RemoteOp::Pull, notify),
                     (5, false) => self.git.request_remote(RemoteOp::Push, notify),
+                    (6, false) => self.git.open_branches(notify),
                     _ => false,
                 };
             }
             return false;
+        }
+        if self.git.branches_open {
+            return self.git.select_branch(self.git.branch_offset + row - LIST_TOP);
         }
         if !self.git.diff_open {
             return self.git.select(self.git.offset + row - LIST_TOP);
@@ -1372,7 +1684,7 @@ mod tests {
         assert!(panel.open());
         assert!(panel.active);
         let view = panel.view(10, 0);
-        assert_eq!(view.buttons, vec!["刷新", "差异", "暂存", "提交", "拉取", "推送"]);
+        assert_eq!(view.buttons, vec!["刷新", "差异", "暂存", "提交", "拉取", "推送", "分支"]);
         assert!(view.headline[0].contains("工作目录未知"));
         assert!(view.content.is_empty());
         assert!(panel.bytes() == 0);
@@ -1435,7 +1747,7 @@ mod tests {
         assert!(panel.close_resolve());
         assert!(panel.resolve.is_none());
         assert!(!panel.close_resolve());
-        assert_eq!(panel.button_count(), 6);
+        assert_eq!(panel.button_count(), 7);
         // 没进解决页时点“保留我方”不会做任何事。
         assert!(!panel.resolve_side(git::Side::Ours, notify()));
         assert!(!panel.write_loading);
@@ -1557,16 +1869,80 @@ mod tests {
         assert!(view.headline[0].contains("远程目录未知"), "{:?}", view.headline);
     }
 
+    /// 分支页：列表、选中、二次确认与取消。查询本身由 git 适配测试覆盖。
+    #[test]
+    fn branch_page_lists_branches_and_requires_a_second_click() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        panel.branches_open = true;
+        panel.branches = Some(git::BranchList::for_test(&[("feature", true), ("main", false)]));
+        panel.branch_selected = Some(0);
+        let view = panel.view(6, 0);
+        assert_eq!(view.buttons, vec!["刷新", "切到", "返回"]);
+        assert_eq!(panel.button_count(), 3);
+        assert!(view.headline[0].contains("feature"), "{:?}", view.headline);
+        // 当前分支带 `●`，其它行留空；选中行靠反显。
+        assert_eq!(view.content[0].0, "● feature");
+        assert_eq!(view.content[1].0, "  main");
+        assert!(view.content[0].1, "默认选中当前分支");
+        // 窄栏降级成单字，避免被裁成半个词。
+        assert_eq!(panel.view(6, 2).buttons, vec!["刷", "切", "返"]);
+
+        // 第一次点“切到”只进入确认态，不启动写操作。
+        assert!(panel.request_checkout(notify()));
+        assert!(!panel.write_loading);
+        assert_eq!(panel.branch_pending.map(|(index, _)| index), Some(0));
+        let note = panel.write_note.clone().unwrap_or_default();
+        assert!(note.contains("再点一次") && note.contains("feature"), "{note}");
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "确认切到", "取消"]);
+        // 换一行选中会撤掉确认，避免确认的是上一行。
+        assert!(panel.select_branch(1));
+        assert!(panel.branch_pending.is_none());
+        // 取消只清确认态，不离开分支页。
+        assert!(panel.request_checkout(notify()));
+        assert!(panel.cancel_checkout());
+        assert!(panel.branch_pending.is_none());
+        assert!(panel.branches_open);
+        assert!(panel.write_note.as_deref().unwrap_or("").contains("已取消切换"));
+        // 返回列表页并释放分支列表。
+        assert!(panel.close_branches());
+        assert!(!panel.branches_open);
+        assert!(panel.branches.is_none());
+        assert_eq!(panel.button_count(), 7);
+    }
+
+    #[test]
+    fn branch_page_is_closed_for_bare_repositories_and_read_only_remotes() {
+        let mut panel = panel_with(vec![]);
+        panel.snapshot.as_mut().unwrap().bare = true;
+        assert!(panel.open_branches(notify()));
+        assert!(!panel.branches_open, "裸仓库没有工作区，不进分支页");
+        assert!(panel.write_note.as_deref().unwrap_or("").contains("裸仓库"));
+        panel.snapshot.as_mut().unwrap().bare = false;
+        // 远端仓库只读：不进分支页，只提示原因。
+        panel.remote = Some(git::Remote {
+            program: PathBuf::from("/bin/true"),
+            host: "fixture".into(),
+            user: None,
+            port: None,
+            identity: None,
+        });
+        assert!(panel.open_branches(notify()));
+        assert!(!panel.branches_open);
+        // 远端页的按钮数按实际标签算，点击列才不会错位。
+        assert_eq!(panel.button_count(), 2);
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异"]);
+    }
+
     #[test]
     fn stage_button_reflects_whether_the_selection_is_already_staged() {
         let mut panel = panel_with(vec![entry("a.txt", b' ', b'M'), entry("b.txt", b'M', b' ')]);
         panel.selected = Some(0);
-        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异", "暂存", "提交", "拉取", "推送"]);
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异", "暂存", "提交", "拉取", "推送", "分支"]);
         // 已全部进入索引的条目：同一个按钮变成“取消暂存”。
         panel.selected = Some(1);
-        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异", "取消暂存", "提交", "拉取", "推送"]);
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异", "取消暂存", "提交", "拉取", "推送", "分支"]);
         // 窄面板降到单字档，标签不被裁成半个词。
-        assert_eq!(panel.view(6, 2).buttons, vec!["刷", "差", "撤", "提", "拉", "推"]);
+        assert_eq!(panel.view(6, 2).buttons, vec!["刷", "差", "撤", "提", "拉", "推", "分"]);
     }
 
     #[test]
@@ -1578,7 +1954,7 @@ mod tests {
         let note = panel.write_note.clone().unwrap_or_default();
         assert!(note.contains("再点一次") && note.contains("推送"), "{note}");
         let buttons = panel.view(6, 0).buttons;
-        assert_eq!(buttons, vec!["刷新", "差异", "暂存", "取消", "—", "确认推送"]);
+        assert_eq!(buttons, vec!["刷新", "差异", "暂存", "取消", "—", "确认推送", "分支"]);
         // 取消按钮清掉确认态，不执行任何 git 命令。
         assert!(panel.cancel_pending());
         assert!(panel.pending.is_none());

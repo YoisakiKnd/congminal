@@ -41,6 +41,10 @@ const READ_CHUNK: usize = 16 * 1024;
 const WORK_BYTES: usize = 256 * 1024;
 /// 错误摘要上限；这是有界界面文字，不随仓库规模增长。
 const MESSAGE_LIMIT: usize = 200;
+/// 分支列表上限：再多也不值得在 280 px 的侧栏里翻，超出就标记“已截断”。
+pub const BRANCH_LIMIT: usize = 200;
+/// 单个分支名的字节上限；`git check-ref-format` 允许的路径分量都比这个短得多。
+const BRANCH_NAME_BYTES: usize = 255;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -296,6 +300,70 @@ impl StatusRequest {
     }
 }
 
+/// 一个本地分支：名字与“是不是当前分支”。
+pub struct Branch {
+    pub name: String,
+    pub current: bool,
+}
+
+/// 一次分支列表查询的结果。名字都在这一份租约里，丢弃时一起归还。
+pub struct BranchList {
+    pub branches: Vec<Branch>,
+    /// 超过 `BRANCH_LIMIT` 时为真：列表只保留前若干个，界面要显示“已截断”。
+    pub truncated: bool,
+    /// 名字都在这一份租约里；持有到列表被丢弃为止，所以只声明不读。
+    _memory: Lease,
+}
+impl BranchList {
+    /// 只给面板单测用：真实列表来自 `git for-each-ref`，这里造一份等价数据，
+    /// 额度也从当前池子租，语义与真实结果一致。
+    #[cfg(test)]
+    pub(crate) fn for_test(branches: &[(&str, bool)]) -> Self {
+        let bytes = branches.iter().map(|(name, _)| name.len() + 64).sum::<usize>() + 256;
+        let memory = crate::resources::current().lease(Kind::Git, bytes).expect("测试额度");
+        let branches =
+            branches.iter().map(|(name, current)| Branch { name: (*name).to_string(), current: *current }).collect();
+        Self { branches, truncated: false, _memory: memory }
+    }
+}
+
+impl std::fmt::Debug for BranchList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BranchList")
+            .field("branches", &self.branches.len())
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+
+pub(crate) struct BranchRequest {
+    pub(crate) owner: u64,
+    pub(crate) generation: u64,
+    dir: Tracked<PathBuf>,
+    limits: Limits,
+}
+pub(crate) struct BranchReply {
+    pub(crate) owner: u64,
+    pub(crate) generation: u64,
+    pub(crate) result: Result<BranchList, Error>,
+}
+impl BranchRequest {
+    pub(crate) fn new(
+        owner: u64,
+        generation: u64,
+        dir: &Path,
+        limits: &Limits,
+        pool: &Arc<Budget>,
+    ) -> Result<Self, Error> {
+        let length = dir.as_os_str().len();
+        if length == 0 || length > PATH_LIMIT {
+            return Err(Error::Path);
+        }
+        let memory = pool.lease(Kind::Git, length + 128).map_err(|_| Error::Budget)?;
+        Ok(Self { owner, generation, dir: Tracked::new(PathBuf::from(dir), memory), limits: limits.clone() })
+    }
+}
+
 pub(crate) struct DiffTarget {
     root: PathBuf,
     path: OsString,
@@ -350,6 +418,81 @@ pub(crate) fn status(request: StatusRequest, cancel: &Cancellation) -> StatusRep
 pub(crate) fn diff(request: DiffRequest, cancel: &Cancellation) -> DiffReply {
     let result = scan_diff(&request, cancel);
     DiffReply { owner: request.owner, generation: request.generation, target: request.target, result }
+}
+
+pub(crate) fn branches(request: BranchRequest, cancel: &Cancellation) -> BranchReply {
+    let result = scan_branches(&request, cancel);
+    BranchReply { owner: request.owner, generation: request.generation, result }
+}
+
+/// 列出本地分支。只读 `refs/heads`，不碰远端跟踪分支与工作区。
+fn scan_branches(request: &BranchRequest, cancel: &Cancellation) -> Result<BranchList, Error> {
+    let pool = request.dir.memory.budget().clone();
+    let limits = &request.limits;
+    let dir = request.dir.as_path();
+    // `%(HEAD)` 对当前分支是 `*`，其它分支是空格；`-z` 之外的换行分隔在这里够用，
+    // 因为分支名不允许换行（`git check-ref-format` 会拒绝）。
+    let output = run(
+        &pool,
+        limits,
+        &[
+            OsStr::new("for-each-ref"),
+            OsStr::new("--sort=-committerdate"),
+            OsStr::new("--format=%(HEAD)%00%(refname:short)"),
+            OsStr::new("refs/heads"),
+        ],
+        Some(dir),
+        STDERR_BYTES,
+        cancel,
+    )?;
+    if !output.success {
+        return Err(classify(&output, limits));
+    }
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    let parsed = parse_branches(&output.stdout, output.stdout_truncated);
+    let bytes =
+        parsed.branches.iter().map(|branch| branch.name.capacity() + std::mem::size_of::<Branch>()).sum::<usize>()
+            + parsed.branches.capacity() * std::mem::size_of::<Branch>()
+            + 256;
+    let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
+    Ok(BranchList { branches: parsed.branches, truncated: parsed.truncated, _memory: memory })
+}
+
+struct ParsedBranches {
+    branches: Vec<Branch>,
+    truncated: bool,
+}
+
+/// 解析 `%(HEAD)%00%(refname:short)`：第一列 `*` 是当前分支。
+/// 名字过长、为空或带控制字符的条目直接跳过——不猜测，也不把控制字符送进界面。
+fn parse_branches(bytes: &[u8], truncated: bool) -> ParsedBranches {
+    let mut branches = Vec::new();
+    let mut limited = truncated;
+    for line in bytes.split(|byte| *byte == b'\n') {
+        if line.is_empty() {
+            continue;
+        }
+        let (marker, name) = match line.iter().position(|byte| *byte == 0) {
+            Some(index) => (&line[..index], &line[index + 1..]),
+            None => {
+                limited = true;
+                continue;
+            }
+        };
+        if name.len() > BRANCH_NAME_BYTES || name.iter().any(|byte| byte.is_ascii_control()) {
+            limited = true;
+            continue;
+        }
+        if branches.len() >= BRANCH_LIMIT {
+            limited = true;
+            break;
+        }
+        let name = String::from_utf8_lossy(name).into_owned();
+        branches.push(Branch { name, current: marker == b"*" });
+    }
+    ParsedBranches { branches, truncated: limited }
 }
 
 fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Error> {
@@ -968,6 +1111,10 @@ pub(crate) enum WriteOp {
         side: Side,
         count: usize,
     },
+    /// 切换分支：名字只能来自 `scan_branches` 列出来的本地分支。
+    Checkout {
+        name: OsString,
+    },
 }
 
 /// 冲突时保留哪一侧：`--ours` 是当前分支，`--theirs` 是正在合入的那一侧。
@@ -997,6 +1144,7 @@ impl WriteOp {
                 paths.iter().map(|path| path.len().saturating_add(std::mem::size_of::<OsString>())).sum()
             }
             Self::Commit { message } => message.capacity(),
+            Self::Checkout { name } => name.len().saturating_add(std::mem::size_of::<OsString>()),
             Self::Pull | Self::Push => 0,
         }
     }
@@ -1013,6 +1161,7 @@ impl WriteOp {
             Self::Pull => "拉取",
             Self::Push => "推送",
             Self::Resolve { side, .. } => side.describe(),
+            Self::Checkout { .. } => "切换分支",
         }
     }
 }
@@ -1105,6 +1254,25 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             let text = String::from_utf8_lossy(&output.stdout);
             let line = text.lines().map(str::trim).find(|line| !line.is_empty()).unwrap_or("");
             Ok(if line.is_empty() { "已提交".to_string() } else { line.chars().take(MESSAGE_LIMIT).collect() })
+        }
+        WriteOp::Checkout { name } => {
+            // 分支名来自列表，但仍在这里挡一次：以 `-` 开头会被 git 当成选项，
+            // 带控制字符或 NUL 的一律不执行，宁可报错也不猜。
+            let bytes = name.as_encoded_bytes();
+            if bytes.is_empty()
+                || bytes[0] == b'-'
+                || bytes.len() > BRANCH_NAME_BYTES
+                || bytes.iter().any(|byte| byte.is_ascii_control())
+            {
+                return Err(Error::Path);
+            }
+            let output =
+                run(&pool, limits, &[OsStr::new("switch"), name.as_os_str()], Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output, limits));
+            }
+            let label = String::from_utf8_lossy(bytes).into_owned();
+            Ok(format!("已切到 {label}"))
         }
         WriteOp::Pull => {
             // `--ff-only`：分叉时不生成合并提交，也不改工作区，只把结果报给用户。
