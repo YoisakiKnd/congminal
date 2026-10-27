@@ -56,6 +56,29 @@ impl PartialEq for Profiles {
     }
 }
 impl Profiles {
+    /// 用连接页里点到的 SSH 别名临时合成一个配置档。
+    ///
+    /// `host` 就是别名本身：`HostName`/`User`/`Port`/`ProxyJump`/`Include` 都交给 OpenSSH
+    /// 自己按 `~/.ssh/config` 展开，应用不重复实现也不改写这些设置。合成结果只挂在新建的
+    /// 窗格上，不写回配置，也不出现在配置档列表里。
+    pub fn alias_profile(alias: &str, program: &std::path::Path, pool: &Arc<Budget>) -> Option<Self> {
+        if alias.is_empty() || alias.len() > 253 || alias.starts_with('-') {
+            return None;
+        }
+        let mut entry = Table::default();
+        for (key, value) in
+            [("kind", "ssh"), ("name", alias), ("host", alias), ("program", program.to_str().unwrap_or("ssh"))]
+        {
+            entry.entries.push((key.to_string(), Value::String(value.to_string())));
+        }
+        let mut connections = Table::default();
+        connections.entries.push(("alias".to_string(), Value::Table(entry)));
+        let mut root = Table::default();
+        root.entries.push(("connections".to_string(), Value::Table(connections)));
+        let mut warnings = Vec::new();
+        let profiles = Self::parse(&root, pool, &mut warnings);
+        (!profiles.is_empty()).then_some(profiles)
+    }
     pub fn shares(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {
             (None, None) => true,

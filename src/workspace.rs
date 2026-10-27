@@ -1591,6 +1591,29 @@ impl Workspace {
                         false,
                     );
                 }
+                // 配置档之后列出 ~/.ssh/config 里的别名：点一下就按这个别名新建连接。
+                let aliases = &self.driver.config.ssh.aliases;
+                let start = self.connection_alias_start(h);
+                if !aliases.is_empty() {
+                    let rows = (r.h / h).saturating_sub(start);
+                    if rows >= 2 {
+                        self.driver.renderer.chrome(
+                            &mut self.frame,
+                            [r.x, r.y + start * h, r.w, h],
+                            "SSH 别名 · 来自 ssh 配置",
+                            false,
+                        );
+                        for (index, alias) in aliases.iter().take(rows - 1).enumerate() {
+                            let text = format!("别名 · {alias}");
+                            self.driver.renderer.chrome(
+                                &mut self.frame,
+                                [r.x, r.y + (start + 1 + index) * h, r.w, h],
+                                &text,
+                                false,
+                            );
+                        }
+                    }
+                }
             } else {
                 for i in 0..self.panes.len() {
                     let p = &self.panes[i];
@@ -1627,6 +1650,40 @@ impl Workspace {
     }
 
     /// 某个配置档当前连接的阶段：优先当前窗格，其次第一个用它的窗格。
+    /// 认证覆盖层是否正为这个窗格等待口令或主机密钥确认。
+    /// 非预览构建没有覆盖层，恒为 false（只有密钥/agent 认证，没有可观察的“认证中”）。
+    fn authenticating_pane(&self, index: usize) -> bool {
+        #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+        {
+            self.authentication.as_ref().is_some_and(|overlay| {
+                let owner = overlay.controller.owner();
+                owner.session == self.panes[index].id && owner.generation == self.panes[index].auth_generation
+            })
+        }
+        #[cfg(not(all(any(test, feature = "sftp-preview"), unix)))]
+        {
+            let _ = index;
+            false
+        }
+    }
+    /// 连接页里别名区的起始行：重连/取消两行之后是配置档，别名接在配置档后面。
+    fn connection_alias_start(&self, h: usize) -> usize {
+        let visible = (self.left_rect.h / h).saturating_sub(2);
+        let profiles = self.driver.config.connections.len();
+        let offset = self.profiles_offset.min(profiles.saturating_sub(visible));
+        let drawn = profiles.saturating_sub(offset).min(visible);
+        2 + drawn
+    }
+    /// 点连接页里的 SSH 别名：按别名临时合成一个配置档后新建远程窗格。
+    fn open_ssh_alias(&mut self, alias: &str) {
+        let program = self.driver.config.ssh.program.clone();
+        match config::profiles::Profiles::alias_profile(alias, &program, &crate::resources::current()) {
+            Some(profiles) => {
+                self.start_remote_alias(profiles, 0, remote::Target::New(self.selected), alias.to_string())
+            }
+            None => self.notice("这个别名不能直接当主机名使用"),
+        }
+    }
     fn profile_phase(&self, profile: usize) -> Option<remote::Phase> {
         let profiles = &self.driver.config.connections;
         let loaded = self.index(self.selected);
@@ -2098,7 +2155,16 @@ impl Workspace {
                                 let offset = self
                                     .profiles_offset
                                     .min(self.driver.config.connections.len().saturating_sub(visible));
-                                self.add_with_profile(None, Some(offset + index));
+                                let profiles = self.driver.config.connections.len();
+                                let drawn = profiles.saturating_sub(offset).min(visible);
+                                if index < drawn {
+                                    self.add_with_profile(None, Some(offset + index));
+                                } else if let Some(alias) = row
+                                    .checked_sub(self.connection_alias_start(h) + 1)
+                                    .and_then(|i| self.driver.config.ssh.aliases.get(i).cloned())
+                                {
+                                    self.open_ssh_alias(&alias);
+                                }
                             }
                         } else if let Some(index) = row.checked_sub(1).filter(|i| *i < self.panes.len()) {
                             self.select(self.panes[index].id);
@@ -2420,6 +2486,11 @@ impl App for Workspace {
                 {
                     remote.mark_output();
                     self.chrome_dirty = true;
+                }
+                // 前台认证覆盖层正在等这个窗格的凭据：状态机据此报“认证中”，不靠输出猜。
+                let authenticating = self.authenticating_pane(index);
+                if let Some(remote) = &mut self.panes[index].remote {
+                    remote.set_authenticating(authenticating);
                 }
                 if !ticked && !self.panes[index].ended {
                     self.panes[index].ended = true;
@@ -3223,7 +3294,9 @@ exec /bin/cat
         wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Active));
         let rows = app.status_rows();
         assert!(rows[0].starts_with("SSH 活动 · "), "{}", rows[0]);
+        assert!(rows[0].contains("连接 "), "活动会话要写出连接耗时：{}", rows[0]);
         assert_eq!(app.panes[app.loaded].remote.as_ref().unwrap().phase(), remote::Phase::Active);
+        assert!(app.panes[app.loaded].remote.as_ref().unwrap().connect_time().is_some());
         if let Ok(path) = std::env::var("CONGMINAL_SSH_PHASE_PREVIEW_PATH") {
             force_draw(&mut app);
             let mut bytes = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
@@ -3237,9 +3310,108 @@ exec /bin/cat
         wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
         wait(&mut app, |a| a.panes[a.loaded].ended);
         let rows = app.status_rows();
-        assert!(rows[0].contains("SSH 失败 · 退出码 3"), "{}", rows[0]);
+        // 认不出特征时写“连接失败”，不推断认证细节；退出码照实写。
+        assert!(rows[0].starts_with("SSH 失败 · 连接失败 · 退出码 3"), "{}", rows[0]);
         assert!(rows[0].contains("连接页可重连"), "{}", rows[0]);
         assert_eq!(app.profile_phase(1), Some(remote::Phase::Failed));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_aliases_from_the_system_config_start_connections_from_the_connection_page() {
+        let dir = layout::TestDir::new();
+        let fake = fake_ssh(&dir.0, "fake-ssh-alias", "printf 'REMOTE_READY'\nexec /bin/cat\n");
+        let ssh_config = dir.0.join("ssh-config");
+        std::fs::write(&ssh_config, "Host web-1\n  HostName 10.0.0.9\nHost *.internal\n").unwrap();
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[ssh]\nprogram = {fake:?}\nconfig-file = {ssh_config:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.ssh = configured.ssh;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+        // 别名区接在配置档后面：没有配置档时从第 2 行开始，标题下面才是可点的别名。
+        let h = app.driver.renderer.cell_size().1;
+        let start = app.connection_alias_start(h);
+        assert_eq!(start, 2, "没有配置档时别名标题就在按钮行下面");
+        let rect = app.left_rect;
+        let (x, y) = ((rect.x + 4) as f64, (rect.y + (start + 1) * h + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        wait(&mut app, |a| a.panes.len() == 2);
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        // 新建的窗格按别名连：host 就是别名，其余交给 ssh 自己解析。
+        let (profiles, index) = app.panes[app.loaded].profile.clone().unwrap();
+        match &profiles.get(index).unwrap().connection {
+            config::profiles::Connection::Ssh(ssh) => assert_eq!(ssh.host, "web-1"),
+            other => panic!("别名应当建成 SSH 连接：{other:?}"),
+        }
+        assert_eq!(app.driver.config.connections.len(), 0, "临时配置档不写回配置列表");
+        wait(&mut app, |a| a.profile_phase(0).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn late_alias_results_are_dropped_when_the_alias_disappears() {
+        let dir = layout::TestDir::new();
+        let fake = fake_ssh(&dir.0, "fake-ssh-alias-gone", "printf 'REMOTE_READY'\nexec /bin/cat\n");
+        let ssh_config = dir.0.join("ssh-config");
+        std::fs::write(&ssh_config, "Host gone-1\n  HostName 10.0.0.10\n").unwrap();
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[ssh]\nprogram = {fake:?}\nconfig-file = {ssh_config:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.ssh = configured.ssh;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+        let h = app.driver.renderer.cell_size().1;
+        let start = app.connection_alias_start(h);
+        let rect = app.left_rect;
+        let (x, y) = ((rect.x + 4) as f64, (rect.y + (start + 1) * h + h / 2) as f64);
+        app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
+        app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
+        // 配置重载后别名没了：这次连接的结果不能再落地，也不能悄悄换成别的配置档。
+        app.driver.config.ssh.aliases.clear();
+        wait(&mut app, |a| a.status.as_deref() == Some("连接来源已变化，未应用迟到的 SSH 结果"));
+        assert_eq!(app.panes.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn authentication_overlay_marks_the_pane_as_authenticating_before_it_connects() {
+        use crate::ssh::auth::{Backend, Kind};
+        let dir = layout::TestDir::new();
+        // 静默的假 ssh：只等、不输出，这样“还没连上”的阶段可以稳定观察。
+        let silent = fake_ssh(&dir.0, "fake-ssh-silent", "sleep 30\n");
+        let (mut configured, mut warnings) =
+            Config::parse(&format!("[connections.quiet]\nkind='ssh'\nhost='fixture'\nprogram={silent:?}\n"));
+        configured.admit_connections(&mut warnings);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let mut app = workspace();
+        app.driver.config.connections = configured.connections;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        force_draw(&mut app);
+        app.add_with_profile(None, Some(0));
+        wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Starting));
+        // 打开前台认证覆盖层：该窗格报“认证中”，状态页写等待时长而不是猜出来的阶段。
+        let (owner, identity) = app.prepare_authentication().unwrap();
+        let (mut backend, front) =
+            Backend::with_identity(owner, &crate::resources::current(), Arc::new(|| {}), identity).unwrap();
+        let _ticket =
+            backend.begin(Kind::Secret, b"Complete fixture challenge", &crate::tasks::Cancellation::default()).unwrap();
+        app.open_authentication(front).unwrap();
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Authenticating));
+        let rows = app.status_rows();
+        assert!(rows[0].starts_with("SSH 认证中 · 已等待 "), "{}", rows[0]);
+        // 取消认证后回到“启动中”：没有输出就不能自称活动。
+        app.dismiss_authentication();
+        wait(&mut app, |a| a.profile_phase(0) == Some(remote::Phase::Starting));
     }
 
     #[cfg(unix)]
@@ -3269,6 +3441,9 @@ exec /bin/cat
         let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
         assert!(texts.iter().any(|text| text == "SSH · 认证失败"), "{texts:?}");
         assert_eq!(app.profile_phase(0), Some(remote::Phase::Failed));
+        // 同一条原因也写进状态页，不用去通知里找。
+        let rows = app.status_rows();
+        assert!(rows[0].starts_with("SSH 失败 · 认证失败 · 退出码 255"), "{}", rows[0]);
 
         // 第二个连接要等它真的建出窗格：上一个窗格已经结束，不能拿“已结束”当新窗格就绪。
         app.add_with_profile(None, Some(1));

@@ -39,6 +39,16 @@ Primary 在 macOS 为 Cmd，其他平台为 Ctrl+Shift。可在 `[keybindings]` 
 
 左栏“连接”页读取 `[connections.<id>]`，最多 16 个，显示本地/SSH、分组和名称；滚轮可访问短栏中看不到的条目。点击本地配置档新建标签，覆盖该会话的 program/args/working-directory，保留其余配置。旧会话保留启动配置快照，热重载不改变已运行的程序；本地目录页采用该会话实际配置的起点。示例见 [配置模板](../assets/congminal.example.toml)，边界和内存成本见 [评估](evaluations/m4-profiles.md)。
 
+### 系统 SSH 配置里的别名
+
+配置里写了 `[ssh]` 分组（示例配置已包含）时，应用会读一次 `config-file`（默认 `~/.ssh/config`，最多读 256 KiB），把 `Host` 行里能直接当主机名的名字列在连接页配置档下面，点一下就用这个别名新建 SSH 连接：
+
+- 只认 `Host` 行里不含 `*`、`?`、`!`、不以 `-` 开头、没有控制字符的名字；`HostName`/`HostKeyAlias` 这类长关键字不算。去重、按出现顺序、最多 32 条（`config::ssh::MAX_ALIASES`）。
+- `HostName`、`User`、`Port`、`IdentityFile`、`ProxyJump`、`Include`、`Match` 一律交给 OpenSSH 自己展开：应用只把别名当主机名传给 `ssh`，不解析、不复制这些设置，也不改写用户的 SSH 配置。
+- 点别名时按它临时合成一个配置档（host = 别名，program = `[ssh] program`），只挂在新窗格上，不写回配置、不出现在配置档列表里；结果落地前会检查这个别名是否还在列表里，配置重载后迟到的结果直接丢弃。
+- 读文件在解析配置时做一次，不起线程、不起子进程；文件不存在时列表为空且不报警，读不了给一条警告。
+- 未做：不列 `Include` 里引入的其他文件（OpenSSH 连接时仍会用到它们）、不做按别名的分组/主题、不显示 `HostName` 等实际参数。
+
 本地工作目录不展开 ~ 或环境变量，使用启动目录相对路径或绝对路径。配置中不接受密码或私钥内容，不读取密钥文件。SSH 现已接入 OpenSSH PTY，操作与验收边界见 [M5 记录](execution-m5.md)；theme 为关联元数据，按会话应用将在 M8 接入。布局文件不保存配置档或自动重连。
 
 ## 布局保存与恢复
