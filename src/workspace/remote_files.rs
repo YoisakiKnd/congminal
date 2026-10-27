@@ -7,6 +7,17 @@ use crate::{
     ssh::auth::Owner,
 };
 const SLOTS: usize = 66;
+/// 名称上限与 SFTP v3 NAME 字段一致；输入超出即丢弃，不扩容。
+const NAME_BYTES: usize = 1024;
+const PREEDIT_BYTES: usize = 256;
+/// 操作行标签：完整、双字、单字三档，按每槽可用显示列选择。
+const OPS_LABELS: [[&str; 6]; 3] = [
+    ["[新建]", "[改名]", "[删除]", "[上传]", "[下载]", "[任务]"],
+    ["新建", "改名", "删除", "上传", "下载", "任务"],
+    ["新", "改", "删", "上", "下", "任"],
+];
+const FORM_LABELS: [[&str; 2]; 3] = [["[确定]", "[取消]"], ["确定", "取消"], ["确", "取"]];
+const CONFIRM_LABELS: [[&str; 2]; 3] = [["[删除]", "[取消]"], ["删除", "取消"], ["删", "取"]];
 #[cfg(feature = "sftp-preview")]
 #[path = "sftp_entry.rs"]
 mod entry;
@@ -156,6 +167,107 @@ struct Parked {
     ticket: Ticket,
     overlay: authentication::Overlay,
 }
+/// 写操作类型；只用于提示与流程选择，不参与协议编码。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Op {
+    NewFolder,
+    Rename,
+    Delete,
+}
+/// 名称输入：固定上限缓冲，超出丢弃；提交时由 `RemotePath::child` 再校验一次。
+struct NameInput {
+    op: Op,
+    text: String,
+    preedit: String,
+    caret: usize,
+    _memory: Lease,
+}
+impl NameInput {
+    fn new(op: Op, pool: &Arc<crate::resources::Budget>) -> Result<Self, Failure> {
+        let memory = pool
+            .lease(Kind::Sftp, std::mem::size_of::<Self>() + 2 * NAME_BYTES + PREEDIT_BYTES)
+            .map_err(|_| Failure::Budget)?;
+        let mut text = String::new();
+        text.try_reserve_exact(NAME_BYTES).map_err(|_| Failure::Budget)?;
+        let mut preedit = String::new();
+        preedit.try_reserve_exact(PREEDIT_BYTES).map_err(|_| Failure::Budget)?;
+        Ok(Self { op, text, preedit, caret: 0, _memory: memory })
+    }
+    fn insert(&mut self, text: &str) -> bool {
+        if text.contains('\0') || self.text.len() + text.len() > NAME_BYTES {
+            return false;
+        }
+        self.text.insert_str(self.caret, text);
+        self.caret += text.len();
+        true
+    }
+    fn delete(&mut self, back: bool) -> bool {
+        let (start, end) = if back {
+            match self.text[..self.caret].char_indices().next_back() {
+                Some((i, _)) => (i, self.caret),
+                None => return false,
+            }
+        } else {
+            match self.text[self.caret..].chars().next() {
+                Some(c) => (self.caret, self.caret + c.len_utf8()),
+                None => return false,
+            }
+        };
+        self.text.replace_range(start..end, "");
+        self.caret = start;
+        true
+    }
+    fn motion(&mut self, right: bool) {
+        self.caret = if right {
+            self.caret + self.text[self.caret..].chars().next().map_or(0, char::len_utf8)
+        } else {
+            self.text[..self.caret].char_indices().next_back().map_or(0, |p| p.0)
+        };
+    }
+}
+/// 删除确认：显式展示主机与绝对路径，必须再次确认才下发。
+struct Confirm {
+    path: PathValue,
+    host: String,
+    label: String,
+    directory: bool,
+    _memory: Lease,
+}
+/// 显示宽度：与绘制共用同一套字符宽度，避免按字节数裁切。
+fn cells(text: &str) -> usize {
+    text.chars().map(crate::term::char_width).sum()
+}
+/// 窄面板里名称比上下文重要：尾部至少占一半宽度，前缀只拿剩下的部分。
+fn target_line(head: &str, tail: &str, width: usize) -> String {
+    let full = format!("{head}{tail}");
+    if cells(&full) <= width {
+        return full;
+    }
+    let budget = width.div_ceil(2).max(1);
+    let mut kept: Vec<char> = Vec::new();
+    let mut used = 0;
+    for c in tail.chars().rev() {
+        let w = crate::term::char_width(c);
+        if used + w > budget {
+            break;
+        }
+        used += w;
+        kept.push(c);
+    }
+    kept.reverse();
+    let mut line = crate::term::clip(head, width.saturating_sub(used + 1));
+    line.push('…');
+    line.extend(kept);
+    line
+}
+/// 在途写任务：最多一个，完成前不接受新的写操作。
+struct Mutation {
+    ticket: Ticket,
+    binding: Binding,
+    authentication: Authentication,
+    op: Op,
+    _memory: Lease,
+}
 struct View {
     ticket: Ticket,
     binding: Binding,
@@ -200,6 +312,9 @@ pub(super) struct State {
     paths_form: Option<paths_form::Form>,
     tasks: transfer_list::List,
     notices: transfer_notifications::Ring,
+    mutation: Option<Mutation>,
+    form: Option<NameInput>,
+    confirm: Option<Confirm>,
     view: Option<View>,
     attempted: Option<(u64, Profiles, usize)>,
     error: Option<Failure>,
@@ -230,6 +345,9 @@ impl State {
             paths_form: None,
             tasks: transfer_list::List::default(),
             notices: transfer_notifications::Ring::default(),
+            mutation: None,
+            form: None,
+            confirm: None,
             view: None,
             attempted: None,
             error: None,
@@ -248,6 +366,13 @@ impl State {
                 self.service.cancel(task.ticket);
             }
         }
+        // 写任务与输入属于当前目录视图；视图消失时一并取消并归还额度。
+        if let Some(task) = self.mutation.take() {
+            dismiss |= active == Some(task.ticket);
+            self.service.cancel(task.ticket);
+        }
+        self.form = None;
+        self.confirm = None;
         self.view = None;
         dismiss
     }
@@ -401,6 +526,7 @@ impl Workspace {
                 state.error = None;
             }
         }
+        let mut refresh: Option<(PathValue, bool)> = None;
         for _ in 0..2 {
             let Some(completion) = state.service.take() else { break };
             #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -408,6 +534,31 @@ impl Workspace {
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             let Some(completion) = self.transfer_preparation_result(&mut state, completion) else { continue };
             let Some(completion) = self.remote_transfer_result(&mut state, completion) else { continue };
+            if state.mutation.as_ref().is_some_and(|m| m.ticket == completion.ticket) {
+                let mutation = state.mutation.take().unwrap();
+                self.finish_remote_authentication(completion.ticket);
+                if mutation.binding.valid(self) && mutation.binding.owner.session == self.selected {
+                    match completion.result {
+                        Ok(reply) => match reply.data {
+                            Ok(service::Output::Changed) => {
+                                state.error = None;
+                                // 写操作成功后才重新读取目录；失败保留原列表与错误。
+                                refresh = state.view.as_ref().map(|v| (v.target.clone(), v.hidden));
+                                self.notice(match mutation.op {
+                                    Op::NewFolder => "已创建目录",
+                                    Op::Rename => "已重命名",
+                                    Op::Delete => "已删除",
+                                });
+                            }
+                            Err(error) => state.error = Some(error),
+                            _ => state.error = Some(Failure::Protocol),
+                        },
+                        Err(_) => state.error = Some(Failure::Cancelled),
+                    }
+                }
+                self.chrome_dirty = true;
+                continue;
+            }
             self.finish_remote_authentication(completion.ticket);
             let pending = state
                 .pending
@@ -454,23 +605,41 @@ impl Workspace {
             && self.authentication.is_none()
             && !state.review_active()
             && !self.composing()
-            && let Some((ticket, front)) = state
+        {
+            // 目录读取与写操作共用同一可见认证流程；同一时刻只开一个前台认证。
+            let mut front = state
                 .pending
                 .iter_mut()
                 .flatten()
                 .filter(|p| p.binding.valid(self) && p.binding.owner.session == self.selected)
-                .find_map(|p| p.authentication.take_ready().map(|front| (p.ticket, front)))
-        {
-            state.invalidate_transfer_clicks();
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
-            state.suspend_transfer_paths();
-            match self.open_authentication(front) {
-                Ok(()) => self.authentication.as_mut().unwrap().task = Some(ticket),
-                Err(error) => self.authentication_error(error),
+                .find_map(|p| p.authentication.take_ready().map(|front| (p.ticket, front)));
+            if front.is_none()
+                && let Some(mutation) = state
+                    .mutation
+                    .as_mut()
+                    .filter(|m| m.binding.valid(self) && m.binding.owner.session == self.selected)
+            {
+                front = mutation.authentication.take_ready().map(|front| (mutation.ticket, front));
+            }
+            if let Some((ticket, front)) = front {
+                state.invalidate_transfer_clicks();
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
+                state.suspend_transfer_paths();
+                match self.open_authentication(front) {
+                    Ok(()) => self.authentication.as_mut().unwrap().task = Some(ticket),
+                    Err(error) => self.authentication_error(error),
+                }
             }
         }
         self.transfer_notifications_tick(&mut state);
         self.sftp = Some(state);
+        if let Some((target, hidden)) = refresh
+            && let Err(error) = self.submit_remote_directory(target.bytes(), hidden)
+            && let Some(state) = self.sftp.as_mut()
+        {
+            state.error = Some(error);
+            self.chrome_dirty = true;
+        }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         self.finish_transfer_preparation();
         // 只在进入新窗格/配置时自动尝试一次；失败后等待明确刷新，避免预算拒绝循环。
@@ -569,6 +738,7 @@ impl Workspace {
             .filter(|s| s.exiting && !matches!(s.shutdown, Shutdown::Complete(_)))
             .map(|_| Instant::now() + Duration::from_millis(10))
     }
+    /// `column` 是操作行的 6 等分槽位；首行按钮按 3 等分显示，因此折半后再取列。
     pub(super) fn sftp_click(&mut self, row: usize, column: usize) -> bool {
         if !self.sftp_route() {
             return false;
@@ -579,20 +749,67 @@ impl Workspace {
         }
         if row == 3
             && self.sftp.as_ref().is_some_and(|s| {
-                s.exiting || s.error.is_some() || s.view.as_ref().is_none_or(|v| v.loading || v.error.is_some())
+                s.exiting
+                    || s.error.is_some()
+                    || s.mutation.is_some()
+                    || s.view.as_ref().is_none_or(|v| v.loading || v.error.is_some())
             })
         {
             return true;
         }
-        if row == 3 && column == 2 {
-            self.show_transfer_list();
+        if row == 3 && self.sftp.as_ref().is_some_and(|s| s.form.is_some() || s.confirm.is_some()) {
+            let confirm = self.sftp.as_ref().is_some_and(|s| s.confirm.is_some());
+            match column / 3 {
+                0 if confirm => self.sftp_confirm_delete(),
+                0 => {
+                    if let Some(op) = self.sftp.as_ref().and_then(|s| s.form.as_ref()).map(|f| f.op) {
+                        self.sftp_submit_name(op);
+                    }
+                }
+                _ => {
+                    if let Some(state) = self.sftp.as_mut() {
+                        state.form = None;
+                        state.confirm = None;
+                    }
+                    self.chrome_dirty = true;
+                }
+            }
             return true;
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        if row == 3 && column < 2 {
-            if self.open_transfer_paths(column == 0).is_err() {
-                self.notice("请选择普通文件或有效目录；属性不全请刷新，额度不足时先清除已结束记录");
+        if row == 3 && column >= 3 {
+            return match column {
+                5 => {
+                    self.show_transfer_list();
+                    true
+                }
+                #[cfg(any(target_os = "macos", target_os = "linux"))]
+                3 | 4 => {
+                    if self.open_transfer_paths(column == 3).is_err() {
+                        self.notice("请选择普通文件或有效目录；属性不全请刷新，额度不足时先清除已结束记录");
+                    }
+                    true
+                }
+                _ => true,
+            };
+        }
+        if row == 3 {
+            let op = match column {
+                0 => Op::NewFolder,
+                1 => Op::Rename,
+                _ => Op::Delete,
+            };
+            let result = if op == Op::Delete { self.sftp_open_confirm() } else { self.sftp_open_form(op) };
+            if let Err(error) = result
+                && let Some(state) = self.sftp.as_mut()
+            {
+                state.error = Some(error);
+                self.notice(match error {
+                    Failure::Invalid => "先选择一个远端条目，再执行该操作",
+                    Failure::Budget => "额度不足，无法打开输入",
+                    _ => "当前状态不接受新的写操作",
+                });
             }
+            self.chrome_dirty = true;
             return true;
         }
         let next = (|| -> Result<Option<(PathValue, bool)>, Failure> {
@@ -639,6 +856,205 @@ impl Workspace {
         }
         true
     }
+    /// 名称输入或删除确认激活时独占键盘，避免把名称或确认键送到终端。
+    pub(super) fn sftp_capturing(&self) -> bool {
+        self.sftp.as_ref().is_some_and(|s| s.form.is_some() || s.confirm.is_some())
+    }
+    pub(super) fn sftp_capture_text(&mut self, text: &str) -> bool {
+        let Some(state) = self.sftp.as_mut() else { return false };
+        let Some(form) = state.form.as_mut() else { return false };
+        if form.insert(text) {
+            self.chrome_dirty = true;
+        }
+        true
+    }
+    pub(super) fn sftp_capture_preedit(&mut self, text: &str) -> bool {
+        let Some(state) = self.sftp.as_mut() else { return false };
+        let Some(form) = state.form.as_mut() else { return false };
+        if !text.contains('\0') && text.len() <= PREEDIT_BYTES {
+            form.preedit.clear();
+            form.preedit.push_str(text);
+            self.chrome_dirty = true;
+        }
+        true
+    }
+    /// 返回 true 表示按键已被输入/确认消费，不能再交给终端。
+    pub(super) fn sftp_capture_key(&mut self, key: Key, mods: Mods) -> bool {
+        let Some(state) = self.sftp.as_mut() else { return false };
+        if state.confirm.is_some() {
+            match key {
+                Key::Enter => {
+                    self.sftp_confirm_delete();
+                }
+                Key::Escape => {
+                    state.confirm = None;
+                    self.chrome_dirty = true;
+                }
+                _ => {}
+            }
+            return true;
+        }
+        let Some(form) = state.form.as_mut() else { return false };
+        let op = form.op;
+        match key {
+            Key::Enter => {
+                form.preedit.clear();
+                self.sftp_submit_name(op);
+            }
+            Key::Escape => {
+                state.form = None;
+                self.chrome_dirty = true;
+            }
+            Key::Backspace => self.chrome_dirty |= form.delete(true),
+            Key::Delete => self.chrome_dirty |= form.delete(false),
+            Key::Left => {
+                form.motion(false);
+                self.chrome_dirty = true;
+            }
+            Key::Right => {
+                form.motion(true);
+                self.chrome_dirty = true;
+            }
+            Key::Home => {
+                form.caret = 0;
+                self.chrome_dirty = true;
+            }
+            Key::End => {
+                form.caret = form.text.len();
+                self.chrome_dirty = true;
+            }
+            // X11 与 Windows 把可打印字符作为 Key::Char 送来（macOS 走 Event::Text），
+            // 表单独占键盘时这些字符只能在这里进输入框。
+            Key::Char(c) if !mods.ctrl && !mods.logo && !c.is_control() && form.insert(c.encode_utf8(&mut [0; 4])) => {
+                self.chrome_dirty = true;
+            }
+            _ => {}
+        }
+        true
+    }
+    fn sftp_open_form(&mut self, op: Op) -> Result<(), Failure> {
+        let state = self.sftp.as_mut().ok_or(Failure::Invalid)?;
+        if state.mutation.is_some() || state.exiting {
+            return Err(Failure::Cancelled);
+        }
+        let selected = state.view.as_ref().and_then(|v| v.selected);
+        if op == Op::Rename && selected.is_none() {
+            return Err(Failure::Invalid);
+        }
+        let pool = state.service.budget().clone();
+        let form = NameInput::new(op, &pool)?;
+        state.confirm = None;
+        state.form = Some(form);
+        self.chrome_dirty = true;
+        Ok(())
+    }
+    fn sftp_open_confirm(&mut self) -> Result<(), Failure> {
+        let state = self.sftp.as_mut().ok_or(Failure::Invalid)?;
+        if state.mutation.is_some() || state.exiting {
+            return Err(Failure::Cancelled);
+        }
+        let view = state.view.as_ref().ok_or(Failure::Invalid)?;
+        let index = view.selected.ok_or(Failure::Invalid)?;
+        let listing = view.listing().ok_or(Failure::Invalid)?;
+        let entry = listing.entries.get(index).ok_or(Failure::Invalid)?;
+        let path = view.target.child(&entry.name).map_err(|_| Failure::Invalid)?;
+        // 确认行必须能独立判断目标：主机、用户与绝对路径同时显示，不依赖上下文记忆。
+        let profile = view.binding.profiles.get(view.binding.profile).ok_or(Failure::Invalid)?;
+        let host = match &profile.connection {
+            Connection::Ssh(ssh) => match &ssh.user {
+                Some(user) => format!("{user}@{}", ssh.host),
+                None => ssh.host.clone(),
+            },
+            Connection::Local(_) => profile.name.clone(),
+        };
+        let pool = state.service.budget().clone();
+        let memory =
+            pool.lease(Kind::Sftp, std::mem::size_of::<Confirm>() + host.len() + 128).map_err(|_| Failure::Budget)?;
+        let label = path.label().to_string();
+        state.form = None;
+        state.confirm =
+            Some(Confirm { path, host, label, directory: entry.kind == FileKind::Directory, _memory: memory });
+        self.chrome_dirty = true;
+        Ok(())
+    }
+    fn sftp_submit_name(&mut self, op: Op) {
+        let Some(form) = self.sftp.as_mut().and_then(|s| s.form.take()) else { return };
+        let name = form.text.clone();
+        if let Err(error) = self.begin_name_op(op, &name)
+            && let Some(state) = self.sftp.as_mut()
+        {
+            state.error = Some(error);
+            self.notice(match error {
+                Failure::Budget => "额度不足，写操作未提交",
+                Failure::Invalid => "名称无效：不能为空、不能包含 /，也不能是 . 或 ..",
+                Failure::Cancelled => "写操作已取消",
+                _ => "写操作未能提交",
+            });
+        }
+        self.chrome_dirty = true;
+    }
+    fn begin_name_op(&mut self, op: Op, name: &str) -> Result<(), Failure> {
+        let (binding, target, from) = {
+            let state = self.sftp.as_ref().ok_or(Failure::Invalid)?;
+            let view = state.view.as_ref().ok_or(Failure::Invalid)?;
+            let target = view.target.child(name.as_bytes()).map_err(|_| Failure::Invalid)?;
+            let from = if op == Op::Rename {
+                let index = view.selected.ok_or(Failure::Invalid)?;
+                let entry = view.listing().and_then(|l| l.entries.get(index)).ok_or(Failure::Invalid)?;
+                Some(view.target.child(&entry.name).map_err(|_| Failure::Invalid)?)
+            } else {
+                None
+            };
+            (view.binding.clone(), target, from)
+        };
+        self.start_mutation(binding, op, target, from, false)
+    }
+    fn sftp_confirm_delete(&mut self) {
+        let Some(confirm) = self.sftp.as_mut().and_then(|s| s.confirm.take()) else { return };
+        let binding =
+            self.sftp.as_ref().and_then(|s| s.view.as_ref()).map(|v| v.binding.clone()).ok_or(Failure::Invalid);
+        let result = match binding {
+            Ok(binding) => self.start_mutation(binding, Op::Delete, confirm.path, None, confirm.directory),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = result
+            && let Some(state) = self.sftp.as_mut()
+        {
+            state.error = Some(error);
+            self.notice("删除未能提交");
+        }
+        self.chrome_dirty = true;
+    }
+    fn start_mutation(
+        &mut self,
+        binding: Binding,
+        op: Op,
+        target: PathValue,
+        from: Option<PathValue>,
+        directory: bool,
+    ) -> Result<(), Failure> {
+        let state = self.sftp.as_mut().ok_or(Failure::Invalid)?;
+        if state.exiting || state.mutation.is_some() {
+            return Err(Failure::Cancelled);
+        }
+        let pool = state.service.budget().clone();
+        let memory = pool.lease(Kind::Sftp, std::mem::size_of::<Mutation>() + 128).map_err(|_| Failure::Budget)?;
+        let owner = binding.owner;
+        let profiles = binding.profiles.clone();
+        let profile = binding.profile;
+        let timeout = Duration::from_secs(10);
+        let paths = state.options.paths();
+        let (ticket, authentication) = match op {
+            Op::NewFolder => state.service.mkdir(owner, profiles, profile, paths, target.bytes(), timeout)?,
+            Op::Rename => {
+                let from = from.as_ref().ok_or(Failure::Invalid)?;
+                state.service.rename(owner, profiles, profile, paths, from.bytes(), target.bytes(), timeout)?
+            }
+            Op::Delete => state.service.remove(owner, profiles, profile, paths, target.bytes(), directory, timeout)?,
+        };
+        state.mutation = Some(Mutation { ticket, binding, authentication, op, _memory: memory });
+        Ok(())
+    }
     pub(super) fn sftp_paint(&mut self, r: Rect, h: usize) -> bool {
         if !self.sftp_route() {
             return false;
@@ -658,17 +1074,35 @@ impl Workspace {
             }
         }
         if r.h >= 3 * h {
+            // 输入/确认行必须能独立显示操作对象；窄面板保留路径末尾，名称不会被裁掉。
             let incomplete = view.and_then(|v| v.listing()).is_some_and(|l| l.incomplete);
             let prefix = if incomplete { (8 * self.driver.renderer.cell_size().0).min(r.w) } else { 0 };
             if incomplete {
                 self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, prefix, h], "[不完整]", true);
             }
-            self.driver.renderer.chrome(
-                &mut self.frame,
-                [r.x + prefix, r.y + 2 * h, r.w - prefix, h],
-                view.map_or("SFTP远端目录", |v| v.target.label()),
-                false,
-            );
+            let width = (r.w - prefix) / self.driver.renderer.cell_size().0.max(1);
+            let line = match (&state.form, &state.confirm) {
+                (Some(form), _) => {
+                    let prompt = match form.op {
+                        Op::NewFolder => "新目录名",
+                        _ => "新名称",
+                    };
+                    let preedit = if form.preedit.is_empty() { "" } else { form.preedit.as_str() };
+                    // 输入时保留结尾：光标总在末尾，名称首部可回退查看。
+                    let head = format!("{prompt} › ");
+                    let tail = format!("{}{preedit}", form.text);
+                    target_line(&head, &tail, width)
+                }
+                (_, Some(confirm)) => {
+                    let verb = if confirm.directory { "删除目录" } else { "删除文件" };
+                    target_line(&format!("{verb} {}:", confirm.host), &confirm.label, width)
+                }
+                _ => crate::term::clip(
+                    &view.map_or_else(|| "SFTP远端目录".to_string(), |v| v.target.label().to_string()),
+                    width,
+                ),
+            };
+            self.driver.renderer.chrome(&mut self.frame, [r.x + prefix, r.y + 2 * h, r.w - prefix, h], &line, false);
         }
         let error = state.error.or_else(|| view.and_then(|v| v.error));
         let message = if state.exiting {
@@ -679,6 +1113,12 @@ impl Workspace {
             }
         } else if error.is_some() {
             "SFTP读取失败，请刷新重试"
+        } else if let Some(mutation) = state.mutation.as_ref() {
+            match mutation.op {
+                Op::NewFolder => "正在等待远端确认：新建目录…",
+                Op::Rename => "正在等待远端确认：重命名…",
+                Op::Delete => "正在等待远端确认：删除…",
+            }
         } else if view.is_some_and(|v| v.loading) {
             "正在读取远端目录…"
         } else if view.and_then(|v| v.listing()).is_some_and(|l| l.incomplete) {
@@ -687,11 +1127,36 @@ impl Workspace {
             "双击目录进入 · 右侧点击任务"
         };
         if r.h >= 4 * h {
-            if error.is_some() || state.exiting || view.is_some_and(|v| v.loading) {
+            let busy = error.is_some() || state.exiting || state.mutation.is_some() || view.is_some_and(|v| v.loading);
+            let count = if state.form.is_some() || state.confirm.is_some() {
+                2
+            } else if busy {
+                0
+            } else {
+                6
+            };
+            if count == 0 {
                 self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 3 * h, r.w, h], message, error.is_some());
             } else {
-                for (i, text) in ["[上传]", "[下载]", "[任务]"].into_iter().enumerate() {
-                    self.driver.renderer.chrome(&mut self.frame, [r.x + i * third, r.y + 3 * h, third, h], text, false);
+                let slot = (r.w / count.max(1)).max(1);
+                // 窄面板按每槽可用显示列降级：完整标签 → 双字 → 单字，避免被裁成半个词。
+                let per = slot / self.driver.renderer.cell_size().0.max(1);
+                let tier = if per >= 6 {
+                    0
+                } else if per >= 4 {
+                    1
+                } else {
+                    2
+                };
+                let tiered: &[&str] = if state.form.is_some() {
+                    &FORM_LABELS[tier]
+                } else if state.confirm.is_some() {
+                    &CONFIRM_LABELS[tier]
+                } else {
+                    &OPS_LABELS[tier]
+                };
+                for (i, text) in tiered.iter().take(count).enumerate() {
+                    self.driver.renderer.chrome(&mut self.frame, [r.x + i * slot, r.y + 3 * h, slot, h], text, false);
                 }
             }
         }
@@ -754,6 +1219,176 @@ mod tests {
     }
     pub(super) fn released(pool: &Arc<Budget>) {
         until(|| pool.snapshot().kinds[Kind::Sftp as usize] == 0);
+    }
+    /// 用合成目录结果替换视图：面板逻辑不依赖真实 SFTP 服务端，写入仍走真实服务层。
+    pub(super) fn loaded(app: &mut Workspace, names: &[(&str, bool)]) {
+        let state = app.sftp.as_mut().unwrap();
+        let pool = state.service.budget().clone();
+        let view = state.view.as_mut().unwrap();
+        let cancel = crate::tasks::Cancellation::default();
+        let mut scan = crate::sftp::model::Scan::new(
+            view.binding.owner.session,
+            view.ticket.source.generation,
+            view.target.clone(),
+            false,
+        )
+        .unwrap();
+        for (name, directory) in names {
+            let permissions = Some(if *directory { 0o040755 } else { 0o100644 });
+            let attrs = crate::sftp::model::Attributes { permissions, ..Default::default() };
+            scan.push_entry(name.as_bytes(), attrs, &cancel).unwrap();
+        }
+        let listing = scan.finish(true).unwrap();
+        let memory = pool.lease(Kind::Sftp, 128).unwrap();
+        view.reply = Some(Tracked::new(Ok(service::Output::Directory(listing)), memory));
+        view.loading = false;
+        view.error = None;
+        view.selected = None;
+    }
+    /// 导出当前帧，供人工核对右栏排版；未设置环境变量时不做任何事。
+    fn preview(app: &Workspace, name: &str) {
+        if let Some(path) = std::env::var_os(name) {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+    }
+    fn draw_now(app: &mut Workspace) {
+        for i in 0..app.panes.len() {
+            app.load(i);
+            app.driver.last_draw = Instant::now() - crate::FRAME_INTERVAL;
+        }
+        app.restore();
+        app.last_draw = Instant::now() - crate::FRAME_INTERVAL;
+        app.draw();
+    }
+    #[test]
+    fn name_form_owns_the_keyboard_and_never_writes_to_the_terminal() {
+        let pool = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(pool.clone());
+        let mut app = workspace();
+        app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("folder", true), ("file.txt", false)]);
+        app.left = true;
+        app.left_page = LeftPage::Files;
+        let screen = |app: &Workspace| {
+            let term = &app.driver.session.term;
+            (0..term.rows()).flat_map(|r| term.visible_row(r).cells.iter().map(|c| c.c)).collect::<String>()
+        };
+        let before = screen(&app);
+        assert!(app.sftp_click(3, 0), "新建按钮应打开名称输入");
+        assert!(app.sftp_capturing());
+        app.event(Event::Text("nested".into()));
+        // X11 与 Windows 把可打印字符作为 Key::Char 送来，没有 Event::Text。
+        app.event(Event::Key { key: Key::Char('x'), mods: Mods::default() });
+        // Ctrl 组合是快捷键，不能当文字塞进名称。
+        app.event(Event::Key { key: Key::Char('c'), mods: Mods { ctrl: true, ..Mods::default() } });
+        app.event(Event::Key { key: Key::Backspace, mods: Mods::default() });
+        assert_eq!(
+            app.sftp.as_ref().unwrap().form.as_ref().unwrap().text,
+            "nested",
+            "字符进入名称、Ctrl 组合被忽略、退格删掉最后字符"
+        );
+        assert_eq!(screen(&app), before, "输入期间名称不能写进终端");
+        app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
+        assert!(!app.sftp_capturing(), "取消后交还键盘");
+        assert!(app.sftp.as_ref().unwrap().form.is_none());
+        close(&mut app);
+        drop(app);
+        released(&pool);
+    }
+    #[test]
+    fn narrow_panels_keep_the_tail_of_the_target_name_visible() {
+        assert_eq!(target_line("删除目录 host:", "/tmp/folder", 40), "删除目录 host:/tmp/folder");
+        for width in [8, 12, 18, 24] {
+            let line = target_line("删除目录 fixture:", "/tmp/deeply/nested/folder", width);
+            assert!(cells(&line) <= width, "{line}");
+            assert!(line.contains('…'), "{line}");
+            let tail = line.rsplit('…').next().unwrap();
+            assert!(!tail.is_empty() && "/tmp/deeply/nested/folder".ends_with(tail), "{line}");
+            assert!(cells(tail) >= width.div_ceil(2).min(6) - 1, "{line} 应保留名称末尾");
+        }
+        // 输入行同理：光标在末尾，尾部优先显示。
+        let typed = target_line("新目录名 › ", &"名".repeat(40), 20);
+        assert!(cells(&typed) <= 20, "{typed}");
+        assert!(typed.ends_with('名'), "{typed}");
+    }
+    #[test]
+    fn name_input_is_bounded_and_delete_needs_an_explicit_second_confirmation() {
+        let pool = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(pool.clone());
+        let mut app = workspace();
+        // 写操作要求绝对路径：与真实配置档的远端目录一致。
+        app.start_remote_files(paths(), b"/tmp").unwrap();
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().view.as_ref().is_some_and(|v| !v.loading)
+        });
+        loaded(&mut app, &[("folder", true), ("file.txt", false)]);
+        draw_now(&mut app);
+        preview(&app, "CONGMINAL_SFTP_OPS_PREVIEW_PATH");
+        // 操作行六个槽位：新建、改名、删除、上传、下载、任务；改名与删除需要先选中条目。
+        assert!(app.sftp_click(3, 1));
+        assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Invalid));
+        assert!(app.sftp.as_ref().unwrap().form.is_none());
+        assert!(app.sftp_click(3, 2));
+        assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Invalid));
+        assert!(app.sftp.as_ref().unwrap().confirm.is_none());
+        app.sftp.as_mut().unwrap().error = None;
+        // 选中目录后删除：确认行显示主机与绝对路径，目录标记为目录。
+        assert!(app.sftp_click(4, 0));
+        assert_eq!(app.sftp.as_ref().unwrap().view.as_ref().unwrap().selected, Some(0));
+        assert!(app.sftp_click(3, 2));
+        {
+            let confirm = app.sftp.as_ref().unwrap().confirm.as_ref().unwrap();
+            assert!(confirm.directory);
+            assert!(confirm.host.contains("fixture"), "{}", confirm.host);
+            assert_eq!(confirm.label, "/tmp/folder");
+        }
+        assert!(app.sftp_capturing());
+        draw_now(&mut app);
+        preview(&app, "CONGMINAL_SFTP_DELETE_PREVIEW_PATH");
+        assert!(app.sftp_capture_key(Key::Escape, Mods::default()));
+        assert!(!app.sftp_capturing());
+        assert!(app.sftp.as_ref().unwrap().confirm.is_none());
+        assert!(app.sftp.as_ref().unwrap().mutation.is_none());
+        // 名称输入按 1024 字节封顶，超出部分丢弃；退格按字符边界删除。
+        assert!(app.sftp_click(3, 0));
+        assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().op, Op::NewFolder);
+        assert!(app.sftp_capture_text(&"名".repeat(340)));
+        draw_now(&mut app);
+        preview(&app, "CONGMINAL_SFTP_FORM_PREVIEW_PATH");
+        assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text.len(), 1020);
+        assert!(app.sftp_capture_text("abcde"));
+        assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text.len(), 1020, "超出上限的整段被丢弃");
+        assert!(app.sftp_capture_text("abcd"));
+        assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text.len(), 1024);
+        assert!(app.sftp_capture_key(Key::Backspace, Mods::default()));
+        assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text.len(), 1023);
+        assert!(app.sftp_capture_key(Key::Escape, Mods::default()));
+        assert!(app.sftp.as_ref().unwrap().form.is_none());
+        // 非法名称在本地拒绝，不排队写任务。
+        assert!(app.sftp_click(3, 0));
+        assert!(app.sftp_capture_text("bad/name"));
+        assert!(app.sftp_capture_key(Key::Enter, Mods::default()));
+        assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Invalid));
+        assert!(app.sftp.as_ref().unwrap().mutation.is_none());
+        app.sftp.as_mut().unwrap().error = None;
+        // 合法名称进入在途写任务；辅助程序不存在时失败并把错误留在面板上。
+        assert!(app.sftp_click(3, 0));
+        assert!(app.sftp_capture_text("new"));
+        assert!(app.sftp_capture_key(Key::Enter, Mods::default()));
+        assert_eq!(app.sftp.as_ref().unwrap().mutation.as_ref().unwrap().op, Op::NewFolder);
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().mutation.is_none()
+        });
+        assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Authentication));
+        close(&mut app);
+        drop(app);
+        released(&pool);
     }
     #[test]
     fn one_workspace_pool_rejects_old_generation_profile_and_hidden_results_without_local_fallback() {

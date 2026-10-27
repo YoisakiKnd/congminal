@@ -148,6 +148,65 @@ mod interoperability {
             self.input.flush()
         }
     }
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "本地sftp-server：建目录/重命名/删除的协议互操作；无SSH/网络，文件都在临时目录"]
+    fn local_subsystem_creates_renames_and_removes_entries() {
+        use super::client::{Channel, Source};
+        use crate::tasks::Cancellation;
+        use std::os::unix::ffi::OsStrExt;
+        let mut server = Server::new();
+        let source = Source { session: 91, generation: 4 };
+        let cancel = Cancellation::default();
+        std::fs::write(server.path.join("file"), b"data").unwrap();
+        std::fs::create_dir(server.path.join("empty")).unwrap();
+        std::fs::create_dir(server.path.join("full")).unwrap();
+        std::fs::write(server.path.join("full/inner"), b"x").unwrap();
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        let dir = std::fs::canonicalize(&server.path).unwrap();
+        let path = |name: &str| {
+            let mut bytes = dir.as_os_str().as_encoded_bytes().to_vec();
+            bytes.push(b'/');
+            bytes.extend_from_slice(name.as_bytes());
+            bytes
+        };
+        let native = |bytes: &[u8]| std::path::PathBuf::from(std::ffi::OsStr::from_bytes(bytes));
+        let created = path("new directory");
+        super::operations::mkdir(&mut channel, &created, &cancel).unwrap();
+        assert!(std::fs::metadata(native(&created)).unwrap().is_dir());
+        let duplicate = super::operations::mkdir(&mut channel, &created, &cancel).err().unwrap();
+        assert!(matches!(duplicate, super::operations::Error::Remote(4) | super::operations::Error::Remote(11)));
+        assert!(matches!(channel.receive(&cancel), Err(super::client::Error::Closed)), "失败的写操作使通道失效");
+        drop(channel);
+
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        let renamed = path("renamed directory");
+        super::operations::rename(&mut channel, &created, &renamed, &cancel).unwrap();
+        assert!(!native(&created).exists());
+        assert!(std::fs::metadata(native(&renamed)).unwrap().is_dir());
+        // 不替换既有目标：目标存在时服务端拒绝，本地保留原文件。
+        std::fs::write(server.path.join("existing"), b"keep").unwrap();
+        let conflict =
+            super::operations::rename(&mut channel, &path("file"), &path("existing"), &cancel).err().unwrap();
+        assert!(matches!(conflict, super::operations::Error::Remote(_)));
+        assert_eq!(std::fs::read(server.path.join("existing")).unwrap(), b"keep");
+        drop(channel);
+
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        super::operations::remove(&mut channel, &path("file"), false, &cancel).unwrap();
+        assert!(!server.path.join("file").exists());
+        super::operations::remove(&mut channel, &path("empty"), true, &cancel).unwrap();
+        assert!(!server.path.join("empty").exists());
+        // 非空目录不做递归删除：服务端拒绝，内容保持原样。
+        let busy = super::operations::remove(&mut channel, &path("full"), true, &cancel).err().unwrap();
+        assert!(matches!(busy, super::operations::Error::Remote(_)));
+        assert!(server.path.join("full/inner").exists());
+        drop(channel);
+        assert_eq!(server.pool.snapshot().used, 0);
+    }
     #[test]
     #[ignore = "本地 sftp-server：通道关联、原名字节及目录模型，无 SSH/网络"]
     fn local_subsystem_channel_lists_raw_names_and_streams_binary_data() {

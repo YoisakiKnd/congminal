@@ -74,6 +74,51 @@ pub fn attributes<I: Read + Write>(
     }
     result
 }
+/// 远端建目录；只在服务端确认后返回，失败使独立通道失效。
+/// 写操作目前只由 Unix 服务层与 Unix 互操作测试调用，避免其他平台出现死代码。
+#[cfg(unix)]
+pub fn mkdir<I: Read + Write>(channel: &mut Channel<I>, path: &[u8], cancel: &Cancellation) -> Result<(), Error> {
+    status(channel, cancel, |id| Request::Mkdir { id, path, attrs: super::wire::Attributes::default() })
+}
+/// 不替换既有目标：v3 的 RENAME 在目标存在时由服务端拒绝，覆盖需显式删除。
+#[cfg(unix)]
+pub fn rename<I: Read + Write>(
+    channel: &mut Channel<I>,
+    from: &[u8],
+    to: &[u8],
+    cancel: &Cancellation,
+) -> Result<(), Error> {
+    status(channel, cancel, |id| Request::Rename { id, old: from, new: to, replace: false })
+}
+/// 按类型选择删除文件或空目录；非空目录由服务端拒绝，不做递归。
+#[cfg(unix)]
+pub fn remove<I: Read + Write>(
+    channel: &mut Channel<I>,
+    path: &[u8],
+    directory: bool,
+    cancel: &Cancellation,
+) -> Result<(), Error> {
+    let op = if directory { PathOp::Rmdir } else { PathOp::Remove };
+    status(channel, cancel, |id| Request::Path { id, op, path })
+}
+#[cfg(unix)]
+fn status<'a, I: Read + Write>(
+    channel: &mut Channel<I>,
+    cancel: &Cancellation,
+    build: impl FnOnce(u32) -> Request<'a>,
+) -> Result<(), Error> {
+    let result = (|| {
+        channel.issue(Expected::Status, build, cancel)?;
+        match channel.receive(cancel)?.response()? {
+            Response::Status { code: 0, .. } => Ok(()),
+            other => Err(remote(other)),
+        }
+    })();
+    if result.is_err() {
+        channel.abort();
+    }
+    result
+}
 pub fn directory<I: Read + Write>(
     channel: &mut Channel<I>,
     path: RemotePath,

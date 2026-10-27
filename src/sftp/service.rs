@@ -64,6 +64,8 @@ pub enum Failure {
 }
 pub enum Output {
     Directory(Listing),
+    /// 写操作（建目录/重命名/删除）已由服务端确认，调用方需要重新读取目录。
+    Changed,
     Transfer {
         state: Snapshot,
         failure: Option<Failure>,
@@ -188,6 +190,17 @@ enum Action {
     InspectRemote {
         path: RemotePath,
         selected: model::Attributes,
+    },
+    Mkdir {
+        path: RemotePath,
+    },
+    Rename {
+        from: RemotePath,
+        to: RemotePath,
+    },
+    Remove {
+        path: RemotePath,
+        directory: bool,
     },
 }
 struct Request {
@@ -337,6 +350,60 @@ impl Service {
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
         let path = RemotePath::new(self.budget(), path).map_err(model_failure)?;
         self.submit(owner, profiles, profile, paths, Action::Directory { path, hidden }, timeout)
+    }
+    /// 建目录：只在服务端确认后返回；名称规则与目录读取一致，不做路径规范化。
+    #[allow(clippy::too_many_arguments)]
+    pub fn mkdir(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        remote: &[u8],
+        timeout: Duration,
+    ) -> Result<(Ticket, Authentication), Failure> {
+        self.validate(owner, paths, timeout)?;
+        let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        let path = mutation_path(self.budget(), remote)?;
+        self.submit(owner, profiles, profile, paths, Action::Mkdir { path }, timeout)
+    }
+    /// 重命名：源与目标都必须是绝对路径，目标名称不得为空、`.` 或 `..`；不替换既有目标。
+    #[allow(clippy::too_many_arguments)]
+    pub fn rename(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        from: &[u8],
+        to: &[u8],
+        timeout: Duration,
+    ) -> Result<(Ticket, Authentication), Failure> {
+        self.validate(owner, paths, timeout)?;
+        let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        let from = mutation_path(self.budget(), from)?;
+        let to = mutation_path(self.budget(), to)?;
+        if from.bytes() == to.bytes() {
+            return Err(Failure::Invalid);
+        }
+        self.submit(owner, profiles, profile, paths, Action::Rename { from, to }, timeout)
+    }
+    /// 删除：目录走 RMDIR（服务端拒绝非空目录），文件走 REMOVE；都不递归。
+    #[allow(clippy::too_many_arguments)]
+    pub fn remove(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        remote: &[u8],
+        directory: bool,
+        timeout: Duration,
+    ) -> Result<(Ticket, Authentication), Failure> {
+        self.validate(owner, paths, timeout)?;
+        let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        let path = mutation_path(self.budget(), remote)?;
+        self.submit(owner, profiles, profile, paths, Action::Remove { path, directory }, timeout)
     }
     fn validate(&self, owner: Owner, paths: Paths<'_>, timeout: Duration) -> Result<(), Failure> {
         let source = Source { session: owner.session, generation: owner.generation };
@@ -580,6 +647,14 @@ fn connect(
         cleanup: if error.cleanup_confirmed { Cleanup::Confirmed } else { Cleanup::Failed },
     })
 }
+/// 写操作只接受绝对路径，且末段不能是 `.`/`..`（避免把根或父目录当操作对象）。
+fn mutation_path(pool: &Arc<Budget>, remote: &[u8]) -> Result<RemotePath, Failure> {
+    let name = remote.rsplit(|b| *b == b'/').next().ok_or(Failure::Invalid)?;
+    if !remote.starts_with(b"/") || name.is_empty() || name.len() > 1024 || matches!(name, b"." | b"..") {
+        return Err(Failure::Invalid);
+    }
+    RemotePath::new(pool, remote).map_err(model_failure)
+}
 fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -> Outcome<Reply> {
     let request = &input.data;
     let memory = match pool.lease(Kind::Sftp, std::mem::size_of::<Reply>() + 128) {
@@ -650,6 +725,15 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
             .map_err(operation_failure)
             .and_then(|attrs| checked_remote_version(*selected, attrs))
             .map(Output::RemoteVersion),
+        Action::Mkdir { path } => {
+            operations::mkdir(&mut channel, path.bytes(), cancel).map(|()| Output::Changed).map_err(operation_failure)
+        }
+        Action::Rename { from, to } => operations::rename(&mut channel, from.bytes(), to.bytes(), cancel)
+            .map(|()| Output::Changed)
+            .map_err(operation_failure),
+        Action::Remove { path, directory } => operations::remove(&mut channel, path.bytes(), *directory, cancel)
+            .map(|()| Output::Changed)
+            .map_err(operation_failure),
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         _ => unreachable!(),
     };
