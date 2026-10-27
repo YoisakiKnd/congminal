@@ -24,6 +24,48 @@ pub const MAX_DISK_INTERVAL: Duration = Duration::from_secs(120);
 pub const MAX_SAMPLES: usize = 900;
 /// 采样器自身结构的固定预留：本机实测 sysinfo 约 240 KiB（见 `docs/evaluations/m7-monitor.md`）。
 pub const RESERVED: usize = 256 * 1024;
+/// 进程列表：最多显示几行、名字最长多少字节、刷新间隔（读全部进程的 /proc 比读全局读数贵）。
+pub const PROCESS_LIMIT: usize = 5;
+pub const PROCESS_NAME_BYTES: usize = 24;
+pub const PROCESS_INTERVAL: Duration = Duration::from_secs(5);
+
+/// 进程列表的一行；只保留显示需要的最小字段，不持有 `sysinfo` 类型。
+#[derive(Clone, Debug, PartialEq)]
+pub struct Proc {
+    pub pid: u32,
+    pub name: String,
+    pub cpu: f32,
+    pub memory: u64,
+}
+impl Proc {
+    /// 名字按字节截断并去掉控制字符，避免异常进程名破坏布局。
+    pub fn name(&self) -> String {
+        let name: String = self.name.chars().filter(|c| !c.is_control()).take(PROCESS_NAME_BYTES).collect();
+        if name.is_empty() { format!("#{}", self.pid) } else { name }
+    }
+    /// 一行显示文本：`名字 12% 120 MiB`。
+    pub fn line(&self) -> String {
+        format!("{} {:.0}% {}", self.name(), self.cpu, human(self.memory))
+    }
+}
+
+/// 按 CPU 占用取前 `PROCESS_LIMIT` 个，占用相同再按内存。
+/// 用固定大小的小表维护，不把整张进程表收集成 Vec。
+pub fn top(entries: impl Iterator<Item = Proc>) -> Vec<Proc> {
+    let order =
+        |a: &Proc, b: &Proc| (a.cpu, a.memory).partial_cmp(&(b.cpu, b.memory)).unwrap_or(std::cmp::Ordering::Equal);
+    let mut top: Vec<Proc> = Vec::with_capacity(PROCESS_LIMIT);
+    for entry in entries {
+        if top.len() == PROCESS_LIMIT && order(&entry, &top[PROCESS_LIMIT - 1]) != std::cmp::Ordering::Greater {
+            continue;
+        }
+        top.push(entry);
+        top.sort_by(|a, b| order(b, a));
+        top.truncate(PROCESS_LIMIT);
+    }
+    top
+}
+
 /// 超过多少个采样周期没有新数据就标记为过期。
 pub const STALE_FACTOR: u32 = 3;
 
@@ -146,6 +188,10 @@ pub trait Sampling: Send {
     fn mount(&self) -> Option<String> {
         None
     }
+    /// 进程列表：比全局读数贵得多，由上层按 `PROCESS_INTERVAL` 降频调用。
+    fn processes(&mut self) -> Vec<Proc> {
+        Vec::new()
+    }
 }
 
 /// 任务输入：哪一代、这轮要不要刷新磁盘。主机读数与活动窗格无关，因此不带窗格归属。
@@ -153,6 +199,8 @@ pub trait Sampling: Send {
 pub struct Request {
     pub generation: u64,
     pub disk: bool,
+    /// 这一轮要不要顺带刷新进程列表（按 `PROCESS_INTERVAL` 降频）。
+    pub processes: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -162,6 +210,8 @@ pub struct Reply {
     pub mount: Option<String>,
     /// 采样本身失败时的原因（远端读不到）；有值时 `sample` 是占位读数，不要写进历史。
     pub error: Option<Error>,
+    /// 进程列表（只有到期那一轮才有），条数不超过 `PROCESS_LIMIT`。
+    pub processes: Vec<Proc>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -188,7 +238,7 @@ impl Error {
 
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
 mod system {
-    use super::{Raw, Sampling};
+    use super::{Proc, Raw, Sampling};
 
     /// sysinfo 的适配：只读 CPU/内存/磁盘三项，不启用进程、网络、组件与用户表。
     pub struct SystemSource {
@@ -253,6 +303,22 @@ mod system {
         }
         fn mount(&self) -> Option<String> {
             self.mount.clone()
+        }
+        fn processes(&mut self) -> Vec<Proc> {
+            // 只读 CPU 与内存，不碰可执行路径、命令行、环境与用户表——全量刷新比这贵十倍以上。
+            // `true` 表示顺带清理已退出的进程。
+            self.system.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::All,
+                true,
+                sysinfo::ProcessRefreshKind::nothing().with_cpu().with_memory(),
+            );
+            let entries = self.system.processes().iter().map(|(pid, process)| Proc {
+                pid: pid.as_u32(),
+                name: process.name().to_string_lossy().into_owned(),
+                cpu: process.cpu_usage(),
+                memory: process.memory(),
+            });
+            super::top(entries)
         }
     }
 }
