@@ -245,6 +245,13 @@ impl Error {
     }
 }
 
+/// 字节差换算成每秒字节数；超出 u32 就按上限截断（界面只显示到 MiB/s）。
+/// 本地与远端采样共用同一套口径，避免两处四舍五入不一致。
+fn bytes_per_second(bytes: u64, seconds: f64) -> u32 {
+    let value = (bytes as f64 / seconds).round();
+    value.clamp(0.0, u32::MAX as f64) as u32
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
 mod system {
     use super::{Proc, Raw, Sampling};
@@ -302,13 +309,8 @@ mod system {
             if seconds < 0.1 || rx < prev_rx || tx < prev_tx {
                 return (None, None);
             }
-            (Some(bytes_per_second(rx - prev_rx, seconds)), Some(bytes_per_second(tx - prev_tx, seconds)))
+            (Some(super::bytes_per_second(rx - prev_rx, seconds)), Some(super::bytes_per_second(tx - prev_tx, seconds)))
         }
-    }
-    /// 字节差换算成每秒字节数；超出 u32 就按上限截断（界面只显示到 MiB/s）。
-    fn bytes_per_second(bytes: u64, seconds: f64) -> u32 {
-        let value = (bytes as f64 / seconds).round();
-        value.clamp(0.0, u32::MAX as f64) as u32
     }
     #[cfg(target_os = "linux")]
     fn net_counters() -> Option<(u64, u64)> {

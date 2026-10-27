@@ -1,4 +1,4 @@
-//! 远程主机读数：通过一次独立的 `ssh` 读 `/proc/stat`、`/proc/meminfo` 与 `df -P -k /`。
+//! 远程主机读数：通过一次独立的 `ssh` 读 `/proc/stat`、`/proc/meminfo`、`/proc/net/dev` 与 `df -P -k /`。
 //!
 //! 只支持 Linux 远端（`/proc` 与 POSIX `df`）；读不到就报 `Error::Remote`，不猜数值。
 //! 每次采样一个 `ssh` 子进程（磁盘到期那轮再一个 `df`），由调用方的取消令牌控制超时与中止，
@@ -63,20 +63,23 @@ impl Target {
 pub struct Source {
     target: Target,
     previous: Option<Times>,
+    /// 上一轮的收发累计字节与取到它的时刻，用来算区间速率。
+    net: Option<(u64, u64, Instant)>,
     mount: Option<String>,
     /// 主读数（`/proc/stat` + `/proc/meminfo`）那一趟的往返耗时，不含磁盘那一趟。
     latency: Option<Duration>,
 }
 impl Source {
     pub fn new(target: Target) -> Self {
-        Self { target, previous: None, mount: None, latency: None }
+        Self { target, previous: None, net: None, mount: None, latency: None }
     }
 }
 
 impl Sampling for Source {
     fn sample(&mut self, disk: bool, cancel: &Cancellation) -> Result<Raw, Error> {
         let started = Instant::now();
-        let text = run(&self.target, &["cat", "/proc/stat", "/proc/meminfo"], cancel)?;
+        // 三个 /proc 文件一起 cat：只多读一个几 KB 的伪文件，不多开一趟 ssh。
+        let text = run(&self.target, &["cat", "/proc/stat", "/proc/meminfo", "/proc/net/dev"], cancel)?;
         // 只记主读数这一趟：磁盘那一趟按 `disk-seconds` 降频，混进来会让数字忽大忽小。
         self.latency = Some(started.elapsed());
         let times = Times::parse(&text).ok_or(Error::Remote)?;
@@ -91,9 +94,8 @@ impl Sampling for Source {
         } else {
             (0, 0)
         };
-        // 远端速率这一版不采：`/proc/net/dev` 的解析与本地共用同一套，但远端要多跑一次
-        // 文件读取，留到需要时再加，界面显示“未知”。
-        Ok(Raw { cpu, cores: times.cores, mem_used, mem_total, disk_used, disk_total, net_down: None, net_up: None })
+        let (net_down, net_up) = self.refresh_net(&text);
+        Ok(Raw { cpu, cores: times.cores, mem_used, mem_total, disk_used, disk_total, net_down, net_up })
     }
 
     fn mount(&self) -> Option<String> {
@@ -102,6 +104,28 @@ impl Sampling for Source {
     fn latency(&self) -> Option<Duration> {
         self.latency
     }
+}
+
+impl Source {
+    /// 用两轮累计字节差算速率；与本地采样同一套口径（首轮、回绕、间隔过短都算未知）。
+    fn refresh_net(&mut self, text: &str) -> (Option<u32>, Option<u32>) {
+        let Some((rx, tx)) = net_counters(text) else { return (None, None) };
+        let now = Instant::now();
+        let previous = self.net.replace((rx, tx, now));
+        let Some((prev_rx, prev_tx, at)) = previous else { return (None, None) };
+        let seconds = now.saturating_duration_since(at).as_secs_f64();
+        if seconds < 0.1 || rx < prev_rx || tx < prev_tx {
+            return (None, None);
+        }
+        (Some(super::bytes_per_second(rx - prev_rx, seconds)), Some(super::bytes_per_second(tx - prev_tx, seconds)))
+    }
+}
+
+/// 从合并输出里切出 `/proc/net/dev` 这一段再交给本地同一套解析。
+/// `Inter-|` 只出现在它的表头，所以不会和 `/proc/stat`、`/proc/meminfo` 撞车。
+fn net_counters(text: &str) -> Option<(u64, u64)> {
+    let start = text.find("Inter-|")?;
+    super::parse_net_dev(&text[start..])
 }
 
 /// 跑一条远端命令并取回 stdout；取消或超时就杀掉子进程，返回 `Error::Remote`。
@@ -229,6 +253,10 @@ mod tests {
         "cpu  120 30 60 800 10 0 5 0 0 0\ncpu0 60 15 30 400 5 0 2 0 0 0\ncpu1 60 15 30 400 5 0 3 0 0 0\n";
     const MEMINFO: &str = "MemTotal:        8000000 kB\nMemFree:         1000000 kB\nMemAvailable:    3000000 kB\n";
     const DF: &str = "Filesystem     1024-blocks    Used Available Capacity Mounted on\n/dev/root         10000000 4000000   6000000      40% /\n";
+    /// `/proc/net/dev` 原样两行表头；`lo` 必须被跳过，只汇总 eth0。
+    /// 只在 unix 的假 ssh 用例里用到（Windows 上不跑子进程夹具）。
+    #[cfg(unix)]
+    const NET: &str = "Inter-|   Receive                                                |  Transmit\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n    lo: 9999999    1000    0    0    0     0          0         0  9999999    1000    0    0    0     0       0          0\n  eth0: 2000000    2000    0    0    0     0          0         0  1000000    1000    0    0    0     0       0          0\n";
 
     #[test]
     fn parses_proc_stat_meminfo_and_df() {
@@ -287,7 +315,7 @@ mod tests {
         let dir = temp("remote");
         // 用 heredoc 而不是 printf：`df` 输出里有 `%`，printf 会把它当格式符。
         let script = format!(
-            "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\ncase \"$1\" in\ncat) cat <<'STAT'\n{STAT}{MEMINFO}STAT\n;;\ndf) cat <<'DF'\n{DF}DF\n;;\nesac\n"
+            "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\ncase \"$1\" in\ncat) cat <<'STAT'\n{STAT}{MEMINFO}{NET}STAT\n;;\ndf) cat <<'DF'\n{DF}DF\n;;\nesac\n"
         );
         let program = fake_ssh(&dir, &script);
         let target = Target { program, host: "fixture".into(), user: Some("dev".into()), port: None, identity: None };
@@ -301,6 +329,8 @@ mod tests {
         assert_eq!(raw.mem_total, 8_000_000 * 1024);
         assert_eq!(raw.disk_total, 0, "没到期就不读磁盘");
         assert_eq!(source.mount(), None);
+        // 首轮只有计数器基线，速率按未知处理，不显示成 0。
+        assert_eq!((raw.net_down, raw.net_up), (None, None));
         let raw = source.sample(true, &cancel).unwrap();
         assert_eq!(raw.disk_total, 10_000_000 * 1024);
         assert_eq!(raw.disk_used, 4_000_000 * 1024);
@@ -310,6 +340,32 @@ mod tests {
         let broken = fake_ssh(&dir, "#!/bin/sh\nexit 0\n");
         let mut source = Source::new(Target { program: broken, ..target });
         assert_eq!(source.sample(false, &cancel).err(), Some(Error::Remote));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_net_rates_come_from_two_counter_readings() {
+        let dir = temp("remote-net");
+        // 每次被调用都把累计字节往上加一截，模拟真实流量。
+        let script = format!(
+            "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\ncase \"$1\" in\ncat) if [ -f \"{dir}/first\" ]; then RX=4000000; else : > \"{dir}/first\"; RX=2000000; fi\ncat <<'STAT'\n{STAT}{MEMINFO}STAT\nprintf 'Inter-|   Receive                                                |  Transmit\\n face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\\n    lo: 9999999    1000    0    0    0     0          0         0  9999999    1000    0    0    0     0       0          0\\n  eth0: %s    2000    0    0    0     0          0         0  1000000    1000    0    0    0     0       0          0\\n' \"$RX\"\n;;\ndf) cat <<'DF'\n{DF}DF\n;;\nesac\n",
+            dir = dir.display()
+        );
+        let program = fake_ssh(&dir, &script);
+        let target = Target { program, host: "fixture".into(), user: None, port: None, identity: None };
+        let mut source = Source::new(target);
+        let cancel = Cancellation::default();
+        let first = source.sample(false, &cancel).unwrap();
+        assert_eq!((first.net_down, first.net_up), (None, None), "首轮只有基线");
+        // 本地速率有 100 ms 下限，等过它才能算出有意义的值。
+        std::thread::sleep(Duration::from_millis(150));
+        let second = source.sample(false, &cancel).unwrap();
+        // 接收累计从 2 000 000 涨到 4 000 000，0.15 秒里至少几十 KiB/s。
+        let down = second.net_down.expect("第二轮应当有下行速率");
+        assert!(down > 0, "下行速率应当大于 0");
+        // 发送累计没变：速率是 0，而不是未知。
+        assert_eq!(second.net_up, Some(0));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
