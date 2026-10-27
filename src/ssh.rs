@@ -155,7 +155,7 @@ pub fn prepare(profile: &Ssh, cancel: &Cancellation) -> Result<Launch, Error> {
     Ok(Launch { shell: Tracked::new(shell, memory), check_elapsed: started.elapsed() })
 }
 fn interactive(profile: &Ssh) -> ShellConfig {
-    let mut args = Vec::with_capacity(11);
+    let mut args = Vec::with_capacity(11 + profile.forwards.len() * 2);
     args.extend(["-tt".into(), "-oForkAfterAuthentication=no".into()]);
     if let Some(user) = &profile.user {
         args.extend(["-l".into(), user.clone()]);
@@ -169,6 +169,10 @@ fn interactive(profile: &Ssh) -> ShellConfig {
     // 跳板机交给 ssh 自己处理：主机密钥校验与 BatchMode 对跳板同样生效。
     if let Some(jump) = &profile.jump {
         args.extend(["-J".into(), jump.clone()]);
+    }
+    // 本地转发只挂在交互式终端上；SFTP/监控/Git 的后台通道不重复开转发。
+    for forward in &profile.forwards {
+        args.extend(["-L".into(), forward.clone()]);
     }
     args.extend(["--".into(), profile.host.clone()]);
     ShellConfig { program: Some(program(profile).into()), args, working_directory: None }
@@ -184,6 +188,7 @@ mod tests {
             port: Some(2222),
             identity_file: Some("key with 'quote;$literal".into()),
             jump: None,
+            forwards: Vec::new(),
             program: None,
         }
     }
@@ -221,6 +226,22 @@ mod tests {
         // 多跳与 user@host 形式都原样作为单个参数，不拼进命令行。
         let multi = Ssh { jump: Some("a@one,two:2222".into()), ..profile() };
         assert!(interactive(&multi).args.contains(&"a@one,two:2222".to_string()));
+    }
+    #[test]
+    fn forwards_are_passed_as_separate_arguments_after_the_jump_host() {
+        let profile = Ssh {
+            jump: Some("bastion".into()),
+            forwards: vec!["8080:localhost:80".into(), "127.0.0.1:5432:db.internal:5432".into()],
+            ..profile()
+        };
+        let args = interactive(&profile).args;
+        let first = args.iter().position(|arg| arg == "-L").expect("转发要传给 ssh");
+        assert_eq!(args[first + 1], "8080:localhost:80");
+        assert_eq!(args[first + 2], "-L");
+        assert_eq!(args[first + 3], "127.0.0.1:5432:db.internal:5432");
+        // 转发排在 `--` 与目标主机之前，不会被 ssh 当成主机名。
+        assert_eq!(args[first + 4], "--");
+        assert_eq!(args[first + 5], "host-alias");
     }
     #[test]
     fn quota_and_cancel_reject_before_tool_execution() {

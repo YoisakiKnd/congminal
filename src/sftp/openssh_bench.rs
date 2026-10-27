@@ -179,6 +179,7 @@ fn identical_protocol_workload_compares_blocking_and_bounded_pipes() {
         port: None,
         identity_file: None,
         jump: None,
+        forwards: Vec::new(),
         program: Some(std::env::var("CONGMINAL_BENCH_SSH").unwrap()),
     };
     let configuration_path = root.join("client config");

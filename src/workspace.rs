@@ -1586,17 +1586,20 @@ impl Workspace {
                     let phase =
                         self.profile_phase(index).map(|phase| format!(" · {}", phase.label())).unwrap_or_default();
                     // 跳板机也写在这一行，省得去翻配置才知道这条连接经过谁。
-                    let jump = match &profile.connection {
-                        config::profiles::Connection::Ssh(ssh) => ssh.jump.as_deref(),
-                        config::profiles::Connection::Local(_) => None,
+                    let (jump, forwards) = match &profile.connection {
+                        config::profiles::Connection::Ssh(ssh) => (ssh.jump.as_deref(), ssh.forwards.len()),
+                        config::profiles::Connection::Local(_) => (None, 0),
                     };
                     let separator = if profile.group.is_empty() { "" } else { " / " };
-                    let text = match jump {
-                        Some(jump) => {
-                            format!("{kind} · {}{separator}{}{phase} · 经 {jump}", profile.group, profile.name)
-                        }
-                        None => format!("{kind} · {}{separator}{}{phase}", profile.group, profile.name),
-                    };
+                    // 跳板机与转发条数写在这一行，省得去翻配置才知道这条连接怎么走。
+                    let mut text = format!("{kind} · {}{separator}{}{phase}", profile.group, profile.name);
+                    if let Some(jump) = jump {
+                        text.push_str(" · 经 ");
+                        text.push_str(jump);
+                    }
+                    if forwards > 0 {
+                        text.push_str(&format!(" · 转发 {forwards} 条"));
+                    }
                     self.driver.renderer.chrome(
                         &mut self.frame,
                         [r.x, r.y + (index - self.profiles_offset + 2) * h, r.w, h],
