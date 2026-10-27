@@ -212,8 +212,22 @@ pub struct Terminal {
     dropped_responses: usize,
     /// 一个字符格子的像素尺寸，供 CSI 14/16 t 的窗口尺寸查询使用；未知时是 (0, 0)
     cell_pixels: (u32, u32),
+    /// 调色板副本，供 OSC 4/10/11/12 颜色查询；None 表示还没接配置，此时不回答。
+    palette: Option<Palette>,
+    /// DECRQSS（`DCS $ q ... ST`）的请求缓冲，None 表示当前 DCS 不是 DECRQSS。
+    decrqss: Option<Vec<u8>>,
     // 所有网格缓冲销毁后归还。预留覆盖保留容量，非实际预分配。
     grid_memory: crate::resources::Lease,
+}
+
+/// OSC 4/10/11/12 查询要回答的颜色。这里放一份值拷贝，终端模块不依赖配置类型；
+/// 由 `Session::spawn_with` 在创建时从配置写入。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Palette {
+    pub foreground: u32,
+    pub background: u32,
+    pub cursor: u32,
+    pub palette: [u32; 256],
 }
 
 impl Terminal {
@@ -302,6 +316,8 @@ impl Terminal {
             response: Vec::new(),
             dropped_responses: 0,
             cell_pixels: (0, 0),
+            palette: None,
+            decrqss: None,
             grid_memory,
         }
     }
@@ -464,6 +480,117 @@ impl Terminal {
     #[cfg(test)]
     pub fn cell_pixels(&self) -> (u32, u32) {
         self.cell_pixels
+    }
+
+    /// 写入调色板副本；配置重载后由上层再调用一次即可刷新颜色查询的回答。
+    pub fn set_palette(&mut self, palette: Palette) {
+        self.palette = Some(palette);
+    }
+
+    /// 一个 8 位通道按 xterm 的 16 位写法重复一次：`rgb:rrrr/gggg/bbbb`。
+    fn rgb_reply(value: u32) -> String {
+        let (r, g, b) = ((value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff);
+        format!("rgb:{r:02x}{r:02x}/{g:02x}{g:02x}/{b:02x}{b:02x}")
+    }
+
+    /// OSC 4：成对的「索引;颜色」；只有值是 `?` 时回答，其它写法（设置颜色）只记录不生效。
+    fn query_palette(&mut self, parts: &[&[u8]]) {
+        let Some(palette) = self.palette else {
+            return;
+        };
+        for pair in parts.chunks(2) {
+            let [index, value] = pair else {
+                break;
+            };
+            let Ok(index) =
+                std::str::from_utf8(index).map_err(|_| ()).and_then(|text| text.parse::<usize>().map_err(|_| ()))
+            else {
+                continue;
+            };
+            if *value != b"?" {
+                // 设置调色板属于写操作，这里保持只读，不改变外观。
+                trace(format_args!("忽略 OSC 4 的颜色设置（索引 {index}）"));
+                continue;
+            }
+            if index >= palette.palette.len() {
+                continue;
+            }
+            let reply = format!("\x1b]4;{index};{}\x1b\\", Self::rgb_reply(palette.palette[index]));
+            self.respond(reply.as_bytes());
+        }
+    }
+
+    /// OSC 10/11/12 的查询（前景、背景、光标色）。
+    fn query_default_color(&mut self, which: &[u8]) {
+        let Some(palette) = self.palette else {
+            return;
+        };
+        let value = match which {
+            b"10" => palette.foreground,
+            b"11" => palette.background,
+            _ => palette.cursor,
+        };
+        let name = std::str::from_utf8(which).unwrap_or("10");
+        let reply = format!("\x1b]{name};{}\x1b\\", Self::rgb_reply(value));
+        self.respond(reply.as_bytes());
+    }
+
+    /// 当前 SGR 状态的参数串（不带前缀 ESC[），用于 DECRQSS 的 `m` 查询。
+    fn sgr_state(&self) -> String {
+        let cell = &self.cursor.template;
+        let flags = cell.flags;
+        let mut out = String::from("0");
+        for (flag, code) in [
+            (Flags::BOLD, 1),
+            (Flags::DIM, 2),
+            (Flags::ITALIC, 3),
+            (Flags::UNDERLINE, 4),
+            (Flags::BLINK, 5),
+            (Flags::INVERSE, 7),
+            (Flags::HIDDEN, 8),
+            (Flags::STRIKE, 9),
+        ] {
+            if flags.contains(flag) {
+                out.push(';');
+                out.push_str(&code.to_string());
+            }
+        }
+        for (color, base) in [(cell.fg, 30), (cell.bg, 40)] {
+            match color {
+                Color::Default => {}
+                Color::Indexed(i) if i < 8 => {
+                    out.push_str(&format!(";{}", base + i as u32));
+                }
+                Color::Indexed(i) if i < 16 => {
+                    out.push_str(&format!(";{}", base + 60 + (i - 8) as u32));
+                }
+                Color::Indexed(i) => out.push_str(&format!(";{};5;{i}", base + 8)),
+                Color::Rgb(r, g, b) => out.push_str(&format!(";{};2;{r};{g};{b}", base + 8)),
+            }
+        }
+        out
+    }
+
+    /// DECRQSS：回答当前 SGR、滚动区域与光标形状；不认识的请求回 0。
+    fn decrqss_reply(&self, request: &[u8]) -> Vec<u8> {
+        let value = match request {
+            b"m" => Some(self.sgr_state()),
+            b"r" => Some(format!("{};{}", self.scroll_top + 1, self.scroll_bottom + 1)),
+            b" q" => {
+                let style = match self.cursor_shape {
+                    Some(CursorShape::Block) => 2,
+                    Some(CursorShape::Underline) => 4,
+                    Some(CursorShape::Bar) => 6,
+                    None => 0,
+                };
+                Some(format!("{style} q"))
+            }
+            _ => None,
+        };
+        match value {
+            Some(value) => format!("\x1bP1$r{value}\x1b\\").into_bytes(),
+            None => b"\x1bP0$r\x1b\\".to_vec(),
+        }
     }
 
     #[cfg(test)]
@@ -1472,6 +1599,27 @@ impl Perform for Terminal {
         }
     }
 
+    /// DECRQSS（`DCS $ q <设置> ST`）只在中间字节是 `$`、终止字节是 `q` 时收集请求。
+    fn hook(&mut self, _params: &Params, intermediates: &[u8], ignore: bool, action: u8) {
+        self.decrqss = if ignore || intermediates != b"$" || action != b'q' { None } else { Some(Vec::new()) };
+    }
+
+    fn put(&mut self, byte: u8) {
+        // 请求最长 32 字节（实际最长的已知设置是 ` q`）；更长的直接丢弃。
+        if let Some(request) = &mut self.decrqss
+            && request.len() < 32
+        {
+            request.push(byte);
+        }
+    }
+
+    fn unhook(&mut self) {
+        if let Some(request) = self.decrqss.take() {
+            let reply = self.decrqss_reply(&request);
+            self.respond(&reply);
+        }
+    }
+
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
         match params {
             [b"7", parts @ ..] if !self.alt_active => {
@@ -1510,6 +1658,15 @@ impl Perform for Terminal {
                         .map_or(0, |url| self.links.insert(url, self.text_bounds().2))
                 };
                 self.cursor.template.flags.set_link(id);
+            }
+            [b"4", parts @ ..] => self.query_palette(parts),
+            [b"10" | b"11" | b"12", b"?"] => {
+                let which = params[0];
+                self.query_default_color(which);
+            }
+            // 设置默认前景/背景/光标色是写操作，保持只读。
+            [b"10" | b"11" | b"12", _] => {
+                trace(format_args!("忽略 OSC {} 的颜色设置", String::from_utf8_lossy(params[0])))
             }
             [b"1", ..] => {} // 图标名
             _ => trace(format_args!(
@@ -1734,6 +1891,68 @@ mod tests {
         Parser::new().advance(&mut t, b"\x1bc\x1b[16t");
         assert_eq!(t.cell_pixels(), (10, 20));
         assert_eq!(t.take_response(), b"\x1b[6;20;10t");
+    }
+
+    fn palette() -> Palette {
+        let mut palette =
+            Palette { foreground: 0x11_22_33, background: 0x44_55_66, cursor: 0xab_cd_ef, palette: [0; 256] };
+        palette.palette[1] = 0x00_ff_00;
+        palette.palette[200] = 0x01_02_03;
+        palette
+    }
+
+    #[test]
+    fn color_queries_answer_from_the_configured_palette() {
+        // 没接调色板时不回答，避免给出错颜色。
+        let mut t = run(80, 24, "\x1b]4;1;?\x07");
+        assert!(t.take_response().is_empty());
+        let mut t = Terminal::new(80, 24);
+        t.set_palette(palette());
+        Parser::new().advance(&mut t, b"\x1b]4;1;?\x07\x1b]4;200;?\x07");
+        assert_eq!(t.take_response(), b"\x1b]4;1;rgb:0000/ffff/0000\x1b\\\x1b]4;200;rgb:0101/0202/0303\x1b\\");
+        Parser::new().advance(&mut t, b"\x1b]10;?\x07\x1b]11;?\x07\x1b]12;?\x07");
+        assert_eq!(
+            t.take_response(),
+            b"\x1b]10;rgb:1111/2222/3333\x1b\\\x1b]11;rgb:4444/5555/6666\x1b\\\x1b]12;rgb:abab/cdcd/efef\x1b\\"
+        );
+        // 设置颜色是写操作：不回答，也不改变已有的调色板。
+        Parser::new().advance(&mut t, b"\x1b]4;1;#ff0000\x07\x1b]11;#000000\x07");
+        assert!(t.take_response().is_empty());
+        Parser::new().advance(&mut t, b"\x1b]4;1;?\x07");
+        assert_eq!(t.take_response(), b"\x1b]4;1;rgb:0000/ffff/0000\x1b\\");
+        // 索引越界或格式不对时跳过，不影响同一帧里的其它查询。
+        Parser::new().advance(&mut t, b"\x1b]4;999;?\x07\x1b]4;x;?\x07\x1b]4;200;?\x07");
+        assert_eq!(t.take_response(), b"\x1b]4;200;rgb:0101/0202/0303\x1b\\");
+    }
+
+    #[test]
+    fn decrqss_reports_sgr_region_and_cursor_style() {
+        let mut t = run(80, 24, "\x1bP$qm\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP1$r0\x1b\\");
+        Parser::new().advance(&mut t, b"\x1b[1;4;31;48;5;200m\x1bP$qm\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP1$r0;1;4;31;48;5;200\x1b\\");
+        // 亮色按 90 系列回答，真彩按 38;2 回答（后设置的会覆盖前面的前景色）
+        Parser::new().advance(&mut t, b"\x1b[0m\x1b[94m\x1bP$qm\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP1$r0;94\x1b\\");
+        Parser::new().advance(&mut t, b"\x1b[38;2;1;2;3m\x1bP$qm\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP1$r0;38;2;1;2;3\x1b\\");
+        // 滚动区域
+        Parser::new().advance(&mut t, b"\x1b[2;10r\x1bP$qr\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP1$r2;10\x1b\\");
+        // 光标形状：默认 0，DECSCUSR 4 是下划线
+        Parser::new().advance(&mut t, b"\x1bP$q q\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP1$r0 q\x1b\\");
+        Parser::new().advance(&mut t, b"\x1b[4 q\x1bP$q q\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP1$r4 q\x1b\\");
+        // 不认识的设置回 0；超长请求不越界
+        Parser::new().advance(&mut t, b"\x1bP$qZ\x1b\\");
+        assert_eq!(t.take_response(), b"\x1bP0$r\x1b\\");
+        let long = format!("\x1bP$q{}\x1b\\", "m".repeat(64));
+        Parser::new().advance(&mut t, long.as_bytes());
+        assert_eq!(t.take_response(), b"\x1bP0$r\x1b\\");
+        // 其它 DCS（例如 DECDLD）不进入 DECRQSS 缓冲，也不回答
+        Parser::new().advance(&mut t, b"\x1bP1;2;3|abcd\x1b\\");
+        assert!(t.take_response().is_empty());
     }
 
     #[test]
