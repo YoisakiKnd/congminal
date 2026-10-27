@@ -172,6 +172,13 @@ impl Default for SavedCursor {
     }
 }
 
+/// Kitty 键盘协议：栈最多这么多层，超出后只更新栈顶，不无限增长。
+const KEYBOARD_STACK: usize = 8;
+/// 我们真正实现的 Kitty flags：1 = 消除歧义转义码，8 = 所有按键都发转义序列。
+///
+/// 其余位（上报事件类型、上报替换键、上报关联文本）没有实现，所以既不记也不回。
+const KITTY_SUPPORTED: u32 = 1 | 8;
+
 pub struct Terminal {
     pub shell: crate::shell::Shell,
     text_epoch: u64,
@@ -216,6 +223,9 @@ pub struct Terminal {
     palette: Option<Palette>,
     /// DECRQSS（`DCS $ q ... ST`）的请求缓冲，None 表示当前 DCS 不是 DECRQSS。
     decrqss: Option<Vec<u8>>,
+    /// Kitty 键盘协议的 flags 栈（`CSI > u` / `CSI < u`）。深度 0 表示传统编码。
+    keyboard_stack: [u32; KEYBOARD_STACK],
+    keyboard_depth: usize,
     // 所有网格缓冲销毁后归还。预留覆盖保留容量，非实际预分配。
     grid_memory: crate::resources::Lease,
 }
@@ -318,6 +328,8 @@ impl Terminal {
             cell_pixels: (0, 0),
             palette: None,
             decrqss: None,
+            keyboard_stack: [0; KEYBOARD_STACK],
+            keyboard_depth: 0,
             grid_memory,
         }
     }
@@ -485,6 +497,54 @@ impl Terminal {
     /// 写入调色板副本；配置重载后由上层再调用一次即可刷新颜色查询的回答。
     pub fn set_palette(&mut self, palette: Palette) {
         self.palette = Some(palette);
+    }
+
+    /// 当前生效的 Kitty 键盘 flags；0 表示程序没要求，输入按传统方式编码。
+    pub fn keyboard_flags(&self) -> u32 {
+        match self.keyboard_depth {
+            0 => 0,
+            depth => self.keyboard_stack[depth - 1],
+        }
+    }
+
+    fn set_keyboard_top(&mut self, flags: u32) {
+        if self.keyboard_depth == 0 {
+            self.keyboard_stack[0] = flags & KITTY_SUPPORTED;
+            self.keyboard_depth = 1;
+        } else {
+            self.keyboard_stack[self.keyboard_depth - 1] = flags & KITTY_SUPPORTED;
+        }
+    }
+
+    /// `CSI > flags u`：把 flags 压栈，程序退出时再弹掉。
+    fn push_keyboard_flags(&mut self, flags: u32) {
+        let flags = flags & KITTY_SUPPORTED;
+        if self.keyboard_depth < KEYBOARD_STACK {
+            self.keyboard_stack[self.keyboard_depth] = flags;
+            self.keyboard_depth += 1;
+        } else {
+            // 栈满了就只更新栈顶：宁可少一层隔离，也不让程序把栈撑爆。
+            self.keyboard_stack[KEYBOARD_STACK - 1] = flags;
+        }
+    }
+
+    /// `CSI < n u`：弹掉 n 层，n 缺省 1；弹空即回到传统编码。
+    fn pop_keyboard_flags(&mut self, n: u32) {
+        let n = n.max(1) as usize;
+        self.keyboard_depth = self.keyboard_depth.saturating_sub(n);
+    }
+
+    /// `CSI = flags ; mode u`：1 覆盖、2 并集、3 清位，都只作用在当前层。
+    fn apply_keyboard_flags(&mut self, flags: u32, mode: u32) {
+        let flags = flags & KITTY_SUPPORTED;
+        let current = self.keyboard_flags();
+        let next = match mode {
+            1 => flags,
+            2 => current | flags,
+            3 => current & !flags,
+            _ => return,
+        };
+        self.set_keyboard_top(next);
     }
 
     /// 一个 8 位通道按 xterm 的 16 位写法重复一次：`rgb:rrrr/gggg/bbbb`。
@@ -1532,6 +1592,14 @@ impl Perform for Terminal {
             ([], b'r') => self.set_scroll_region(arg(params, 0, 1), arg(params, 1, 0)),
             ([], b's') => self.save_cursor(),
             ([], b'u') => self.restore_cursor(),
+            // Kitty 键盘协议：压栈、弹栈、改当前层、查询当前 flags。
+            ([b'>'], b'u') => self.push_keyboard_flags(arg(params, 0, 0) as u32),
+            ([b'<'], b'u') => self.pop_keyboard_flags(arg(params, 0, 0) as u32),
+            ([b'='], b'u') => self.apply_keyboard_flags(arg(params, 0, 0) as u32, arg(params, 1, 1) as u32),
+            ([b'?'], b'u') => {
+                let flags = self.keyboard_flags();
+                self.respond(format!("\x1b[?{flags}u").as_bytes());
+            }
             ([b' '], b'q') => {
                 // 0 = 恢复默认，1/2 = 方块，3/4 = 下划线，5/6 = 竖线（奇数是闪烁，暂不支持闪烁）
                 self.cursor_shape = match arg(params, 0, 0) {
@@ -1967,6 +2035,49 @@ mod tests {
         // 取走后可以继续积压，上限是按当前缓冲算的
         Parser::new().advance(&mut t, b"\x1b[6n");
         assert_eq!(t.take_response(), b"\x1b[1;1R");
+    }
+
+    #[test]
+    fn kitty_keyboard_flags_are_a_bounded_stack() {
+        let mut t = run(80, 24, "");
+        assert_eq!(t.keyboard_flags(), 0);
+
+        // 压栈、改当前层、查询、弹栈
+        Parser::new().advance(&mut t, b"\x1b[>1u");
+        assert_eq!(t.keyboard_flags(), 1);
+        Parser::new().advance(&mut t, b"\x1b[?u");
+        assert_eq!(t.take_response(), b"\x1b[?1u");
+
+        Parser::new().advance(&mut t, b"\x1b[>9u"); // 9 = 1|8，两位都支持
+        assert_eq!(t.keyboard_flags(), 9);
+        Parser::new().advance(&mut t, b"\x1b[=8;3u"); // 清掉“全部按键转义”
+        assert_eq!(t.keyboard_flags(), 1);
+        Parser::new().advance(&mut t, b"\x1b[=8;2u"); // 并集再加回来
+        assert_eq!(t.keyboard_flags(), 9);
+        Parser::new().advance(&mut t, b"\x1b[<u"); // 缺省弹一层
+        assert_eq!(t.keyboard_flags(), 1);
+        Parser::new().advance(&mut t, b"\x1b[<u");
+        assert_eq!(t.keyboard_flags(), 0);
+        Parser::new().advance(&mut t, b"\x1b[<u"); // 弹空不 panic
+        assert_eq!(t.keyboard_flags(), 0);
+
+        // 没实现的位既不记也不回，避免向程序承诺做不到的行为：30 = 16+8+4+2，只留 8
+        Parser::new().advance(&mut t, b"\x1b[>30u");
+        assert_eq!(t.keyboard_flags(), 8);
+
+        // 栈深度有上限：连续压栈只保留最后一份
+        for _ in 0..40 {
+            Parser::new().advance(&mut t, b"\x1b[>1u");
+        }
+        assert_eq!(t.keyboard_flags(), 1);
+        for _ in 0..40 {
+            Parser::new().advance(&mut t, b"\x1b[<u");
+        }
+        assert_eq!(t.keyboard_flags(), 0);
+
+        // RIS 清空栈
+        Parser::new().advance(&mut t, b"\x1b[>1u\x1bc");
+        assert_eq!(t.keyboard_flags(), 0);
     }
 
     #[test]

@@ -830,7 +830,11 @@ impl Congminal {
     /// 当前终端模式里影响按键编码的两项（方向键/小键盘的应用模式）。
     fn key_flags(&self) -> input::Flags {
         let modes = self.session.term.modes();
-        input::Flags { app_cursor: modes.app_cursor, app_keypad: modes.app_keypad }
+        input::Flags {
+            app_cursor: modes.app_cursor,
+            app_keypad: modes.app_keypad,
+            kitty: self.session.term.keyboard_flags(),
+        }
     }
 
     fn scroll(&mut self, delta: ScrollDelta, x: f64, y: f64, mods: Mods) {
@@ -1880,6 +1884,19 @@ mod integration_tests {
         }
         samples.sort_unstable();
         eprintln!("INPUT: p50={}ns p95={}ns p99={}ns n={}", samples[499], samples[949], samples[989], samples.len());
+    }
+
+    #[test]
+    fn kitty_keyboard_flags_follow_the_session_terminal() {
+        // 程序用 CSI > u 申请扩展键盘协议，输入编码必须跟着它走，弹栈后回到传统编码。
+        let mut app = app("");
+        assert_eq!(app.key_flags().kitty, 0);
+        app.write_to_pty(b"\x1b[>1u");
+        wait_until(&mut app, |app| app.session.term.keyboard_flags() == 1);
+        assert_eq!(app.key_flags().kitty, 1);
+        app.write_to_pty(b"\x1b[<u");
+        wait_until(&mut app, |app| app.session.term.keyboard_flags() == 0);
+        assert_eq!(app.key_flags().kitty, 0);
     }
 
     #[test]
