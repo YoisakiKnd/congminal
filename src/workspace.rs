@@ -3310,7 +3310,8 @@ exec /bin/cat
         wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
         wait(&mut app, |a| a.panes[a.loaded].ended);
         let rows = app.status_rows();
-        assert!(rows[0].contains("SSH 失败 · 退出码 3"), "{}", rows[0]);
+        // 认不出特征时写“连接失败”，不推断认证细节；退出码照实写。
+        assert!(rows[0].starts_with("SSH 失败 · 连接失败 · 退出码 3"), "{}", rows[0]);
         assert!(rows[0].contains("连接页可重连"), "{}", rows[0]);
         assert_eq!(app.profile_phase(1), Some(remote::Phase::Failed));
     }
@@ -3440,6 +3441,9 @@ exec /bin/cat
         let texts: Vec<String> = app.driver.notifications.recent_notices().map(|notice| notice.text()).collect();
         assert!(texts.iter().any(|text| text == "SSH · 认证失败"), "{texts:?}");
         assert_eq!(app.profile_phase(0), Some(remote::Phase::Failed));
+        // 同一条原因也写进状态页，不用去通知里找。
+        let rows = app.status_rows();
+        assert!(rows[0].starts_with("SSH 失败 · 认证失败 · 退出码 255"), "{}", rows[0]);
 
         // 第二个连接要等它真的建出窗格：上一个窗格已经结束，不能拿“已结束”当新窗格就绪。
         app.add_with_profile(None, Some(1));

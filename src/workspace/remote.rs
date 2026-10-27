@@ -117,6 +117,8 @@ pub(super) struct State {
     connected: Option<Duration>,
     /// 前台认证覆盖层正等着这个窗格的凭据；由工作区每次 tick 写入，状态机自己不猜。
     authenticating: bool,
+    /// 失败时从 ssh 自己打印的特征里认出的原因；认不出就是“连接失败”。
+    reason: Option<&'static str>,
     exit: Option<i32>,
     check: Duration,
     /// 收到过输出后置位，进程退出后保留，用于区分“断开”与“从未连上”。
@@ -134,6 +136,7 @@ impl State {
             check,
             output: false,
             authenticating: false,
+            reason: None,
             retry: None,
         }
     }
@@ -188,7 +191,12 @@ impl State {
                 None => format!("SSH 断开 · 原因未知 · {seconds} s"),
             },
             Phase::Failed => {
-                let why = self.exit.map_or_else(|| "原因未知".into(), |code| format!("退出码 {code}"));
+                let why = match (self.reason, self.exit) {
+                    (Some(reason), Some(code)) => format!("{reason} · 退出码 {code}"),
+                    (Some(reason), None) => reason.to_string(),
+                    (None, Some(code)) => format!("退出码 {code}"),
+                    (None, None) => "原因未知".into(),
+                };
                 let connected = self
                     .connected
                     .map_or_else(|| " · 未连上".to_string(), |d| format!(" · 连接 {:.1} s", d.as_secs_f64()));
@@ -230,6 +238,12 @@ fn ssh_host(profiles: &Profiles, index: usize) -> Option<String> {
 
 impl Workspace {
     /// SSH 会话结束时把断开/失败送进通知中心；阶段还在跑就不报，避免误报。
+    /// 把失败原因记到状态机上，供状态页显示；只认 ssh 自己的固定特征。
+    pub(super) fn note_failure_reason(&mut self, index: usize, reason: &'static str) {
+        if let Some(state) = self.panes[index].remote.as_mut() {
+            state.reason = Some(reason);
+        }
+    }
     pub(super) fn report_ssh_end(&mut self, index: usize) {
         let Some(phase) = self.panes[index].remote.as_ref().map(State::phase) else { return };
         let host = self.panes[index].profile.as_ref().and_then(|(profiles, profile)| ssh_host(profiles, *profile));
@@ -239,6 +253,7 @@ impl Workspace {
             Phase::Failed => {
                 let screen = screen_text(&self.driver.session.term);
                 let detail = classify_failure(&screen);
+                self.note_failure_reason(index, detail);
                 self.submit_notice(
                     crate::notifications::Source::Ssh,
                     crate::notifications::Category::SshFailed,
@@ -441,6 +456,25 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failure_rows_carry_the_classified_reason_when_there_is_one() {
+        // 认得出特征：写原因 + 退出码。
+        let mut state = State::new(Duration::from_millis(3));
+        state.mark_output();
+        state.finish(Some(255));
+        state.reason = Some("认证失败");
+        let text = state.describe();
+        assert!(text.starts_with("SSH 失败 · 认证失败 · 退出码 255"), "{text}");
+        // 认不出：只说退出码，不编造原因。
+        let mut plain = State::new(Duration::from_millis(3));
+        plain.finish(Some(3));
+        assert!(plain.describe().starts_with("SSH 失败 · 退出码 3"), "{}", plain.describe());
+        // 没有退出码也没有特征：原因未知。
+        let mut unknown = State::new(Duration::from_millis(3));
+        unknown.finish(None);
+        assert!(unknown.describe().contains("原因未知"), "{}", unknown.describe());
+    }
 
     #[test]
     fn authentication_wait_is_its_own_phase_and_connect_time_is_measured() {
