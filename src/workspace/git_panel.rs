@@ -25,6 +25,8 @@ use std::{
 const DEBOUNCE: Duration = Duration::from_millis(300);
 /// 两次查询的最小间隔；即使配置更小也按这个下限，避免反复拉起子进程。
 const MIN_INTERVAL: Duration = Duration::from_secs(1);
+/// 仓库元数据指纹的复查间隔：只 stat 三个路径，但仍不该每帧都做。
+const META_INTERVAL: Duration = Duration::from_millis(500);
 /// 内容起始行：0 是页签，1 是按钮，2/3 是分支与统计。
 pub(super) const LIST_TOP: usize = 4;
 /// 提交信息的字节上限：超出后不再接受输入，与显示宽度无关。
@@ -94,6 +96,26 @@ pub(super) struct CommitInput {
     pub(super) preedit: String,
 }
 
+/// 一个路径的“变化指纹”：长度 + 修改时间。比读内容便宜，也不受 inode 复用影响。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Stamp {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+fn stamp(path: &Path) -> Option<Stamp> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some(Stamp { len: meta.len(), modified: meta.modified().ok() })
+}
+
+/// 仓库元数据指纹：`index`、`HEAD` 与 `refs` 目录。暂存、提交、切分支都会动它们，
+/// 而工作树里改文件不会——工作树仍然靠周期复查，这里不扫目录树。
+pub(super) fn meta_stamps(root: &Path) -> [Option<Stamp>; 3] {
+    let git = root.join(".git");
+    let base = if git.is_dir() { git } else { root.to_path_buf() };
+    [stamp(&base.join("index")), stamp(&base.join("HEAD")), stamp(&base.join("refs"))]
+}
+
 pub(super) struct Panel {
     pub(super) owner: u64,
     pub(super) dir: Option<Tracked<PathBuf>>,
@@ -140,6 +162,10 @@ pub(super) struct Panel {
     pub(super) resolve: Option<usize>,
     /// 当前窗格的远程读取通道；`Some` 时只读，且状态行标出远端主机。
     pub(super) remote: Option<git::Remote>,
+    /// 上一次看到的仓库元数据指纹；变化说明暂存/提交/切分支，立刻排一次刷新。
+    pub(super) meta: Option<[Option<Stamp>; 3]>,
+    /// 上次检查指纹的时刻，把复查限到 `META_INTERVAL` 一次。
+    pub(super) meta_at: Option<Instant>,
 }
 
 impl Panel {
@@ -185,6 +211,8 @@ impl Panel {
             pending: None,
             resolve: None,
             remote: None,
+            meta: None,
+            meta_at: None,
         }
     }
 
@@ -243,6 +271,8 @@ impl Panel {
         self.owner = 0;
         self.dir = None;
         self.snapshot = None;
+        self.meta = None;
+        self.meta_at = None;
         self.diff = None;
         self.diff_label = None;
         self.error = None;
@@ -325,12 +355,16 @@ impl Panel {
         }
         self.active = true;
         changed |= self.poll(owner);
+        // 元数据变化（终端里 stage/commit/切分支）立刻排刷新；工作树改动仍靠周期复查。
+        changed |= self.poll_meta();
         // 远端通道随窗格走：本机仓库与远端仓库不能复用同一份快照。
         let remote_changed = self.remote.as_ref() != remote;
         if remote_changed {
             self.remote = remote.cloned();
             self.limits.remote = remote.cloned();
             self.snapshot = None;
+            self.meta = None;
+            self.meta_at = None;
             self.selected = None;
             self.offset = 0;
             self.diff = None;
@@ -366,6 +400,8 @@ impl Panel {
             };
             if !reuse {
                 self.snapshot = None;
+                self.meta = None;
+                self.meta_at = None;
                 self.selected = None;
                 self.offset = 0;
                 self.diff = None;
@@ -387,6 +423,32 @@ impl Panel {
         if self.next.is_some_and(|at| Instant::now() >= at) {
             self.next = None;
             changed |= self.query(notify);
+        }
+        changed
+    }
+
+    /// 检查仓库元数据指纹：变了就立刻排一次刷新，不必等周期复查。
+    /// 只 stat 三个路径，且最多每 `META_INTERVAL` 一次；远端仓库每次 stat 都是网络往返，
+    /// 远端仓库不走这条快捷路径。
+    fn poll_meta(&mut self) -> bool {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            self.meta = None;
+            self.meta_at = None;
+            return false;
+        };
+        if self.remote.is_some() {
+            return false;
+        }
+        if self.meta_at.is_some_and(|at| at.elapsed() < META_INTERVAL) {
+            return false;
+        }
+        self.meta_at = Some(Instant::now());
+        let next = meta_stamps(&snapshot.root);
+        // 第一份快照到达时只记下基线，不额外排一次查询（查询刚跑过）。
+        let changed = self.meta.is_some_and(|previous| previous != next);
+        self.meta = Some(next);
+        if changed {
+            self.schedule(DEBOUNCE);
         }
         changed
     }
@@ -1278,6 +1340,32 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn meta_stamps_track_index_head_and_refs_and_fall_back_to_bare_roots() {
+        let dir = std::env::temp_dir().join(format!("congminal-meta-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".git").join("refs")).unwrap();
+        std::fs::write(dir.join(".git").join("HEAD"), b"ref: refs/heads/main\n").unwrap();
+        let before = meta_stamps(&dir);
+        // 只有 refs 目录存在：index 与 HEAD 里的 index 都是“没有”。
+        assert!(before[0].is_none(), "没有 index 时按缺失记");
+        assert!(before[1].is_some(), "HEAD 存在");
+        assert!(before[2].is_some(), "refs 目录存在");
+        // 暂存会写 .git/index：长度与时间至少有一项变化。
+        std::fs::write(dir.join(".git").join("index"), b"DIRC").unwrap();
+        let after = meta_stamps(&dir);
+        assert_ne!(before, after, "写 index 必须改变指纹");
+        // 裸仓库没有 .git 子目录，指纹直接读根目录下的同名路径。
+        let bare = std::env::temp_dir().join(format!("congminal-meta-bare-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&bare);
+        std::fs::create_dir_all(&bare).unwrap();
+        std::fs::write(bare.join("HEAD"), b"ref: refs/heads/main\n").unwrap();
+        let stamps = meta_stamps(&bare);
+        assert!(stamps[1].is_some(), "裸仓库的 HEAD 在根目录");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&bare);
+    }
+
     #[test]
     fn view_states_are_explicit_before_any_result() {
         let mut panel = Panel::new();
