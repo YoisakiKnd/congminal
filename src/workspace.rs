@@ -1684,7 +1684,7 @@ impl Workspace {
                 // SFTP 名称输入与删除确认独占键盘：名称和确认键都不能送到远端终端。
                 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
-                    return self.sftp_capture_key(key);
+                    return self.sftp_capture_key(key, mods);
                 }
                 if self.window_focus
                     && !self.composing()

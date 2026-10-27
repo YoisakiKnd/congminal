@@ -879,7 +879,7 @@ impl Workspace {
         true
     }
     /// 返回 true 表示按键已被输入/确认消费，不能再交给终端。
-    pub(super) fn sftp_capture_key(&mut self, key: Key) -> bool {
+    pub(super) fn sftp_capture_key(&mut self, key: Key, mods: Mods) -> bool {
         let Some(state) = self.sftp.as_mut() else { return false };
         if state.confirm.is_some() {
             match key {
@@ -921,6 +921,11 @@ impl Workspace {
             }
             Key::End => {
                 form.caret = form.text.len();
+                self.chrome_dirty = true;
+            }
+            // X11 与 Windows 把可打印字符作为 Key::Char 送来（macOS 走 Event::Text），
+            // 表单独占键盘时这些字符只能在这里进输入框。
+            Key::Char(c) if !mods.ctrl && !mods.logo && !c.is_control() && form.insert(c.encode_utf8(&mut [0; 4])) => {
                 self.chrome_dirty = true;
             }
             _ => {}
@@ -1276,8 +1281,16 @@ mod tests {
         assert!(app.sftp_click(3, 0), "新建按钮应打开名称输入");
         assert!(app.sftp_capturing());
         app.event(Event::Text("nested".into()));
+        // X11 与 Windows 把可打印字符作为 Key::Char 送来，没有 Event::Text。
+        app.event(Event::Key { key: Key::Char('x'), mods: Mods::default() });
+        // Ctrl 组合是快捷键，不能当文字塞进名称。
+        app.event(Event::Key { key: Key::Char('c'), mods: Mods { ctrl: true, ..Mods::default() } });
         app.event(Event::Key { key: Key::Backspace, mods: Mods::default() });
-        assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text, "neste");
+        assert_eq!(
+            app.sftp.as_ref().unwrap().form.as_ref().unwrap().text,
+            "nested",
+            "字符进入名称、Ctrl 组合被忽略、退格删掉最后字符"
+        );
         assert_eq!(screen(&app), before, "输入期间名称不能写进终端");
         app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
         assert!(!app.sftp_capturing(), "取消后交还键盘");
@@ -1337,7 +1350,7 @@ mod tests {
         assert!(app.sftp_capturing());
         draw_now(&mut app);
         preview(&app, "CONGMINAL_SFTP_DELETE_PREVIEW_PATH");
-        assert!(app.sftp_capture_key(Key::Escape));
+        assert!(app.sftp_capture_key(Key::Escape, Mods::default()));
         assert!(!app.sftp_capturing());
         assert!(app.sftp.as_ref().unwrap().confirm.is_none());
         assert!(app.sftp.as_ref().unwrap().mutation.is_none());
@@ -1352,21 +1365,21 @@ mod tests {
         assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text.len(), 1020, "超出上限的整段被丢弃");
         assert!(app.sftp_capture_text("abcd"));
         assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text.len(), 1024);
-        assert!(app.sftp_capture_key(Key::Backspace));
+        assert!(app.sftp_capture_key(Key::Backspace, Mods::default()));
         assert_eq!(app.sftp.as_ref().unwrap().form.as_ref().unwrap().text.len(), 1023);
-        assert!(app.sftp_capture_key(Key::Escape));
+        assert!(app.sftp_capture_key(Key::Escape, Mods::default()));
         assert!(app.sftp.as_ref().unwrap().form.is_none());
         // 非法名称在本地拒绝，不排队写任务。
         assert!(app.sftp_click(3, 0));
         assert!(app.sftp_capture_text("bad/name"));
-        assert!(app.sftp_capture_key(Key::Enter));
+        assert!(app.sftp_capture_key(Key::Enter, Mods::default()));
         assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Invalid));
         assert!(app.sftp.as_ref().unwrap().mutation.is_none());
         app.sftp.as_mut().unwrap().error = None;
         // 合法名称进入在途写任务；辅助程序不存在时失败并把错误留在面板上。
         assert!(app.sftp_click(3, 0));
         assert!(app.sftp_capture_text("new"));
-        assert!(app.sftp_capture_key(Key::Enter));
+        assert!(app.sftp_capture_key(Key::Enter, Mods::default()));
         assert_eq!(app.sftp.as_ref().unwrap().mutation.as_ref().unwrap().op, Op::NewFolder);
         until(|| {
             app.tick();
