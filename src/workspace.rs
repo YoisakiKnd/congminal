@@ -1607,6 +1607,19 @@ impl Workspace {
                         false,
                     );
                 }
+                // 缺 ssh 程序时把原因写在左栏最后一行：连接页本身要能说明为什么点不动，
+                // 不能只让状态页去报。列表占满时不挤掉已有行。
+                if self.ssh_program_missing() {
+                    // 留出最后一行给状态栏：侧栏矩形包含它，画在同一行会被盖住。
+                    let last = (r.h / h).saturating_sub(2);
+                    if last >= 3 {
+                        // 侧栏只有 24 列上下：先按显示列裁一次，别让提示被切在半个词上。
+                        // 侧栏右缘的分隔线盖住最后一列，留 1 列余量。
+                        let columns = (r.w / self.driver.renderer.cell_size().0).saturating_sub(1);
+                        let hint = crate::term::clip("缺 ssh 程序 · 见状态页", columns);
+                        self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + last * h, r.w, h], &hint, true);
+                    }
+                }
                 // 配置档之后列出 ~/.ssh/config 里的别名：点一下就按这个别名新建连接。
                 let aliases = &self.driver.config.ssh.aliases;
                 let start = self.connection_alias_start(h);
@@ -1757,12 +1770,25 @@ impl Workspace {
     }
 
     /// 需要探测的外部程序：Git 用的那个加上各 SSH 配置档用的 ssh（去重，条数有上限）。
+    /// 配置里的 ssh 程序在 PATH 上找不到：连接页要自己说明为什么点不动。
+    fn ssh_program_missing(&mut self) -> bool {
+        let program = self.driver.config.ssh.program.to_string_lossy().into_owned();
+        let report = self.tools();
+        report.tools.iter().any(|tool| tool.name == program && !tool.available())
+    }
+
     fn tool_programs(&self) -> Vec<(String, &'static str)> {
         let config = &self.driver.config;
         let mut programs: Vec<(String, &'static str)> = Vec::new();
         let git =
             config.git.program.as_ref().map_or_else(|| "git".to_string(), |path| path.to_string_lossy().into_owned());
         programs.push((git, "Git 页"));
+        // `[ssh] program` 是别名与未指定 program 的配置档共用的程序，单独列一条：
+        // 连接页要能说明“缺 ssh”，不能只在有 SSH 配置档时才探测。
+        let ssh = config.ssh.program.to_string_lossy().into_owned();
+        if !programs.iter().any(|(name, _)| *name == ssh) {
+            programs.push((ssh, "SSH/SFTP"));
+        }
         for profile in config.connections.iter() {
             if let crate::config::profiles::Connection::Ssh(ssh) = &profile.connection {
                 let program = ssh
@@ -3336,6 +3362,39 @@ exec /bin/cat
     }
 
     #[cfg(unix)]
+    #[test]
+    fn connection_page_says_why_nothing_works_when_ssh_is_missing() {
+        let mut app = workspace();
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        app.tick();
+        // 默认配置下 ssh 在本机 PATH 上，不显示降级提示。
+        assert!(!app.ssh_program_missing());
+        // 指向不存在的程序：连接页自己说明缺什么、去哪里改。
+        app.driver.config.ssh.program = PathBuf::from("/congminal-nonexistent-ssh");
+        assert!(app.ssh_program_missing());
+        // 状态页同一件事也点名到具体功能。
+        app.action(Action::ToggleRightSidebar);
+        app.tick();
+        let rows = app.status_rows();
+        let tool_row = rows.iter().find(|row| row.starts_with("外部程序")).expect("状态页应有外部程序行");
+        assert!(tool_row.contains("缺 congminal"), "{tool_row}");
+        // 导出一帧供人工核对提示行的位置与宽度。
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_SSH_MISSING_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 改回可用程序后提示消失（探测结果按程序清单缓存，换清单会重新探测）。
+        app.driver.config.ssh.program = PathBuf::from("ssh");
+        assert!(!app.ssh_program_missing());
+    }
+
     #[test]
     fn ssh_aliases_from_the_system_config_start_connections_from_the_connection_page() {
         let dir = layout::TestDir::new();

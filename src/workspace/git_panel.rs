@@ -752,6 +752,10 @@ impl Panel {
         if self.readonly_remote() {
             return true;
         }
+        // 缺 git 时分支查询必然失败，别让用户进一个只会报错的页面。
+        if self.tool_missing() {
+            return true;
+        }
         if self.snapshot.as_ref().is_some_and(|snapshot| snapshot.bare) {
             self.write_note = Some("裸仓库没有工作区，不能切分支".into());
             self.revision = self.revision.wrapping_add(1);
@@ -1148,6 +1152,10 @@ impl Panel {
     /// 当前状态下第 `tier` 档的按钮标签。`tier` 越大标签越短，窄栏时用得上。
     pub(super) fn labels(&self, tier: usize) -> Vec<&'static str> {
         let tier = tier.min(2);
+        // 缺 git 时任何写操作都只会失败：只留“刷新”，让按钮行自己说明降级。
+        if self.tool_missing() {
+            return vec!["刷新"];
+        }
         if let Some(input) = &self.input {
             let labels = match (input.kind, tier >= 2) {
                 (InputKind::Commit, false) => CANCEL_INPUT_LABELS,
@@ -1229,7 +1237,9 @@ impl Panel {
 
     /// 当前这一帧的按钮数；绘制与点击必须用同一个数字，否则点击列会错位。
     pub(super) fn button_count(&self) -> usize {
-        if self.input.is_some() {
+        if self.tool_missing() {
+            1
+        } else if self.input.is_some() {
             2
         } else if self.diff_open {
             3
@@ -1243,6 +1253,11 @@ impl Panel {
         } else {
             8
         }
+    }
+
+    /// 找不到 git 可执行程序：面板降级成只读的“刷新”，不再摆出会失败的写按钮。
+    pub(super) fn tool_missing(&self) -> bool {
+        self.error == Some(Error::ToolMissing)
     }
 
     /// 取出最近一次写操作的结局，交给工作区发通知；取过就不重复发。
@@ -1992,6 +2007,34 @@ mod tests {
         panel.capture_text(&"z".repeat(COMMIT_BYTES * 2));
         assert!(panel.input.as_ref().unwrap().text.data.len() <= COMMIT_BYTES);
         assert!(panel.view(6, 0).headline[0].starts_with("提交信息 › "));
+    }
+
+    #[test]
+    fn a_missing_git_program_leaves_only_the_refresh_button() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        assert_eq!(panel.button_count(), 8);
+        // 查询失败：找不到 git（真实情况下这时也没有快照）。
+        let saved = panel.snapshot.take();
+        panel.error = Some(Error::ToolMissing);
+        assert!(panel.tool_missing());
+        assert_eq!(panel.button_count(), 1, "写按钮全部收起来");
+        assert_eq!(panel.view(6, 0).buttons, vec!["刷新"]);
+        assert_eq!(panel.view(6, 2).buttons, vec!["刷新"], "窄栏也不裁字");
+        // 提示行说清楚缺什么、去哪里改。
+        let headline = panel.view(6, 0).headline.join(" ");
+        assert!(headline.contains("未找到 git"), "{headline}");
+        assert!(headline.contains("[git] program"), "{headline}");
+        // 写操作一个都不启动：没有可用的 git，点按钮只会白等。
+        panel.toggle_stage(notify());
+        assert!(!panel.write_loading);
+        panel.stage_all(notify());
+        assert!(!panel.write_loading);
+        panel.open_branches(notify());
+        assert!(!panel.branches_open);
+        // 错误清掉（例如用户改好配置后刷新成功）就恢复八列。
+        panel.error = None;
+        panel.snapshot = saved;
+        assert_eq!(panel.button_count(), 8);
     }
 
     #[test]
