@@ -43,6 +43,46 @@ pub fn clip(text: &str, width: usize) -> String {
     out
 }
 
+/// 按显示列裁剪一行文本，截断时在末尾补 `…`，让「被裁掉」看得出来而不是断在半个词上。
+///
+/// `width` 小于 2 时放不下省略号，退化成直接裁（只有 1 列时干脆返回空串）。
+pub fn clip_ellipsis(text: &str, width: usize) -> String {
+    if display_width(text) <= width {
+        return text.to_string();
+    }
+    if width <= 1 {
+        return clip(text, width);
+    }
+    let mut out = clip(text, width - 1);
+    out.push('…');
+    out
+}
+
+/// 按显示列保留**尾部**，前面补 `…`。用于路径、`user@host: dir` 这类「后面才有用」的标题。
+pub fn clip_tail(text: &str, width: usize) -> String {
+    if display_width(text) <= width {
+        return text.to_string();
+    }
+    if width <= 1 {
+        return clip(text, width);
+    }
+    let mut tail: Vec<char> = Vec::new();
+    let mut used = 0;
+    for c in text.chars().rev() {
+        let cells = char_width(c);
+        if used + cells > width - 1 {
+            break;
+        }
+        tail.push(c);
+        used += cells;
+    }
+    tail.reverse();
+    let mut out = String::with_capacity(used * 3 + 3);
+    out.push('…');
+    out.extend(tail);
+    out
+}
+
 fn in_table(cp: u32, table: &[(u32, u32)]) -> bool {
     table
         .binary_search_by(|&(lo, hi)| {
@@ -59,7 +99,39 @@ fn in_table(cp: u32, table: &[(u32, u32)]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::char_width;
+    use super::{char_width, clip, clip_ellipsis, clip_tail, display_width};
+
+    #[test]
+    fn truncation_adds_an_ellipsis_and_keeps_the_display_width() {
+        // 放得下就原样返回，不改一个字。
+        assert_eq!(clip_ellipsis("abc", 3), "abc");
+        assert_eq!(clip_ellipsis("abc", 9), "abc");
+        assert_eq!(clip_tail("abc", 3), "abc");
+        // 放不下时补 `…`，总宽度不超过给定列数。
+        for text in ["abcdefgh", "中文测试内容", "a中b文c"] {
+            // 正好放得下时不补省略号，所以只检查真正截断的宽度。
+            for width in 2..display_width(text) {
+                let head = clip_ellipsis(text, width);
+                assert!(display_width(&head) <= width, "{text} @ {width}: {head}");
+                assert!(head.ends_with('…'), "{text} @ {width}: {head}");
+                let tail = clip_tail(text, width);
+                assert!(display_width(&tail) <= width, "{text} @ {width}: {tail}");
+                assert!(tail.starts_with('…'), "{text} @ {width}: {tail}");
+            }
+        }
+        // 宽度不够放省略号时退化成硬截断，不能凭空多出一列。
+        assert_eq!(clip_ellipsis("abc", 1), "a");
+        assert_eq!(clip_ellipsis("abc", 0), "");
+        assert_eq!(clip_tail("abc", 1), "a");
+        // 尾部裁剪保留的是末尾，开头裁剪保留的是开头。
+        assert_eq!(clip_ellipsis("ubuntu@host: ~/Codes/congminal", 10), "ubuntu@ho…");
+        assert_eq!(clip_tail("ubuntu@host: ~/Codes/congminal", 10), "…congminal");
+        // CJK 按两列算：4 列只能放一个汉字加省略号。
+        assert_eq!(clip_ellipsis("中文测试", 4), "中…");
+        assert_eq!(clip_tail("中文测试", 4), "…试");
+        // 与既有 clip 的关系：省略号版本多占 1 列。
+        assert_eq!(clip_ellipsis("abcdef", 5), format!("{}…", clip("abcdef", 4)));
+    }
 
     #[test]
     fn widths() {

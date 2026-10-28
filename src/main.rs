@@ -1343,6 +1343,15 @@ fn watch_config_with(
     })
 }
 
+/// 用户显式写了 `--config` 时，文件不存在要报错：否则会静悄悄跑在默认配置上。
+/// 默认路径（`~/.config/congminal/congminal.toml`）不存在是正常的，不报。
+fn check_explicit_config(explicit: bool, path: Option<&Path>) -> Result<(), String> {
+    match path {
+        Some(path) if explicit && !path.exists() => Err(format!("配置文件不存在：{}", path.display())),
+        _ => Ok(()),
+    }
+}
+
 fn run(config_path: Option<PathBuf>) -> Result<(), String> {
     let (mut config, mut config_warnings) = Config::load(config_path.as_deref());
     resources::initialize(
@@ -1488,6 +1497,8 @@ fn main() {
         std::process::exit(local_directory::isolated::child_mode(std::env::args_os().skip(2)));
     }
     let mut config_path = Config::default_path();
+    // 用户显式写了 --config 时，文件不存在要报错：否则会静悄悄跑在默认配置上。
+    let mut explicit_config = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -1514,13 +1525,19 @@ fn main() {
                 return;
             }
             "--config" => match args.next() {
-                Some(path) => config_path = Some(PathBuf::from(path)),
+                Some(path) => {
+                    config_path = Some(PathBuf::from(path));
+                    explicit_config = true;
+                }
                 None => {
                     eprintln!("congminal: --config 后面要跟配置文件的路径");
                     std::process::exit(2);
                 }
             },
-            _ if arg.starts_with("--config=") => config_path = Some(PathBuf::from(&arg["--config=".len()..])),
+            _ if arg.starts_with("--config=") => {
+                config_path = Some(PathBuf::from(&arg["--config=".len()..]));
+                explicit_config = true;
+            }
             // 从 Finder 启动时 macOS 可能会加上这个参数
             _ if arg.starts_with("-psn_") => {}
             _ => {
@@ -1530,9 +1547,38 @@ fn main() {
         }
     }
 
+    if let Err(message) = check_explicit_config(explicit_config, config_path.as_deref()) {
+        eprintln!("congminal: {message}");
+        std::process::exit(2);
+    }
+
     if let Err(e) = run(config_path) {
         eprintln!("congminal: {e}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::check_explicit_config;
+
+    #[test]
+    fn only_an_explicit_missing_config_is_an_error() {
+        let dir = std::env::temp_dir().join(format!("congminal-cli-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("临时目录");
+        let missing = dir.join("missing.toml");
+        let existing = dir.join("present.toml");
+        std::fs::write(&existing, "").expect("写临时文件");
+        // 默认路径不存在是正常的，不能报错。
+        assert!(check_explicit_config(false, Some(&missing)).is_ok());
+        // 显式指定又不存在：报错并带上路径，方便发现拼错。
+        let message = check_explicit_config(true, Some(&missing)).expect_err("应当报错");
+        assert!(message.contains("配置文件不存在"), "{message}");
+        assert!(message.contains("missing.toml"), "{message}");
+        // 显式指定且存在：放行。
+        assert!(check_explicit_config(true, Some(&existing)).is_ok());
+        assert!(check_explicit_config(true, None).is_ok());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
 

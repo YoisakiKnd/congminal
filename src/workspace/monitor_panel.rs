@@ -462,14 +462,18 @@ impl Panel {
                 if raw.disk_total == 0 {
                     headline.push("磁盘 暂无读数".into());
                 } else {
-                    // 根挂载点写“/”对读者没有信息量，只在多卷时才附上挂载点。
+                    let base =
+                        format!("磁盘 {} / {}{disk}", monitor::human(raw.disk_used), monitor::human(raw.disk_total));
+                    // 根挂载点写“/”对读者没有信息量，只在多卷时才附上挂载点；
+                    // 附上就超出面板宽度时宁可不写，别把数字挤出边界。
                     let mount = self.mount.as_deref().filter(|mount| *mount != "/");
-                    let mount = mount.map(|mount| format!(" · {mount}")).unwrap_or_default();
-                    headline.push(format!(
-                        "磁盘 {} / {}{disk}{mount}",
-                        monitor::human(raw.disk_used),
-                        monitor::human(raw.disk_total)
-                    ));
+                    headline.push(match mount {
+                        Some(mount) => {
+                            let with = format!("{base} · {mount}");
+                            if crate::term::display_width(&with) <= width { with } else { base }
+                        }
+                        None => base,
+                    });
                 }
                 // 网络速率要靠两次采样的累计字节差：第一次采样只有基线，显示未知而不是 0。
                 headline.push(match (raw.net_down, raw.net_up) {

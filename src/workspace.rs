@@ -1470,12 +1470,16 @@ impl Workspace {
             .min()
     }
     fn chrome(&mut self) {
-        let (_, h) = self.driver.renderer.cell_size();
+        let (cw, h) = self.driver.renderer.cell_size();
         let mut x = 0;
-        let tab_width = (self.width / self.tabs.len().max(1)).min((200.0 * self.driver.scale) as usize).max(1);
+        // 页签宽度随窗口增长：只有一个页签时不该被压成 200px 把标题切掉。
+        let tab_width = (self.width / self.tabs.len().max(1)).min((320.0 * self.driver.scale) as usize).max(1);
+        let cells = tab_width.saturating_sub(3) / cw.max(1);
         for i in 0..self.tabs.len() {
             let id = self.tabs[i].first();
             let title = self.index(id).map(|j| self.panes[j].title.as_str()).unwrap_or("终端");
+            // 标题多为 `user@host: ~/path`：保留尾部（目录名）比保留开头有用。
+            let title = crate::term::clip_tail(title, cells.saturating_sub(2));
             let text = format!("{} {}", i + 1, title);
             self.driver.renderer.chrome(&mut self.frame, [x, 0, tab_width, h], &text, i == self.tab);
             x += tab_width;
@@ -1535,9 +1539,11 @@ impl Workspace {
                             );
                         }
                     }
-                    let path = self.local_files.path_label().unwrap_or("本地目录");
+                    // 路径太长时保留尾部：目录名比开头的 `/home/<user>` 有用。
+                    let cells = r.w.saturating_sub(3) / cw.max(1);
+                    let path = crate::term::clip_tail(self.local_files.path_label().unwrap_or("本地目录"), cells);
                     if r.h >= 3 * h {
-                        self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, r.w, h], path, false);
+                        self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, r.w, h], &path, false);
                     }
                     let message = self.local_files.error.map(files::Error::message).unwrap_or_else(|| {
                         if self.local_files.loading {
@@ -1664,9 +1670,13 @@ impl Workspace {
                     }
                 }
             } else {
+                let cells = r.w.saturating_sub(3) / cw.max(1);
                 for i in 0..self.panes.len() {
                     let p = &self.panes[i];
-                    let text = format!("{} {}{}", p.id, p.title, if p.ended { " · 已结束" } else { "" });
+                    let suffix = if p.ended { " · 已结束" } else { "" };
+                    let title =
+                        crate::term::clip_tail(&p.title, cells.saturating_sub(2 + crate::term::display_width(suffix)));
+                    let text = format!("{} {}{}", p.id, title, suffix);
                     let y = r.y + (i + 1) * h;
                     if y + h <= r.y + r.h {
                         self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], &text, p.id == self.selected);
@@ -1773,7 +1783,9 @@ impl Workspace {
                 .to_string(),
         );
         let stats = crate::resources::current().snapshot();
-        rows.push(format!("任务 {} 个在跑 · 最新任务 {}", stats.managed_workers, stats.latest_tasks));
+        // 还没有任务跑过时 `latest_tasks` 是 0，写成「最新任务 —」，免得看着像有个 0 号任务。
+        let latest = if stats.latest_tasks == 0 { "—".to_string() } else { stats.latest_tasks.to_string() };
+        rows.push(format!("任务 {} 个在跑 · 最新任务 {}", stats.managed_workers, latest));
         let tools = self.tools().summary();
         rows.push(tools);
         if !self.driver.notifications.is_empty() {
@@ -3672,6 +3684,34 @@ exec /bin/cat
         assert!(app.tick());
         assert!(app.git.remote.is_none());
         assert!(app.git.snapshot.is_none());
+    }
+
+    #[test]
+    fn disk_mount_is_dropped_when_the_line_would_not_fit() {
+        let mut app = workspace();
+        app.monitor = monitor_panel::Panel::with_source(std::sync::Arc::new(|| {
+            Box::new(ProcessSource(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0))))
+                as Box<dyn monitor::Sampling>
+        }));
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowMonitorPanel);
+        wait(&mut app, |a| a.monitor.samples() > 0);
+        // 多卷时磁盘行会附上挂载点，宽面板放得下就写全。
+        app.monitor.mount = Some("/boot/efi".into());
+        let wide = app.monitor.view(60);
+        let line = wide.headline.iter().find(|line| line.starts_with("磁盘")).expect("磁盘行");
+        assert!(line.contains("/boot/efi"), "{line}");
+        // 面板窄到放不下时去掉挂载点，数字不能被挤出边界。
+        let narrow = app.monitor.view(28);
+        let line = narrow.headline.iter().find(|line| line.starts_with("磁盘")).expect("磁盘行");
+        assert!(!line.contains("/boot/efi"), "{line}");
+        assert!(crate::term::display_width(line) <= 28, "{line}");
+        // 根挂载点本来就不写。
+        app.monitor.mount = Some("/".into());
+        let wide = app.monitor.view(60);
+        let line = wide.headline.iter().find(|line| line.starts_with("磁盘")).expect("磁盘行");
+        assert!(!line.contains(" · /"), "{line}");
     }
 
     #[test]

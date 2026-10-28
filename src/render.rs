@@ -228,8 +228,11 @@ impl Renderer {
             height,
             if selected { self.colors.selection_background } else { self.colors.background },
         );
+        // 放不下时补 `…`：页签标题、侧栏行都是长文本，硬截断会断在半个词上，看起来像画错了。
+        let budget = width.saturating_sub(3) / self.fonts.cell_width.max(1);
+        let text: String = text.chars().filter(|c| !c.is_control()).take(256).collect();
         let mut col = x + 3;
-        for c in text.chars().filter(|c| !c.is_control()).take(256) {
+        for c in crate::term::clip_ellipsis(&text, budget).chars() {
             let c = self.chrome_char(c);
             let cells = char_width(c);
             if col + cells * self.fonts.cell_width > x + width {
@@ -1291,6 +1294,24 @@ mod tests {
         let mut frame = Framebuffer::new(120, height + 20);
         renderer.chrome(&mut frame, [10, 10, 100, height], "● 终端 1", false);
         assert!(renderer.icons.contains_key(&'●'));
+    }
+
+    #[test]
+    fn chrome_truncates_long_text_with_an_ellipsis() {
+        let mut renderer = Renderer::new(&Config::default(), 1.0);
+        let (cw, h) = renderer.cell_size();
+        // 框宽 = 3px 内边距 + 5 列，正好放 5 个字符。
+        let width = 3 + 5 * cw;
+        let paint = |renderer: &mut Renderer, text: &str| {
+            let mut frame = Framebuffer::new(width + 12, h + 12);
+            renderer.chrome(&mut frame, [0, 0, width, h], text, false);
+            frame.pixels
+        };
+        // 放不下时裁成 `abcd…`：像素应当和直接写 `abcd…` 完全一致，而不是硬截断成 `abcde`。
+        assert_eq!(paint(&mut renderer, "abcdefgh"), paint(&mut renderer, "abcd…"));
+        assert_ne!(paint(&mut renderer, "abcdefgh"), paint(&mut renderer, "abcde"));
+        // 放得下就一个字都不动。
+        assert_eq!(paint(&mut renderer, "abcd"), paint(&mut renderer, "abcd"));
     }
 
     #[test]
