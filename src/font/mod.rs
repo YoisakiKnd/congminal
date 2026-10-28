@@ -110,7 +110,7 @@ pub struct Fonts {
     warnings: Warnings,
     source: Source,
     /// 键：(字符, 粗体, emoji 样式, 可以占几格)
-    cache: Cache<(char, bool, bool, u8), Option<Glyph>>,
+    cache: Cache<(char, bool, bool, bool, u8), Option<Glyph>>,
     /// 组合字符（重音符号等）的字形，键：(字符, 粗体, 基础字符占几格)
     marks: Cache<(char, bool, u8), Option<Glyph>>,
     /// 连字替换的结果（[常规, 粗体]），键：一段文字，值：(第几个字, 换成的字形编号)
@@ -136,6 +136,8 @@ enum Source {
 struct Outline {
     regular: ttf::Face,
     bold: Option<ttf::Face>,
+    /// 同家族的斜体；没有时按合成斜体（向右错位）画
+    italic: Option<ttf::Face>,
     /// 编程连字（关掉连字时是 None）
     gsub: Option<gsub::Gsub>,
     gsub_bold: Option<gsub::Gsub>,
@@ -229,6 +231,7 @@ impl Fonts {
                 warnings.push_format(format_args!("没有找到 [font] family 里的字体，改用 {name}"));
             }
             let bold = bold_info.and_then(|info| load_face(&info).ok());
+            let italic = discover::pick_italic(&faces, &regular_info).and_then(|info| load_face(&info).ok());
             let fallback_names =
                 requested.iter().skip(position + 1).map(String::as_str).chain(FALLBACK.iter().copied());
             let mut fallbacks = metadata::list(&pool);
@@ -256,7 +259,7 @@ impl Fonts {
                 metadata::Text::Static("轮廓字体（说明不可用）")
             });
             let Some(mut fonts) =
-                Fonts::try_outline(regular, bold, fallbacks, emoji, pixel_size, line_height, description)
+                Fonts::try_outline(regular, bold, italic, fallbacks, emoji, pixel_size, line_height, description)
             else {
                 warnings.incomplete = true;
                 break;
@@ -313,6 +316,7 @@ impl Fonts {
         Self::try_outline(
             regular,
             bold,
+            None,
             metadata::supplied(fallbacks, &pool),
             metadata::supplied(emoji, &pool),
             pixel_size,
@@ -322,9 +326,11 @@ impl Fonts {
         .unwrap()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn try_outline(
         regular: ttf::Face,
         bold: Option<ttf::Face>,
+        italic: Option<ttf::Face>,
         fallbacks: crate::resources::Tracked<Vec<Fallback>>,
         emoji: crate::resources::Tracked<Vec<Fallback>>,
         pixel_size: f32,
@@ -363,6 +369,7 @@ impl Fonts {
                     gsub_bold: bold.as_ref().and_then(|face| gsub::Gsub::new(face, &[b"calt"])),
                     regular,
                     bold,
+                    italic,
                     fallbacks,
                     emoji_shapers,
                     emoji,
@@ -383,14 +390,21 @@ impl Fonts {
 
     /// `emoji`：这个字要求彩色 emoji 样式（后面跟了 U+FE0F）。
     /// `cells`：可以占几格。字形在这么宽的范围里水平居中，彩色字形还会按它限制大小。
-    pub fn glyph(&mut self, c: char, bold: bool, emoji: bool, cells: usize) -> Option<&Glyph> {
-        let key = (c, bold, emoji, cells as u8);
+    pub fn glyph(&mut self, c: char, bold: bool, italic: bool, emoji: bool, cells: usize) -> Option<&Glyph> {
+        let key = (c, bold, italic, emoji, cells as u8);
         if !self.cache.contains_key(&key) {
             let glyph = match &mut self.source {
                 Source::Bitmap { regular, bold: bold_font, top } => {
-                    bitmap_glyph(if bold { bold_font } else { regular }, c, *top)
+                    let mut glyph = bitmap_glyph(if bold { bold_font } else { regular }, c, *top);
+                    if italic {
+                        glyph = glyph.and_then(|mut glyph| {
+                            oblique(&mut glyph)?;
+                            Some(glyph)
+                        });
+                    }
+                    glyph
                 }
-                Source::Outline(outline) => outline.data.glyph(c, bold, emoji, cells * self.cell_width),
+                Source::Outline(outline) => outline.data.glyph(c, bold, italic, emoji, cells * self.cell_width),
             };
             cache_glyph(&mut self.cache, key, glyph, 0);
         }
@@ -399,6 +413,12 @@ impl Fonts {
 
     /// 字体里是否有这个字的字形（主字体、后备字体都算）。界面图标据此决定要不要回退成 ASCII；
     /// 终端内容不做这种替换——程序输出缺字时显示缺字方框才是正确行为。
+    /// 字形缓存条目数（测试用）。
+    #[cfg(test)]
+    pub fn cached_glyphs(&self) -> usize {
+        self.cache.len()
+    }
+
     pub fn has_glyph(&mut self, c: char) -> bool {
         match &mut self.source {
             Source::Bitmap { regular, .. } => regular.has(c),
@@ -490,7 +510,7 @@ impl Fonts {
                         Some(face) if bold => face,
                         _ => &outline.regular,
                     };
-                    outline.render(face, index, bold && outline.bold.is_none(), self.cell_width)
+                    outline.render(face, index, bold && outline.bold.is_none(), false, self.cell_width)
                 }
                 Source::Bitmap { .. } => None,
             };
@@ -551,7 +571,7 @@ impl Fonts {
 
 impl Outline {
     /// `span`：字形可以占的像素宽度
-    fn glyph(&mut self, c: char, bold: bool, emoji: bool, span: usize) -> Option<GlyphBuild> {
+    fn glyph(&mut self, c: char, bold: bool, italic: bool, emoji: bool, span: usize) -> Option<GlyphBuild> {
         if emoji || prefers_emoji(c) {
             for i in 0..self.emoji.len() {
                 load_pending(&mut self.emoji, i, "emoji 字体");
@@ -566,11 +586,15 @@ impl Outline {
                 return Some(glyph);
             }
         }
-        let synthetic_bold = bold && self.bold.is_none();
-        let primary = match &self.bold {
-            Some(face) if bold => face,
-            _ => &self.regular,
+        // 有真正的斜体就用它（粗斜体没有单独加载，粗体时仍用斜体面，靠合成加粗）；
+        // 没有就按合成斜体画。
+        let synthetic_italic = italic && self.italic.is_none();
+        let (primary, bold_face) = match (&self.italic, &self.bold) {
+            (Some(face), _) if italic => (face, false),
+            (_, Some(face)) if bold => (face, true),
+            _ => (&self.regular, false),
         };
+        let synthetic_bold = bold && !bold_face;
 
         // 找一个有这个字的字体：主字体 → 后备字体 → 主字体的"缺字"字形（通常是个方框）
         let mut found = (primary.glyph_index(c) != 0).then_some((primary, primary.glyph_index(c)));
@@ -588,10 +612,6 @@ impl Outline {
                 _ => None,
             });
         }
-        let primary = match &self.bold {
-            Some(face) if bold => face,
-            _ => &self.regular,
-        };
         let (face, index) = found.unwrap_or((primary, 0));
         // 后备字体恰好是彩色字体（比如用户把 emoji 字体写进了 [font] family）
         if index != 0
@@ -600,11 +620,18 @@ impl Outline {
             return Some(glyph);
         }
 
-        self.render(face, index, synthetic_bold, span)
+        self.render(face, index, synthetic_bold, synthetic_italic, span)
     }
 
     /// 把一个轮廓字形画成点阵，放在 `span` 像素宽的范围里水平居中（后备字体的字宽和主字体不一样）
-    fn render(&self, face: &ttf::Face, index: u16, synthetic_bold: bool, span: usize) -> Option<GlyphBuild> {
+    fn render(
+        &self,
+        face: &ttf::Face,
+        index: u16,
+        synthetic_bold: bool,
+        synthetic_italic: bool,
+        span: usize,
+    ) -> Option<GlyphBuild> {
         let scale = self.pixel_size / face.units_per_em as f32;
         let mut bitmap = raster::rasterize(&face.outline(index)?, scale, face.budget())?;
         if synthetic_bold {
@@ -613,13 +640,17 @@ impl Outline {
         let span = span as f32;
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span - advance) / 2.0).round() as i32;
-        Some(bitmap.map(|bitmap| Glyph {
+        let mut glyph = bitmap.map(|bitmap| Glyph {
             left: bitmap.left + shift,
             top: self.baseline + bitmap.top,
             width: bitmap.width,
             height: bitmap.height,
             pixels: Pixels::Alpha(bitmap.alpha),
-        }))
+        });
+        if synthetic_italic {
+            oblique(&mut glyph)?;
+        }
+        Some(glyph)
     }
 
     fn cluster_glyph(&mut self, sequence: &str, span: usize) -> Option<GlyphBuild> {
@@ -855,6 +886,46 @@ fn embolden(bitmap: &mut crate::resources::Tracked<raster::Bitmap>) -> Option<()
     Some(())
 }
 
+/// 合成斜体：把点阵按行向右错位，越靠上错得越多（约 12°）。没有斜体字体时用它。
+fn oblique(glyph: &mut GlyphBuild) -> Option<()> {
+    const SLANT: f32 = 0.21;
+    let (w, h) = (glyph.width, glyph.height);
+    // 取走旧像素而不是复制：合成斜体只在缓存未命中时发生一次。失败时原样放回。
+    let (capacity, old) = match std::mem::replace(&mut glyph.data.pixels, Pixels::Alpha(Vec::new())) {
+        Pixels::Alpha(alpha) => (alpha.capacity(), alpha),
+        other => {
+            glyph.data.pixels = other;
+            return None;
+        }
+    };
+    let shift = ((h as f32) * SLANT).ceil() as usize;
+    let Some(new_w) = w.checked_add(shift) else {
+        glyph.data.pixels = Pixels::Alpha(old);
+        return None;
+    };
+    let Some(len) = new_w.checked_mul(h).filter(|&len| len <= 1024 * 1024) else {
+        glyph.data.pixels = Pixels::Alpha(old);
+        return None;
+    };
+    // 扩容前同时保留旧块与新块，覆盖 realloc 搬迁时的重叠。
+    if glyph.memory.resize(capacity + len).is_err() {
+        glyph.data.pixels = Pixels::Alpha(old);
+        return None;
+    }
+    let mut pixels = vec![0u8; len];
+    for y in 0..h {
+        let offset = (((h - 1 - y) as f32) * SLANT).round() as usize;
+        for x in 0..w {
+            pixels[y * new_w + x + offset] = old[y * w + x];
+        }
+    }
+    let capacity = pixels.capacity();
+    glyph.data.width = new_w;
+    glyph.data.pixels = Pixels::Alpha(pixels);
+    glyph.memory.resize(capacity).unwrap();
+    Some(())
+}
+
 fn bitmap_glyph(font: &psf::Font, c: char, top: i32) -> Option<GlyphBuild> {
     let memory =
         crate::resources::current().lease(crate::resources::Kind::FontRaster, font.width * font.height).ok()?;
@@ -927,6 +998,66 @@ mod tests {
         FaceInfo::new(std::path::Path::new(path), 0, vec![], 400, false, &crate::resources::current()).unwrap()
     }
 
+    /// 四种样式各自成形：粗体更重、斜体更宽（合成错位）、粗斜体两者兼有。
+    #[test]
+    fn bold_italic_is_wider_and_heavier_than_either_style_alone() {
+        let config = crate::config::Config::default();
+        let mut fonts = Fonts::load(&config.font, 1.0, false);
+        let measure = |fonts: &mut Fonts, bold: bool, italic: bool| {
+            let glyph = fonts.glyph('M', bold, italic, false, 1).unwrap();
+            let ink = match &glyph.pixels {
+                Pixels::Alpha(alpha) => alpha.iter().filter(|&&p| p != 0).count(),
+                Pixels::Color(pixels) => pixels.len(),
+            };
+            (glyph.width, ink)
+        };
+        let (plain_w, plain_ink) = measure(&mut fonts, false, false);
+        let (bold_w, bold_ink) = measure(&mut fonts, true, false);
+        let (italic_w, italic_ink) = measure(&mut fonts, false, true);
+        let (both_w, both_ink) = measure(&mut fonts, true, true);
+        assert!(bold_ink > plain_ink, "粗体应该更重：{bold_ink} vs {plain_ink}");
+        assert!(italic_w > plain_w, "斜体应该更宽：{italic_w} vs {plain_w}");
+        assert!(
+            both_w > italic_w && both_ink > italic_ink,
+            "粗斜体应该又宽又重：{both_w}/{both_ink} vs {italic_w}/{italic_ink}"
+        );
+        assert!(both_w > bold_w, "粗斜体应该比粗体更宽：{both_w} vs {bold_w}");
+    }
+
+    /// 合成斜体把每一行向右错位，越靠上错得越多；额度不足时保留原图。
+    #[test]
+    fn oblique_shifts_rows_right_and_failure_preserves_the_bitmap() {
+        use crate::resources::{Budget, Kind, Tracked};
+        let column: Vec<u8> = (10..20).collect();
+        let pool = Budget::new(50, 0);
+        let mut glyph = Tracked::new(
+            Glyph { left: 0, top: 0, width: 1, height: 10, pixels: Pixels::Alpha(column.clone()) },
+            pool.lease(Kind::FontRaster, 10).unwrap(),
+        );
+        oblique(&mut glyph).unwrap();
+        // 10 行 × 0.21 → 顶部错 2 列，宽度 1 → 4
+        assert_eq!((glyph.width, glyph.height), (4, 10));
+        let Pixels::Alpha(pixels) = &glyph.pixels else { panic!("应该还是灰度点阵") };
+        // 顶行（y=0）错 2 列，底行（y=9）不动
+        assert_eq!(&pixels[0..4], &[0, 0, 10, 0]);
+        assert_eq!(&pixels[36..40], &[19, 0, 0, 0]);
+        // 中间行按比例错位，不会丢像素
+        assert_eq!(pixels.iter().filter(|&&p| p != 0).count(), 10);
+        drop(glyph);
+        assert_eq!(pool.snapshot().used, 0);
+
+        // 额度不够时不动原图
+        let pool = Budget::new(49, 0);
+        let mut glyph = Tracked::new(
+            Glyph { left: 0, top: 0, width: 1, height: 10, pixels: Pixels::Alpha(column.clone()) },
+            pool.lease(Kind::FontRaster, 10).unwrap(),
+        );
+        assert!(oblique(&mut glyph).is_none());
+        assert_eq!((glyph.width, glyph.height), (1, 10));
+        let Pixels::Alpha(pixels) = &glyph.pixels else { panic!("应该还是灰度点阵") };
+        assert_eq!(pixels, &column);
+    }
+
     #[test]
     fn embolden_admits_old_and_new_pixels_and_failure_preserves_the_bitmap() {
         use crate::resources::{Budget, Kind, Tracked};
@@ -990,6 +1121,7 @@ mod tests {
         let mut outline = Outline {
             regular: load_face(&face_info(&path)).unwrap(),
             bold: None,
+            italic: None,
             gsub: None,
             gsub_bold: None,
             fallbacks: vec![],
@@ -1038,6 +1170,7 @@ mod tests {
         let outline = Outline {
             regular: load_face(&face_info(&path)).unwrap(),
             bold: None,
+            italic: None,
             gsub: None,
             gsub_bold: None,
             fallbacks: vec![],

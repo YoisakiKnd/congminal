@@ -191,9 +191,12 @@ mod tests {
         let data: mmap::Bytes = bytes.into();
         let first = ttf::Face::parse(data.clone(), 0).unwrap();
         let second = ttf::Face::parse(data, 0).unwrap();
-        let old = Fonts::try_outline(first, None, list(&pool), list(&pool), 20.0, 1.0, Text::Static("old")).unwrap();
+        let old =
+            Fonts::try_outline(first, None, None, list(&pool), list(&pool), 20.0, 1.0, Text::Static("old")).unwrap();
         let before = pool.snapshot().used;
-        assert!(Fonts::try_outline(second, None, list(&pool), list(&pool), 20.0, 1.0, Text::Static("new")).is_none());
+        assert!(
+            Fonts::try_outline(second, None, None, list(&pool), list(&pool), 20.0, 1.0, Text::Static("new")).is_none()
+        );
         assert_eq!(pool.snapshot().used, before);
         let Source::Outline(outline) = &old.source else { panic!() };
         assert_ne!(outline.regular.glyph_index('A'), 0);

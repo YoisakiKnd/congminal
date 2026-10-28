@@ -383,6 +383,11 @@ pub fn pick_regular_and_bold(faces: &[FaceInfo]) -> Option<(FaceInfo, Option<Fac
     Some((regular.clone(), bold))
 }
 
+/// 同一家族里的斜体：优先取和正体同字重的，没有就取最接近 400 的。
+pub fn pick_italic(faces: &[FaceInfo], regular: &FaceInfo) -> Option<FaceInfo> {
+    faces.iter().filter(|f| f.italic).min_by_key(|f| (f.weight as i32 - regular.weight as i32).abs()).cloned()
+}
+
 #[cfg(test)]
 #[path = "discovery_tests.rs"]
 mod tests;

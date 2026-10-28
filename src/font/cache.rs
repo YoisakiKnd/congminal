@@ -20,6 +20,12 @@ impl<K: Eq + Hash + Copy, V> Cache<K, V> {
         self.memory.budget()
     }
 
+    /// 当前缓存条目数（测试用来核对“同一字符的不同样式分开缓存”）。
+    #[cfg(test)]
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
     pub fn used_bytes(&self) -> usize {
         self.memory.bytes() + self.index_memory.bytes()
     }
