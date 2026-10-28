@@ -1,0 +1,48 @@
+[?1049h[22;0;0t[?1h=[4mLS[24m(1)                            User Commands                           [4mLS[24m(1)[m
+[m
+[1mNAME[0m[m
+       ls - list directory contents[m
+[m
+[1mSYNOPSIS[0m[m
+       [1mls [22m[[4mOPTION[24m]... [[4mFILE[24m]...[m
+[m
+[1mDESCRIPTION[0m[m
+       List  information  about  the FILEs (the current directory by default).[m
+       Sort entries alphabetically if none of [1m-cftuvSUX [22mnor [1m--sort  [22mis  speci‐[m
+       fied.[m
+[m
+       Mandatory  arguments  to  long  options are mandatory for short options[m
+       too.[m
+[m
+       [1m-a[22m, [1m--all[0m[m
+              do not ignore entries starting with .[m
+[m
+       [1m-A[22m, [1m--almost-all[0m[m
+              do not list implied . and ..[m
+[m
+       [1m--author[0m[m
+[7m Manual page ls(1) line 1 (press h for help or q to quit)[27m[K[K...skipping...
+[m
+       2      if serious trouble (e.g., cannot access command-line argument).[m
+[m
+[1mAUTHOR[0m[m
+       Written by Richard M. Stallman and David MacKenzie.[m
+[m
+[1mREPORTING BUGS[0m[m
+       GNU coreutils online help: <https://www.gnu.org/software/coreutils/>[m
+       Report any translation bugs to <https://translationproject.org/team/>[m
+[m
+[1mCOPYRIGHT[0m[m
+       Copyright  ©  2023  Free Software Foundation, Inc.  License GPLv3+: GNU[m
+       GPL version 3 or later <https://gnu.org/licenses/gpl.html>.[m
+       This is free software: you are free  to  change  and  redistribute  it.[m
+       There is NO WARRANTY, to the extent permitted by law.[m
+[m
+[1mSEE ALSO[0m[m
+       [1mdircolors[22m(1)[m
+[m
+       Full documentation <https://www.gnu.org/software/coreutils/ls>[m
+       or available locally via: info '(coreutils) ls invocation'[m
+[m
+GNU coreutils 9.4                 August 2026                            [4mLS[24m(1)[m
+[7m Manual page ls(1) line 227/249 (END) (press h for help or q to quit)[27m[K[K[?1l>[?1049l[23;0;0t
