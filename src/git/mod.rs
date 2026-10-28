@@ -43,6 +43,12 @@ const WORK_BYTES: usize = 256 * 1024;
 const MESSAGE_LIMIT: usize = 200;
 /// 分支列表上限：再多也不值得在 280 px 的侧栏里翻，超出就标记“已截断”。
 pub const BRANCH_LIMIT: usize = 200;
+/// 提交历史一次最多列出多少条。
+pub const LOG_LIMIT: usize = 50;
+/// 单条提交摘要（主题行）最多多少字节。
+const SUBJECT_BYTES: usize = 200;
+/// 单条提交的 `--stat` 文本上限。
+const STAT_BYTES: usize = 64 * 1024;
 /// 单个分支名的字节上限；`git check-ref-format` 允许的路径分量都比这个短得多。
 const BRANCH_NAME_BYTES: usize = 255;
 
@@ -338,6 +344,99 @@ impl std::fmt::Debug for BranchList {
     }
 }
 
+/// 一条提交：短哈希、主题、作者与相对时间。
+pub struct Commit {
+    pub hash: String,
+    pub short: String,
+    pub subject: String,
+    pub author: String,
+    pub when: String,
+}
+/// 一次提交历史查询的结果：列表，或某条提交的 `--stat` 文本。
+pub struct Log {
+    pub commits: Vec<Commit>,
+    /// 选中某条提交时它的 `--stat` 摘要；列表查询时为 None。
+    pub stat: Option<String>,
+    /// 提交数超过 `LOG_LIMIT` 或输出被截断时为真。
+    pub truncated: bool,
+    _memory: Lease,
+}
+impl Log {
+    /// 这份结果占用的额度字节数（面板把它算进右栏总量）。
+    pub fn bytes(&self) -> usize {
+        self._memory.bytes()
+    }
+    /// 只给面板单测用。
+    #[cfg(test)]
+    pub(crate) fn for_test(commits: &[(&str, &str)]) -> Self {
+        let bytes = commits.iter().map(|(hash, subject)| hash.len() + subject.len() + 128).sum::<usize>() + 256;
+        let memory = crate::resources::current().lease(Kind::Git, bytes).expect("测试额度");
+        let commits = commits
+            .iter()
+            .map(|(hash, subject)| Commit {
+                hash: (*hash).to_string(),
+                short: hash.chars().take(7).collect(),
+                subject: (*subject).to_string(),
+                author: "t".into(),
+                when: "1 分钟前".into(),
+            })
+            .collect();
+        Self { commits, stat: None, truncated: false, _memory: memory }
+    }
+}
+impl std::fmt::Debug for Log {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Log")
+            .field("commits", &self.commits.len())
+            .field("stat", &self.stat.as_ref().map(String::len))
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
+
+pub(crate) struct LogRequest {
+    pub(crate) owner: u64,
+    pub(crate) generation: u64,
+    dir: Tracked<PathBuf>,
+    /// 要看 `--stat` 的提交；None 表示只列历史。
+    hash: Option<OsString>,
+    limits: Limits,
+}
+pub(crate) struct LogReply {
+    pub(crate) owner: u64,
+    pub(crate) generation: u64,
+    pub(crate) result: Result<Log, Error>,
+}
+impl LogRequest {
+    pub(crate) fn new(
+        owner: u64,
+        generation: u64,
+        dir: &Path,
+        hash: Option<&OsStr>,
+        limits: &Limits,
+        pool: &Arc<Budget>,
+    ) -> Result<Self, Error> {
+        let length = dir.as_os_str().len().saturating_add(hash.map_or(0, OsStr::len));
+        if length == 0 || length > PATH_LIMIT {
+            return Err(Error::Path);
+        }
+        // 提交哈希只接受十六进制：不接受任意字符串，避免把参数拼进命令。
+        if let Some(hash) = hash
+            && (hash.is_empty() || hash.len() > 64 || !hash.as_encoded_bytes().iter().all(u8::is_ascii_hexdigit))
+        {
+            return Err(Error::Path);
+        }
+        let memory = pool.lease(Kind::Git, length + 128).map_err(|_| Error::Budget)?;
+        Ok(Self {
+            owner,
+            generation,
+            dir: Tracked::new(PathBuf::from(dir), memory),
+            hash: hash.map(OsString::from),
+            limits: limits.clone(),
+        })
+    }
+}
+
 pub(crate) struct BranchRequest {
     pub(crate) owner: u64,
     pub(crate) generation: u64,
@@ -422,9 +521,126 @@ pub(crate) fn diff(request: DiffRequest, cancel: &Cancellation) -> DiffReply {
     DiffReply { owner: request.owner, generation: request.generation, target: request.target, result }
 }
 
+pub(crate) fn log(request: LogRequest, cancel: &Cancellation) -> LogReply {
+    let result = scan_log(&request, cancel);
+    LogReply { owner: request.owner, generation: request.generation, result }
+}
+
 pub(crate) fn branches(request: BranchRequest, cancel: &Cancellation) -> BranchReply {
     let result = scan_branches(&request, cancel);
     BranchReply { owner: request.owner, generation: request.generation, result }
+}
+
+/// 读提交历史，或某条提交的 `--stat` 摘要。只读，不碰工作区与索引。
+fn scan_log(request: &LogRequest, cancel: &Cancellation) -> Result<Log, Error> {
+    let pool = request.dir.memory.budget().clone();
+    let limits = &request.limits;
+    let dir = request.dir.as_path();
+    if let Some(hash) = &request.hash {
+        // `--stat` 只读这一条提交；`--no-color` 让输出稳定，`-1` 防止意外展开。
+        let output = run(
+            &pool,
+            limits,
+            &[
+                OsStr::new("show"),
+                OsStr::new("--stat"),
+                OsStr::new("--no-color"),
+                OsStr::new("--format=%h %s%n%an · %ar"),
+                OsStr::new("-1"),
+                hash.as_os_str(),
+            ],
+            Some(dir),
+            STAT_BYTES,
+            cancel,
+        )?;
+        if !output.success {
+            return Err(classify(&output, limits));
+        }
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let stat = String::from_utf8_lossy(&output.stdout).into_owned();
+        let memory = pool.lease(Kind::Git, stat.capacity() + 256).map_err(|_| Error::Budget)?;
+        return Ok(Log { commits: Vec::new(), stat: Some(stat), truncated: output.stdout_truncated, _memory: memory });
+    }
+    // 字段之间用 NUL 分隔，行之间用换行：主题行里的空格与制表符不会被拆错。
+    let output = run(
+        &pool,
+        limits,
+        &[
+            OsStr::new("log"),
+            OsStr::new("--no-color"),
+            OsStr::new("--format=%H%x00%h%x00%an%x00%ar%x00%s"),
+            OsStr::new("-n"),
+            OsStr::new(&(LOG_LIMIT + 1).to_string()),
+        ],
+        Some(dir),
+        STDERR_BYTES,
+        cancel,
+    )?;
+    if !output.success {
+        return Err(classify(&output, limits));
+    }
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    let parsed = parse_log(&output.stdout, output.stdout_truncated);
+    let bytes = parsed
+        .commits
+        .iter()
+        .map(|commit| {
+            commit.hash.capacity()
+                + commit.short.capacity()
+                + commit.subject.capacity()
+                + commit.author.capacity()
+                + commit.when.capacity()
+                + std::mem::size_of::<Commit>()
+        })
+        .sum::<usize>()
+        + 256;
+    let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
+    Ok(Log { commits: parsed.commits, stat: None, truncated: parsed.truncated, _memory: memory })
+}
+
+struct ParsedLog {
+    commits: Vec<Commit>,
+    truncated: bool,
+}
+
+/// 解析 `%H%x00%h%x00%an%x00%ar%x00%s`：字段缺失或带控制字符的条目直接跳过。
+fn parse_log(bytes: &[u8], truncated: bool) -> ParsedLog {
+    let mut commits = Vec::new();
+    let mut limited = truncated;
+    for line in bytes.split(|byte| *byte == b'\n') {
+        if line.is_empty() {
+            continue;
+        }
+        let mut fields = line.splitn(5, |byte| *byte == 0);
+        let (Some(hash), Some(short), Some(author), Some(when), Some(subject)) =
+            (fields.next(), fields.next(), fields.next(), fields.next(), fields.next())
+        else {
+            limited = true;
+            continue;
+        };
+        if hash.len() != 40 && hash.len() != 64 {
+            limited = true;
+            continue;
+        }
+        if commits.len() >= LOG_LIMIT {
+            limited = true;
+            break;
+        }
+        let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+        let subject = text(subject);
+        let subject = if subject.len() > SUBJECT_BYTES {
+            limited = true;
+            crate::term::clip(&subject, SUBJECT_BYTES)
+        } else {
+            subject
+        };
+        commits.push(Commit { hash: text(hash), short: text(short), subject, author: text(author), when: text(when) });
+    }
+    ParsedLog { commits, truncated: limited }
 }
 
 /// 列出本地分支。只读 `refs/heads`，不碰远端跟踪分支与工作区。

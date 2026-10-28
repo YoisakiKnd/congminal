@@ -4095,7 +4095,7 @@ program="/definitely/missing/congminal-shell"
         // 选中冲突条目后第三列直接显示“解决”，点进去选保留哪一侧。
         assert_eq!(app.git.view(12, 0).buttons[2], "解决");
         // 冲突条目点“暂存”位置进的是解决页，不会直接暂存冲突内容。
-        click(&mut app, r.w / 3 + 4, 1);
+        click(&mut app, 2 * (r.w / 9) + 4, 1);
         assert_eq!(app.git.resolve, Some(index));
         assert_eq!(app.git.view(12, 0).buttons[1], "保留我方");
         force_draw(&mut app);
@@ -4168,9 +4168,9 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
-        // 列表页八列：刷新 / 差异 / 暂存 / 全部暂存 / 提交 / 拉取 / 推送 / 分支。
-        assert_eq!(app.git.button_count(), 8);
-        click(&mut app, 7 * (r.w / 8) + 4, 1);
+        // 列表页九列：刷新 / 差异 / 暂存 / 全部暂存 / 提交 / 拉取 / 推送 / 分支 / 历史。
+        assert_eq!(app.git.button_count(), 9);
+        click(&mut app, 7 * (r.w / 9) + 4, 1);
         assert!(app.git.branches_open, "{:?}", app.git.write_note);
         wait(&mut app, |a| a.git.branches.is_some() || a.git.branches_error.is_some());
         let list = app.git.branches.as_ref().unwrap();
@@ -4252,8 +4252,8 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
         // 第四槽“全部暂存”：不选条目也能把改动与未跟踪文件一次放进索引。
-        assert_eq!(app.git.button_count(), 8);
-        click(&mut app, 3 * (r.w / 8) + 4, 1);
+        assert_eq!(app.git.button_count(), 9);
+        click(&mut app, 3 * (r.w / 9) + 4, 1);
         wait(&mut app, |a| a.git.snapshot.as_ref().is_some_and(|s| s.counts.unstaged == 0 && s.counts.untracked == 0));
         assert!(
             app.git.write_note.as_deref().is_some_and(|note| note.contains("已全部暂存")),
@@ -4261,7 +4261,7 @@ program="/definitely/missing/congminal-shell"
             app.git.write_note
         );
         // 进分支页，新建一个分支：输入名字后 Enter 直接新建并切过去。
-        click(&mut app, 7 * (r.w / 8) + 4, 1);
+        click(&mut app, 7 * (r.w / 9) + 4, 1);
         assert!(app.git.branches_open, "{:?}", app.git.write_note);
         wait(&mut app, |a| a.git.branches.is_some() || a.git.branches_error.is_some());
         assert_eq!(app.git.button_count(), 5);
@@ -4425,6 +4425,52 @@ program="/definitely/missing/congminal-shell"
         assert!(app.git.snapshot.is_none());
     }
     #[test]
+    fn git_panel_reads_commit_history_and_one_commit_stat() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        // 列表页九列：最后一列是“历史”。
+        click(&mut app, 8 * (r.w / 9) + 4, 1);
+        assert!(app.git.log_open, "{:?}", app.git.write_note);
+        wait(&mut app, |a| a.git.log.is_some() || a.git.log_error.is_some());
+        let log = app.git.log.as_ref().unwrap();
+        assert!(log.commits.iter().any(|commit| commit.subject == "init"), "{:?}", log.commits.len());
+        assert_eq!(app.git.button_count(), 2);
+        force_draw(&mut app);
+        if let Some(path) = std::env::var_os("CONGMINAL_GIT_LOG_PREVIEW_PATH") {
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 点第一行看它的 --stat。
+        click(&mut app, 6, git_panel::LIST_TOP);
+        wait(&mut app, |a| a.git.log_stat.is_some() || a.git.log_stat_error.is_some());
+        let stat = app.git.log_stat.as_ref().and_then(|log| log.stat.clone()).unwrap_or_default();
+        assert!(stat.contains("init"), "{stat}");
+        assert!(app.git.log_stat_open);
+        // 返回历史列表，再返回变更列表。
+        click(&mut app, r.w / 2 + 4, 1);
+        assert!(!app.git.log_stat_open && app.git.log_open);
+        click(&mut app, r.w / 2 + 4, 1);
+        assert!(!app.git.log_open);
+        assert!(app.git.log.is_none(), "退出历史页要释放列表");
+    }
+
+    #[test]
     fn git_panel_discards_a_worktree_change_after_a_second_click() {
         let dir = git_fixture();
         let repo = dir.0.join("repo");
@@ -4442,7 +4488,7 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
         // 状态页八个槽位，差异页四个槽位：按当前页取列宽。
-        let status_slot = |index: usize| index * (r.w / 8) + 4;
+        let status_slot = |index: usize| index * (r.w / 9) + 4;
         let slot = |index: usize| index * (r.w / 4) + 4;
         let index = app
             .git
@@ -4493,7 +4539,7 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
         // 按钮六列等分：刷新 / 差异 / 暂存 / 提交 / 拉取 / 推送。
-        let slot = |index: usize| index * (r.w / 6) + 4;
+        let slot = |index: usize| index * (r.w / 9) + 4;
         let index = app
             .git
             .snapshot
@@ -4515,13 +4561,13 @@ program="/definitely/missing/congminal-shell"
         // 已经全部进入索引的条目：同一个按钮变成“取消暂存”。
         assert_eq!(app.git.view(6, 0).buttons[2], "取消暂存");
         // 打开提交输入，输入法结果与按键都由面板吃掉，不进入终端。
-        click(&mut app, slot(3), 1);
+        click(&mut app, slot(4), 1);
         assert!(app.git.capturing());
         // 输入打开时按钮只有两列：右半是“取消”，点它就放弃这次提交。
         click(&mut app, r.w / 2 + 4, 1);
         assert!(!app.git.capturing());
         assert!(app.git.write_note.is_none());
-        click(&mut app, slot(3), 1);
+        click(&mut app, slot(4), 1);
         assert!(app.git.capturing());
         assert!(app.event(Event::Text("提交自右栏".into())));
         force_draw(&mut app);
@@ -4623,9 +4669,9 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
         // 六列等分：刷新 / 差异 / 暂存 / 提交 / 拉取 / 推送。
-        let slot = |index: usize| index * (r.w / 6) + 4;
+        let slot = |index: usize| index * (r.w / 9) + 4;
         // 第一次点击只进入确认态，不执行任何 git 命令。
-        click(&mut app, slot(5), 1);
+        click(&mut app, slot(6), 1);
         assert!(app.git.pending.is_some());
         let note = app.git.write_note.clone().unwrap_or_default();
         assert!(note.contains("再点一次") && note.contains("推送"), "{note}");
@@ -4639,7 +4685,7 @@ program="/definitely/missing/congminal-shell"
             std::fs::write(path, ppm).unwrap();
         }
         // 第二次点击才真正推送；上游分支指向本地 HEAD。
-        click(&mut app, slot(5), 1);
+        click(&mut app, slot(6), 1);
         wait(&mut app, |a| !a.git.write_loading && a.git.write_note.is_some());
         assert!(app.git.write_note.as_deref().unwrap_or("").contains("已推送"), "{:?}", app.git.write_note);
         let head = std::process::Command::new("git").arg("-C").arg(&repo).args(["rev-parse", "HEAD"]).output().unwrap();
@@ -4704,11 +4750,11 @@ program="/definitely/missing/congminal-shell"
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
-        let slot = |index: usize| index * (r.w / 6) + 4;
-        click(&mut app, slot(4), 1);
+        let slot = |index: usize| index * (r.w / 9) + 4;
+        click(&mut app, slot(5), 1);
         let note = app.git.write_note.clone().unwrap_or_default();
         assert!(note.contains("再点一次") && note.contains("拉取"), "{note}");
-        click(&mut app, slot(4), 1);
+        click(&mut app, slot(5), 1);
         wait(&mut app, |a| !a.git.write_loading && a.git.write_note.is_some());
         assert!(app.git.write_note.as_deref().unwrap_or("").contains("已拉取"), "{:?}", app.git.write_note);
         assert!(repo.join("from-other.txt").exists(), "快进后应拿到上游文件");

@@ -936,6 +936,47 @@ fn branches_list_local_refs_with_the_current_marker() {
 }
 
 #[test]
+fn log_lists_recent_commits_and_shows_one_commit_stat() {
+    let fixture = Fixture::new("log");
+    fixture.repo();
+    for (name, body) in [("a.txt", "one\n"), ("b.txt", "two\n")] {
+        std::fs::write(fixture.path().join(name), body).unwrap();
+        fixture.git(&["add", name]);
+        fixture.git(&["commit", "-qm", &format!("add {name}")]);
+    }
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    let read = |hash: Option<&OsStr>| {
+        retry_worker(|| {
+            let request = LogRequest::new(1, 2, fixture.path(), hash, &base_limits(), &pool)?;
+            log(request, &Cancellation::default()).result
+        })
+    };
+    let list = read(None).expect("提交历史");
+    // 最新的在前，主题行与作者都在（夹具自带一次初始提交）。
+    assert_eq!(list.commits[0].subject, "add b.txt");
+    assert_eq!(list.commits[1].subject, "add a.txt");
+    assert!(list.commits.len() >= 2);
+    assert_eq!(list.commits[0].hash.len(), 40);
+    assert!(list.commits[0].short.len() >= 7);
+    assert!(!list.commits[0].author.is_empty());
+    assert!(!list.truncated);
+    // 单条提交的 `--stat`：包含主题行与改动文件。
+    let hash = OsString::from(&list.commits[0].hash);
+    drop(list);
+    let one = read(Some(&hash)).expect("单条提交");
+    let stat = one.stat.as_deref().unwrap();
+    assert!(stat.contains("add b.txt"), "{stat}");
+    assert!(stat.contains("b.txt"), "{stat}");
+    assert!(one.commits.is_empty());
+    drop(one);
+    // 非十六进制的哈希不接受：不把任意字符串拼进命令。
+    assert!(
+        LogRequest::new(1, 2, fixture.path(), Some(OsStr::new("HEAD~1; rm -rf /")), &base_limits(), &pool).is_err()
+    );
+}
+
+#[test]
 fn discard_restores_the_working_tree_copy_and_leaves_the_index_alone() {
     let fixture = Fixture::new("discard");
     fixture.repo();
