@@ -54,6 +54,8 @@ const CONFIRM_REMOTE_LABELS: [&str; 3] = ["确认拉取", "确认", "确"];
 const CONFIRM_PUSH_LABELS: [&str; 3] = ["确认推送", "确认", "确"];
 const INERT_LABEL: &str = "—";
 /// 解决冲突页的按钮：按槽宽降级，窄栏时只留一个字。
+/// 撤销确认态：三档标签，窄侧栏自动降级。
+const CONFIRM_DISCARD_LABELS: [&str; 3] = ["确认撤销", "确认", "撤"];
 const RESOLVE_LABELS: [[&str; 4]; 3] =
     [["刷新", "保留我方", "保留对方", "返回"], ["刷新", "留我方", "留对方", "返回"], ["刷", "我", "对", "返"]];
 /// 列表页第 7 个按钮：进分支页。
@@ -201,6 +203,8 @@ pub(super) struct Panel {
     pub(super) branch_pending: Option<(usize, Instant)>,
     /// 删除分支的二次确认：与切换分开记，避免确认的是另一个动作。
     pub(super) delete_pending: Option<(usize, Instant)>,
+    /// 撤销工作区修改的二次确认（差异页）。
+    pub(super) discard_pending: Option<Instant>,
     /// 上一次看到的仓库元数据指纹；变化说明暂存/提交/切分支，立刻排一次刷新。
     pub(super) meta: Option<[Option<Stamp>; 3]>,
     /// 上次检查指纹的时刻，把复查限到 `META_INTERVAL` 一次。
@@ -261,6 +265,7 @@ impl Panel {
             branch_scroll: 0.0,
             branch_pending: None,
             delete_pending: None,
+            discard_pending: None,
             meta: None,
             meta_at: None,
         }
@@ -411,6 +416,14 @@ impl Panel {
         {
             self.delete_pending = None;
             self.write_note = Some("删除确认已过期，未执行".into());
+            self.revision = self.revision.wrapping_add(1);
+            changed = true;
+        }
+        if let Some(until) = self.discard_pending
+            && Instant::now() >= until
+        {
+            self.discard_pending = None;
+            self.write_note = Some("撤销确认已过期，未执行".into());
             self.revision = self.revision.wrapping_add(1);
             changed = true;
         }
@@ -717,6 +730,7 @@ impl Panel {
         if !self.diff_open {
             return false;
         }
+        self.discard_pending = None;
         if let Some(task) = &self.diff_task {
             task.invalidate();
         }
@@ -952,6 +966,66 @@ impl Panel {
         self.open_diff(index, Some(!self.diff_staged), notify)
     }
 
+    /// 差异页的“撤销”是否可用：只有工作区侧、且条目已被跟踪时才能恢复。
+    fn discard_available(&self) -> bool {
+        if !self.diff_open || self.diff_staged || self.write_loading || self.remote.is_some() {
+            return false;
+        }
+        self.snapshot
+            .as_ref()
+            .and_then(|snapshot| self.selected.and_then(|index| snapshot.entries.get(index)))
+            .is_some_and(|entry| !entry.untracked() && !entry.conflicted())
+    }
+    fn discard_label(&self, tier: usize) -> &'static str {
+        if self.discard_pending.is_some() {
+            return CONFIRM_DISCARD_LABELS[tier.min(2)];
+        }
+        if self.discard_available() { "撤销" } else { INERT_LABEL }
+    }
+    /// 撤销工作区修改：第一次点击只进入确认态，10 秒内再点才真正执行。
+    pub(super) fn request_discard(&mut self, notify: Notify) -> bool {
+        if !self.diff_open {
+            return false;
+        }
+        if self.readonly_remote() {
+            return true;
+        }
+        if self.write_loading {
+            let running = self.write_op.unwrap_or("写操作");
+            self.write_note = Some(format!("正在{running}…请等它结束"));
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        if !self.discard_available() {
+            self.write_note = Some(if self.diff_staged {
+                "暂存侧不能撤销：先切到工作区侧".into()
+            } else {
+                "未跟踪或冲突的条目不能撤销".into()
+            });
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        let Some(index) = self.selected else { return false };
+        let Some(entry) = self.snapshot.as_ref().and_then(|snapshot| snapshot.entries.get(index)) else {
+            return false;
+        };
+        let label = entry.label.clone();
+        let path = entry.path.clone();
+        let confirmed = self.discard_pending.is_some_and(|until| Instant::now() < until);
+        if !confirmed {
+            self.discard_pending = Some(Instant::now() + REMOTE_CONFIRM);
+            self.write_note = Some(format!("再点一次“确认撤销”丢弃 {label} 的工作区修改"));
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        self.discard_pending = None;
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+            self.write_note = Some("还没有 Git 状态，先刷新".into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        };
+        self.start_write(git::WriteOp::Discard { paths: vec![path], count: 1 }, &root, notify)
+    }
     /// 列表里点一行只改变选中项；“差异”按钮才打开该条目的 diff。
     /// 选中的条目是否是未解决的冲突。
     pub(super) fn conflicted(&self, index: usize) -> bool {
@@ -1039,7 +1113,7 @@ impl Panel {
                     }
                 }
             }
-            return View { buttons: vec!["刷新", side, "返回"], headline, content };
+            return View { buttons: vec!["刷新", side, "返回", self.discard_label(tier)], headline, content };
         }
         if self.branches_open {
             let current = self
@@ -1167,7 +1241,7 @@ impl Panel {
         }
         if self.diff_open {
             let side = if self.diff_staged { "暂存" } else { "工作区" };
-            return vec!["刷新", side, "返回"];
+            return vec!["刷新", side, "返回", self.discard_label(tier)];
         }
         if self.resolve.is_some() {
             return RESOLVE_LABELS[tier].to_vec();
@@ -1241,9 +1315,7 @@ impl Panel {
             1
         } else if self.input.is_some() {
             2
-        } else if self.diff_open {
-            3
-        } else if self.resolve.is_some() {
+        } else if self.diff_open || self.resolve.is_some() {
             4
         } else if self.branches_open {
             5
@@ -1826,6 +1898,7 @@ impl Workspace {
                     },
                     (1, true) => self.git.toggle_side(notify),
                     (2, true) => self.git.back(),
+                    (3, true) => self.git.request_discard(notify),
                     // 冲突条目不能直接暂存：先进解决页选一侧。
                     (2, false) if self.git.selected.is_some_and(|index| self.git.conflicted(index)) => {
                         let index = self.git.selected.unwrap_or_default();
@@ -1960,6 +2033,37 @@ mod tests {
         // 没进解决页时点“保留我方”不会做任何事。
         assert!(!panel.resolve_side(git::Side::Ours, notify()));
         assert!(!panel.write_loading);
+    }
+
+    #[test]
+    fn discard_is_offered_only_on_the_worktree_side_for_tracked_entries() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M'), entry("new.txt", b'?', b'?')]);
+        // 未打开差异页时没有撤销槽位。
+        assert_eq!(panel.labels(0), vec!["刷新", "差异", "暂存", "全部暂存", "提交", "拉取", "推送", "分支"]);
+        // 工作区侧、已跟踪：可以撤销，第一次点击只进入确认态。
+        assert!(panel.open_diff(0, Some(false), notify()));
+        assert_eq!(panel.labels(0), vec!["刷新", "工作区", "返回", "撤销"]);
+        assert!(panel.request_discard(notify()));
+        assert!(panel.discard_pending.is_some(), "第一次点击只确认");
+        assert!(!panel.write_loading, "确认态不能提交写操作");
+        assert!(panel.write_note.as_deref().is_some_and(|note| note.contains("再点一次")), "{:?}", panel.write_note);
+        assert_eq!(panel.labels(0)[3], "确认撤销");
+        // 窄栏降级成一个字。
+        assert_eq!(panel.labels(2)[3], "撤");
+        // 返回会清掉确认态。
+        assert!(panel.back());
+        assert!(panel.discard_pending.is_none());
+        // 未跟踪条目：撤销不可用，点了只给说明。
+        assert!(panel.open_diff(1, Some(false), notify()));
+        assert_eq!(panel.labels(0)[3], "—");
+        assert!(panel.request_discard(notify()));
+        assert!(panel.discard_pending.is_none());
+        assert!(panel.write_note.as_deref().is_some_and(|note| note.contains("未跟踪")), "{:?}", panel.write_note);
+        // 暂存侧：撤销不可用（暂存区用“取消暂存”）。
+        assert!(panel.open_diff(0, Some(true), notify()));
+        assert_eq!(panel.labels(0)[3], "—");
+        assert!(panel.request_discard(notify()));
+        assert!(panel.write_note.as_deref().is_some_and(|note| note.contains("暂存侧")), "{:?}", panel.write_note);
     }
 
     #[test]

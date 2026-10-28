@@ -1130,6 +1130,12 @@ pub(crate) enum WriteOp {
     DeleteBranch {
         name: OsString,
     },
+    /// 撤销工作区修改：`restore --worktree` 把文件恢复到索引里的内容。
+    /// 只对已跟踪的条目开放；未跟踪文件要删请用文件页，不走这里。
+    Discard {
+        paths: Vec<OsString>,
+        count: usize,
+    },
 }
 
 /// 冲突时保留哪一侧：`--ours` 是当前分支，`--theirs` 是正在合入的那一侧。
@@ -1155,7 +1161,10 @@ impl Side {
 impl WriteOp {
     fn bytes(&self) -> usize {
         match self {
-            Self::Stage { paths, .. } | Self::Unstage { paths, .. } | Self::Resolve { paths, .. } => {
+            Self::Stage { paths, .. }
+            | Self::Unstage { paths, .. }
+            | Self::Resolve { paths, .. }
+            | Self::Discard { paths, .. } => {
                 paths.iter().map(|path| path.len().saturating_add(std::mem::size_of::<OsString>())).sum()
             }
             Self::Commit { message } => message.capacity(),
@@ -1182,6 +1191,7 @@ impl WriteOp {
             Self::StageAll => "全部暂存",
             Self::NewBranch { .. } => "新建分支",
             Self::DeleteBranch { .. } => "删除分支",
+            Self::Discard { .. } => "撤销修改",
         }
     }
 }
@@ -1264,6 +1274,15 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
                 return Err(classify(&output, limits));
             }
             Ok(format!("已取消暂存 {count} 个文件"))
+        }
+        WriteOp::Discard { paths, count } => {
+            let mut args: Vec<&OsStr> = vec![OsStr::new("restore"), OsStr::new("--worktree"), OsStr::new("--")];
+            args.extend(paths.iter().map(OsString::as_os_str));
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output, limits));
+            }
+            Ok(format!("已撤销 {count} 个文件的工作区修改"))
         }
         WriteOp::Commit { message } => {
             let args = [OsStr::new("commit"), OsStr::new("-m"), OsStr::new(message)];

@@ -936,6 +936,38 @@ fn branches_list_local_refs_with_the_current_marker() {
 }
 
 #[test]
+fn discard_restores_the_working_tree_copy_and_leaves_the_index_alone() {
+    let fixture = Fixture::new("discard");
+    fixture.repo();
+    std::fs::write(fixture.path().join("a.txt"), b"one\n").unwrap();
+    std::fs::write(fixture.path().join("b.txt"), b"two\n").unwrap();
+    fixture.git(&["add", "-A"]);
+    fixture.git(&["commit", "-qm", "base"]);
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    std::fs::write(fixture.path().join("a.txt"), b"one\nchanged\n").unwrap();
+    std::fs::write(fixture.path().join("b.txt"), b"two\nchanged\n").unwrap();
+    // 只暂存 b.txt：撤销 a.txt 之后，b.txt 的暂存内容必须原样保留。
+    fixture.git(&["add", "b.txt"]);
+    let summary =
+        run_write_summary(&pool, fixture.path(), WriteOp::Discard { paths: vec![OsString::from("a.txt")], count: 1 })
+            .expect("撤销修改");
+    assert_eq!(summary, "已撤销 1 个文件的工作区修改");
+    assert_eq!(std::fs::read(fixture.path().join("a.txt")).unwrap(), b"one\n");
+    assert_eq!(std::fs::read(fixture.path().join("b.txt")).unwrap(), b"two\nchanged\n", "暂存区不动");
+    // 未跟踪的文件不在 `restore` 的范围内：git 自己会拒绝，错误要如实上报。
+    std::fs::write(fixture.path().join("untracked.txt"), b"x\n").unwrap();
+    let error = run_write_summary(
+        &pool,
+        fixture.path(),
+        WriteOp::Discard { paths: vec![OsString::from("untracked.txt")], count: 1 },
+    )
+    .unwrap_err();
+    assert!(matches!(error, Error::Failed { .. }), "{error:?}");
+    assert!(std::fs::metadata(fixture.path().join("untracked.txt")).is_ok(), "未跟踪文件不能被删");
+}
+
+#[test]
 fn stage_all_stages_every_change_including_deletions_and_renames() {
     let fixture = Fixture::new("stage-all");
     fixture.repo();
