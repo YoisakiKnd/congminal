@@ -184,7 +184,7 @@ PTY 收发队列、回滚历史、字体缓存、图片解压和帧缓冲均有�
 `assets/fonts/` 里是 Terminus Font，使用 SIL Open Font License 1.1 授权，见 `assets/fonts/LICENSE-Terminus.txt`。
 Maple Mono 不随程序分发，需要另外安装。
 
-本轮评估、实施目标、已实现内容与剩余验证见 [M1 执行记录](docs/execution-m1.md)，测量数据见 [M1 性能评估](docs/evaluations/m1.md)。终端内核的回归除了固定种子的随机字节流（`term::fuzz_tests`），还有真实应用回放：`term::corpus_tests` 把 less / vim / man / htop 在 80×24 PTY 上录下的原始字节按分块、逐字节与中途缩放三种方式重放，见[终端兼容说明](docs/design-term-queries.md#10-真实应用回放语料)。第三方依赖的版本、特性、传递依赖与合计成本汇总在 [依赖清单与合计成本](docs/evaluations/m8-dependencies.md)（默认构建只编译 `libc`、`sysinfo`、`memchr` 三项，其余由可选特性带入）。
+本轮评估、实施目标、已实现内容与剩余验证见 [M1 执行记录](docs/execution-m1.md)，测量数据见 [M1 性能评估](docs/evaluations/m1.md)。终端内核的回归除了固定种子的随机字节流（`term::fuzz_tests`），还有真实应用回放：`term::corpus_tests` 把 less / vim / man / htop 在 80×24 PTY 上录下的原始字节按分块、逐字节与中途缩放三种方式重放，见[终端兼容说明](docs/design-term-queries.md#10-真实应用回放语料)。同负载下的吞吐、输入响应、重绘耗时与后台开销并列在 [同负载横向对照](docs/evaluations/m8-comparison.md)（每行给出复现命令，并区分「本机复测」与「引用记录」）。第三方依赖的版本、特性、传递依赖与合计成本汇总在 [依赖清单与合计成本](docs/evaluations/m8-dependencies.md)（默认构建只编译 `libc`、`sysinfo`、`memchr` 三项，其余由可选特性带入）。
 
 M2 已实现搜索与链接，使用方法、资源边界及剩余验证见 [M2 执行记录](docs/execution-m2.md)。
 
