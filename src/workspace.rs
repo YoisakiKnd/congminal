@@ -4463,7 +4463,9 @@ program="/definitely/missing/congminal-shell"
         assert_eq!(std::fs::read(repo.join("tracked.txt")).unwrap(), b"one\nchanged\n");
         // 第二次点击才真正撤销：工作区回到索引里的内容。
         click(&mut app, slot(3), 1);
-        wait(&mut app, |_| std::fs::read(repo.join("tracked.txt")).unwrap() == b"one\n");
+        // git 恢复文件时可能先删后建：轮询期间读不到不算失败，最终内容在下面断言。
+        wait(&mut app, |_| std::fs::read(repo.join("tracked.txt")).is_ok_and(|bytes| bytes == b"one\n"));
+        assert_eq!(std::fs::read(repo.join("tracked.txt")).unwrap(), b"one\n");
         wait(&mut app, |a| {
             a.git
                 .snapshot
