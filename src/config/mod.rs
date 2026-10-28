@@ -100,8 +100,7 @@ pub struct Colors {
     pub palette: [u32; 256],
 }
 
-#[derive(Debug, Default, PartialEq)]
-#[cfg_attr(test, derive(Clone))]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ShellConfig {
     /// None 表示用系统默认的 shell
     pub program: Option<String>,

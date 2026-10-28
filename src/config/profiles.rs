@@ -11,6 +11,10 @@ pub const LIMIT: usize = 16;
 /// 单个配置档最多的转发条目。
 pub const FORWARD_LIMIT: usize = 16;
 /// 转发规则只允许这些字符：地址、端口、方括号与 IPv6 冒号。
+/// 界面新增规则时也用这一套校验，避免“界面能加、解析时被丢”。
+pub(crate) fn forward_ok(spec: &str) -> bool {
+    forward_valid(spec)
+}
 fn forward_valid(spec: &str) -> bool {
     !spec.is_empty()
         && spec.len() <= 128
@@ -20,7 +24,7 @@ fn forward_valid(spec: &str) -> bool {
 }
 const WORK_BYTES: usize = 512 * 1024;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Ssh {
     /// 明确别名或主机。交由所选 SSH 后端处理系统配置。
     pub host: String,
@@ -33,12 +37,12 @@ pub struct Ssh {
     pub forwards: Vec<String>,
     pub program: Option<String>,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Connection {
     Local(ShellConfig),
     Ssh(Ssh),
 }
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Profile {
     pub id: String,
     pub name: String,
@@ -92,6 +96,23 @@ impl Profiles {
         let mut warnings = Vec::new();
         let profiles = Self::parse(&root, pool, &mut warnings);
         (!profiles.is_empty()).then_some(profiles)
+    }
+    /// 复制一份配置档，把某个 SSH 配置档的转发规则换成给定列表。
+    ///
+    /// 只用于“本次运行临时加/删转发”：新连接用这份副本，已有窗格仍持有原配置，
+    /// 因此 `shares()` 对旧配置仍然成立。副本按同样口径重新准入额度。
+    pub fn with_forwards(&self, index: usize, forwards: &[String], pool: &Arc<Budget>) -> Option<Self> {
+        let entries = self.deref();
+        let mut copy: Vec<Profile> = entries.to_vec();
+        let profile = copy.get_mut(index)?;
+        let Connection::Ssh(ssh) = &mut profile.connection else { return None };
+        ssh.forwards = forwards.to_vec();
+        let bytes = copy.capacity() * std::mem::size_of::<Profile>()
+            + copy.iter().map(Profile::bytes).sum::<usize>()
+            + std::mem::size_of::<Owned>()
+            + 64;
+        let memory = pool.lease(crate::resources::Kind::Profiles, bytes).ok()?;
+        Some(Self(Some(Arc::new(Owned { entries: copy, memory }))))
     }
     pub fn shares(&self, other: &Self) -> bool {
         match (&self.0, &other.0) {

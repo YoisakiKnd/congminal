@@ -18,6 +18,9 @@ struct Request {
     /// 这次连接是不是由 `~/.ssh/config` 的别名临时合成的配置档。
     /// 合成档不在配置列表里，所以结果有效性改用“别名还在不在”判断。
     alias: Option<String>,
+    /// 这次连接用的是“临时改过转发规则”的配置副本：它同样不在配置列表里，
+    /// 有效性只按选中窗格是否变化判断。
+    edited: bool,
 }
 pub(super) struct Ready {
     request: Request,
@@ -36,6 +39,7 @@ impl Connector {
         index: usize,
         target: Target,
         alias: Option<String>,
+        edited: bool,
         notify: Notify,
     ) -> Result<(), Error> {
         if !profiles.get(index).is_some_and(|p| matches!(p.connection, Connection::Ssh(_))) {
@@ -60,7 +64,7 @@ impl Connector {
             self.task = Some(task);
             self._memory = Some(memory);
         }
-        let request = Request { profiles, index, target, alias };
+        let request = Request { profiles, index, target, alias, edited };
         self.pending = Some(request.clone());
         if let Err(error) = self.task.as_ref().unwrap().try_submit(request) {
             self.pending = None;
@@ -275,13 +279,24 @@ impl Workspace {
     }
 
     pub(super) fn start_remote(&mut self, profiles: Profiles, index: usize, target: Target) {
-        self.start_remote_with(profiles, index, target, None);
+        self.start_remote_with(profiles, index, target, None, false);
+    }
+    /// 用临时改过转发规则的配置副本发起连接：结果有效性按选中窗格判断。
+    pub(super) fn start_remote_edited(&mut self, profiles: Profiles, index: usize, target: Target) {
+        self.start_remote_with(profiles, index, target, None, true);
     }
     /// 由连接页里的 SSH 别名发起连接：配置档是临时合成的，别忘记录下别名。
     pub(super) fn start_remote_alias(&mut self, profiles: Profiles, index: usize, target: Target, alias: String) {
-        self.start_remote_with(profiles, index, target, Some(alias));
+        self.start_remote_with(profiles, index, target, Some(alias), false);
     }
-    fn start_remote_with(&mut self, profiles: Profiles, index: usize, target: Target, alias: Option<String>) {
+    fn start_remote_with(
+        &mut self,
+        profiles: Profiles,
+        index: usize,
+        target: Target,
+        alias: Option<String>,
+        edited: bool,
+    ) {
         if self.composing() {
             return;
         }
@@ -289,7 +304,7 @@ impl Workspace {
             self.notice("已达到 8 个会话上限");
             return;
         }
-        match self.ssh.start(profiles, index, target, alias, self.driver.notify.clone()) {
+        match self.ssh.start(profiles, index, target, alias, edited, self.driver.notify.clone()) {
             Ok(()) => self.notice("正在检查 SSH 工具；可在连接页取消"),
             Err(error) => self.notice(error.message()),
         }
@@ -314,7 +329,8 @@ impl Workspace {
                     && match &request.alias {
                         // 别名合成档不在配置列表里，改用“这个别名还在不在”判断结果是否过期。
                         Some(alias) => self.driver.config.ssh.aliases.iter().any(|listed| listed == alias),
-                        None => request.profiles.shares(&self.driver.config.connections),
+                        // 临时改过转发的副本不在配置列表里，只按选中窗格判断。
+                        None => request.edited || request.profiles.shares(&self.driver.config.connections),
                     }
             }
             Target::Replace(id) => self.index(id).is_some_and(|i| {
