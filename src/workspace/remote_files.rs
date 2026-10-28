@@ -54,6 +54,9 @@ mod transfer_notifications;
 mod transfer_tests;
 #[path = "remote_transfers.rs"]
 mod transfers;
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[path = "remote_upload.rs"]
+mod upload;
 #[derive(Clone)]
 struct Binding {
     owner: Owner,
@@ -389,6 +392,12 @@ pub(super) struct State {
     preview: Option<batch::Preview>,
     /// 正在提交的批量下载。
     batch: Option<batch::Batch>,
+    /// 本地目录上传的影响范围预览。
+    upload_preview: Option<upload::Preview>,
+    /// 正在提交的批量上传。
+    upload: Option<upload::Batch>,
+    /// 批量上传建目录时占用的前台认证。
+    upload_authentication: Option<(Ticket, Authentication)>,
     shutdown: Shutdown,
     exit_reported: bool,
     exit: transfer_exit::Exit,
@@ -434,6 +443,9 @@ impl State {
             plan: None,
             preview: None,
             batch: None,
+            upload_preview: None,
+            upload: None,
+            upload_authentication: None,
             shutdown: Shutdown::Open,
             exit_reported: false,
             exit: transfer_exit::Exit::default(),
@@ -630,6 +642,7 @@ impl Workspace {
             state.error = None;
         }
         self.remote_transfer_tick(&mut state);
+        self.upload_pump(&mut state);
         self.batch_pump(&mut state);
         let valid =
             state.view.as_ref().is_some_and(|v| v.binding.valid(self) && v.binding.owner.session == self.selected);
@@ -659,6 +672,8 @@ impl Workspace {
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             let Some(completion) = self.transfer_preparation_result(&mut state, completion) else { continue };
             let Some(completion) = self.plan_result(&mut state, completion) else { continue };
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            let Some(completion) = self.upload_mkdir_result(&mut state, completion) else { continue };
             let Some(completion) = self.remote_transfer_result(&mut state, completion) else { continue };
             if state.mutation.as_ref().is_some_and(|m| m.ticket == completion.ticket) {
                 let mutation = state.mutation.take().unwrap();
@@ -937,7 +952,15 @@ impl Workspace {
         {
             return true;
         }
-        // 批量预览/批次占用操作行：左半确认、右半取消。
+        // 批量上传预览/批次占用操作行：左半确认、右半取消。
+        if row == 3 && self.sftp.as_ref().is_some_and(|s| s.upload_preview.is_some() || s.upload.is_some()) {
+            if let Some(mut state) = self.sftp.take() {
+                self.upload_click(&mut state, column);
+                self.sftp = Some(state);
+            }
+            return true;
+        }
+        // 批量下载预览/批次占用操作行：左半确认、右半取消。
         if row == 3 && self.sftp.as_ref().is_some_and(|s| s.preview.is_some() || s.batch.is_some()) {
             if let Some(mut state) = self.sftp.take() {
                 self.batch_click(&mut state, column);
@@ -1440,7 +1463,7 @@ impl Workspace {
                 self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, prefix, h], "[不完整]", true);
             }
             let width = (r.w - prefix) / self.driver.renderer.cell_size().0.max(1);
-            let batch = self.batch_line(state);
+            let batch = self.upload_line(state).or_else(|| self.batch_line(state));
             let line = match (&state.form, &state.confirm, batch) {
                 (_, _, Some(batch)) => crate::term::clip(&batch, width),
                 (Some(form), _, _) => {
@@ -1489,7 +1512,7 @@ impl Workspace {
         };
         if r.h >= 4 * h {
             let busy = error.is_some() || state.exiting || state.mutation.is_some() || view.is_some_and(|v| v.loading);
-            let batch = self.batch_labels(state);
+            let batch = self.upload_labels(state).or_else(|| self.batch_labels(state));
             let count = if state.form.is_some() || state.confirm.is_some() || batch.is_some() {
                 2
             } else if busy {
@@ -1519,7 +1542,6 @@ impl Workspace {
                 } else {
                     &OPS_LABELS[tier]
                 };
-                let batch = self.batch_labels(state);
                 for (i, text) in tiered.iter().take(count).enumerate() {
                     let text = match &batch {
                         Some(labels) => labels.get(i).copied().unwrap_or(text),
@@ -1531,7 +1553,8 @@ impl Workspace {
         }
         // 预览时列表区显示将要传输的相对路径（最多几条），比空列表更能说明影响范围。
         if r.h >= 5 * h {
-            for (i, path) in self.batch_paths(state).into_iter().enumerate() {
+            let paths = if state.upload_preview.is_some() { self.upload_paths(state) } else { self.batch_paths(state) };
+            for (i, path) in paths.into_iter().enumerate() {
                 let width = r.w / self.driver.renderer.cell_size().0.max(1);
                 self.driver.renderer.chrome(
                     &mut self.frame,
@@ -1541,7 +1564,9 @@ impl Workspace {
                 );
             }
         }
-        if let Some(view) = view
+        // 预览时列表区让给「将要传输的相对路径」，否则条目会盖住预览。
+        let previewing = state.upload_preview.is_some() || state.preview.is_some();
+        if let Some(view) = view.filter(|_| !previewing)
             && let Some(listing) = view.listing()
         {
             for (index, entry) in listing.entries.iter().enumerate().skip(view.offset).take((r.h / h).saturating_sub(4))
@@ -2045,6 +2070,105 @@ mod tests {
         assert!(state.batch.is_none());
         assert!(state.files.iter().all(Option::is_none));
         app.sftp = Some(state);
+        close(&mut app);
+    }
+    #[test]
+    fn upload_preview_reports_the_scope_and_cancel_stops_before_anything_is_submitted() {
+        let mut app = workspace();
+        let _ticket = app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("folder", true)]);
+        let mut state = app.sftp.take().unwrap();
+        let local = std::env::temp_dir().join("congminal-upload-preview");
+        state.upload_preview = Some(upload::Preview::for_test(
+            state.service.budget(),
+            b"/tmp/folder",
+            &local,
+            &[(b"a.txt", 3), (b"sub/b.txt", 5)],
+        ));
+        // 预览行要说清数量、总大小、主机、远端目标，并写明覆盖语义。
+        let line = app.upload_line(&state).unwrap();
+        assert!(line.starts_with("覆盖同名文件"), "覆盖提示要在最前面：{line}");
+        assert!(line.contains("上传 2 个"), "{line}");
+        assert!(line.contains("8 B"), "{line}");
+        assert!(line.contains("fixture"), "{line}");
+        assert!(line.contains("/tmp/folder"), "{line}");
+
+        assert_eq!(app.upload_labels(&state), Some(["开始", "取消"]));
+        assert_eq!(app.upload_paths(&state), ["a.txt (3 B)", "sub/b.txt (5 B)"]);
+        app.sftp = Some(state);
+        draw_now(&mut app);
+        preview(&app, "CONGMINAL_SFTP_UPLOAD_PREVIEW_PATH");
+        let mut state = app.sftp.take().unwrap();
+        // 右半是取消：预览直接作废，不留任何传输记录。
+        assert!(app.upload_click(&mut state, 3));
+        assert!(state.upload_preview.is_none());
+        assert!(state.upload.is_none());
+        assert!(state.files.iter().all(Option::is_none));
+        // 再来一次，左半是开始：没有子目录时直接进入提交阶段。
+        state.upload_preview =
+            Some(upload::Preview::for_test(state.service.budget(), b"/tmp/folder", &local, &[(b"a.txt", 3)]));
+        assert!(app.upload_click(&mut state, 0));
+        assert!(state.upload_preview.is_none());
+        let line = app.upload_line(&state).unwrap();
+        assert!(line.starts_with("正在提交批量上传 0/1"), "{line}");
+        assert_eq!(app.upload_labels(&state), Some(["—", "取消"]));
+        // 取消批次后不再提交任何条目。
+        assert!(app.upload_click(&mut state, 4));
+        assert!(state.upload.is_none());
+        assert!(state.files.iter().all(Option::is_none));
+        app.sftp = Some(state);
+        close(&mut app);
+    }
+    #[test]
+    fn a_failed_remote_mkdir_stops_the_upload_before_any_file_is_submitted() {
+        let mut app = workspace();
+        let _ticket = app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("folder", true)]);
+        let folder = std::env::temp_dir().join(format!("congminal-upload-mkdir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("sub/a.txt"), b"abc").unwrap();
+        app.start_remote_upload_plan(&folder, b"/tmp/folder").unwrap();
+        assert!(app.sftp.as_ref().unwrap().upload_preview.is_some());
+        // 有子目录：开始后先建目录，此时还没有任何文件被提交。
+        let mut state = app.sftp.take().unwrap();
+        assert!(app.start_upload_batch(&mut state));
+        app.sftp = Some(state);
+        let state = app.sftp.as_ref().unwrap();
+        assert!(state.upload.as_ref().is_some_and(|b| b.mkdir.is_some()), "先建目录");
+        assert!(state.files.iter().all(Option::is_none));
+        // 测试环境没有可用的 SFTP 服务：建目录必然失败，批次要停下且不上传任何文件。
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().upload.is_none()
+        });
+        let state = app.sftp.as_ref().unwrap();
+        assert!(state.error.is_some(), "建目录失败要写进错误行");
+        assert!(state.files.iter().all(Option::is_none), "失败后不提交任何文件");
+        let _ = std::fs::remove_dir_all(&folder);
+        close(&mut app);
+    }
+    #[test]
+    fn a_local_directory_starts_an_upload_preview_instead_of_a_single_file_transfer() {
+        let mut app = workspace();
+        let _ticket = app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("folder", true)]);
+        let folder = std::env::temp_dir().join(format!("congminal-upload-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("a.txt"), b"abc").unwrap();
+        std::fs::write(folder.join("sub/b.txt"), b"hello").unwrap();
+        app.start_remote_upload_plan(&folder, b"/tmp/folder").unwrap();
+        let state = app.sftp.as_ref().unwrap();
+        let preview = state.upload_preview.as_ref().expect("目录应该进入批量预览");
+        assert_eq!(preview.plan.items.len(), 2);
+        assert_eq!(preview.plan.total, 8);
+        assert_eq!(preview.plan.directories, [b"sub".to_vec()]);
+        // 单个文件不是目录：直接拒绝，且不破坏已有的预览。
+        let file = folder.join("a.txt");
+        assert_eq!(app.start_remote_upload_plan(&file, b"/tmp/folder"), Err(Failure::Invalid));
+        assert_eq!(app.sftp.as_ref().unwrap().upload_preview.as_ref().unwrap().plan.items.len(), 2);
+        let _ = std::fs::remove_dir_all(&folder);
         close(&mut app);
     }
     #[test]

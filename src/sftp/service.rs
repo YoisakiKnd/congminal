@@ -200,6 +200,10 @@ enum Action {
     Mkdir {
         path: RemotePath,
     },
+    /// 批量建目录（上传目录时用）：按给定顺序逐个建，已存在的不算失败。
+    MkdirAll {
+        paths: Vec<RemotePath>,
+    },
     Rename {
         from: RemotePath,
         to: RemotePath,
@@ -389,6 +393,29 @@ impl Service {
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
         let path = mutation_path(self.budget(), remote)?;
         self.submit(owner, profiles, profile, paths, Action::Mkdir { path }, timeout)
+    }
+    /// 批量建目录：用于上传目录，`paths` 必须按深度从浅到深给出。
+    /// 已存在的目录不算失败（上传到已有目录是常见操作），其余错误照常上报。
+    #[allow(clippy::too_many_arguments)]
+    pub fn mkdir_all(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        remote: &[Vec<u8>],
+        timeout: Duration,
+    ) -> Result<(Ticket, Authentication), Failure> {
+        self.validate(owner, paths, timeout)?;
+        let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        if remote.len() > crate::sftp::local_plan::FILES {
+            return Err(Failure::Invalid);
+        }
+        let mut list = Vec::with_capacity(remote.len());
+        for path in remote {
+            list.push(mutation_path(self.budget(), path)?);
+        }
+        self.submit(owner, profiles, profile, paths, Action::MkdirAll { paths: list }, timeout)
     }
     /// 重命名：源与目标都必须是绝对路径，目标名称不得为空、`.` 或 `..`；不替换既有目标。
     #[allow(clippy::too_many_arguments)]
@@ -781,6 +808,10 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
             .map(Output::RemoteVersion),
         Action::Mkdir { path } => {
             operations::mkdir(&mut channel, path.bytes(), cancel).map(|()| Output::Changed).map_err(operation_failure)
+        }
+        Action::MkdirAll { paths } => {
+            let paths: Vec<Vec<u8>> = paths.iter().map(|path| path.bytes().to_vec()).collect();
+            operations::mkdir_all(&mut channel, &paths, cancel).map(|()| Output::Changed).map_err(operation_failure)
         }
         Action::Rename { from, to } => operations::rename(&mut channel, from.bytes(), to.bytes(), cancel)
             .map(|()| Output::Changed)

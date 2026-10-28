@@ -7,6 +7,8 @@ mod connect;
 mod executor;
 #[cfg(all(test, feature = "sftp-libssh2"))]
 mod files;
+#[cfg(unix)]
+pub(crate) mod local_plan;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod local_transfer;
 pub(crate) mod model;
@@ -149,6 +151,39 @@ mod interoperability {
         fn flush(&mut self) -> std::io::Result<()> {
             self.input.flush()
         }
+    }
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "本地sftp-server：建目录/重命名/删除的协议互操作；无SSH/网络，文件都在临时目录"]
+    fn local_subsystem_creates_a_directory_tree_and_tolerates_existing_ones() {
+        use super::client::{Channel, Source};
+        use crate::tasks::Cancellation;
+        use std::os::unix::ffi::OsStrExt;
+        let mut server = Server::new();
+        let source = Source { session: 92, generation: 5 };
+        let cancel = Cancellation::default();
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        let dir = std::fs::canonicalize(&server.path).unwrap();
+        let path = |relative: &str| {
+            let mut bytes = dir.as_os_str().as_encoded_bytes().to_vec();
+            for part in relative.split('/') {
+                bytes.push(b'/');
+                bytes.extend_from_slice(part.as_bytes());
+            }
+            bytes
+        };
+        let native = |bytes: &[u8]| std::path::PathBuf::from(std::ffi::OsStr::from_bytes(bytes));
+        let tree = vec![path("a"), path("a/b"), path("a/b/c")];
+        super::operations::mkdir_all(&mut channel, &tree, &cancel).unwrap();
+        for relative in ["a", "a/b", "a/b/c"] {
+            assert!(std::fs::metadata(native(&path(relative))).unwrap().is_dir(), "{relative}");
+        }
+        // 再跑一遍：已存在的目录不算失败，通道仍然可用。
+        super::operations::mkdir_all(&mut channel, &tree, &cancel).unwrap();
+        super::operations::mkdir(&mut channel, &path("a/b/c/d"), &cancel).unwrap();
+        assert!(std::fs::metadata(native(&path("a/b/c/d"))).unwrap().is_dir());
+        drop(channel);
     }
     #[cfg(unix)]
     #[test]
