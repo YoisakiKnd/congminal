@@ -14,9 +14,14 @@
 当前本地体验版为 **0.1.0-alpha.6（macOS Apple 芯片）**，安装、快捷键、SSH 配置和功能范围见 [使用说明](docs/releases/alpha.6.md)。在 Mac 上执行 `bash ci/package-macos.sh`，会离线构建 `.app` 和 ZIP 到 `target/distributions/`；只做本机临时签名，未公证。
 
 ```sh
-cargo run --release
+cargo run --release   # 直接跑，不安装
 cargo test
+
+# 装到 ~/.cargo/bin，之后任何目录直接敲 congminal（下面的示例都假定它在 PATH 上）
+cargo install --path .
 ```
+
+Linux 还需要 X11 开发头文件（`libx11-dev` / `libxft-dev` 之类，发行版名字不同）；macOS 用系统自带的 Cocoa/AppKit，Windows 用系统 Win32 API，都不需要额外依赖。
 
 ### 第一次运行
 
