@@ -7,6 +7,8 @@
 mod compose;
 mod compose_table;
 mod emoji;
+mod grapheme;
+mod grapheme_tables;
 mod grid;
 mod memory;
 pub(crate) use memory::{ResizeJob, ResizePlan};
@@ -824,8 +826,9 @@ impl Terminal {
     fn print_char(&mut self, c: char) {
         let c = self.translate_charset(c);
         let width = char_width(c);
-        // 2027 模式：能接在前一个字后面组成同一个 emoji 的（U+200D 后面的 emoji、肤色、第二个国旗字母），
-        // 附加到前一个字上，整个组合占 2 格
+        // 2027 模式：按 UAX #29 的字素簇边界把后续字符并进前一个字（组合符号、ZWJ emoji、
+        // 国旗、韩文中终声、天城文元音符号、Indic 连写……）。宽度只在 emoji 序列上变成 2 格，
+        // 其他簇沿用基础字符的宽度。
         if self.modes.grapheme_clusters
             && width > 0
             && let Some((row, col)) = self.last_glyph
@@ -834,9 +837,11 @@ impl Terminal {
             let cell = &self.grid[row][col];
             let mut sequence = String::from(cell.c);
             sequence.push_str(self.marks(cell.marks));
-            if emoji::extends(&sequence, c) {
+            if grapheme::extends(&sequence, c) {
                 self.attach_mark(row, col, c);
-                self.widen_last_glyph();
+                if emoji::extends(&sequence, c) {
+                    self.widen_last_glyph();
+                }
                 return;
             }
         }
@@ -2295,6 +2300,29 @@ mod tests {
         // 覆盖之后组合字符也跟着消失
         let t = run(4, 1, "e\u{301}\rx");
         assert_eq!(t.grid()[0][0].marks, 0);
+    }
+
+    #[test]
+    fn grapheme_mode_joins_spacing_marks_and_indic_conjuncts() {
+        let on = "\x1b[?2027h";
+        // 天城文元音符号（SpacingMark）在 2027 下并进前一个字，不再单独占一格。
+        let t = run(8, 1, &format!("{on}\u{915}\u{93E}x"));
+        assert_eq!(t.cursor_position(), (0, 2));
+        assert_eq!(t.marks(t.grid()[0][0].marks), "\u{93E}");
+        assert_eq!(t.grid()[0][1].c, 'x');
+        // 默认模式下它仍是自己的 1 格。
+        let t = run(8, 1, "\u{915}\u{93E}x");
+        assert_eq!(t.cursor_position(), (0, 3));
+        assert_eq!(t.grid()[0][1].c, '\u{93E}');
+        // Indic 连写（GB9c）：क + ् + त 是一个簇，宽度仍是基础字符的 1 格。
+        let t = run(8, 1, &format!("{on}\u{915}\u{94D}\u{924}x"));
+        assert_eq!(t.cursor_position(), (0, 2));
+        assert_eq!(t.marks(t.grid()[0][0].marks), "\u{94D}\u{924}");
+        assert!(!t.grid()[0][0].flags.contains(Flags::WIDE), "非 emoji 簇不变成 2 格");
+        // 阿拉伯数字符号（Prepend）与后面的数字同簇。
+        let t = run(8, 1, &format!("{on}\u{600}1x"));
+        assert_eq!(t.cursor_position(), (0, 2));
+        assert_eq!(t.marks(t.grid()[0][0].marks), "1");
     }
 
     #[test]

@@ -1120,6 +1120,16 @@ pub(crate) enum WriteOp {
     Checkout {
         name: OsString,
     },
+    /// 全部暂存：`add -A` 把新增、修改、删除与改名一次性放进暂存区。
+    StageAll,
+    /// 新建并切到本地分支。
+    NewBranch {
+        name: OsString,
+    },
+    /// 删除本地分支（`-d`，未合并的分支 git 自己会拒绝）。
+    DeleteBranch {
+        name: OsString,
+    },
 }
 
 /// 冲突时保留哪一侧：`--ours` 是当前分支，`--theirs` 是正在合入的那一侧。
@@ -1149,8 +1159,10 @@ impl WriteOp {
                 paths.iter().map(|path| path.len().saturating_add(std::mem::size_of::<OsString>())).sum()
             }
             Self::Commit { message } => message.capacity(),
-            Self::Checkout { name } => name.len().saturating_add(std::mem::size_of::<OsString>()),
-            Self::Pull | Self::Push => 0,
+            Self::Checkout { name } | Self::NewBranch { name } | Self::DeleteBranch { name } => {
+                name.len().saturating_add(std::mem::size_of::<OsString>())
+            }
+            Self::Pull | Self::Push | Self::StageAll => 0,
         }
     }
     /// 联网操作要等远端，使用更长的时限；本地操作保持原有上限。
@@ -1167,6 +1179,9 @@ impl WriteOp {
             Self::Push => "推送",
             Self::Resolve { side, .. } => side.describe(),
             Self::Checkout { .. } => "切换分支",
+            Self::StageAll => "全部暂存",
+            Self::NewBranch { .. } => "新建分支",
+            Self::DeleteBranch { .. } => "删除分支",
         }
     }
 }
@@ -1279,6 +1294,33 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             let label = String::from_utf8_lossy(bytes).into_owned();
             Ok(format!("已切到 {label}"))
         }
+        WriteOp::StageAll => {
+            let args = [OsStr::new("add"), OsStr::new("-A")];
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output, limits));
+            }
+            Ok("已全部暂存".to_string())
+        }
+        WriteOp::NewBranch { name } => {
+            branch_name(name)?;
+            let args = [OsStr::new("switch"), OsStr::new("-c"), name.as_os_str()];
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output, limits));
+            }
+            Ok(format!("已新建并切到 {}", String::from_utf8_lossy(name.as_encoded_bytes())))
+        }
+        WriteOp::DeleteBranch { name } => {
+            branch_name(name)?;
+            // `-d` 只删已合并的分支；git 自己会拒绝未合并的，不替用户加 `-D`。
+            let args = [OsStr::new("branch"), OsStr::new("-d"), name.as_os_str()];
+            let output = run(&pool, limits, &args, Some(root), STDERR_BYTES, cancel)?;
+            if !output.success {
+                return Err(classify(&output, limits));
+            }
+            Ok(format!("已删除分支 {}", String::from_utf8_lossy(name.as_encoded_bytes())))
+        }
         WriteOp::Pull => {
             // `--ff-only`：分叉时不生成合并提交，也不改工作区，只把结果报给用户。
             let args = [OsStr::new("pull"), OsStr::new("--ff-only")];
@@ -1323,6 +1365,23 @@ fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error>
             })
         }
     }
+}
+
+/// 新建/删除分支前先把名字挡一遍：只接受字母数字与 `-._/+`，不以 `-` 开头，
+/// 长度不超过 255 字节。这样名字既不会被当成选项，也不会拼出奇怪引用。
+fn branch_name(name: &OsStr) -> Result<(), Error> {
+    let bytes = name.as_encoded_bytes();
+    if bytes.is_empty()
+        || bytes.len() > BRANCH_NAME_BYTES
+        || bytes[0] == b'-'
+        || matches!(bytes[0], b'.' | b'/')
+        || matches!(bytes.last(), Some(b'/' | b'.'))
+        || bytes.windows(2).any(|pair| pair == b"..")
+        || !bytes.iter().all(|byte| byte.is_ascii_alphanumeric() || b"-._/+".contains(byte))
+    {
+        return Err(Error::Path);
+    }
+    Ok(())
 }
 
 /// git 把进度和摘要写在 stderr；取第一条非空行当摘要，最长 `MESSAGE_LIMIT` 个字符。

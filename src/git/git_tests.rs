@@ -936,6 +936,90 @@ fn branches_list_local_refs_with_the_current_marker() {
 }
 
 #[test]
+fn stage_all_stages_every_change_including_deletions_and_renames() {
+    let fixture = Fixture::new("stage-all");
+    fixture.repo();
+    std::fs::write(fixture.path().join("keep.txt"), b"one\n").unwrap();
+    std::fs::write(fixture.path().join("gone.txt"), b"bye\n").unwrap();
+    std::fs::write(fixture.path().join("old-name.txt"), b"move\n").unwrap();
+    fixture.git(&["add", "-A"]);
+    fixture.git(&["commit", "-qm", "base"]);
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    std::fs::write(fixture.path().join("keep.txt"), b"one\nchanged\n").unwrap();
+    std::fs::remove_file(fixture.path().join("gone.txt")).unwrap();
+    fixture.git(&["mv", "old-name.txt", "new-name.txt"]);
+    std::fs::write(fixture.path().join("added.txt"), b"new\n").unwrap();
+    let summary = run_write_summary(&pool, fixture.path(), WriteOp::StageAll).expect("全部暂存");
+    assert_eq!(summary, "已全部暂存");
+    // 一次 `add -A` 之后没有任何未暂存/未跟踪条目，暂存数与工作区总数对得上。
+    let snapshot = retry_worker(|| {
+        let request = StatusRequest::new(1, 2, fixture.path(), &base_limits(), None, &pool)?;
+        status(request, &Cancellation::default()).result
+    })
+    .unwrap();
+    assert_eq!(snapshot.counts.unstaged, 0, "{}", snapshot.counts.describe());
+    assert_eq!(snapshot.counts.untracked, 0, "{}", snapshot.counts.describe());
+    assert!(snapshot.counts.staged >= 3, "{}", snapshot.counts.describe());
+    drop(snapshot);
+    wait_released(&pool);
+}
+
+#[test]
+fn new_branch_is_created_switched_to_and_bad_names_are_refused() {
+    let fixture = Fixture::new("new-branch");
+    fixture.repo();
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    let before = fixture.branch();
+    let summary = run_write_summary(&pool, fixture.path(), WriteOp::NewBranch { name: OsString::from("topic/x") })
+        .expect("合法名字可以新建分支");
+    assert_eq!(summary, "已新建并切到 topic/x");
+    assert_eq!(fixture.branch(), "topic/x");
+    let list = read_branches(&pool, fixture.path());
+    assert!(list.branches.iter().any(|branch| branch.name == "topic/x" && branch.current));
+    drop(list);
+    // 名字不合法一律不执行：git 不会被调用，分支列表保持不变。
+    for bad in ["", "-x", "with space", "a..b", ".hidden", "trail.", "semi;colon", "tab\tname"] {
+        let error = run_write(&pool, fixture.path(), WriteOp::NewBranch { name: OsString::from(bad) }).unwrap_err();
+        assert!(matches!(error, Error::Path), "{bad}: {error:?}");
+    }
+    let list = read_branches(&pool, fixture.path());
+    assert_eq!(list.branches.iter().filter(|branch| branch.name.starts_with("topic")).count(), 1);
+    drop(list);
+    assert_eq!(fixture.branch(), "topic/x");
+    assert_ne!(before, fixture.branch(), "确实切走了");
+    wait_released(&pool);
+}
+
+#[test]
+fn delete_branch_removes_merged_branches_and_refuses_the_current_one() {
+    let fixture = Fixture::new("delete-branch");
+    fixture.repo();
+    let base = fixture.branch();
+    fixture.git(&["branch", "merged"]);
+    let pool = pool();
+    let _scope = Scope::enter(pool.clone());
+    // 当前分支不能删：git 自己会拒绝，摘要里要能看出原因。
+    let error = run_write_summary(&pool, fixture.path(), WriteOp::DeleteBranch { name: OsString::from(base.as_str()) })
+        .unwrap_err();
+    assert!(matches!(error, Error::Failed(_)), "{error:?}");
+    assert!(
+        error.message().contains("used by worktree") || error.message().contains("checked out"),
+        "{}",
+        error.message()
+    );
+    // 已合并的分支可以删。
+    let summary = run_write_summary(&pool, fixture.path(), WriteOp::DeleteBranch { name: OsString::from("merged") })
+        .expect("已合并的分支可以删");
+    assert_eq!(summary, "已删除分支 merged");
+    let list = read_branches(&pool, fixture.path());
+    assert!(!list.branches.iter().any(|branch| branch.name == "merged"));
+    drop(list);
+    wait_released(&pool);
+}
+
+#[test]
 fn checkout_switches_the_working_branch_and_reports_dirty_conflicts() {
     let fixture = Fixture::new("checkout");
     fixture.repo();

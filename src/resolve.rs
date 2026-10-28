@@ -384,7 +384,9 @@ mod parent {
                 let mut command = Command::new("/bin/sh");
                 command.args(["-c", "exec sleep 10"]);
                 let start = Instant::now();
-                let result = run(|| Ok(command), "localhost", 22, &pool, &token, Duration::from_millis(100));
+                // 取消与超时不能赛跑：取消那一轮把超时放到 5 秒，慢机器上也不会先超时。
+                let timeout = if cancellation { Duration::from_secs(5) } else { Duration::from_millis(100) };
+                let result = run(|| Ok(command), "localhost", 22, &pool, &token, timeout);
                 assert!(
                     matches!(result, Err(Error::Cancelled)) && cancellation
                         || matches!(result, Err(Error::Timeout)) && !cancellation
