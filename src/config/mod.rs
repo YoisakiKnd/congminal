@@ -847,6 +847,62 @@ palette = ["#345678"]
         assert_eq!(warnings.len(), 1);
     }
 
+    /// 文档里必须出现每一个配置项（`分组.键`），否则新增配置项时容易忘记写文档。
+    #[test]
+    fn every_schema_key_appears_in_the_configuration_reference() {
+        let doc = include_str!("../../docs/configuration.md");
+        let mut missing = Vec::new();
+        for (section, keys) in SCHEMA {
+            if keys.is_empty() {
+                // 自由表只要求出现分组名。
+                if !doc.contains(&format!("`{section}`")) {
+                    missing.push((*section).to_string());
+                }
+                continue;
+            }
+            for key in *keys {
+                let full = format!("`{section}.{key}`");
+                if !doc.contains(&full) {
+                    missing.push(full);
+                }
+            }
+        }
+        assert!(missing.is_empty(), "配置参考里缺少：{missing:?}");
+    }
+
+    /// 默认快捷键与动作名同样要写进文档，避免“能配但查不到”。
+    #[test]
+    fn every_default_chord_and_action_name_appears_in_the_reference() {
+        let doc = include_str!("../../docs/configuration.md");
+        let missing: Vec<&str> = crate::action::DEFAULT_BINDINGS
+            .iter()
+            .map(|(chord, _)| *chord)
+            .filter(|chord| !doc.contains(chord))
+            .collect();
+        assert!(missing.is_empty(), "配置参考里缺少快捷键：{missing:?}");
+        let missing: Vec<&str> =
+            crate::action::NAMES.iter().map(|(name, _)| *name).filter(|name| !doc.contains(name)).collect();
+        assert!(missing.is_empty(), "配置参考里缺少动作名：{missing:?}");
+    }
+
+    /// 旧版本写下的配置（只有早期那几组键）仍要能读，且不产生警告。
+    #[test]
+    fn a_legacy_configuration_still_parses_without_warnings() {
+        let (config, warnings) = Config::parse(
+            "[font]\nsize = 13\n[window]\ncolumns = 100\n[colors]\nbackground = \"#101010\"\n\
+             [keybindings]\n\"Primary+Equal\" = \"font-increase\"\n\
+             [connections.dev]\nkind = 'ssh'\nhost = 'example'\n",
+        );
+        assert_eq!(warnings, Vec::<String>::new());
+        assert_eq!(config.font.size, 13.0);
+        assert_eq!(config.window.columns, 100);
+        assert_eq!(config.colors.background, 0x101010);
+        assert_eq!(config.connections.len(), 1);
+        // 没写的项用默认值，而不是被清零。
+        assert_eq!(config.monitor, crate::config::monitor::Settings::default());
+        assert_eq!(config.scrollback, crate::term::DEFAULT_SCROLLBACK);
+    }
+
     #[test]
     fn example_matches_defaults() {
         // 示例配置里写的值必须和代码里的默认值一致，否则文档就骗人了
