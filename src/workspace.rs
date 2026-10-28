@@ -4425,6 +4425,55 @@ program="/definitely/missing/congminal-shell"
         assert!(app.git.snapshot.is_none());
     }
     #[test]
+    fn git_panel_discards_a_worktree_change_after_a_second_click() {
+        let dir = git_fixture();
+        let repo = dir.0.join("repo");
+        let mut app = workspace();
+        app.driver.config.shell.working_directory = Some(repo.clone());
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowGitPanel);
+        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let r = app.right_rect;
+        let h = app.driver.renderer.cell_size().1;
+        let click = |app: &mut Workspace, x: usize, row: usize| {
+            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
+            assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
+        };
+        // 状态页八个槽位，差异页四个槽位：按当前页取列宽。
+        let status_slot = |index: usize| index * (r.w / 8) + 4;
+        let slot = |index: usize| index * (r.w / 4) + 4;
+        let index = app
+            .git
+            .snapshot
+            .as_ref()
+            .unwrap()
+            .entries
+            .iter()
+            .position(|entry| entry.path.as_os_str() == "tracked.txt")
+            .unwrap();
+        click(&mut app, 6, git_row(index));
+        click(&mut app, status_slot(1), 1);
+        wait(&mut app, |a| a.git.diff_open);
+        assert_eq!(app.git.view(6, 0).buttons[3], "撤销");
+        // 第一次点击只进入确认态：文件内容不变。
+        click(&mut app, slot(3), 1);
+        assert!(app.git.discard_pending.is_some());
+        assert_eq!(std::fs::read(repo.join("tracked.txt")).unwrap(), b"one\nchanged\n");
+        // 第二次点击才真正撤销：工作区回到索引里的内容。
+        click(&mut app, slot(3), 1);
+        wait(&mut app, |_| std::fs::read(repo.join("tracked.txt")).unwrap() == b"one\n");
+        wait(&mut app, |a| {
+            a.git
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| !snapshot.entries.iter().any(|entry| entry.path.as_os_str() == "tracked.txt"))
+        });
+        assert!(app.git.write_note.as_deref().is_some_and(|note| note.contains("已撤销")), "{:?}", app.git.write_note);
+    }
+
+    #[test]
     fn git_panel_stages_and_commits_through_the_sidebar() {
         let dir = git_fixture();
         let repo = dir.0.join("repo");
