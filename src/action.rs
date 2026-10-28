@@ -176,52 +176,55 @@ impl Chord {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Bindings(FnvHashMap<Chord, Action>);
+/// 默认快捷键：文档与测试都按这张表核对，避免漏写。
+pub(crate) const DEFAULT_BINDINGS: &[(&str, Action)] = &[
+    ("Shift+PageUp", Action::PageUp),
+    ("Shift+PageDown", Action::PageDown),
+    ("Shift+Home", Action::HistoryTop),
+    ("Shift+End", Action::HistoryBottom),
+    ("Ctrl+Shift+C", Action::Copy),
+    ("Ctrl+Shift+V", Action::Paste),
+    ("Shift+Insert", Action::Paste),
+    ("Primary+C", Action::Copy),
+    ("Primary+V", Action::Paste),
+    ("Primary+Equal", Action::FontIncrease),
+    ("Primary+Plus", Action::FontIncrease),
+    ("Primary+Minus", Action::FontDecrease),
+    ("Primary+0", Action::FontReset),
+    ("Primary+F6", Action::NextTheme),
+    ("Primary+F5", Action::PreviewThemes),
+    ("Primary+F12", Action::ShowResources),
+    ("Primary+T", Action::NewTab),
+    ("Primary+W", Action::ClosePane),
+    ("Ctrl+Tab", Action::NextTab),
+    ("Ctrl+Shift+Tab", Action::PreviousTab),
+    ("Primary+B", Action::ToggleLeftSidebar),
+    ("Primary+I", Action::ToggleRightSidebar),
+    ("Primary+G", Action::ShowGitPanel),
+    ("Primary+M", Action::ShowMonitorPanel),
+    ("Primary+D", Action::SplitRight),
+    ("Primary+Enter", Action::SplitDown),
+    ("Ctrl+PageDown", Action::NextPane),
+    ("Ctrl+PageUp", Action::PreviousPane),
+    ("Ctrl+Shift+PageUp", Action::MoveTabLeft),
+    ("Ctrl+Shift+PageDown", Action::MoveTabRight),
+    ("Primary+F", Action::Search),
+    ("Primary+Up", Action::CommandPrevious),
+    ("Primary+Down", Action::CommandNext),
+    ("Primary+F7", Action::SelectCommandOutput),
+    ("Primary+F8", Action::CopyCommandOutput),
+    ("Primary+F9", Action::ShowShellStatus),
+    ("Primary+F10", Action::ShowNotifications),
+    ("Primary+F11", Action::ToggleNotifications),
+    ("F3", Action::SearchNext),
+    ("Shift+F3", Action::SearchPrevious),
+];
+
 impl Default for Bindings {
     fn default() -> Self {
         let mut bindings = Self(FnvHashMap::default());
-        for (chord, action) in [
-            ("Shift+PageUp", Action::PageUp),
-            ("Shift+PageDown", Action::PageDown),
-            ("Shift+Home", Action::HistoryTop),
-            ("Shift+End", Action::HistoryBottom),
-            ("Ctrl+Shift+C", Action::Copy),
-            ("Ctrl+Shift+V", Action::Paste),
-            ("Shift+Insert", Action::Paste),
-            ("Primary+C", Action::Copy),
-            ("Primary+V", Action::Paste),
-            ("Primary+Equal", Action::FontIncrease),
-            ("Primary+Plus", Action::FontIncrease),
-            ("Primary+Minus", Action::FontDecrease),
-            ("Primary+0", Action::FontReset),
-            ("Primary+F6", Action::NextTheme),
-            ("Primary+F5", Action::PreviewThemes),
-            ("Primary+F12", Action::ShowResources),
-            ("Primary+T", Action::NewTab),
-            ("Primary+W", Action::ClosePane),
-            ("Ctrl+Tab", Action::NextTab),
-            ("Ctrl+Shift+Tab", Action::PreviousTab),
-            ("Primary+B", Action::ToggleLeftSidebar),
-            ("Primary+I", Action::ToggleRightSidebar),
-            ("Primary+G", Action::ShowGitPanel),
-            ("Primary+M", Action::ShowMonitorPanel),
-            ("Primary+D", Action::SplitRight),
-            ("Primary+Enter", Action::SplitDown),
-            ("Ctrl+PageDown", Action::NextPane),
-            ("Ctrl+PageUp", Action::PreviousPane),
-            ("Ctrl+Shift+PageUp", Action::MoveTabLeft),
-            ("Ctrl+Shift+PageDown", Action::MoveTabRight),
-            ("Primary+F", Action::Search),
-            ("Primary+Up", Action::CommandPrevious),
-            ("Primary+Down", Action::CommandNext),
-            ("Primary+F7", Action::SelectCommandOutput),
-            ("Primary+F8", Action::CopyCommandOutput),
-            ("Primary+F9", Action::ShowShellStatus),
-            ("Primary+F10", Action::ShowNotifications),
-            ("Primary+F11", Action::ToggleNotifications),
-            ("F3", Action::SearchNext),
-            ("Shift+F3", Action::SearchPrevious),
-        ] {
-            bindings.0.insert(Chord::parse(chord).unwrap(), action);
+        for (chord, action) in DEFAULT_BINDINGS {
+            bindings.0.insert(Chord::parse(chord).unwrap(), action.clone());
         }
         bindings
     }
@@ -253,6 +256,52 @@ impl Bindings {
         warnings
     }
 }
+/// 配置里可用的动作名与对应动作。文档与测试都按这张表核对，避免漏写。
+pub(crate) const NAMES: &[(&str, Action)] = &[
+    ("copy", Action::Copy),
+    ("paste", Action::Paste),
+    ("page-up", Action::PageUp),
+    ("page-down", Action::PageDown),
+    ("history-top", Action::HistoryTop),
+    ("history-bottom", Action::HistoryBottom),
+    ("font-increase", Action::FontIncrease),
+    ("font-decrease", Action::FontDecrease),
+    ("font-reset", Action::FontReset),
+    ("next-theme", Action::NextTheme),
+    ("preview-themes", Action::PreviewThemes),
+    ("reset-theme", Action::ResetTheme),
+    ("show-resources", Action::ShowResources),
+    ("search", Action::Search),
+    ("search-next", Action::SearchNext),
+    ("search-previous", Action::SearchPrevious),
+    ("open-link", Action::OpenLink),
+    ("copy-link", Action::CopyLink),
+    ("command-previous", Action::CommandPrevious),
+    ("command-next", Action::CommandNext),
+    ("select-command-output", Action::SelectCommandOutput),
+    ("copy-command-output", Action::CopyCommandOutput),
+    ("show-shell-status", Action::ShowShellStatus),
+    ("show-notifications", Action::ShowNotifications),
+    ("toggle-notifications", Action::ToggleNotifications),
+    ("clear-notifications", Action::ClearNotifications),
+    ("new-tab", Action::NewTab),
+    ("close-pane", Action::ClosePane),
+    ("next-tab", Action::NextTab),
+    ("previous-tab", Action::PreviousTab),
+    ("move-tab-left", Action::MoveTabLeft),
+    ("move-tab-right", Action::MoveTabRight),
+    ("split-right", Action::SplitRight),
+    ("split-down", Action::SplitDown),
+    ("next-pane", Action::NextPane),
+    ("previous-pane", Action::PreviousPane),
+    ("toggle-left-sidebar", Action::ToggleLeftSidebar),
+    ("toggle-right-sidebar", Action::ToggleRightSidebar),
+    ("show-git-panel", Action::ShowGitPanel),
+    ("show-monitor-panel", Action::ShowMonitorPanel),
+    ("none", Action::Ignore),
+    ("pass-through", Action::PassThrough),
+];
+
 fn parse_action(value: &Value) -> Result<Action, String> {
     if let Value::Table(table) = value {
         if table.entries.iter().any(|(key, _)| !matches!(key.as_str(), "action" | "text")) {
@@ -272,51 +321,10 @@ fn parse_action(value: &Value) -> Result<Action, String> {
     let Value::String(name) = value else {
         return Err("动作应为名称或发送文本的内联表".into());
     };
-    Ok(match name.as_str() {
-        "copy" => Action::Copy,
-        "paste" => Action::Paste,
-        "page-up" => Action::PageUp,
-        "page-down" => Action::PageDown,
-        "history-top" => Action::HistoryTop,
-        "history-bottom" => Action::HistoryBottom,
-        "font-increase" => Action::FontIncrease,
-        "font-decrease" => Action::FontDecrease,
-        "font-reset" => Action::FontReset,
-        "next-theme" => Action::NextTheme,
-        "preview-themes" => Action::PreviewThemes,
-        "reset-theme" => Action::ResetTheme,
-        "show-resources" => Action::ShowResources,
-        "search" => Action::Search,
-        "search-next" => Action::SearchNext,
-        "search-previous" => Action::SearchPrevious,
-        "open-link" => Action::OpenLink,
-        "copy-link" => Action::CopyLink,
-        "command-previous" => Action::CommandPrevious,
-        "command-next" => Action::CommandNext,
-        "select-command-output" => Action::SelectCommandOutput,
-        "copy-command-output" => Action::CopyCommandOutput,
-        "show-shell-status" => Action::ShowShellStatus,
-        "show-notifications" => Action::ShowNotifications,
-        "toggle-notifications" => Action::ToggleNotifications,
-        "clear-notifications" => Action::ClearNotifications,
-        "new-tab" => Action::NewTab,
-        "close-pane" => Action::ClosePane,
-        "next-tab" => Action::NextTab,
-        "previous-tab" => Action::PreviousTab,
-        "move-tab-left" => Action::MoveTabLeft,
-        "move-tab-right" => Action::MoveTabRight,
-        "split-right" => Action::SplitRight,
-        "split-down" => Action::SplitDown,
-        "next-pane" => Action::NextPane,
-        "previous-pane" => Action::PreviousPane,
-        "toggle-left-sidebar" => Action::ToggleLeftSidebar,
-        "toggle-right-sidebar" => Action::ToggleRightSidebar,
-        "show-git-panel" => Action::ShowGitPanel,
-        "show-monitor-panel" => Action::ShowMonitorPanel,
-        "none" => Action::Ignore,
-        "pass-through" => Action::PassThrough,
-        _ => return Err(format!("不认识的动作“{name}”")),
-    })
+    let Some((_, action)) = NAMES.iter().find(|(known, _)| *known == name) else {
+        return Err(format!("不认识的动作“{name}”"));
+    };
+    Ok(action.clone())
 }
 
 #[cfg(test)]
