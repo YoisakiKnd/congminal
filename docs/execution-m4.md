@@ -44,10 +44,11 @@ Primary 在 macOS 为 Cmd，其他平台为 Ctrl+Shift。可在 `[keybindings]` 
 配置里写了 `[ssh]` 分组（示例配置已包含）时，应用会读一次 `config-file`（默认 `~/.ssh/config`，最多读 256 KiB），把 `Host` 行里能直接当主机名的名字列在连接页配置档下面，点一下就用这个别名新建 SSH 连接：
 
 - 只认 `Host` 行里不含 `*`、`?`、`!`、不以 `-` 开头、没有控制字符的名字；`HostName`/`HostKeyAlias` 这类长关键字不算。去重、按出现顺序、最多 32 条（`config::ssh::MAX_ALIASES`）。
-- `HostName`、`User`、`Port`、`IdentityFile`、`ProxyJump`、`Include`、`Match` 一律交给 OpenSSH 自己展开：应用只把别名当主机名传给 `ssh`，不解析、不复制这些设置，也不改写用户的 SSH 配置。
+- `HostName`、`User`、`Port`、`IdentityFile`、`ProxyJump`、`Match` 一律交给 OpenSSH 自己展开：应用只把别名当主机名传给 `ssh`，不解析、不复制这些设置，也不改写用户的 SSH 配置。
+- `Include` 会跟进，语义与 OpenSSH 一致：相对路径按主配置所在目录（通常 `~/.ssh`）解析，`~` 换主目录，支持 `*`/`?` 通配（`*` 不跨目录），可以嵌套；别名按出现位置插入、全局去重。边界：嵌套最多 4 层（`MAX_INCLUDE_DEPTH`）、一次最多读 32 个文件（`MAX_INCLUDE_FILES`）、总字节数仍受 256 KiB 限制，按规范化路径去重所以自引用与互相引用都不会绕圈；`Include` 指向的文件不存在时直接跳过（与 OpenSSH 相同），不算错误。
 - 点别名时按它临时合成一个配置档（host = 别名，program = `[ssh] program`），只挂在新窗格上，不写回配置、不出现在配置档列表里；结果落地前会检查这个别名是否还在列表里，配置重载后迟到的结果直接丢弃。
 - 读文件在解析配置时做一次，不起线程、不起子进程；文件不存在时列表为空且不报警，读不了给一条警告。
-- 未做：不列 `Include` 里引入的其他文件（OpenSSH 连接时仍会用到它们）、不做按别名的分组/主题、不显示 `HostName` 等实际参数。
+- 未做：不做按别名的分组/主题、不显示 `HostName` 等实际参数、不展开 `Match` 块（`Match` 里的 `Host` 行同样按普通 `Host` 行处理，可能与 OpenSSH 的实际匹配结果不同）。
 
 本地工作目录不展开 ~ 或环境变量，使用启动目录相对路径或绝对路径。配置中不接受密码或私钥内容，不读取密钥文件。SSH 现已接入 OpenSSH PTY，操作与验收边界见 [M5 记录](execution-m5.md)；theme 为关联元数据，按会话应用将在 M8 接入。布局文件不保存配置档或自动重连。
 
