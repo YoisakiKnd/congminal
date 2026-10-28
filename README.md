@@ -46,7 +46,7 @@ echo 'source <(congminal --print-shell-integration bash)' >> ~/.bashrc   # zsh �
 # 3. 连接远程主机：把 Host 写进 ~/.ssh/config，启动后在左栏「连接」页点它
 ```
 
-配置文件改完保存即生效，不需要重启；写错的键会在终端顶部用黄条提示，同时打到 stderr。
+配置文件改完保存即生效，不需要重启；写错的键会在终端顶部用黄条提示，同时打到 stderr。用 `--config` 指定的文件不存在时会直接报错退出（默认路径不存在则照常用默认配置）。
 
 ## 快捷键
 
