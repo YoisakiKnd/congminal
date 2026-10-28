@@ -204,6 +204,11 @@ enum Action {
     MkdirAll {
         paths: Vec<RemotePath>,
     },
+    /// 递归删除（删除目录时用）：先删文件，再按给定顺序删目录（深度从深到浅）。
+    RemoveTree {
+        files: Vec<RemotePath>,
+        dirs: Vec<RemotePath>,
+    },
     Rename {
         from: RemotePath,
         to: RemotePath,
@@ -416,6 +421,33 @@ impl Service {
             list.push(mutation_path(self.budget(), path)?);
         }
         self.submit(owner, profiles, profile, paths, Action::MkdirAll { paths: list }, timeout)
+    }
+    /// 递归删除：`files` 是子树里的普通文件，`dirs` 是子目录（含根，深度从深到浅）。
+    #[allow(clippy::too_many_arguments)]
+    pub fn remove_tree(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        files: &[Vec<u8>],
+        dirs: &[Vec<u8>],
+        timeout: Duration,
+    ) -> Result<(Ticket, Authentication), Failure> {
+        self.validate(owner, paths, timeout)?;
+        let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        if files.len() + dirs.len() > crate::sftp::local_plan::FILES {
+            return Err(Failure::Invalid);
+        }
+        let mut file_list = Vec::with_capacity(files.len());
+        for path in files {
+            file_list.push(mutation_path(self.budget(), path)?);
+        }
+        let mut dir_list = Vec::with_capacity(dirs.len());
+        for path in dirs {
+            dir_list.push(mutation_path(self.budget(), path)?);
+        }
+        self.submit(owner, profiles, profile, paths, Action::RemoveTree { files: file_list, dirs: dir_list }, timeout)
     }
     /// 重命名：源与目标都必须是绝对路径，目标名称不得为空、`.` 或 `..`；不替换既有目标。
     #[allow(clippy::too_many_arguments)]
@@ -812,6 +844,13 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
         Action::MkdirAll { paths } => {
             let paths: Vec<Vec<u8>> = paths.iter().map(|path| path.bytes().to_vec()).collect();
             operations::mkdir_all(&mut channel, &paths, cancel).map(|()| Output::Changed).map_err(operation_failure)
+        }
+        Action::RemoveTree { files, dirs } => {
+            let files: Vec<Vec<u8>> = files.iter().map(|path| path.bytes().to_vec()).collect();
+            let dirs: Vec<Vec<u8>> = dirs.iter().map(|path| path.bytes().to_vec()).collect();
+            operations::remove_all(&mut channel, &files, &dirs, cancel)
+                .map(|()| Output::Changed)
+                .map_err(operation_failure)
         }
         Action::Rename { from, to } => operations::rename(&mut channel, from.bytes(), to.bytes(), cancel)
             .map(|()| Output::Changed)
