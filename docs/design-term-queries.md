@@ -169,6 +169,27 @@ cargo test --locked panes_learn      # 分屏格尺寸
 
 真机编辑器（neovim/helix）的按键回放未验证，只在本机单元测试与集成测试里覆盖。
 
+## 8c. 字素簇分段（模式 2027）
+
+程序用 `CSI ? 2027 h` 打开字素簇模式后，终端不再“一个码位一格”，而是按 UAX #29 的
+字素簇边界把后续字符并进前一个字：
+
+- 数据版本固定在 **Unicode 15.1.0**：`src/term/grapheme_tables.rs` 由
+  `GraphemeBreakProperty.txt`、`emoji-data.txt`、`DerivedCoreProperties.txt`（InCB）
+  机械生成，不手改；韩文音节的 LV/LVT 用算术判断，不占表。
+- 实现的规则：GB3（CR × LF）、GB4/GB5（控制字符前后断开）、GB6–GB8（韩文初/中/终声）、
+  GB9（组合符号与 ZWJ）、GB9a（SpacingMark）、GB9b（Prepend）、GB9c（Indic 连写，
+  按 `InCB` 的 Linker/Consonant/Extend 状态机）、GB11（`ExtPict Extend* ZWJ × ExtPict`）、
+  GB12/GB13（国旗字母两两成对）。
+- 宽度：只有 emoji 序列（ZWJ 家族、肤色、国旗、`U+FE0F`）把格子从 1 变 2；其他簇沿用
+  基础字符的宽度（天城文元音符号、Indic 连写都是 1 格），不会因为“并进前一个字”而变宽。
+- 关闭 2027 时行为完全不变：国旗字母各占 1 格、家庭 emoji 每个占 2 格。
+- 判定是**无状态**的：`grapheme::extends(sequence, c)` 把当前格子的基础字符与附加字符重放
+  一遍再问 `c`，因此不需要维护一份会随光标移动失效的分段状态；序列本身很短，重放成本可忽略。
+- 官方用例 `GraphemeBreakTest.txt`（Unicode 15.1.0，1 215 条）随源码放在
+  `src/term/grapheme_break_test.txt`，`official_grapheme_break_test_cases_pass` 逐条比对
+  期望的簇边界。
+
 ## 9. 已知限制
 
 - 颜色查询只答只读部分：`OSC 4/10/11/12` 的**设置**（程序改调色板）被忽略，只写 trace；
@@ -179,4 +200,7 @@ cargo test --locked panes_learn      # 分屏格尺寸
   上报事件类型（`2`）、替换键（`4`）、关联文本（`16`）没有实现，因此既不记也不回；
   方向键/功能键仍发传统 `CSI 1;mods X` 形式（本来就带修饰位，无需改造）；
 - 像素尺寸取整到整数格，程序若按小数缩放会看到舍入误差；
-- 应用小键盘模式只影响按键编码，不改变键位重复/锁定行为（那是系统键盘层的事）。
+- 应用小键盘模式只影响按键编码，不改变键位重复/锁定行为（那是系统键盘层的事）；
+- 字素簇分段只覆盖 UAX #29 的默认规则集：GB9c 之外的 Indic 扩展（例如 `InCB` 之外的
+  脚本特定连写）与未来的 Unicode 版本差异不跟进，换数据版本要重新生成整张表；
+  分段只影响模式 2027 下的格子归属，不改变字体的字形合成（那是 `compose` 的事）。
