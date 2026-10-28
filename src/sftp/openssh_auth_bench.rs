@@ -38,7 +38,7 @@ fn identical_encrypted_authentication_and_data_workload_measures_incremental_ipc
                 port: None,
                 identity_file: None,
                 jump: None,
-                forwards: Vec::new(),
+                forwards: crate::config::profiles::Forwards::default(),
                 program: Some(ssh),
             };
             let pump = Pump::new(&std::env::temp_dir(), back, &pool_copy, &cancel_copy).unwrap();

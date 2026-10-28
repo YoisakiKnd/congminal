@@ -12,8 +12,14 @@ pub const LIMIT: usize = 16;
 pub const FORWARD_LIMIT: usize = 16;
 /// 转发规则只允许这些字符：地址、端口、方括号与 IPv6 冒号。
 /// 界面新增规则时也用这一套校验，避免“界面能加、解析时被丢”。
-pub(crate) fn forward_ok(spec: &str) -> bool {
-    forward_valid(spec)
+/// 动态转发（`-D`，SOCKS）：`[绑定地址:]端口`，没有目标主机段。
+pub(crate) fn dynamic_forward_ok(spec: &str) -> bool {
+    !spec.is_empty()
+        && spec.len() <= 128
+        && !spec.starts_with('-')
+        && spec.bytes().all(|b| b.is_ascii_alphanumeric() || b".:_-[]".contains(&b))
+        && spec.split(':').count() <= 2
+        && spec.rsplit(':').next().is_some_and(|port| port.parse::<u16>().is_ok_and(|p| p > 0))
 }
 fn forward_valid(spec: &str) -> bool {
     !spec.is_empty()
@@ -22,7 +28,100 @@ fn forward_valid(spec: &str) -> bool {
         && spec.bytes().all(|b| b.is_ascii_alphanumeric() || b".:_-[]".contains(&b))
         && spec.split(':').count() >= 3
 }
+/// 读一个转发列表键：字符串或字符串数组，最多 `FORWARD_LIMIT` 项。
+fn forward_list(t: &crate::config::toml::Table, key: &str) -> Result<Vec<String>, String> {
+    match t.get(key) {
+        None => Ok(Vec::new()),
+        Some(Value::String(spec)) => Ok(vec![spec.clone()]),
+        Some(Value::Array(items)) => {
+            if items.len() > FORWARD_LIMIT {
+                return Err(format!("{key} 最多 {FORWARD_LIMIT} 项"));
+            }
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                let Value::String(spec) = item else {
+                    return Err(format!("{key} 须为字符串或字符串数组"));
+                };
+                out.push(spec.clone());
+            }
+            Ok(out)
+        }
+        _ => Err(format!("{key} 须为字符串或字符串数组")),
+    }
+}
 const WORK_BYTES: usize = 512 * 1024;
+
+/// 一个配置档的端口转发规则：本地（`-L`）、远程（`-R`）与动态（`-D`）。
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Forwards {
+    pub local: Vec<String>,
+    pub remote: Vec<String>,
+    pub dynamic: Vec<String>,
+}
+impl Forwards {
+    pub fn len(&self) -> usize {
+        self.local.len() + self.remote.len() + self.dynamic.len()
+    }
+    /// 按 `-L`、`-R`、`-D` 的顺序遍历，供参数构造与页面展示共用。
+    pub fn iter(&self) -> impl Iterator<Item = (ForwardKind, &str)> {
+        self.local
+            .iter()
+            .map(|spec| (ForwardKind::Local, spec.as_str()))
+            .chain(self.remote.iter().map(|spec| (ForwardKind::Remote, spec.as_str())))
+            .chain(self.dynamic.iter().map(|spec| (ForwardKind::Dynamic, spec.as_str())))
+    }
+    pub fn bytes(&self) -> usize {
+        self.local.iter().chain(&self.remote).chain(&self.dynamic).map(|spec| spec.capacity()).sum()
+    }
+}
+/// 转发类型：决定 `ssh` 参数与页面上的前缀。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ForwardKind {
+    Local,
+    Remote,
+    Dynamic,
+}
+impl ForwardKind {
+    pub fn flag(self) -> &'static str {
+        match self {
+            Self::Local => "-L",
+            Self::Remote => "-R",
+            Self::Dynamic => "-D",
+        }
+    }
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Self::Local => "L",
+            Self::Remote => "R",
+            Self::Dynamic => "D",
+        }
+    }
+    /// 解析输入里的前缀（`L:`/`R:`/`D:`，大小写不敏感）；没有前缀时按本地转发。
+    pub fn parse_prefix(text: &str) -> Option<(Self, &str)> {
+        let (head, rest) = text.split_once(':')?;
+        let kind = match head.to_ascii_uppercase().as_str() {
+            "L" => Self::Local,
+            "R" => Self::Remote,
+            "D" => Self::Dynamic,
+            _ => return None,
+        };
+        Some((kind, rest))
+    }
+    /// 按类型校验一条规则。
+    pub fn accepts(self, spec: &str) -> bool {
+        match self {
+            Self::Dynamic => dynamic_forward_ok(spec),
+            Self::Local | Self::Remote => forward_valid(spec),
+        }
+    }
+    pub fn hint(self) -> &'static str {
+        match self {
+            Self::Local => "L:端口:主机:端口",
+            Self::Remote => "R:端口:主机:端口",
+            Self::Dynamic => "D:端口",
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Ssh {
@@ -33,8 +132,8 @@ pub struct Ssh {
     pub identity_file: Option<String>,
     /// 跳板机（`ssh -J`）：`[user@]host[:port]`，也允许逗号分隔的多跳。
     pub jump: Option<String>,
-    /// 终端会话的本地转发（`ssh -L`），每项形如 `[绑定地址:]端口:主机:端口`。
-    pub forwards: Vec<String>,
+    /// 终端会话的端口转发：`-L`（本地）、`-R`（远程）、`-D`（动态/SOCKS）。
+    pub forwards: Forwards,
     pub program: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -101,12 +200,12 @@ impl Profiles {
     ///
     /// 只用于“本次运行临时加/删转发”：新连接用这份副本，已有窗格仍持有原配置，
     /// 因此 `shares()` 对旧配置仍然成立。副本按同样口径重新准入额度。
-    pub fn with_forwards(&self, index: usize, forwards: &[String], pool: &Arc<Budget>) -> Option<Self> {
+    pub fn with_forwards(&self, index: usize, forwards: &Forwards, pool: &Arc<Budget>) -> Option<Self> {
         let entries = self.deref();
         let mut copy: Vec<Profile> = entries.to_vec();
         let profile = copy.get_mut(index)?;
         let Connection::Ssh(ssh) = &mut profile.connection else { return None };
-        ssh.forwards = forwards.to_vec();
+        ssh.forwards = forwards.clone();
         let bytes = copy.capacity() * std::mem::size_of::<Profile>()
             + copy.iter().map(Profile::bytes).sum::<usize>()
             + std::mem::size_of::<Owned>()
@@ -214,6 +313,8 @@ impl Profiles {
                                 "identity-file",
                                 "jump",
                                 "forward",
+                                "forward-remote",
+                                "forward-dynamic",
                                 "program",
                             ],
                         )?;
@@ -242,29 +343,30 @@ impl Profiles {
                             return Err("jump 须为 [user@]host[:port]，可逗号分隔多跳，不能含选项或命令");
                         }
                         // 端口转发只作用于交互式终端会话：SFTP/监控/Git 各自的后台通道不加。
-                        let forwards = match t.get("forward") {
-                            None => Vec::new(),
-                            Some(Value::String(spec)) => vec![spec.clone()],
-                            Some(Value::Array(items)) => {
-                                if items.len() > FORWARD_LIMIT {
-                                    return Err("forward 最多 16 项");
-                                }
-                                let mut out = Vec::with_capacity(items.len());
-                                for item in items {
-                                    let Value::String(spec) = item else {
-                                        return Err("forward 须为字符串或字符串数组");
-                                    };
-                                    out.push(spec.clone());
-                                }
-                                out
-                            }
-                            _ => return Err("forward 须为字符串或字符串数组"),
-                        };
-                        for spec in &forwards {
+                        let local = forward_list(t, "forward").map_err(|e| Box::leak(e.into_boxed_str()) as &str)?;
+                        for spec in &local {
                             if !forward_valid(spec) {
                                 return Err("forward 须为 [绑定地址:]端口:主机:端口，不能含选项或命令");
                             }
                         }
+                        let remote =
+                            forward_list(t, "forward-remote").map_err(|e| Box::leak(e.into_boxed_str()) as &str)?;
+                        for spec in &remote {
+                            if !forward_valid(spec) {
+                                return Err("forward-remote 须为 [绑定地址:]端口:主机:端口，不能含选项或命令");
+                            }
+                        }
+                        let dynamic =
+                            forward_list(t, "forward-dynamic").map_err(|e| Box::leak(e.into_boxed_str()) as &str)?;
+                        for spec in &dynamic {
+                            if !dynamic_forward_ok(spec) {
+                                return Err("forward-dynamic 须为 [绑定地址:]端口，不能含选项或命令");
+                            }
+                        }
+                        if local.len() + remote.len() + dynamic.len() > FORWARD_LIMIT {
+                            return Err("转发规则合计最多 16 项");
+                        }
+                        let forwards = Forwards { local, remote, dynamic };
                         Connection::Ssh(Ssh {
                             host: host.into(),
                             user: user.map(str::to_owned),
@@ -334,8 +436,8 @@ impl Profile {
                         + optional(&c.user)
                         + optional(&c.identity_file)
                         + optional(&c.jump)
-                        + c.forwards.capacity() * std::mem::size_of::<String>()
-                        + c.forwards.iter().map(String::capacity).sum::<usize>()
+                        + 3 * std::mem::size_of::<Vec<String>>()
+                        + c.forwards.bytes()
                         + optional(&c.program)
                 }
             }
@@ -441,7 +543,7 @@ forward=["8080:localhost:80", "[::1]:5432:db:5432"]
         );
         assert!(warnings.is_empty(), "{warnings:?}");
         let Connection::Ssh(a) = &profiles[0].connection else { panic!("expected ssh") };
-        assert_eq!(a.forwards, ["8080:localhost:80"]);
+        assert_eq!(a.forwards.local, ["8080:localhost:80"]);
         let Connection::Ssh(b) = &profiles[1].connection else { panic!("expected ssh") };
         assert_eq!(b.forwards.len(), 2, "{:?}", b.forwards);
         for bad in ["-oProxyCommand=echo", "8080", "8080:localhost:80; rm -rf /", "a b:c:d"] {
@@ -457,6 +559,58 @@ forward=["8080:localhost:80", "[::1]:5432:db:5432"]
         let fresh = Budget::new(WORK_BYTES, 0);
         let (profiles, _) = parse(&format!("[connections.x]\nkind=\"ssh\"\nhost=\"t\"\nforward=[{many}]\n"), &fresh);
         assert!(profiles.is_empty(), "超过 {FORWARD_LIMIT} 项不应加载");
+    }
+    #[test]
+    fn remote_and_dynamic_forwards_parse_and_are_validated() {
+        let pool = Budget::new(WORK_BYTES, 0);
+        let (profiles, warnings) = parse(
+            r#"
+[connections.a]
+kind="ssh"
+host="target"
+forward="8080:localhost:80"
+forward-remote=["9000:localhost:3000", "0.0.0.0:2222:localhost:22"]
+forward-dynamic="1080"
+"#,
+            &pool,
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let Connection::Ssh(a) = &profiles[0].connection else { panic!("expected ssh") };
+        assert_eq!(a.forwards.local, ["8080:localhost:80"]);
+        assert_eq!(a.forwards.remote, ["9000:localhost:3000", "0.0.0.0:2222:localhost:22"]);
+        assert_eq!(a.forwards.dynamic, ["1080"]);
+        assert_eq!(a.forwards.len(), 4);
+        // 遍历顺序固定为 L、R、D，参数构造与页面都靠它。
+        let kinds: Vec<&str> = a.forwards.iter().map(|(kind, _)| kind.flag()).collect();
+        assert_eq!(kinds, ["-L", "-R", "-R", "-D"]);
+        // 动态转发没有目标主机段：三段式与非法端口都要拒绝。
+        for bad in ["1080:localhost:80", "0", "70000", "-D1080", "1080;rm"] {
+            let fresh = Budget::new(WORK_BYTES, 0);
+            let (profiles, warnings) =
+                parse(&format!("[connections.x]\nkind=\"ssh\"\nhost=\"t\"\nforward-dynamic=\"{bad}\"\n"), &fresh);
+            assert!(profiles.is_empty(), "{bad} 不应加载");
+            assert!(warnings.iter().any(|w| w.contains("forward-dynamic")), "{bad}: {warnings:?}");
+        }
+        // 远程转发与本地转发同形：缺目标主机段要拒绝。
+        for bad in ["9000", "9000:localhost"] {
+            let fresh = Budget::new(WORK_BYTES, 0);
+            let (profiles, warnings) =
+                parse(&format!("[connections.x]\nkind=\"ssh\"\nhost=\"t\"\nforward-remote=\"{bad}\"\n"), &fresh);
+            assert!(profiles.is_empty(), "{bad} 不应加载");
+            assert!(warnings.iter().any(|w| w.contains("forward-remote")), "{bad}: {warnings:?}");
+        }
+        // 三种规则合计仍受 16 条上限约束。
+        let many: Vec<String> = (0..FORWARD_LIMIT).map(|i| format!("\"{}:localhost:80\"", 8000 + i)).collect();
+        let fresh = Budget::new(WORK_BYTES, 0);
+        let (profiles, warnings) = parse(
+            &format!(
+                "[connections.x]\nkind=\"ssh\"\nhost=\"t\"\nforward=[{}]\nforward-dynamic=\"1080\"\n",
+                many.join(", ")
+            ),
+            &fresh,
+        );
+        assert!(profiles.is_empty(), "合计超过 {FORWARD_LIMIT} 项不应加载");
+        assert!(warnings.iter().any(|w| w.contains("合计")), "{warnings:?}");
     }
     #[test]
     fn invalid_or_secret_fields_do_not_load_or_echo_values() {

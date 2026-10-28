@@ -318,7 +318,7 @@ pub struct Workspace {
     /// 连接页的转发规则页；打开时左栏改画规则列表。
     forwards: Option<forwards::Page>,
     /// 本次运行临时改过的转发规则（配置档下标 + 规则）。只对之后新建的连接生效。
-    forwards_override: Option<(usize, Vec<String>)>,
+    forwards_override: Option<(usize, config::profiles::Forwards)>,
     right_page: RightPage,
     /// 状态页里来自通知中心的行：行号 → 来源，用于点击定位。
     notice_rows: Vec<(usize, crate::notifications::Source)>,
@@ -893,9 +893,9 @@ impl Workspace {
             .filter(|&i| profiles.get(i).is_some_and(|p| matches!(p.connection, config::profiles::Connection::Ssh(_))))
         {
             // 转发页临时改过规则：用改过的副本发起连接，原配置与已有窗格都不动。
-            if let Some((edited, specs)) = &self.forwards_override
+            if let Some((edited, forwards)) = &self.forwards_override
                 && *edited == index
-                && let Some(patched) = profiles.with_forwards(index, specs, &crate::resources::current())
+                && let Some(patched) = profiles.with_forwards(index, forwards, &crate::resources::current())
             {
                 self.start_remote_edited(patched, index, remote::Target::New(self.selected));
                 return;
