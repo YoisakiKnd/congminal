@@ -474,13 +474,28 @@ mod tests {
         app.close_forwards();
         assert!(app.forwards_override.is_some(), "改过的规则要记在本次运行的覆盖里");
         // 再从连接页点这个配置档：新连接带上改过的规则。
-        std::fs::remove_file(&log).ok();
+        // 第一次连接的 ssh 进程可能比窗格晚一点才写参数：等它写完再清空日志。
+        let read_log = |path: &std::path::Path| std::fs::read_to_string(path).unwrap_or_default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !read_log(&log).contains("8080:localhost:80") {
+            assert!(std::time::Instant::now() < deadline, "第一次连接没写参数：{:?}", read_log(&log));
+            app.tick();
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        std::fs::remove_file(&log).unwrap();
         let before = app.panes.len();
         app.add_with_profile(None, Some(0));
         // 新窗格是异步准备的：等它真的出现并连上，别把旧窗格当成新连接。
         crate::workspace::tests::wait(&mut app, |a| a.panes.len() > before);
         crate::workspace::tests::wait(&mut app, |a| a.panes[before].remote.is_some());
-        let argv = std::fs::read_to_string(&log).unwrap();
+        // 参数由 ssh 进程自己写，等它落盘再断言。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while read_log(&log).is_empty() {
+            assert!(std::time::Instant::now() < deadline, "新连接没写参数");
+            app.tick();
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let argv = read_log(&log);
         assert!(argv.contains("9090:localhost:90"), "改过的规则要传给 ssh：{argv}");
         assert!(!argv.contains("8080:localhost:80"), "被删掉的规则不能再传：{argv}");
         // 配置文件里的原值不动。
