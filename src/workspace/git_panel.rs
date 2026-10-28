@@ -60,6 +60,11 @@ const RESOLVE_LABELS: [[&str; 4]; 3] =
     [["刷新", "保留我方", "保留对方", "返回"], ["刷新", "留我方", "留对方", "返回"], ["刷", "我", "对", "返"]];
 /// 列表页第 7 个按钮：进分支页。
 const BRANCH_LABELS: [&str; 3] = ["分支", "分支", "分"];
+/// 状态页第九槽：提交历史。
+const LOG_LABELS: [&str; 3] = ["历史", "历史", "史"];
+/// 历史页与单条提交页：刷新 / 返回。
+const LOG_PAGE_LABELS: [&str; 2] = ["刷新", "返回"];
+const LOG_PAGE_LABELS_NARROW: [&str; 2] = ["刷", "返"];
 /// 分支页：刷新 / 切到 / 新建 / 删除 / 返回（确认态下“返回”变“取消”）。
 const BRANCH_PAGE_LABELS: [[&str; 5]; 3] = [
     ["刷新", "切到", "新建", "删除", "返回"],
@@ -205,6 +210,21 @@ pub(super) struct Panel {
     pub(super) delete_pending: Option<(usize, Instant)>,
     /// 撤销工作区修改的二次确认（差异页）。
     pub(super) discard_pending: Option<Instant>,
+    /// 历史页：只读提交列表，选中一条可看它的 `--stat`。
+    pub(super) log_open: bool,
+    pub(super) log: Option<git::Log>,
+    pub(super) log_task: Option<LatestTask<git::LogRequest, git::LogReply>>,
+    pub(super) log_generation: u64,
+    pub(super) log_loading: bool,
+    pub(super) log_error: Option<Error>,
+    pub(super) log_selected: Option<usize>,
+    pub(super) log_offset: usize,
+    pub(super) log_scroll: f64,
+    /// 单条提交的 `--stat` 页。
+    pub(super) log_stat: Option<git::Log>,
+    pub(super) log_stat_open: bool,
+    pub(super) log_stat_loading: bool,
+    pub(super) log_stat_error: Option<Error>,
     /// 上一次看到的仓库元数据指纹；变化说明暂存/提交/切分支，立刻排一次刷新。
     pub(super) meta: Option<[Option<Stamp>; 3]>,
     /// 上次检查指纹的时刻，把复查限到 `META_INTERVAL` 一次。
@@ -255,6 +275,19 @@ impl Panel {
             resolve: None,
             remote: None,
             branches_open: false,
+            log_open: false,
+            log: None,
+            log_task: None,
+            log_generation: 0,
+            log_loading: false,
+            log_error: None,
+            log_selected: None,
+            log_offset: 0,
+            log_scroll: 0.0,
+            log_stat: None,
+            log_stat_open: false,
+            log_stat_loading: false,
+            log_stat_error: None,
             branches: None,
             branches_task: None,
             branches_generation: 0,
@@ -285,6 +318,8 @@ impl Panel {
             + self.input.as_ref().map_or(0, |input| input.text.memory.bytes())
             + self.write_note.as_ref().map_or(0, String::capacity)
             + self.remote.as_ref().map_or(0, |remote| remote.label().len())
+            + self.log.as_ref().map_or(0, |log| log.bytes())
+            + self.log_stat.as_ref().map_or(0, |log| log.bytes())
     }
     pub(super) fn open(&mut self) -> bool {
         if self.active && self.next.is_some() {
@@ -318,6 +353,8 @@ impl Panel {
             || self.input.is_some()
             || self.branches_open
             || self.branches.is_some()
+            || self.log_open
+            || self.log.is_some()
             || self.write_note.is_some();
         if !had && !self.write_loading {
             return false;
@@ -348,6 +385,7 @@ impl Panel {
         self.remote = None;
         self.limits.remote = None;
         self.close_branches_state();
+        self.close_log_state();
         self.write_note = None;
         if !self.write_loading {
             self.write = None;
@@ -358,7 +396,12 @@ impl Panel {
 
     /// 页面不在前台或窗口失焦：取消在途查询，保留最近结果，停止排新查询。
     fn suspend(&mut self) -> bool {
-        let changed = self.loading || self.diff_loading || self.branches_loading || self.next.is_some();
+        let changed = self.loading
+            || self.diff_loading
+            || self.branches_loading
+            || self.log_loading
+            || self.log_stat_loading
+            || self.next.is_some();
         if let Some(task) = &self.status {
             task.invalidate();
         }
@@ -368,9 +411,14 @@ impl Panel {
         if let Some(task) = &self.branches_task {
             task.invalidate();
         }
+        if let Some(task) = &self.log_task {
+            task.invalidate();
+        }
         self.loading = false;
         self.diff_loading = false;
         self.branches_loading = false;
+        self.log_loading = false;
+        self.log_stat_loading = false;
         self.next = None;
         if changed {
             self.revision = self.revision.wrapping_add(1);
@@ -657,6 +705,7 @@ impl Panel {
             }
         }
         changed |= self.poll_branches();
+        changed |= self.poll_log();
         if changed {
             self.revision = self.revision.wrapping_add(1);
         }
@@ -810,6 +859,191 @@ impl Panel {
         self.branch_scroll = 0.0;
         self.branch_pending = None;
         self.delete_pending = None;
+    }
+
+    /// 进历史页：只读提交列表，选中一条可看它的 `--stat`。
+    pub(super) fn open_log(&mut self, notify: Notify) -> bool {
+        if !self.enabled || self.write_loading || self.diff_open || self.input.is_some() || self.resolve.is_some() {
+            return false;
+        }
+        if self.readonly_remote() {
+            return true;
+        }
+        if self.tool_missing() {
+            return true;
+        }
+        if self.snapshot.as_ref().is_some_and(|snapshot| snapshot.bare && snapshot.head.unborn()) {
+            self.write_note = Some("还没有提交，历史为空".into());
+            self.revision = self.revision.wrapping_add(1);
+            return true;
+        }
+        self.pending = None;
+        self.log_open = true;
+        self.log_stat_open = false;
+        self.log_stat = None;
+        self.log_stat_error = None;
+        self.write_note = None;
+        self.log_selected = None;
+        self.log_offset = 0;
+        self.log_scroll = 0.0;
+        self.revision = self.revision.wrapping_add(1);
+        self.query_log(notify, None);
+        true
+    }
+    /// 退出历史页（含单条提交页）回到变更列表。
+    pub(super) fn close_log(&mut self) -> bool {
+        if !self.log_open {
+            return false;
+        }
+        self.close_log_state();
+        self.write_note = None;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+    fn close_log_state(&mut self) {
+        if let Some(task) = &self.log_task {
+            task.invalidate();
+        }
+        self.log_open = false;
+        self.log = None;
+        self.log_loading = false;
+        self.log_error = None;
+        self.log_selected = None;
+        self.log_offset = 0;
+        self.log_scroll = 0.0;
+        self.log_stat = None;
+        self.log_stat_open = false;
+        self.log_stat_loading = false;
+        self.log_stat_error = None;
+    }
+    /// 查历史（`hash` 为 None）或某条提交的 `--stat`。
+    pub(super) fn query_log(&mut self, notify: Notify, hash: Option<std::ffi::OsString>) -> bool {
+        if !self.enabled || self.log_loading || self.log_stat_loading {
+            return false;
+        }
+        let Some(dir) = self.dir.as_deref().map(|dir| dir.to_path_buf()) else {
+            self.log_error = Some(Error::Path);
+            return true;
+        };
+        self.log_generation = self.log_generation.wrapping_add(1);
+        let request = match git::LogRequest::new(
+            self.owner,
+            self.log_generation,
+            &dir,
+            hash.as_deref(),
+            &self.limits,
+            &self.pool,
+        ) {
+            Ok(request) => request,
+            Err(error) => {
+                self.log_error = Some(error);
+                return true;
+            }
+        };
+        if self.log_task.is_none() {
+            match LatestTask::new_named_in(&self.pool, "git-log", notify, |request, cancel| {
+                Ok(git::log(request, cancel))
+            }) {
+                Ok(task) => self.log_task = Some(task),
+                Err(error) => {
+                    self.log_error = Some(if error.kind() == std::io::ErrorKind::OutOfMemory {
+                        Error::Budget
+                    } else {
+                        Error::Worker
+                    });
+                    return true;
+                }
+            }
+        }
+        let stat = hash.is_some();
+        if stat {
+            self.log_stat_loading = true;
+            self.log_stat_error = None;
+        } else {
+            self.log_loading = true;
+            self.log_error = None;
+        }
+        self.revision = self.revision.wrapping_add(1);
+        if let Err(error) = self.log_task.as_ref().unwrap().try_submit(request) {
+            self.log_loading = false;
+            self.log_stat_loading = false;
+            let error = if error == SubmitError::Budget { Error::Budget } else { Error::Worker };
+            if stat {
+                self.log_stat_error = Some(error);
+            } else {
+                self.log_error = Some(error);
+            }
+        }
+        true
+    }
+    fn poll_log(&mut self) -> bool {
+        if !self.log_loading && !self.log_stat_loading {
+            return false;
+        }
+        let Some(result) = self.log_task.as_ref().and_then(LatestTask::take) else { return false };
+        let stat = self.log_stat_loading;
+        self.log_loading = false;
+        self.log_stat_loading = false;
+        match result {
+            Ok(reply) if reply.owner == self.owner && reply.generation == self.log_generation => match reply.result {
+                Ok(log) => {
+                    if stat {
+                        self.log_stat = Some(log);
+                        self.log_stat_error = None;
+                    } else {
+                        self.log_selected = (!log.commits.is_empty()).then_some(0);
+                        self.log = Some(log);
+                        self.log_error = None;
+                        self.log_offset = self.log_offset.min(self.log_rows());
+                    }
+                }
+                Err(error) => {
+                    if stat {
+                        self.log_stat_error = Some(error);
+                    } else {
+                        self.log_error = Some(error);
+                    }
+                }
+            },
+            Ok(_) => {}
+            Err(_) => {
+                if stat {
+                    self.log_stat_error = Some(Error::Worker);
+                } else {
+                    self.log_error = Some(Error::Worker);
+                }
+            }
+        }
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
+    fn log_rows(&self) -> usize {
+        self.log.as_ref().map_or(0, |log| log.commits.len())
+    }
+    /// 选中一条提交并打开它的 `--stat` 页。
+    pub(super) fn open_commit_stat(&mut self, index: usize, notify: Notify) -> bool {
+        let Some(hash) = self.log.as_ref().and_then(|log| log.commits.get(index)).map(|commit| commit.hash.clone())
+        else {
+            return false;
+        };
+        self.log_selected = Some(index);
+        self.log_stat_open = true;
+        self.log_stat = None;
+        self.log_stat_error = None;
+        self.revision = self.revision.wrapping_add(1);
+        self.query_log(notify, Some(std::ffi::OsString::from(hash)))
+    }
+    /// 从单条提交页返回历史列表。
+    pub(super) fn close_commit_stat(&mut self) -> bool {
+        if !self.log_stat_open {
+            return false;
+        }
+        self.log_stat_open = false;
+        self.log_stat = None;
+        self.log_stat_error = None;
+        self.log_stat_loading = false;
+        self.revision = self.revision.wrapping_add(1);
+        true
     }
 
     pub(super) fn query_branches(&mut self, notify: Notify) -> bool {
@@ -1115,6 +1349,65 @@ impl Panel {
             }
             return View { buttons: vec!["刷新", side, "返回", self.discard_label(tier)], headline, content };
         }
+        if self.log_open {
+            if self.log_stat_open {
+                headline.push(
+                    match self.log.as_ref().and_then(|log| self.log_selected.and_then(|i| log.commits.get(i))) {
+                        Some(commit) => format!("提交 › {}", commit.short),
+                        None => "提交".into(),
+                    },
+                );
+                headline.push(match (&self.log_stat_error, self.log_stat_loading) {
+                    (Some(error), _) => error.message().to_string(),
+                    (None, true) => "正在读取提交内容…".into(),
+                    (None, false) => "点“返回”回到历史列表".into(),
+                });
+                match &self.log_stat {
+                    Some(log) => match &log.stat {
+                        Some(stat) => {
+                            for line in stat.lines().skip(self.log_offset).take(rows) {
+                                content.push((line.to_string(), false));
+                            }
+                        }
+                        None => content.push(("（没有可显示的内容）".into(), false)),
+                    },
+                    None => {
+                        if self.log_stat_error.is_none() {
+                            content.push(("正在读取…".into(), false));
+                        }
+                    }
+                }
+            } else {
+                headline.push(match &self.log {
+                    Some(log) => format!("历史 › {} 条", log.commits.len()),
+                    None => "历史".into(),
+                });
+                headline.push(match (&self.log_error, self.log_loading) {
+                    (Some(error), _) => error.message().to_string(),
+                    (None, true) => "正在读取提交历史…".into(),
+                    (None, false) => match &self.log {
+                        Some(log) if log.truncated => {
+                            format!("点一行看这条提交 · 只列出前 {} 条", log.commits.len())
+                        }
+                        _ => "点一行看这条提交".into(),
+                    },
+                });
+                match &self.log {
+                    Some(log) if log.commits.is_empty() => content.push(("还没有提交".into(), false)),
+                    Some(log) => {
+                        for (offset, commit) in log.commits.iter().enumerate().skip(self.log_offset).take(rows) {
+                            content.push((
+                                format!("{} {}", commit.short, commit.subject),
+                                self.log_selected == Some(offset),
+                            ));
+                        }
+                    }
+                    None => {}
+                }
+            }
+            let buttons = self.labels(tier);
+            return View { buttons, headline, content };
+        }
         if self.branches_open {
             let current = self
                 .branches
@@ -1246,6 +1539,9 @@ impl Panel {
         if self.resolve.is_some() {
             return RESOLVE_LABELS[tier].to_vec();
         }
+        if self.log_open {
+            return if tier >= 2 { LOG_PAGE_LABELS_NARROW.to_vec() } else { LOG_PAGE_LABELS.to_vec() };
+        }
         if self.branches_open {
             // 待确认时被点的那个动作变“确认”，“返回”位置变“取消”：动作都留在原槽位。
             let mut buttons = BRANCH_PAGE_LABELS[tier].to_vec();
@@ -1273,7 +1569,7 @@ impl Panel {
         // 待确认时“提交”位置换成“取消”，只让被点的那个远端按钮变成“确认”，
         // 另一个位置留空，避免误触。
         let branch = BRANCH_LABELS[tier];
-        // 槽位固定：刷新 / 差异 / 暂存 / 全部暂存 / 提交 / 拉取 / 推送 / 分支。
+        // 槽位固定：刷新 / 差异 / 暂存 / 全部暂存 / 提交 / 拉取 / 推送 / 分支 / 历史。
         // 待确认时“提交”位置变“取消”，只让被点的那个远端按钮变成“确认”，另一个留空。
         match self.pending.map(|(op, _)| op) {
             Some(RemoteOp::Pull) => vec![
@@ -1285,6 +1581,7 @@ impl Panel {
                 CONFIRM_REMOTE_LABELS[tier],
                 INERT_LABEL,
                 branch,
+                LOG_LABELS[tier],
             ],
             Some(RemoteOp::Push) => vec![
                 buttons[0],
@@ -1295,6 +1592,7 @@ impl Panel {
                 INERT_LABEL,
                 CONFIRM_PUSH_LABELS[tier],
                 branch,
+                LOG_LABELS[tier],
             ],
             None => vec![
                 buttons[0],
@@ -1305,6 +1603,7 @@ impl Panel {
                 REMOTE_LABELS[tier],
                 PUSH_LABELS[tier],
                 branch,
+                LOG_LABELS[tier],
             ],
         }
     }
@@ -1319,11 +1618,13 @@ impl Panel {
             4
         } else if self.branches_open {
             5
+        } else if self.log_open {
+            2
         } else if self.remote.is_some() {
             // 远端只读：只有“刷新”“差异”。
             2
         } else {
-            8
+            9
         }
     }
 
@@ -1865,6 +2166,31 @@ impl Workspace {
                         _ => false,
                     };
                 }
+                if self.git.log_open {
+                    return match slot {
+                        0 => {
+                            if self.git.log_stat_open {
+                                let hash = self
+                                    .git
+                                    .log
+                                    .as_ref()
+                                    .and_then(|log| self.git.log_selected.and_then(|i| log.commits.get(i)))
+                                    .map(|commit| commit.hash.clone());
+                                self.git.query_log(notify, hash.map(std::ffi::OsString::from))
+                            } else {
+                                self.git.query_log(notify, None)
+                            }
+                        }
+                        1 => {
+                            if self.git.log_stat_open {
+                                self.git.close_commit_stat()
+                            } else {
+                                self.git.close_log()
+                            }
+                        }
+                        _ => false,
+                    };
+                }
                 if self.git.branches_open {
                     return match slot {
                         0 => self.git.query_branches(notify),
@@ -1912,10 +2238,17 @@ impl Workspace {
                     (5, false) => self.git.request_remote(RemoteOp::Pull, notify),
                     (6, false) => self.git.request_remote(RemoteOp::Push, notify),
                     (7, false) => self.git.open_branches(notify),
+                    (8, false) => self.git.open_log(notify),
                     _ => false,
                 };
             }
             return false;
+        }
+        if self.git.log_open {
+            if self.git.log_stat_open {
+                return false;
+            }
+            return self.git.open_commit_stat(self.git.log_offset + row - LIST_TOP, notify);
         }
         if self.git.branches_open {
             return self.git.select_branch(self.git.branch_offset + row - LIST_TOP);
@@ -1966,7 +2299,7 @@ mod tests {
         assert!(panel.open());
         assert!(panel.active);
         let view = panel.view(10, 0);
-        assert_eq!(view.buttons, vec!["刷新", "差异", "暂存", "全部暂存", "提交", "拉取", "推送", "分支"]);
+        assert_eq!(view.buttons, vec!["刷新", "差异", "暂存", "全部暂存", "提交", "拉取", "推送", "分支", "历史"]);
         assert!(view.headline[0].contains("工作目录未知"));
         assert!(view.content.is_empty());
         assert!(panel.bytes() == 0);
@@ -2029,17 +2362,49 @@ mod tests {
         assert!(panel.close_resolve());
         assert!(panel.resolve.is_none());
         assert!(!panel.close_resolve());
-        assert_eq!(panel.button_count(), 8);
+        assert_eq!(panel.button_count(), 9);
         // 没进解决页时点“保留我方”不会做任何事。
         assert!(!panel.resolve_side(git::Side::Ours, notify()));
         assert!(!panel.write_loading);
     }
 
     #[test]
+    fn the_log_page_lists_commits_and_opens_one_commit_stat() {
+        let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
+        assert!(panel.open_log(notify()));
+        assert!(panel.log_open);
+        assert_eq!(panel.labels(0), vec!["刷新", "返回"]);
+        assert_eq!(panel.labels(2), vec!["刷", "返"]);
+        assert_eq!(panel.button_count(), 2);
+        // 合成一份历史：列表页显示短哈希与主题，第一行默认选中。
+        panel.log = Some(git::Log::for_test(&[("0123456789abcdef", "add b.txt"), ("fedcba9876543210", "add a.txt")]));
+        panel.log_loading = false;
+        panel.log_selected = Some(0);
+        let view = panel.view(6, 0);
+        assert!(view.headline[0].contains("历史"), "{:?}", view.headline);
+        assert_eq!(view.content[0].0, "0123456 add b.txt");
+        assert!(view.content[0].1, "第一行默认选中");
+        assert_eq!(view.content[1].0, "fedcba9 add a.txt");
+        // 点一行打开单条提交页：只有“刷新”“返回”，正文是 --stat 文本。
+        panel.log_stat = Some(git::Log::for_test(&[]));
+        panel.log_stat_open = true;
+        let view = panel.view(6, 0);
+        assert_eq!(view.buttons, vec!["刷新", "返回"]);
+        assert!(view.headline[0].starts_with("提交 › 0123456"), "{:?}", view.headline);
+        // 返回历史列表，再返回变更列表。
+        assert!(panel.close_commit_stat());
+        assert!(panel.log_open && !panel.log_stat_open);
+        assert!(panel.close_log());
+        assert!(!panel.log_open);
+        assert!(panel.log.is_none());
+        assert_eq!(panel.button_count(), 9);
+    }
+
+    #[test]
     fn discard_is_offered_only_on_the_worktree_side_for_tracked_entries() {
         let mut panel = panel_with(vec![entry("a.txt", b' ', b'M'), entry("new.txt", b'?', b'?')]);
         // 未打开差异页时没有撤销槽位。
-        assert_eq!(panel.labels(0), vec!["刷新", "差异", "暂存", "全部暂存", "提交", "拉取", "推送", "分支"]);
+        assert_eq!(panel.labels(0), vec!["刷新", "差异", "暂存", "全部暂存", "提交", "拉取", "推送", "分支", "历史"]);
         // 工作区侧、已跟踪：可以撤销，第一次点击只进入确认态。
         assert!(panel.open_diff(0, Some(false), notify()));
         assert_eq!(panel.labels(0), vec!["刷新", "工作区", "返回", "撤销"]);
@@ -2116,7 +2481,7 @@ mod tests {
     #[test]
     fn a_missing_git_program_leaves_only_the_refresh_button() {
         let mut panel = panel_with(vec![entry("a.txt", b' ', b'M')]);
-        assert_eq!(panel.button_count(), 8);
+        assert_eq!(panel.button_count(), 9);
         // 查询失败：找不到 git（真实情况下这时也没有快照）。
         let saved = panel.snapshot.take();
         panel.error = Some(Error::ToolMissing);
@@ -2138,7 +2503,7 @@ mod tests {
         // 错误清掉（例如用户改好配置后刷新成功）就恢复八列。
         panel.error = None;
         panel.snapshot = saved;
-        assert_eq!(panel.button_count(), 8);
+        assert_eq!(panel.button_count(), 9);
     }
 
     #[test]
@@ -2249,7 +2614,7 @@ mod tests {
         assert!(panel.close_branches());
         assert!(!panel.branches_open);
         assert!(panel.branches.is_none());
-        assert_eq!(panel.button_count(), 8);
+        assert_eq!(panel.button_count(), 9);
     }
 
     #[test]
@@ -2370,15 +2735,18 @@ mod tests {
     fn stage_button_reflects_whether_the_selection_is_already_staged() {
         let mut panel = panel_with(vec![entry("a.txt", b' ', b'M'), entry("b.txt", b'M', b' ')]);
         panel.selected = Some(0);
-        assert_eq!(panel.view(6, 0).buttons, vec!["刷新", "差异", "暂存", "全部暂存", "提交", "拉取", "推送", "分支"]);
+        assert_eq!(
+            panel.view(6, 0).buttons,
+            vec!["刷新", "差异", "暂存", "全部暂存", "提交", "拉取", "推送", "分支", "历史"]
+        );
         // 已全部进入索引的条目：同一个按钮变成“取消暂存”。
         panel.selected = Some(1);
         assert_eq!(
             panel.view(6, 0).buttons,
-            vec!["刷新", "差异", "取消暂存", "全部暂存", "提交", "拉取", "推送", "分支"]
+            vec!["刷新", "差异", "取消暂存", "全部暂存", "提交", "拉取", "推送", "分支", "历史"]
         );
         // 窄面板降到单字档，标签不被裁成半个词。
-        assert_eq!(panel.view(6, 2).buttons, vec!["刷", "差", "撤", "全", "提", "拉", "推", "分"]);
+        assert_eq!(panel.view(6, 2).buttons, vec!["刷", "差", "撤", "全", "提", "拉", "推", "分", "史"]);
     }
 
     #[test]
@@ -2390,7 +2758,7 @@ mod tests {
         let note = panel.write_note.clone().unwrap_or_default();
         assert!(note.contains("再点一次") && note.contains("推送"), "{note}");
         let buttons = panel.view(6, 0).buttons;
-        assert_eq!(buttons, vec!["刷新", "差异", "暂存", "全部暂存", "取消", "—", "确认推送", "分支"]);
+        assert_eq!(buttons, vec!["刷新", "差异", "暂存", "全部暂存", "取消", "—", "确认推送", "分支", "历史"]);
         // 取消按钮清掉确认态，不执行任何 git 命令。
         assert!(panel.cancel_pending());
         assert!(panel.pending.is_none());
