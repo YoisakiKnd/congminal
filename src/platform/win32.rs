@@ -87,6 +87,7 @@ struct BitmapInfo {
 const WM_SIZE: u32 = 0x0005;
 const WM_PAINT: u32 = 0x000F;
 const WM_CLOSE: u32 = 0x0010;
+const WM_DESTROY: u32 = 0x0002;
 const WM_QUIT: u32 = 0x0012;
 const WM_ERASEBKGND: u32 = 0x0014;
 const WM_KEYDOWN: u32 = 0x0100;
@@ -138,6 +139,7 @@ const EXTENDED_KEY: isize = 0x0100_0000;
 #[link(name = "user32")]
 unsafe extern "system" {
     fn RegisterClassExW(class: *const WndClassExW) -> u16;
+    fn PostQuitMessage(code: i32);
     fn CreateWindowExW(
         ex_style: u32,
         class_name: *const u16,
@@ -568,6 +570,11 @@ unsafe extern "system" fn wnd_proc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: 
     match msg {
         WM_CLOSE => {
             push(Event::CloseRequested);
+            0
+        }
+        // 窗口被直接销毁（不走 WM_CLOSE）时也要结束消息循环，否则进程会没有窗口地留着。
+        WM_DESTROY => {
+            unsafe { PostQuitMessage(0) };
             0
         }
         WM_SIZE => {

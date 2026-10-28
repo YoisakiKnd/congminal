@@ -189,6 +189,7 @@ const FOCUS_OUT: c_int = 10;
 const EXPOSE: c_int = 12;
 const CONFIGURE_NOTIFY: c_int = 22;
 const CLIENT_MESSAGE: c_int = 33;
+const DESTROY_NOTIFY: c_int = 17;
 
 const KEY_PRESS_MASK: c_long = 1 << 0;
 const EXPOSURE_MASK: c_long = 1 << 15;
@@ -624,6 +625,9 @@ impl Window {
                 }
                 EXPOSE if event.expose.count == 0 => vec![Event::Redraw],
                 CLIENT_MESSAGE if event.client.data[0] as Atom == self.wm_delete => vec![Event::CloseRequested],
+                // 窗口被直接销毁（`xdotool windowclose`、窗口管理器崩溃、别的进程 XDestroyWindow）时
+                // 不会经过 WM_DELETE_WINDOW；不退出的话进程会没有窗口地留在后台，连带子进程一起。
+                DESTROY_NOTIFY => vec![Event::CloseRequested],
                 FOCUS_IN | FOCUS_OUT => {
                     let focused = event.type_ == FOCUS_IN;
                     if !self.ic.is_null() {
