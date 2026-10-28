@@ -373,7 +373,7 @@ IO余量补充：同16MiB池内独立限制请求元数据，Service启动前保
 - [x] 正常操作及取消、超时、断线、超限、关闭窗口的流程均有结果。（已验收：每批交付都覆盖入口、正常操作、取消、失败、关闭与测试，见各 `docs/design-*.md` 的“取消/失败/关闭”小节与对应测试。）
 - [ ] 核心行为有无窗口回归测试，平台能力有对应平台运行验证。（部分完成：核心行为有无窗口回归测试并通过 CI 四平台；平台能力只有 Linux 真机与两个交叉编译目标，Windows/macOS 真机运行仍缺。）
 - [ ] 内存预算与后台任务数有可观测指标，压力停止后资源回落或稳定在可解释的缓存高水位。（部分完成：右栏状态页显示任务数与最新任务、资源统计页显示各额度占用，30 分钟无头长测记录在 [M8 长测](evaluations/m8-soak.md)；预算口径的完整覆盖仍待审查。）
-- [ ] 记录终端吞吐、输入响应、重绘耗时、RSS 和后台开销的同负载对照。（部分完成：`docs/evaluations/` 下有各模块的成本记录与 `ci/soak-x11.sh` 的 RSS/线程/fd/CPU 采样；同负载横向对照表尚未汇总。）
+- [ ] 记录终端吞吐、输入响应、重绘耗时、RSS 和后台开销的同负载对照。（部分完成：`docs/evaluations/` 下有各模块的成本记录与 `ci/soak-x11.sh` 的 RSS/线程/fd/CPU 采样；同负载横向对照已汇总到 [同负载横向对照](evaluations/m8-comparison.md)——7 组固定负载（解析吞吐 56.6 MiB/s、输入派发 p99 850 ns、64 MiB 历史搜索单片 p95 283 µs、步进重排单片 p95 323 µs、四窗格全量重绘 1 670 µs / 分片 52 µs、后台采样三档、30 分钟长测 RSS/线程/fd/CPU），每行标了「本机复测」或「引用记录」并给出复现命令。仍缺原生窗口输入到呈现延迟、与其它终端的横向对比、SFTP/SSH 吞吐对照与 Windows/macOS 数值。）
 - [ ] 新依赖的确切版本、特性、传递依赖、合计性能成本、未验证平台及采用/自写结论有记录。（部分完成：新增依赖（`sysinfo = "=0.38.4"`，`default-features = false`，`system`/`disk`）的版本、特性、线程/句柄成本与平台范围记在 [监控设计](design-monitor-panel.md) 与 [依赖策略](dependency-policy.md)；传递依赖清单与合计成本已汇总到 [依赖清单与合计成本](evaluations/m8-dependencies.md)——三项直接依赖、11 个传递依赖（含 5 个构建依赖）、默认构建只编译 3 个，并列出本机实测成本与未验证平台。Windows/macOS 的实机构建与采样仍未验证。）
 - [x] 格式、Clippy、单元测试、release 构建和现有 CI 冒烟检查通过。（已验收：`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`（linux / x86_64-pc-windows-gnu / aarch64-apple-darwin）、`cargo test --locked` 793 passed / 45 ignored，CI 的 linux-x86_64、macos-universal、windows-x86_64、msrv 四个作业均通过。）
 - [x] 只更新实际验收完成的复选框，记录限制与后续项。（本批按证据逐条勾选；仍缺的项保留未勾并写明原因，见各条“部分完成/仍未提供”说明。）

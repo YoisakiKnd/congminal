@@ -298,12 +298,27 @@ mod tests {
                 let _ = std::fs::remove_dir_all(&self.0);
             }
         }
+        /// CI 上并行跑满整轮测试时，偶发拿不到子进程（`spawn`/`try_wait` 返回 `Error::Process`，
+        /// 典型是 fork 的 EAGAIN）。这是运行环境的一次性失败，不是被测行为；重试几次再判定，
+        /// 其余错误（Missing/Unsupported/Permission/Budget）照旧立即断言。
+        fn prepare_retrying_process(profile: &Ssh) -> Result<Launch, Error> {
+            let mut attempt = 0;
+            loop {
+                match prepare(profile, &Cancellation::default()) {
+                    Err(Error::Process) if attempt < 5 => {
+                        attempt += 1;
+                        std::thread::sleep(Duration::from_millis(20 * attempt));
+                    }
+                    other => return other,
+                }
+            }
+        }
         #[test]
         fn tool_checks_have_distinct_errors_and_return_credit() {
             let pool = resources::Budget::new(1024 * 1024, 0);
             let _scope = resources::Scope::enter(pool.clone());
             let tool = Tool::new("exit 0");
-            let launch = prepare(&tool.profile(), &Cancellation::default()).unwrap();
+            let launch = prepare_retrying_process(&tool.profile()).unwrap();
             assert_eq!(launch.shell.args.last().unwrap(), "host-alias");
             assert!(pool.snapshot().used > 0);
             drop(launch);
