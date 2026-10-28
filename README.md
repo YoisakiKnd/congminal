@@ -18,6 +18,36 @@ cargo run --release
 cargo test
 ```
 
+### 第一次运行
+
+启动后就是一个可用的终端：直接打字、`Ctrl+Shift+C` / `Ctrl+Shift+V` 复制粘贴、滚轮或 `Shift+PageUp` 往回看历史。窗口里默认不画页签和状态栏，按下面的键打开面板后才会出现。
+
+| 想做的事 | macOS | Windows / Linux |
+|---|---|---|
+| 打开左侧栏（会话 / 连接 / 本地文件） | Cmd+B | Ctrl+Shift+B |
+| 打开右侧栏（状态 / Git / 监控） | Cmd+I | Ctrl+Shift+I |
+| 直接跳到 Git 页 | Cmd+G | Ctrl+Shift+G |
+| 直接跳到监控页 | Cmd+M | Ctrl+Shift+M |
+| 新页签 / 分屏 | Cmd+T / Cmd+D（左右）、Cmd+Enter（上下） | Ctrl+Shift+T / Ctrl+Shift+D、Ctrl+Shift+Enter |
+| 搜索历史 | Cmd+F | Ctrl+Shift+F |
+
+状态栏（打开任一面板后出现在窗口底部）会显示当前页签、活动窗格和会话数，临时提示（复制结果、主题预览、错误原因）也写在那里。
+
+三件常做的事：
+
+```sh
+# 1. 生成带注释的默认配置，再按需改
+mkdir -p ~/.config/congminal
+congminal --print-config > ~/.config/congminal/congminal.toml
+
+# 2. 想要命令成功/失败标记、命令完成通知、提示符里的目录，先启用 shell 集成
+echo 'source <(congminal --print-shell-integration bash)' >> ~/.bashrc   # zsh 换成 zsh
+
+# 3. 连接远程主机：把 Host 写进 ~/.ssh/config，启动后在左栏「连接」页点它
+```
+
+配置文件改完保存即生效，不需要重启；写错的键会在终端顶部用黄条提示，同时打到 stderr。
+
 ## 快捷键
 
 | 操作 | macOS | Windows / Linux |
