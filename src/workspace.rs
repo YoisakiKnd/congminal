@@ -6,6 +6,7 @@ use std::hash::{Hash, Hasher};
 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
 mod authentication;
 mod files;
+mod forwards;
 mod git_panel;
 mod layout;
 mod monitor_panel;
@@ -314,6 +315,10 @@ pub struct Workspace {
     local_files: files::Browser,
     git: git_panel::Panel,
     monitor: monitor_panel::Panel,
+    /// 连接页的转发规则页；打开时左栏改画规则列表。
+    forwards: Option<forwards::Page>,
+    /// 本次运行临时改过的转发规则（配置档下标 + 规则）。只对之后新建的连接生效。
+    forwards_override: Option<(usize, Vec<String>)>,
     right_page: RightPage,
     /// 状态页里来自通知中心的行：行号 → 来源，用于点击定位。
     notice_rows: Vec<(usize, crate::notifications::Source)>,
@@ -404,6 +409,8 @@ impl Workspace {
             local_files: files::Browser::default(),
             git: git_panel::Panel::new(),
             monitor: monitor_panel::Panel::new(),
+            forwards: None,
+            forwards_override: None,
             right_page: RightPage::Status,
             notice_rows: Vec::new(),
             #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
@@ -885,6 +892,14 @@ impl Workspace {
         if let Some(index) = profile_index
             .filter(|&i| profiles.get(i).is_some_and(|p| matches!(p.connection, config::profiles::Connection::Ssh(_))))
         {
+            // 转发页临时改过规则：用改过的副本发起连接，原配置与已有窗格都不动。
+            if let Some((edited, specs)) = &self.forwards_override
+                && *edited == index
+                && let Some(patched) = profiles.with_forwards(index, specs, &crate::resources::current())
+            {
+                self.start_remote_edited(patched, index, remote::Target::New(self.selected));
+                return;
+            }
             self.start_remote(profiles, index, remote::Target::New(self.selected));
             return;
         }
@@ -1561,19 +1576,24 @@ impl Workspace {
                         }
                     }
                 }
+            } else if self.left_page == LeftPage::Connections && self.forwards_paint(r, h) {
+                // 转发页接管左栏：按钮行 + 规则列表。
             } else if self.left_page == LeftPage::Connections {
                 let profiles = &self.driver.config.connections;
                 if profiles.is_empty() && r.h >= 3 * h {
                     self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, r.w, h], "尚未配置连接", false);
                 }
                 if r.h >= 2 * h {
-                    self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + h, r.w / 2, h], "重连", false);
+                    // 三槽：重连 / 取消 / 转发（转发页编辑当前窗格配置档的 -L 规则）。
+                    let slot = (r.w / 3).max(1);
+                    self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + h, slot, h], "重连", false);
                     self.driver.renderer.chrome(
                         &mut self.frame,
-                        [r.x + r.w / 2, r.y + h, r.w - r.w / 2, h],
+                        [r.x + slot, r.y + h, slot, h],
                         "取消",
                         self.ssh.pending(),
                     );
+                    self.driver.renderer.chrome(&mut self.frame, [r.x + 2 * slot, r.y + h, slot, h], "转发", false);
                 }
                 let visible = (r.h / h).saturating_sub(2);
                 self.profiles_offset = self.profiles_offset.min(profiles.len().saturating_sub(visible));
@@ -1985,6 +2005,10 @@ impl Workspace {
                 self.driver.event(Event::Focus(self.terminal_focused()));
             }
             Event::Key { key, mods } => {
+                // 转发页打开时独占键盘：规则输入不能漏到远端终端。
+                if self.left && self.left_page == LeftPage::Connections && self.forwards.is_some() {
+                    return self.forwards_capture_key(key, mods);
+                }
                 // SFTP 名称输入与删除确认独占键盘：名称和确认键都不能送到远端终端。
                 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
@@ -2025,6 +2049,9 @@ impl Workspace {
                 }
             }
             Event::Text(text) => {
+                if self.left && self.left_page == LeftPage::Connections && self.forwards_capture_text(&text) {
+                    return true;
+                }
                 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_text(&text);
@@ -2039,6 +2066,9 @@ impl Workspace {
                 }
             }
             Event::Preedit(text) => {
+                if self.left && self.left_page == LeftPage::Connections && self.forwards_capture_preedit(&text) {
+                    return true;
+                }
                 #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_preedit(&text);
@@ -2186,11 +2216,21 @@ impl Workspace {
                                     self.local_files.activate(self.local_files.offset + row - 4, notify);
                             }
                         } else if self.left_page == LeftPage::Connections {
-                            if row == 1 {
-                                if x < (self.left_rect.x + self.left_rect.w / 2) as f64 {
-                                    self.reconnect_remote();
-                                } else if self.ssh.cancel() {
-                                    self.notice("已取消待启动的 SSH，已有会话继续运行");
+                            let slot = (self.left_rect.w / 3).max(1);
+                            let third = ((x as usize).saturating_sub(self.left_rect.x) / slot).min(2);
+                            if self.forwards.is_some() {
+                                self.forwards_click(row, third);
+                            } else if row == 1 {
+                                match third {
+                                    0 => self.reconnect_remote(),
+                                    1 => {
+                                        if self.ssh.cancel() {
+                                            self.notice("已取消待启动的 SSH，已有会话继续运行");
+                                        }
+                                    }
+                                    _ => {
+                                        self.open_forwards();
+                                    }
                                 }
                             } else if let Some(index) = row.checked_sub(2) {
                                 let visible = (self.left_rect.h / h).saturating_sub(2);
@@ -2909,7 +2949,7 @@ impl App for Workspace {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    fn workspace() -> Workspace {
+    pub(super) fn workspace() -> Workspace {
         Workspace::new(crate::integration_tests::app("")).unwrap()
     }
 
@@ -2935,7 +2975,7 @@ mod tests {
         (0..term.rows()).flat_map(|r| term.visible_row(r).cells.iter().map(|c| c.c)).collect()
     }
     #[track_caller]
-    fn wait(app: &mut Workspace, condition: impl Fn(&Workspace) -> bool) {
+    pub(super) fn wait(app: &mut Workspace, condition: impl Fn(&Workspace) -> bool) {
         let deadline = Instant::now() + Duration::from_secs(10);
         while !condition(app) {
             assert!(app.tick());
@@ -3013,7 +3053,8 @@ mod tests {
         let h = app.driver.renderer.cell_size().1;
         app.event(Event::MouseDown {
             button: MouseButton::Left,
-            x: (r.x + 3 * r.w / 4) as f64,
+            // 连接页按钮行是三槽：重连 / 取消 / 转发，取消在中间。
+            x: (r.x + r.w / 2) as f64,
             y: (r.y + h + h / 2) as f64,
             mods: Mods::default(),
         });
@@ -5808,7 +5849,7 @@ program="/definitely/missing/congminal-shell"
         assert_eq!(app.panes.len(), 1);
         assert_eq!(app.selected, 1);
     }
-    fn force_draw(app: &mut Workspace) {
+    pub(super) fn force_draw(app: &mut Workspace) {
         for i in 0..app.panes.len() {
             app.load(i);
             app.driver.last_draw = Instant::now() - FRAME_INTERVAL;
