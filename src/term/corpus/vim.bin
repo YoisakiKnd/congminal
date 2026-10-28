@@ -1,0 +1,16 @@
+[?1049h[22;0;0t[>4;2m[?1h=[?2004h[?1004h[1;24r[?12h[?12l[22;2t[22;1t[27m[23m[29m[m[H[2J[?25l[24;1H"/tmp/sample.txt" 120L, 9876B[2;1H▽[6n[2;1H  [3;1HPzz\[0%m[6n[3;1H           [1;1H[>c]10;?]11;?[1;1Hline 001 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 002 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m[2;68H[K[3;1Hline 003 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m[3;68H[K[4;1Hline 004 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 005 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[6;1Hxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+line 006 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 007 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的[9;1H中文行
+line 008 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 009 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 010 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[13;1Hxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+line 011 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 012 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 013 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 014 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的[18;1H中文行
+line 015 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[20;1Hxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+line 016 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 017 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m
+line 018 plain text with [34m^[[m[32mgreen[34m^[[m[0m and [34m^[[m[1;31mbold red[34m^[[m[0m[1;1H[?25h[?4m[?25l[24;1H[K[24;1H:q![?2004l[>4;m[23;2t[23;1t[24;1H[K[24;1H[?1004l[?2004l[?1l>[?1049l[23;0;0t[?25h[>4;m

@@ -13,6 +13,8 @@ mod grid;
 mod memory;
 pub(crate) use memory::{ResizeJob, ResizePlan};
 #[cfg(test)]
+mod corpus_tests;
+#[cfg(test)]
 mod fuzz_tests;
 mod reflow;
 #[cfg(test)]

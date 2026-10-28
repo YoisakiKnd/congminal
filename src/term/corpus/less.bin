@@ -1,0 +1,37 @@
+[?1049h[22;0;0t[?1h=line 001 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 002 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 003 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 004 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 005 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m
+line 006 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 007 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的[m 中文行 [m
+line 008 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 009 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 010 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m
+line 011 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 012 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 013 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 014 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的[m 中文行 [m
+line 015 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m
+line 016 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 017 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 018 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+[7m/tmp/sample.txt[27m[K[K...skipping...
+line 104 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 105 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的[m 中文行 [m
+line 106 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 107 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 108 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 109 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 110 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m
+line 111 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 112 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的[m 中文行 [m
+line 113 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 114 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 115 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m
+line 116 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 117 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 118 plain text with [32mgreen[0m and [1;31mbold red[0m[m
+line 119 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的中文行 很长的[m 中文行 [m
+line 120 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[m
+[7m(END)[27m[K[K[?1l>[?1049l[23;0;0t
