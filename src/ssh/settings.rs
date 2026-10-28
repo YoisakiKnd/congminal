@@ -258,7 +258,7 @@ mod tests {
             port: Some(2222),
             identity_file: Some("literal key;$()".into()),
             jump: None,
-            forwards: Vec::new(),
+            forwards: crate::config::profiles::Forwards::default(),
             program: None,
         };
         let system = command(&profile, Configuration::System);
@@ -307,7 +307,7 @@ mod tests {
                 port: None,
                 identity_file: None,
                 jump: None,
-                forwards: Vec::new(),
+                forwards: crate::config::profiles::Forwards::default(),
                 program: Some(program.into()),
             };
             assert!(
@@ -445,7 +445,7 @@ mod tests {
             port: Some(2222),
             identity_file: None,
             jump: None,
-            forwards: Vec::new(),
+            forwards: crate::config::profiles::Forwards::default(),
             program: Some("/usr/bin/ssh".into()),
         };
         let cancel = Cancellation::default();

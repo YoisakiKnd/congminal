@@ -170,9 +170,10 @@ fn interactive(profile: &Ssh) -> ShellConfig {
     if let Some(jump) = &profile.jump {
         args.extend(["-J".into(), jump.clone()]);
     }
-    // 本地转发只挂在交互式终端上；SFTP/监控/Git 的后台通道不重复开转发。
-    for forward in &profile.forwards {
-        args.extend(["-L".into(), forward.clone()]);
+    // 转发只挂在交互式终端上；SFTP/监控/Git 的后台通道不重复开转发。
+    // 顺序固定为 -L、-R、-D，便于测试与排查。
+    for (kind, spec) in profile.forwards.iter() {
+        args.extend([kind.flag().into(), spec.to_string()]);
     }
     args.extend(["--".into(), profile.host.clone()]);
     ShellConfig { program: Some(program(profile).into()), args, working_directory: None }
@@ -188,7 +189,7 @@ mod tests {
             port: Some(2222),
             identity_file: Some("key with 'quote;$literal".into()),
             jump: None,
-            forwards: Vec::new(),
+            forwards: crate::config::profiles::Forwards::default(),
             program: None,
         }
     }
@@ -231,17 +232,32 @@ mod tests {
     fn forwards_are_passed_as_separate_arguments_after_the_jump_host() {
         let profile = Ssh {
             jump: Some("bastion".into()),
-            forwards: vec!["8080:localhost:80".into(), "127.0.0.1:5432:db.internal:5432".into()],
+            forwards: crate::config::profiles::Forwards {
+                local: vec!["8080:localhost:80".into(), "127.0.0.1:5432:db.internal:5432".into()],
+                remote: vec!["9000:localhost:3000".into()],
+                dynamic: vec!["1080".into()],
+            },
             ..profile()
         };
         let args = interactive(&profile).args;
         let first = args.iter().position(|arg| arg == "-L").expect("转发要传给 ssh");
-        assert_eq!(args[first + 1], "8080:localhost:80");
-        assert_eq!(args[first + 2], "-L");
-        assert_eq!(args[first + 3], "127.0.0.1:5432:db.internal:5432");
+        // 顺序固定：先两条 -L，再 -R，最后 -D，全部排在 `--` 与目标主机之前。
+        assert_eq!(
+            &args[first..first + 8],
+            [
+                "-L",
+                "8080:localhost:80",
+                "-L",
+                "127.0.0.1:5432:db.internal:5432",
+                "-R",
+                "9000:localhost:3000",
+                "-D",
+                "1080",
+            ]
+        );
         // 转发排在 `--` 与目标主机之前，不会被 ssh 当成主机名。
-        assert_eq!(args[first + 4], "--");
-        assert_eq!(args[first + 5], "host-alias");
+        assert_eq!(args[first + 8], "--");
+        assert_eq!(args[first + 9], "host-alias");
     }
     #[test]
     fn quota_and_cancel_reject_before_tool_execution() {

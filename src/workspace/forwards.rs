@@ -1,4 +1,4 @@
-//! 连接页的转发规则页：查看、新增、删除当前 SSH 配置档的 `-L` 规则。
+//! 连接页的转发规则页：查看、新增、删除当前 SSH 配置档的 `-L`/`-R`/`-D` 规则。
 //!
 //! 只改内存里的配置档（`config.connections[i].ssh.forwards`），不写回配置文件：
 //! 规则对之后新建的连接生效，已有会话不受影响。每条规则仍按配置解析时的同一套
@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::config::profiles::Connection;
+use crate::config::profiles::{Connection, ForwardKind, Forwards};
 use crate::resources::Tracked;
 
 /// 一条转发规则的长度上限，与配置解析一致。
@@ -25,11 +25,22 @@ pub(super) struct Input {
     pub(super) preedit: String,
 }
 
+/// 一条规则：类型 + 规则正文（不含前缀）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Rule {
+    pub(super) kind: ForwardKind,
+    pub(super) spec: String,
+}
+impl Rule {
+    fn display(&self) -> String {
+        format!("{} {}", self.kind.prefix(), self.spec)
+    }
+}
 pub(super) struct Page {
     /// 正在编辑的配置档下标（`config.connections` 里的位置）。
     pub(super) profile: usize,
     /// 工作副本：配置档里的规则 + 本次运行临时加/删的结果。
-    pub(super) specs: Vec<String>,
+    pub(super) rules: Vec<Rule>,
     pub(super) selected: Option<usize>,
     pub(super) offset: usize,
     pub(super) input: Option<Input>,
@@ -38,9 +49,25 @@ pub(super) struct Page {
 }
 
 impl Page {
-    fn new(profile: usize, specs: Vec<String>) -> Self {
-        Self { profile, specs, selected: None, offset: 0, input: None, delete_pending: None, note: None }
+    fn new(profile: usize, rules: Vec<Rule>) -> Self {
+        Self { profile, rules, selected: None, offset: 0, input: None, delete_pending: None, note: None }
     }
+    /// 工作副本按类型拆成配置里的形状。
+    fn forwards(&self) -> Forwards {
+        let mut forwards = Forwards::default();
+        for rule in &self.rules {
+            match rule.kind {
+                ForwardKind::Local => forwards.local.push(rule.spec.clone()),
+                ForwardKind::Remote => forwards.remote.push(rule.spec.clone()),
+                ForwardKind::Dynamic => forwards.dynamic.push(rule.spec.clone()),
+            }
+        }
+        forwards
+    }
+}
+/// 配置里的转发规则展开成页面条目（`-L`、`-R`、`-D` 顺序）。
+fn rules_of(forwards: &Forwards) -> Vec<Rule> {
+    forwards.iter().map(|(kind, spec)| Rule { kind, spec: spec.to_string() }).collect()
 }
 
 impl Workspace {
@@ -58,11 +85,11 @@ impl Workspace {
             self.notice("当前会话不是 SSH 连接");
             return false;
         }
-        let specs = match &self.driver.config.connections[index].connection {
-            Connection::Ssh(ssh) => ssh.forwards.clone(),
+        let rules = match &self.driver.config.connections[index].connection {
+            Connection::Ssh(ssh) => rules_of(&ssh.forwards),
             _ => Vec::new(),
         };
-        self.forwards = Some(Page::new(index, specs));
+        self.forwards = Some(Page::new(index, rules));
         self.chrome_dirty = true;
         true
     }
@@ -77,16 +104,23 @@ impl Workspace {
     /// 与配置档原值一致时清掉覆盖，避免多留一份副本。
     pub(super) fn sync_forwards_override(&mut self) {
         let Some(page) = &self.forwards else { return };
+        let edited = page.forwards();
         let original = match self.driver.config.connections.get(page.profile).map(|p| &p.connection) {
-            Some(Connection::Ssh(ssh)) => ssh.forwards.as_slice(),
-            _ => &[],
+            Some(Connection::Ssh(ssh)) => ssh.forwards.clone(),
+            _ => Forwards::default(),
         };
-        self.forwards_override = (page.specs.as_slice() != original).then(|| (page.profile, page.specs.clone()));
+        self.forwards_override = (edited != original).then_some((page.profile, edited));
     }
 
-    /// 当前配置档的规则（只读快照，供绘制与测试）。
-    pub(super) fn forward_specs(&self) -> &[String] {
-        self.forwards.as_ref().map_or(&[], |page| page.specs.as_slice())
+    /// 当前配置档的规则正文（不含类型前缀，供测试使用）。
+    #[cfg(all(test, unix))]
+    pub(super) fn forward_specs(&self) -> Vec<String> {
+        self.forwards.as_ref().map_or_else(Vec::new, |page| page.rules.iter().map(|r| r.spec.clone()).collect())
+    }
+    /// 当前配置档的规则（含类型），供类型相关的测试使用。
+    #[cfg(all(test, unix))]
+    pub(super) fn forward_rules(&self) -> &[Rule] {
+        self.forwards.as_ref().map_or(&[], |page| page.rules.as_slice())
     }
 
     /// 打开输入框：先准入一段固定额度，关掉页面时随页面一起释放。
@@ -96,7 +130,7 @@ impl Workspace {
             return;
         }
         let limit = crate::config::profiles::FORWARD_LIMIT;
-        if page.specs.len() >= limit {
+        if page.rules.len() >= limit {
             page.note = Some(format!("最多 {limit} 条转发规则，先删掉一条"));
             self.chrome_dirty = true;
             return;
@@ -107,7 +141,7 @@ impl Workspace {
             return;
         };
         page.input = Some(Input { text: Tracked::new(String::new(), memory), caret: 0, preedit: String::new() });
-        page.note = Some("输入 [绑定地址:]端口:主机:端口，回车添加".into());
+        page.note = Some("输入 L:/R:/D: 前缀加规则（默认 L），回车添加".into());
         self.chrome_dirty = true;
     }
 
@@ -115,26 +149,33 @@ impl Workspace {
     pub(super) fn submit_forward(&mut self) -> bool {
         let Some(page) = &mut self.forwards else { return false };
         let Some(input) = page.input.as_ref() else { return false };
-        let spec = input.text.data.trim().to_string();
-        if spec.is_empty() {
+        let text = input.text.data.trim().to_string();
+        if text.is_empty() {
             page.note = Some("规则不能为空".into());
             self.chrome_dirty = true;
             return true;
         }
-        if !crate::config::profiles::forward_ok(&spec) {
-            page.note = Some("规则须形如 [绑定地址:]端口:主机:端口，只能用字母数字与 .:_-[]".into());
+        // 前缀决定类型：`R:` 远程、`D:` 动态、`L:` 或不写是本地。
+        let (kind, spec) = match ForwardKind::parse_prefix(&text) {
+            Some((kind, rest)) => (kind, rest.trim().to_string()),
+            None => (ForwardKind::Local, text.clone()),
+        };
+        if !kind.accepts(&spec) {
+            page.note = Some(format!("规则须形如 {}，只能用字母数字与 .:_-[]", kind.hint()));
             self.chrome_dirty = true;
             return true;
         }
+        let rule = Rule { kind, spec };
         let limit = crate::config::profiles::FORWARD_LIMIT;
-        if page.specs.len() >= limit {
+        if page.rules.len() >= limit {
             page.note = Some(format!("最多 {limit} 条转发规则，先删掉一条"));
-        } else if page.specs.contains(&spec) {
+        } else if page.rules.contains(&rule) {
             page.note = Some("这条规则已经有了".into());
         } else {
-            page.specs.push(spec.clone());
-            page.selected = Some(page.specs.len() - 1);
-            page.note = Some(format!("已添加 {spec}（本次运行有效，不写回配置文件）"));
+            let shown = rule.display();
+            page.rules.push(rule);
+            page.selected = Some(page.rules.len() - 1);
+            page.note = Some(format!("已添加 {shown} · 本次运行有效"));
             page.input = None;
         }
         self.sync_forwards_override();
@@ -154,10 +195,10 @@ impl Workspace {
         match page.delete_pending {
             Some((pending, at)) if pending == index && now.duration_since(at) < DELETE_CONFIRM => {
                 page.delete_pending = None;
-                if index < page.specs.len() {
-                    let removed = page.specs.remove(index);
-                    page.note = Some(format!("已删除 {removed}（本次运行有效）"));
-                    page.selected = if page.specs.is_empty() { None } else { Some(index.min(page.specs.len() - 1)) };
+                if index < page.rules.len() {
+                    let removed = page.rules.remove(index).display();
+                    page.note = Some(format!("已删除 {removed} · 本次运行有效"));
+                    page.selected = if page.rules.is_empty() { None } else { Some(index.min(page.rules.len() - 1)) };
                 }
             }
             _ => {
@@ -185,12 +226,12 @@ impl Workspace {
         if let Some(input) = &page.input {
             rows.push(format!("新规则：{}", input.text.data));
         }
-        for (index, spec) in self.forward_specs().iter().enumerate().skip(page.offset) {
+        for (index, rule) in page.rules.iter().enumerate().skip(page.offset) {
             let mark = if page.selected == Some(index) { "●" } else { " " };
             let pending = matches!(page.delete_pending, Some((p, _)) if p == index);
-            rows.push(format!("{mark} {spec}{}", if pending { " · 待确认删除" } else { "" }));
+            rows.push(format!("{mark} {}{}", rule.display(), if pending { " · 待确认删除" } else { "" }));
         }
-        if self.forward_specs().is_empty() {
+        if page.rules.is_empty() {
             rows.push("还没有转发规则".into());
         }
         rows
@@ -259,7 +300,7 @@ impl Workspace {
                 true
             }
             Key::Down => {
-                let last = page.specs.len().saturating_sub(1);
+                let last = page.rules.len().saturating_sub(1);
                 page.selected = Some(page.selected.map_or(0, |index| (index + 1).min(last)));
                 self.chrome_dirty = true;
                 true
@@ -326,7 +367,7 @@ impl Workspace {
         let Some(mut index) = row.checked_sub(self.rules_start()) else { return true };
         let Some(page) = &mut self.forwards else { return true };
         index += page.offset;
-        if index < page.specs.len() {
+        if index < page.rules.len() {
             page.selected = Some(index);
             page.delete_pending = None;
             self.chrome_dirty = true;
@@ -408,6 +449,30 @@ mod tests {
             }
             std::fs::write(path, ppm).unwrap();
         }
+        // 再加一条远程与一条动态规则，预览里能看到三种前缀。
+        app.open_forward_input();
+        app.forwards_capture_text("R:9000:localhost:3000");
+        app.submit_forward();
+        app.open_forward_input();
+        app.forwards_capture_text("D:1080");
+        app.submit_forward();
+        if let Some(path) = std::env::var_os("CONGMINAL_FORWARDS_KINDS_PREVIEW_PATH") {
+            crate::workspace::tests::force_draw(&mut app);
+            let mut ppm = format!("P6\n{} {}\n255\n", app.frame.width, app.frame.height).into_bytes();
+            for &pixel in &app.frame.pixels {
+                ppm.extend_from_slice(&[(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8]);
+            }
+            std::fs::write(path, ppm).unwrap();
+        }
+        // 回到只有一条本地规则的状态，后面的断言仍按原样（直接改工作副本，避免依赖点击顺序）。
+        {
+            let page = app.forwards.as_mut().unwrap();
+            page.rules.truncate(1);
+            page.selected = None;
+            page.note = None;
+        }
+        app.sync_forwards_override();
+        assert_eq!(app.forward_specs(), ["8080:localhost:80"], "{:?}", app.forward_rows());
         // 新建：非法规则只提示，不落库。
         app.open_forward_input();
         app.forwards_capture_text("not-a-rule");
@@ -437,11 +502,11 @@ mod tests {
         assert_eq!(app.forward_specs(), ["9090:localhost:90"]);
         // 配置档本身没被改：只记在本次运行的覆盖里。
         let Connection::Ssh(ssh) = &app.driver.config.connections[0].connection else { panic!("应为 SSH") };
-        assert_eq!(ssh.forwards, ["8080:localhost:80"], "配置文件里的规则不动");
+        assert_eq!(ssh.forwards.local, ["8080:localhost:80"], "配置文件里的规则不动");
         app.close_forwards();
         assert_eq!(
             app.forwards_override.as_ref().map(|(index, specs)| (*index, specs.clone())),
-            Some((0, vec!["9090:localhost:90".to_string()]))
+            Some((0, Forwards { local: vec!["9090:localhost:90".to_string()], ..Forwards::default() }))
         );
     }
 
@@ -500,7 +565,51 @@ mod tests {
         assert!(!argv.contains("8080:localhost:80"), "被删掉的规则不能再传：{argv}");
         // 配置文件里的原值不动。
         let Connection::Ssh(ssh) = &app.driver.config.connections[0].connection else { panic!("应为 SSH") };
-        assert_eq!(ssh.forwards, ["8080:localhost:80"]);
+        assert_eq!(ssh.forwards.local, ["8080:localhost:80"]);
+    }
+
+    #[test]
+    fn the_input_accepts_remote_and_dynamic_prefixes_and_rejects_bad_shapes() {
+        let dir = crate::workspace::layout::TestDir::new();
+        let program = fake_ssh(&dir.0);
+        let mut app = ssh_workspace(&program);
+        assert!(app.open_forwards());
+        // 远程转发：`R:` 前缀。
+        app.open_forward_input();
+        app.forwards_capture_text("R:9000:localhost:3000");
+        app.submit_forward();
+        assert_eq!(app.forward_rules().len(), 2, "{:?}", app.forward_rows());
+        assert_eq!(app.forward_rules()[1].kind, ForwardKind::Remote);
+        assert_eq!(app.forward_rules()[1].spec, "9000:localhost:3000");
+        assert!(app.forward_rows()[2].contains("R 9000:localhost:3000"), "{:?}", app.forward_rows());
+        // 动态转发：`D:` 前缀，只接受 `[绑定地址:]端口`。
+        app.open_forward_input();
+        app.forwards_capture_text("D:1080");
+        app.submit_forward();
+        assert_eq!(app.forward_rules()[2].kind, ForwardKind::Dynamic);
+        assert_eq!(app.forward_rules()[2].spec, "1080");
+        // 动态转发写成三段式要拒绝，且不落库。
+        app.open_forward_input();
+        app.forwards_capture_text("D:1080:localhost:80");
+        app.submit_forward();
+        assert_eq!(app.forward_rules().len(), 3);
+        assert!(app.forward_rows()[0].contains("须形如 D:端口"), "{:?}", app.forward_rows());
+        // 前缀大小写不敏感；没有前缀按本地转发。
+        app.forwards_capture_key(Key::Escape, Mods::default());
+        app.open_forward_input();
+        app.forwards_capture_text("r:7000:localhost:7000");
+        app.submit_forward();
+        assert_eq!(app.forward_rules()[3].kind, ForwardKind::Remote);
+        app.open_forward_input();
+        app.forwards_capture_text("6060:localhost:60");
+        app.submit_forward();
+        assert_eq!(app.forward_rules()[4].kind, ForwardKind::Local);
+        // 覆盖里三种规则分开保存。
+        app.close_forwards();
+        let (_, forwards) = app.forwards_override.as_ref().expect("改过就要记覆盖");
+        assert_eq!(forwards.local, ["8080:localhost:80", "6060:localhost:60"]);
+        assert_eq!(forwards.remote, ["9000:localhost:3000", "7000:localhost:7000"]);
+        assert_eq!(forwards.dynamic, ["1080"]);
     }
 
     #[test]

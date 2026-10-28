@@ -97,7 +97,7 @@
 
 ### `connections`
 
-自由表，每个 `[connections.<id>]` 是一个配置档：`kind`（`local` / `ssh`）、`name`、`group`、`theme`，以及 `host`、`user`、`port`、`identity-file`、`jump`、`forward`、`program` 等 SSH 字段。详见 [配置档说明](execution-m4.md#连接配置档)。
+自由表，每个 `[connections.<id>]` 是一个配置档：`kind`（`local` / `ssh`）、`name`、`group`、`theme`，以及 `host`、`user`、`port`、`identity-file`、`jump`、`forward`、`forward-remote`、`forward-dynamic`、`program` 等 SSH 字段。详见 [配置档说明](execution-m4.md#连接配置档)。
 
 ### `sftp`
 

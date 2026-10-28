@@ -251,7 +251,7 @@ mod tests {
             port: None,
             identity_file: None,
             jump: None,
-            forwards: Vec::new(),
+            forwards: crate::config::profiles::Forwards::default(),
             program: None,
         };
         let connection = Connection {
@@ -283,7 +283,7 @@ mod tests {
             port: None,
             identity_file: None,
             jump: None,
-            forwards: Vec::new(),
+            forwards: crate::config::profiles::Forwards::default(),
             program: None,
         };
         let failure = Authenticated::connect_checked(
@@ -344,7 +344,7 @@ mod tests {
                     port: None,
                     identity_file: None,
                     jump: None,
-                    forwards: Vec::new(),
+                    forwards: crate::config::profiles::Forwards::default(),
                     program: None,
                 };
                 Authenticated::connect(

@@ -742,7 +742,7 @@ mod tests {
                     port: None,
                     identity_file: None,
                     jump: None,
-                    forwards: Vec::new(),
+                    forwards: crate::config::profiles::Forwards::default(),
                     program: Some("/usr/bin/ssh".into()),
                 };
                 Some(
