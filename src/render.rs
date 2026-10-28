@@ -309,7 +309,7 @@ impl Renderer {
                     if column + self.fonts.cell_width > x + width {
                         return false;
                     }
-                    if let Some(glyph) = self.fonts.glyph('\u{25cc}', false, false, 1) {
+                    if let Some(glyph) = self.fonts.glyph('\u{25cc}', false, false, false, 1) {
                         blend_auth_glyph(frame, column, y, glyph, self.colors.foreground, [x, y, width, height]);
                     } else {
                         return false;
@@ -329,7 +329,7 @@ impl Renderer {
                 }
                 if c.is_whitespace() {
                     // 空格的无墨迹字形在缓存中可为 None，不能误判为未显示。
-                } else if let Some(glyph) = self.fonts.glyph(c, false, false, cells) {
+                } else if let Some(glyph) = self.fonts.glyph(c, false, false, false, cells) {
                     blend_auth_glyph(frame, column, y, glyph, self.colors.foreground, [x, y, width, height]);
                 } else {
                     return false;
@@ -686,7 +686,13 @@ impl Renderer {
                 };
                 let glyph = match self.work.ligatures.get(col) {
                     Some(&Some(index)) => self.fonts.indexed_glyph(index, bold),
-                    _ => self.fonts.glyph(c, bold, cell.flags.contains(Flags::EMOJI), cells),
+                    _ => self.fonts.glyph(
+                        c,
+                        bold,
+                        cell.flags.contains(Flags::ITALIC),
+                        cell.flags.contains(Flags::EMOJI),
+                        cells,
+                    ),
                 };
                 if let Some(glyph) = glyph {
                     blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, fg, clip);
@@ -929,7 +935,10 @@ impl Renderer {
     /// `cells`：这个字可以占几格
     #[allow(clippy::too_many_arguments)]
     fn draw_char(&mut self, fb: &mut Framebuffer, x: usize, y: usize, c: char, flags: Flags, cells: usize, color: u32) {
-        if let Some(glyph) = self.fonts.glyph(c, flags.contains(Flags::BOLD), flags.contains(Flags::EMOJI), cells) {
+        let italic = flags.contains(Flags::ITALIC);
+        if let Some(glyph) =
+            self.fonts.glyph(c, flags.contains(Flags::BOLD), italic, flags.contains(Flags::EMOJI), cells)
+        {
             blend_glyph(fb, x as i32 + glyph.left, y as i32 + glyph.top, glyph, color, (0, usize::MAX));
         }
     }
@@ -1159,6 +1168,58 @@ mod bench {
 mod tests {
     use super::*;
     use crate::vt::Parser;
+    /// 粗斜体画出来既不同于单独斜体，也不同于单独粗体。
+    #[test]
+    fn bold_italic_differs_from_both_italic_and_bold() {
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let (cols, rows) = (12, 2);
+        let (width, height) = renderer.pixel_size(cols, rows);
+        let mut term = Terminal::new(cols, rows);
+        let mut parser = Parser::new();
+        let mut render = |renderer: &mut Renderer, term: &mut Terminal, sgr: &str| {
+            parser.advance(term, format!("\x1b[{sgr}mMMMM").as_bytes());
+            let mut fb = Framebuffer::new(width as usize, height as usize);
+            renderer.invalidate();
+            renderer.draw(term, "", None, false, true, &mut fb);
+            fb.pixels
+        };
+        let italic = render(&mut renderer, &mut term, "3");
+        let bold_italic = render(&mut renderer, &mut term, "1;3");
+        let bold = render(&mut renderer, &mut term, "1");
+        assert_ne!(bold_italic, italic, "粗斜体应该和斜体不同");
+        assert_ne!(bold_italic, bold, "粗斜体应该和粗体不同");
+        assert_ne!(italic, bold, "斜体和粗体应该不同");
+    }
+
+    /// 斜体（SGR 3）要真的改变字形：没有斜体字体时按合成斜体向右错位，
+    /// 并且和正体分开缓存，不会互相顶掉。
+    #[test]
+    fn italic_text_is_slanted_and_cached_separately_from_upright() {
+        let config = Config::default();
+        let mut renderer = Renderer::new(&config, 1.0);
+        let (cols, rows) = (12, 2);
+        let (width, height) = renderer.pixel_size(cols, rows);
+        let mut term = Terminal::new(cols, rows);
+        let mut parser = Parser::new();
+        let mut fb = Framebuffer::new(width as usize, height as usize);
+        let mut upright = Framebuffer::new(width as usize, height as usize);
+
+        parser.advance(&mut term, b"MMMM");
+        renderer.draw(&term, "", None, false, true, &mut upright);
+        let before = renderer.fonts.cached_glyphs();
+
+        parser.advance(&mut term, b"\x1b[3mMMMM");
+        renderer.draw(&term, "", None, false, true, &mut fb);
+        assert_ne!(fb.pixels, upright.pixels, "斜体应该和正体画得不一样");
+        assert!(renderer.fonts.cached_glyphs() > before, "斜体字形要单独缓存");
+
+        // 再画一遍正体，两者都还在缓存里，不会来回重建
+        let after_italic = renderer.fonts.cached_glyphs();
+        renderer.draw(&term, "", None, false, true, &mut fb);
+        assert_eq!(renderer.fonts.cached_glyphs(), after_italic);
+    }
+
     #[test]
     fn authentication_rect_blending_clips_negative_alpha_and_color_glyph_offsets() {
         let mut frame = Framebuffer::new(8, 8);

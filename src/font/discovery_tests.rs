@@ -138,6 +138,31 @@ fn face_sharing_keeps_unicode_context_and_credit_after_catalog_and_queries_drop(
     assert_eq!(tiny.snapshot().used, 0);
 }
 #[test]
+fn italic_is_picked_from_the_same_family_and_missing_italics_fall_back_to_none() {
+    let folder = Folder::new();
+    let pool = Budget::new(8 * 1024 * 1024, 0);
+    let _scope = Scope::enter(pool.clone());
+    let mut faces = Vec::new();
+    for (name, weight, italic) in
+        [("regular", 400, false), ("bold", 700, false), ("italic", 400, true), ("bold-italic", 700, true)]
+    {
+        let path = folder.0.join(format!("{name}.TTF"));
+        fixture(&path, "Fixture", weight, italic);
+        let catalog = read_file(&path);
+        faces.extend(catalog.iter().cloned());
+    }
+    let (regular, bold) = pick_regular_and_bold(&faces).unwrap();
+    assert_eq!((regular.weight, regular.italic), (400, false));
+    assert_eq!(bold.unwrap().weight, 700);
+    // 同字重的斜体优先，不会挑到粗斜体
+    let italic = pick_italic(&faces, &regular).unwrap();
+    assert_eq!((italic.weight, italic.italic), (400, true));
+    // 家族里没有斜体时不合成 FaceInfo
+    let upright: Vec<_> = faces.into_iter().filter(|f| !f.italic).collect();
+    assert!(pick_italic(&upright, &regular).is_none());
+}
+
+#[test]
 fn file_headers_are_funded_and_denial_and_stream_limits_never_fake_complete_results() {
     let folder = Folder::new();
     let path = folder.0.join("fixture.TTF");
