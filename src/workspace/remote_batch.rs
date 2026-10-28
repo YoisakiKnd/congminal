@@ -87,7 +87,7 @@ fn join(root: &PathValue, relative: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 /// 小目录按字节显示，避免「0 KiB」这种看不出内容大小的读数。
-fn human(bytes: u64) -> String {
+pub(super) fn human(bytes: u64) -> String {
     if bytes < 1024 {
         return format!("{bytes} B");
     }

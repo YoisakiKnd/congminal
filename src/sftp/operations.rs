@@ -80,6 +80,42 @@ pub fn attributes<I: Read + Write>(
 pub fn mkdir<I: Read + Write>(channel: &mut Channel<I>, path: &[u8], cancel: &Cancellation) -> Result<(), Error> {
     status(channel, cancel, |id| Request::Mkdir { id, path, attrs: super::wire::Attributes::default() })
 }
+/// 建目录，但「已经存在」不算失败：上传目录时目标目录常常已经在了。
+///
+/// 不能直接用 `status()`：它在任何失败后都会 `abort()` 通道，而这里要把
+/// 「已存在」当成正常结果继续用同一条通道。4 = SSH_FX_FAILURE（OpenSSH 对已存在
+/// 目录的回复），11 = SSH_FX_FILE_ALREADY_EXISTS。其余状态码照常让通道失效。
+#[cfg(unix)]
+fn mkdir_if_missing<I: Read + Write>(
+    channel: &mut Channel<I>,
+    path: &[u8],
+    cancel: &Cancellation,
+) -> Result<(), Error> {
+    let result = (|| {
+        channel.issue(
+            Expected::Status,
+            |id| Request::Mkdir { id, path, attrs: super::wire::Attributes::default() },
+            cancel,
+        )?;
+        match channel.receive(cancel)?.response()? {
+            Response::Status { code: 0 | 4 | 11, .. } => Ok(()),
+            other => Err(remote(other)),
+        }
+    })();
+    if result.is_err() {
+        channel.abort();
+    }
+    result
+}
+/// 按顺序建一串目录（上传目录时用），已存在的目录跳过。
+#[cfg(unix)]
+pub fn mkdir_all<I: Read + Write>(
+    channel: &mut Channel<I>,
+    paths: &[Vec<u8>],
+    cancel: &Cancellation,
+) -> Result<(), Error> {
+    paths.iter().try_for_each(|path| mkdir_if_missing(channel, path, cancel))
+}
 /// 不替换既有目标：v3 的 RENAME 在目标存在时由服务端拒绝，覆盖需显式删除。
 #[cfg(unix)]
 pub fn rename<I: Read + Write>(

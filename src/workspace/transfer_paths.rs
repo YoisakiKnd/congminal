@@ -607,7 +607,12 @@ impl Workspace {
                             || Path::new(&f.fields[0].text),
                             |p| Path::new(std::ffi::OsStr::from_bytes(p.bytes())),
                         );
-                        self.prepare_remote_upload(local, t.bytes()).map(|_| ())
+                        // 本地路径是目录时走批量上传预览，不产生单文件上传。
+                        if std::fs::symlink_metadata(local).is_ok_and(|m| m.is_dir()) {
+                            self.start_remote_upload_plan(local, t.bytes())
+                        } else {
+                            self.prepare_remote_upload(local, t.bytes()).map(|_| ())
+                        }
                     })
                 }
                 Choice::Download { source, version: Some(version) } => {
