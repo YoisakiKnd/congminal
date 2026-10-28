@@ -3687,6 +3687,34 @@ exec /bin/cat
     }
 
     #[test]
+    fn disk_mount_is_dropped_when_the_line_would_not_fit() {
+        let mut app = workspace();
+        app.monitor = monitor_panel::Panel::with_source(std::sync::Arc::new(|| {
+            Box::new(ProcessSource(std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0))))
+                as Box<dyn monitor::Sampling>
+        }));
+        app.width = 1200;
+        app.height = 700;
+        app.action(Action::ShowMonitorPanel);
+        wait(&mut app, |a| a.monitor.samples() > 0);
+        // 多卷时磁盘行会附上挂载点，宽面板放得下就写全。
+        app.monitor.mount = Some("/boot/efi".into());
+        let wide = app.monitor.view(60);
+        let line = wide.headline.iter().find(|line| line.starts_with("磁盘")).expect("磁盘行");
+        assert!(line.contains("/boot/efi"), "{line}");
+        // 面板窄到放不下时去掉挂载点，数字不能被挤出边界。
+        let narrow = app.monitor.view(28);
+        let line = narrow.headline.iter().find(|line| line.starts_with("磁盘")).expect("磁盘行");
+        assert!(!line.contains("/boot/efi"), "{line}");
+        assert!(crate::term::display_width(line) <= 28, "{line}");
+        // 根挂载点本来就不写。
+        app.monitor.mount = Some("/".into());
+        let wide = app.monitor.view(60);
+        let line = wide.headline.iter().find(|line| line.starts_with("磁盘")).expect("磁盘行");
+        assert!(!line.contains(" · /"), "{line}");
+    }
+
+    #[test]
     fn monitor_shows_the_busiest_processes_and_refreshes_them_slower() {
         let mut app = workspace();
         let refreshes = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
