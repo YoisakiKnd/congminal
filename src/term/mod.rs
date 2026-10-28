@@ -12,6 +12,8 @@ mod grapheme_tables;
 mod grid;
 mod memory;
 pub(crate) use memory::{ResizeJob, ResizePlan};
+#[cfg(test)]
+mod fuzz_tests;
 mod reflow;
 #[cfg(test)]
 mod regression;

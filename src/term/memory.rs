@@ -90,10 +90,13 @@ impl Terminal {
                 }
             } else {
                 // 高度变化只需取走顶部行的索引；cell 所有权直接转移。
-                let pushed = if !self.alt_active && self.cursor.row >= rows {
-                    self.grid
-                        .iter()
-                        .take(self.cursor.row + 1 - rows)
+                // 备用屏激活时被推入历史的是备用屏顶部行，光标位置取保存的主屏光标
+                // （`resize_admitted` 用 `saved[0]` 作为重排光标）。
+                let (grid, cursor_row) =
+                    if self.alt_active { (&self.alt_grid, self.saved[0].row) } else { (&self.grid, self.cursor.row) };
+                let pushed = if cursor_row >= rows {
+                    grid.iter()
+                        .take(cursor_row + 1 - rows)
                         .map(|row| row.cells.capacity() * std::mem::size_of::<grid::Cell>())
                         .sum()
                 } else {

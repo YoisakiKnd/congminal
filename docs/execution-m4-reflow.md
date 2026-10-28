@@ -48,6 +48,12 @@ cargo test --offline --release bench_stream_soft_slices -- --ignored --nocapture
 
 光标在重排里用“历史 + 屏幕”的绝对行号表示：把行推进历史或从历史拉回时绝对行号不变，屏幕行号自然跟着历史长度变化，不需要逐步加减。
 
+### 备用屏期间变矮的预留（2026-10-28 修正）
+
+`prepare_ui_resize` 的预留里有一项是「变矮时被推进历史的顶部行」。原来这一项只在主屏可见时按 `self.cursor.row` 计算，备用屏激活时直接记 0——但备用屏变矮同样会把备用屏顶部行推进历史（`resize_primary` 用 `saved[0]` 作为重排光标），于是「历史已超过 256 KiB（因此不重排）+ 备用屏激活 + 只减高度」这一组合会少算几百字节到几 KiB，`History::reserve` 的准入断言随即 panic。
+
+修正：这一项按当前可见网格与对应光标计算——备用屏激活时用 `alt_grid` 与 `saved[0].row`，否则用 `grid` 与 `cursor.row`。回归测试两条：`term::fuzz_tests::shrinking_the_height_while_the_alt_screen_is_active_reserves_the_pushed_rows`（定点复现，回退修正即失败）与 `term::fuzz_tests::random_byte_streams_never_panic_and_keep_the_response_buffer_bounded`（8 个种子的随机字节流，含随机缩放）。
+
 边界：只有主屏内容在 `SYNC_REFLOW_LIMIT`（256 KiB，与步进阈值同源）以内时才在缩放事件里重排隐藏主屏。超过上限的历史仍只裁剪——步进作业目前只处理可见屏，把作业扩展到隐藏主屏是后续工作。这个阈值同时决定 `prepare_ui_resize` 的预留：只有真要重排时才算重排工作集，避免为“只裁剪”多收额度。
 
 ## 验证与后续
