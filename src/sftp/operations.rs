@@ -116,6 +116,43 @@ pub fn mkdir_all<I: Read + Write>(
 ) -> Result<(), Error> {
     paths.iter().try_for_each(|path| mkdir_if_missing(channel, path, cancel))
 }
+/// 删除，但「本来就不存在」不算失败：递归删除时别人可能已经删掉了。
+///
+/// 和 `mkdir_if_missing` 一样不能直接用 `status()`：它在任何失败后都会 `abort()`
+/// 通道，而这里要把 2 = SSH_FX_NO_SUCH_FILE 当成正常结果继续用同一条通道。
+#[cfg(unix)]
+fn remove_if_present<I: Read + Write>(
+    channel: &mut Channel<I>,
+    path: &[u8],
+    directory: bool,
+    cancel: &Cancellation,
+) -> Result<(), Error> {
+    let op = if directory { PathOp::Rmdir } else { PathOp::Remove };
+    let result = (|| {
+        channel.issue(Expected::Status, |id| Request::Path { id, op, path }, cancel)?;
+        match channel.receive(cancel)?.response()? {
+            Response::Status { code: 0 | 2, .. } => Ok(()),
+            other => Err(remote(other)),
+        }
+    })();
+    if result.is_err() {
+        channel.abort();
+    }
+    result
+}
+/// 递归删除一棵子树：先删文件，再按给定顺序删目录（调用方要按深度从深到浅给出）。
+#[cfg(unix)]
+pub fn remove_all<I: Read + Write>(
+    channel: &mut Channel<I>,
+    files: &[Vec<u8>],
+    dirs: &[Vec<u8>],
+    cancel: &Cancellation,
+) -> Result<(), Error> {
+    files
+        .iter()
+        .try_for_each(|path| remove_if_present(channel, path, false, cancel))
+        .and_then(|()| dirs.iter().try_for_each(|path| remove_if_present(channel, path, true, cancel)))
+}
 /// 不替换既有目标：v3 的 RENAME 在目标存在时由服务端拒绝，覆盖需显式删除。
 #[cfg(unix)]
 pub fn rename<I: Read + Write>(

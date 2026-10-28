@@ -291,6 +291,21 @@ struct Confirm {
     directory: bool,
     _memory: Lease,
 }
+/// 删除目录前的枚举请求：先看清里面有什么，再决定是 rmdir 还是递归删除。
+struct DeletePlan {
+    ticket: Ticket,
+    binding: Binding,
+    authentication: Authentication,
+    path: PathValue,
+    host: String,
+    _memory: Lease,
+}
+/// 删除目录的影响范围预览。
+struct DeletePreview {
+    plan: crate::sftp::plan::Plan,
+    host: String,
+    _memory: Lease,
+}
 /// 显示宽度：与绘制共用同一套字符宽度，避免按字节数裁切。
 fn cells(text: &str) -> usize {
     text.chars().map(crate::term::char_width).sum()
@@ -398,6 +413,10 @@ pub(super) struct State {
     upload: Option<upload::Batch>,
     /// 批量上传建目录时占用的前台认证。
     upload_authentication: Option<(Ticket, Authentication)>,
+    /// 删除目录前的枚举请求（先看清里面有什么）。
+    delete_plan: Option<DeletePlan>,
+    /// 删除目录的影响范围预览。
+    delete_preview: Option<DeletePreview>,
     shutdown: Shutdown,
     exit_reported: bool,
     exit: transfer_exit::Exit,
@@ -446,6 +465,8 @@ impl State {
             upload_preview: None,
             upload: None,
             upload_authentication: None,
+            delete_plan: None,
+            delete_preview: None,
             shutdown: Shutdown::Open,
             exit_reported: false,
             exit: transfer_exit::Exit::default(),
@@ -457,7 +478,15 @@ impl State {
         // 预览与批次随目录视图一起作废：换窗格/换配置档后不再提交。
         self.preview = None;
         self.batch = None;
+        self.upload_preview = None;
+        self.upload = None;
+        self.upload_authentication = None;
+        self.delete_preview = None;
         if let Some(task) = self.plan.take() {
+            dismiss |= active == Some(task.ticket);
+            self.service.cancel(task.ticket);
+        }
+        if let Some(task) = self.delete_plan.take() {
             dismiss |= active == Some(task.ticket);
             self.service.cancel(task.ticket);
         }
@@ -671,6 +700,7 @@ impl Workspace {
             let Some(completion) = self.transfer_paths_result(&mut state, completion) else { continue };
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             let Some(completion) = self.transfer_preparation_result(&mut state, completion) else { continue };
+            let Some(completion) = self.delete_plan_result(&mut state, completion) else { continue };
             let Some(completion) = self.plan_result(&mut state, completion) else { continue };
             #[cfg(any(target_os = "macos", target_os = "linux"))]
             let Some(completion) = self.upload_mkdir_result(&mut state, completion) else { continue };
@@ -816,6 +846,15 @@ impl Workspace {
             {
                 front = task.authentication.take_ready().map(|front| (task.ticket, front));
             }
+            // 删除目录前的枚举同样要过前台认证。
+            if front.is_none()
+                && let Some(task) = state
+                    .delete_plan
+                    .as_mut()
+                    .filter(|p| p.binding.valid(self) && p.binding.owner.session == self.selected)
+            {
+                front = task.authentication.take_ready().map(|front| (task.ticket, front));
+            }
             if let Some((ticket, front)) = front {
                 state.invalidate_transfer_clicks();
                 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -950,6 +989,14 @@ impl Workspace {
                     || s.view.as_ref().is_none_or(|v| v.loading || v.error.is_some())
             })
         {
+            return true;
+        }
+        // 删除目录预览占用操作行：左半删除、右半取消。
+        if row == 3 && self.sftp.as_ref().is_some_and(|s| s.delete_preview.is_some()) {
+            if let Some(mut state) = self.sftp.take() {
+                self.delete_click(&mut state, column);
+                self.sftp = Some(state);
+            }
             return true;
         }
         // 批量上传预览/批次占用操作行：左半确认、右半取消。
@@ -1293,11 +1340,187 @@ impl Workspace {
         let memory =
             pool.lease(Kind::Sftp, std::mem::size_of::<Confirm>() + host.len() + 128).map_err(|_| Failure::Budget)?;
         let label = path.label().to_string();
+        let directory = entry.kind == FileKind::Directory;
         state.form = None;
-        state.confirm =
-            Some(Confirm { path, host, label, directory: entry.kind == FileKind::Directory, _memory: memory });
+        if directory {
+            // 目录先枚举：里面有什么、要删多少，用户得先看到。
+            let binding = view.binding.clone();
+            let owner = binding.owner;
+            let (profiles, profile) = (binding.profiles.clone(), binding.profile);
+            drop(memory);
+            let plan_memory = pool
+                .lease(Kind::Sftp, std::mem::size_of::<DeletePlan>() + host.len() + 128)
+                .map_err(|_| Failure::Budget)?;
+            let (ticket, authentication) = state.service.plan(
+                owner,
+                profiles,
+                profile,
+                state.options.paths(),
+                path.bytes(),
+                Duration::from_secs(30),
+            )?;
+            state.delete_plan = Some(DeletePlan { ticket, binding, authentication, path, host, _memory: plan_memory });
+            state.delete_preview = None;
+            self.chrome_dirty = true;
+            return Ok(());
+        }
+        state.confirm = Some(Confirm { path, host, label, directory, _memory: memory });
         self.chrome_dirty = true;
         Ok(())
+    }
+    /// 删除目录的枚举结果；不是本批的票据原样交回。
+    fn delete_plan_result(
+        &mut self,
+        state: &mut State,
+        completion: service::Completion,
+    ) -> Option<service::Completion> {
+        let Some(task) = state.delete_plan.as_ref().filter(|p| p.ticket == completion.ticket) else {
+            return Some(completion);
+        };
+        let (binding, path, host) = (task.binding.clone(), task.path.clone(), task.host.clone());
+        state.delete_plan = None;
+        self.finish_remote_authentication(completion.ticket);
+        if !binding.valid(self) || binding.owner.session != self.selected {
+            self.chrome_dirty = true;
+            return None;
+        }
+        let result = match completion.result {
+            Ok(reply) => match reply.data {
+                Ok(service::Output::Plan(plan)) => Ok(plan),
+                Err(error) => Err(error),
+                _ => Err(Failure::Protocol),
+            },
+            Err(service::TaskError::Budget) => Err(Failure::Budget),
+            Err(_) => Err(Failure::Cancelled),
+        };
+        match result {
+            Ok(plan) if plan.items.is_empty() && plan.directories <= 1 => {
+                // 空目录：回到原来的 rmdir 确认行。
+                let pool = state.service.budget().clone();
+                match pool.lease(Kind::Sftp, std::mem::size_of::<Confirm>() + host.len() + 128) {
+                    Ok(memory) => {
+                        let label = path.label().to_string();
+                        state.error = None;
+                        state.confirm = Some(Confirm { path, host, label, directory: true, _memory: memory });
+                    }
+                    Err(_) => state.error = Some(Failure::Budget),
+                }
+            }
+            Ok(plan) => {
+                let pool = state.service.budget().clone();
+                let estimate = std::mem::size_of::<DeletePreview>() + host.len() + plan.bytes() + 128;
+                match pool.lease(Kind::Sftp, estimate) {
+                    Ok(memory) => {
+                        state.error = None;
+                        state.delete_preview = Some(DeletePreview { plan, host, _memory: memory });
+                    }
+                    Err(_) => state.error = Some(Failure::Budget),
+                }
+            }
+            Err(error) => state.error = Some(error),
+        }
+        self.chrome_dirty = true;
+        None
+    }
+    /// 预览行：删除是不可恢复的，行首就写清数量与目标。
+    fn delete_line(&self, state: &State) -> Option<String> {
+        let preview = state.delete_preview.as_ref()?;
+        let plan = &preview.plan;
+        let mut line = format!(
+            "删除不可恢复 · {} 个文件 · {} · {}:{}",
+            plan.items.len(),
+            batch::human(plan.total),
+            preview.host,
+            plan.root.label()
+        );
+        if plan.truncated {
+            line.push_str(" · 已截断");
+        }
+        if plan.skipped > 0 {
+            line.push_str(&format!(" · 跳过 {}", plan.skipped));
+        }
+        Some(line)
+    }
+    /// 预览里列出的前几条相对路径。
+    fn delete_paths(&self, state: &State) -> Vec<String> {
+        let Some(preview) = state.delete_preview.as_ref() else { return Vec::new() };
+        preview
+            .plan
+            .items
+            .iter()
+            .take(5)
+            .map(|item| {
+                format!(
+                    "{} ({})",
+                    String::from_utf8_lossy(preview.plan.relative(&item.path)),
+                    batch::human(item.length)
+                )
+            })
+            .collect()
+    }
+    /// 预览的按钮：删除与取消。
+    fn delete_labels(&self, state: &State) -> Option<[&'static str; 2]> {
+        state.delete_preview.as_ref().map(|_| ["删除", "取消"])
+    }
+    /// 预览点击：左半删除、右半取消。
+    fn delete_click(&mut self, state: &mut State, column: usize) -> bool {
+        if state.delete_preview.is_none() {
+            return false;
+        }
+        if column / 3 == 0 {
+            self.sftp_delete_tree(state);
+        } else {
+            state.delete_preview = None;
+            self.notice("已取消删除");
+            self.chrome_dirty = true;
+        }
+        true
+    }
+    /// 提交递归删除：文件先删，目录按深度从深到浅删。
+    fn sftp_delete_tree(&mut self, state: &mut State) {
+        let Some(preview) = state.delete_preview.take() else { return };
+        let result = (|| -> Result<(), Failure> {
+            let view = state.view.as_ref().ok_or(Failure::Invalid)?;
+            let binding = view.binding.clone();
+            let owner = binding.owner;
+            let pool = state.service.budget().clone();
+            let memory = pool.lease(Kind::Sftp, std::mem::size_of::<Mutation>() + 128).map_err(|_| Failure::Budget)?;
+            let files: Vec<Vec<u8>> = preview.plan.items.iter().map(|item| item.path.bytes().to_vec()).collect();
+            let mut dirs: Vec<Vec<u8>> = Vec::with_capacity(preview.plan.directories);
+            // 深度从深到浅：根目录最后删。
+            let mut stack = vec![(preview.plan.root.bytes().to_vec(), 0usize)];
+            let mut collected: Vec<(Vec<u8>, usize)> = Vec::new();
+            while let Some((path, depth)) = stack.pop() {
+                collected.push((path, depth));
+            }
+            collected.sort_by_key(|entry| std::cmp::Reverse(entry.1));
+            for (path, _) in collected {
+                dirs.push(path);
+            }
+            let (ticket, authentication) = state.service.remove_tree(
+                owner,
+                binding.profiles.clone(),
+                binding.profile,
+                state.options.paths(),
+                &files,
+                &dirs,
+                Duration::from_secs(30),
+            )?;
+            state.mutation = Some(Mutation {
+                ticket,
+                binding,
+                authentication,
+                op: Op::Delete,
+                origin: Origin::Files,
+                _memory: memory,
+            });
+            Ok(())
+        })();
+        if let Err(error) = result {
+            state.error = Some(error);
+            self.notice("删除未能提交");
+        }
+        self.chrome_dirty = true;
     }
     fn sftp_submit_name(&mut self, op: Op) {
         let Some(form) = self.sftp.as_mut().and_then(|s| s.form.take()) else { return };
@@ -1463,7 +1686,7 @@ impl Workspace {
                 self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, prefix, h], "[不完整]", true);
             }
             let width = (r.w - prefix) / self.driver.renderer.cell_size().0.max(1);
-            let batch = self.upload_line(state).or_else(|| self.batch_line(state));
+            let batch = self.delete_line(state).or_else(|| self.upload_line(state)).or_else(|| self.batch_line(state));
             let line = match (&state.form, &state.confirm, batch) {
                 (_, _, Some(batch)) => crate::term::clip(&batch, width),
                 (Some(form), _, _) => {
@@ -1512,7 +1735,8 @@ impl Workspace {
         };
         if r.h >= 4 * h {
             let busy = error.is_some() || state.exiting || state.mutation.is_some() || view.is_some_and(|v| v.loading);
-            let batch = self.upload_labels(state).or_else(|| self.batch_labels(state));
+            let batch =
+                self.delete_labels(state).or_else(|| self.upload_labels(state)).or_else(|| self.batch_labels(state));
             let count = if state.form.is_some() || state.confirm.is_some() || batch.is_some() {
                 2
             } else if busy {
@@ -1553,7 +1777,13 @@ impl Workspace {
         }
         // 预览时列表区显示将要传输的相对路径（最多几条），比空列表更能说明影响范围。
         if r.h >= 5 * h {
-            let paths = if state.upload_preview.is_some() { self.upload_paths(state) } else { self.batch_paths(state) };
+            let paths = if state.delete_preview.is_some() {
+                self.delete_paths(state)
+            } else if state.upload_preview.is_some() {
+                self.upload_paths(state)
+            } else {
+                self.batch_paths(state)
+            };
             for (i, path) in paths.into_iter().enumerate() {
                 let width = r.w / self.driver.renderer.cell_size().0.max(1);
                 self.driver.renderer.chrome(
@@ -1565,7 +1795,7 @@ impl Workspace {
             }
         }
         // 预览时列表区让给「将要传输的相对路径」，否则条目会盖住预览。
-        let previewing = state.upload_preview.is_some() || state.preview.is_some();
+        let previewing = state.upload_preview.is_some() || state.preview.is_some() || state.delete_preview.is_some();
         if let Some(view) = view.filter(|_| !previewing)
             && let Some(listing) = view.listing()
         {
@@ -1877,15 +2107,23 @@ mod tests {
         assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Invalid));
         assert!(app.sftp.as_ref().unwrap().confirm.is_none());
         app.sftp.as_mut().unwrap().error = None;
-        // 选中目录后删除：确认行显示主机与绝对路径，目录标记为目录。
+        // 选中目录后删除：目录先枚举（里面有什么要先看到），此时还没有确认行。
         assert!(app.sftp_click(4, 0));
         assert_eq!(app.sftp.as_ref().unwrap().view.as_ref().unwrap().selected, Some(0));
         assert!(app.sftp_click(3, 2));
         {
+            let state = app.sftp.as_ref().unwrap();
+            assert!(state.delete_plan.is_some(), "目录删除要先枚举");
+            assert!(state.confirm.is_none());
+        }
+        // 选中普通文件后删除：确认行显示主机与绝对路径，文件标记为非目录。
+        assert!(app.sftp_click(5, 0));
+        assert!(app.sftp_click(3, 2));
+        {
             let confirm = app.sftp.as_ref().unwrap().confirm.as_ref().unwrap();
-            assert!(confirm.directory);
+            assert!(!confirm.directory);
             assert!(confirm.host.contains("fixture"), "{}", confirm.host);
-            assert_eq!(confirm.label, "/tmp/folder");
+            assert_eq!(confirm.label, "/tmp/file.txt");
         }
         assert!(app.sftp_capturing());
         draw_now(&mut app);
@@ -2069,6 +2307,72 @@ mod tests {
         assert!(app.batch_click(&mut state, 4));
         assert!(state.batch.is_none());
         assert!(state.files.iter().all(Option::is_none));
+        app.sftp = Some(state);
+        close(&mut app);
+    }
+    #[test]
+    fn deleting_a_directory_previews_the_tree_and_needs_a_second_click() {
+        let mut app = workspace();
+        let _ticket = app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("folder", true)]);
+        let mut state = app.sftp.take().unwrap();
+        // 合成一棵子树：两个文件、两个目录（根 + sub）。
+        let pool = state.service.budget().clone();
+        let root = crate::sftp::model::RemotePath::new(&pool, b"/tmp/folder").unwrap();
+        let sub = root.child(b"sub").unwrap();
+        let mut plan = crate::sftp::plan::Plan {
+            root: root.clone(),
+            items: Vec::new(),
+            total: 0,
+            directories: 2,
+            skipped: 0,
+            truncated: false,
+        };
+        for (parent, name, size) in [(&root, b"a.txt".as_slice(), 3u64), (&sub, b"b.txt".as_slice(), 5)] {
+            plan.items.push(crate::sftp::plan::Item {
+                path: parent.child(name).unwrap(),
+                length: size,
+                version: service::Version { length: size, modified: 0 },
+            });
+            plan.total += size;
+        }
+        let memory = pool.lease(Kind::Sftp, 4096).unwrap();
+        state.delete_preview = Some(DeletePreview { plan, host: "fixture".into(), _memory: memory });
+        // 预览行先说不可恢复，再说数量、总大小与目标。
+        let line = app.delete_line(&state).unwrap();
+        assert!(line.starts_with("删除不可恢复"), "{line}");
+        assert!(line.contains("2 个文件"), "{line}");
+        assert!(line.contains("8 B"), "{line}");
+        assert!(line.contains("/tmp/folder"), "{line}");
+        assert_eq!(app.delete_labels(&state), Some(["删除", "取消"]));
+        assert_eq!(app.delete_paths(&state), ["a.txt (3 B)", "sub/b.txt (5 B)"]);
+        app.sftp = Some(state);
+        draw_now(&mut app);
+        preview(&app, "CONGMINAL_SFTP_DELETE_TREE_PREVIEW_PATH");
+        let mut state = app.sftp.take().unwrap();
+        // 右半取消：预览消失，不产生写任务。
+        assert!(app.delete_click(&mut state, 4));
+        assert!(state.delete_preview.is_none());
+        assert!(state.mutation.is_none());
+        assert!(state.error.is_none());
+        // 左半删除：提交一条递归删除票据（测试环境没有服务端，只验证提交意图）。
+        let memory = state.service.budget().lease(Kind::Sftp, 4096).unwrap();
+        let root = crate::sftp::model::RemotePath::new(state.service.budget(), b"/tmp/folder").unwrap();
+        state.delete_preview = Some(DeletePreview {
+            plan: crate::sftp::plan::Plan {
+                root,
+                items: Vec::new(),
+                total: 0,
+                directories: 1,
+                skipped: 0,
+                truncated: false,
+            },
+            host: "fixture".into(),
+            _memory: memory,
+        });
+        assert!(app.delete_click(&mut state, 0));
+        assert!(state.delete_preview.is_none());
+        assert!(state.mutation.is_some(), "左半要提交递归删除");
         app.sftp = Some(state);
         close(&mut app);
     }

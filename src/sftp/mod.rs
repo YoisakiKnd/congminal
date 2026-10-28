@@ -187,6 +187,40 @@ mod interoperability {
     }
     #[cfg(unix)]
     #[test]
+    #[ignore = "本地sftp-server：递归删除的协议互操作；无SSH/网络，文件都在临时目录"]
+    fn local_subsystem_removes_a_whole_tree_and_tolerates_missing_entries() {
+        use super::client::{Channel, Source};
+        use crate::tasks::Cancellation;
+        let mut server = Server::new();
+        let source = Source { session: 93, generation: 6 };
+        let cancel = Cancellation::default();
+        std::fs::create_dir_all(server.path.join("tree/sub")).unwrap();
+        std::fs::write(server.path.join("tree/a.txt"), b"abc").unwrap();
+        std::fs::write(server.path.join("tree/sub/b.txt"), b"hello").unwrap();
+        let io = Split { input: server.input.as_mut().unwrap(), output: &mut server.output };
+        let mut channel = Channel::connect(io, source, server.pool.clone(), &cancel).unwrap();
+        let dir = std::fs::canonicalize(&server.path).unwrap();
+        let path = |relative: &str| {
+            let mut bytes = dir.as_os_str().as_encoded_bytes().to_vec();
+            for part in relative.split('/') {
+                bytes.push(b'/');
+                bytes.extend_from_slice(part.as_bytes());
+            }
+            bytes
+        };
+        let files = vec![path("tree/a.txt"), path("tree/sub/b.txt")];
+        // 目录按深度从深到浅；根目录最后删。
+        let dirs = vec![path("tree/sub"), path("tree")];
+        super::operations::remove_all(&mut channel, &files, &dirs, &cancel).unwrap();
+        assert!(!std::fs::metadata(dir.join("tree")).is_ok(), "整棵树都要删掉");
+        // 再删一遍：已经不存在的条目不算失败，通道仍然可用。
+        super::operations::remove_all(&mut channel, &files, &dirs, &cancel).unwrap();
+        super::operations::mkdir(&mut channel, &path("after"), &cancel).unwrap();
+        assert!(std::fs::metadata(dir.join("after")).unwrap().is_dir());
+        drop(channel);
+    }
+    #[cfg(unix)]
+    #[test]
     #[ignore = "本地sftp-server：建目录/重命名/删除的协议互操作；无SSH/网络，文件都在临时目录"]
     fn local_subsystem_creates_renames_and_removes_entries() {
         use super::client::{Channel, Source};
