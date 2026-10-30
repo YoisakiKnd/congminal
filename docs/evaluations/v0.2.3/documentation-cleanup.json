@@ -1,0 +1,11 @@
+{
+  "archive_ref": "v0.2.2",
+  "archive_commit": "c2aafdc6464b8d42dd2174d23cddcdf473d6a46b",
+  "archived_index_files": 1174,
+  "removed_files_verified": 1165,
+  "removed_bytes": 236992505,
+  "verification": "git hash-object --stdin-paths matched the v0.2.2 tree for every removed file before removal",
+  "maintained_files_at_release": 15,
+  "maintained_bytes_at_release": 213971,
+  "git_history_rewritten": false
+}

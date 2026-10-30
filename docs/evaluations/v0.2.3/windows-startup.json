@@ -1,0 +1,45 @@
+{
+  "version": "0.2.3",
+  "commit": "44d793db1eaeac8a5b5f70bad114a39b4c54393f",
+  "run": 41074466284,
+  "job": 124126834577,
+  "windows_native_startup": [
+    {
+      "case": "default",
+      "cwd": "C:\\Users\\runneradmin",
+      "caption": "congminal"
+    },
+    {
+      "case": "explicit",
+      "cwd": "D:\\a\\_temp\\congminal-startup-3908438253aa4509aaa504fd9e12df84\\cwd with spaces \u4e2d",
+      "caption": "congminal"
+    },
+    {
+      "case": "inherit",
+      "cwd": "D:\\a\\congminal\\congminal\\target\\release",
+      "caption": "congminal"
+    }
+  ],
+  "scoop_installed_package": {
+    "run": 41076383762,
+    "job": 124133580671,
+    "bucket_commit": "62601081b2fd4eaa4a771d011205367a1405f4ef",
+    "cases": [
+      {
+        "case": "default",
+        "cwd": "C:\\Users\\runneradmin",
+        "caption": "congminal"
+      },
+      {
+        "case": "explicit",
+        "cwd": "D:\\a\\_temp\\congminal-startup-eaed36c2bfec451ba4b3f11e2d5ae5d6\\cwd with spaces \u4e2d",
+        "caption": "congminal"
+      },
+      {
+        "case": "inherit",
+        "cwd": "C:\\Users\\runneradmin\\scoop\\apps\\congminal\\0.2.3",
+        "caption": "congminal"
+      }
+    ]
+  }
+}
