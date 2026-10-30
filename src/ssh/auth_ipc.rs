@@ -1,12 +1,15 @@
 //! 后台工作槽主动推进的认证端点；不建立线程，不在 UI 中执行磁盘/网络调用。
+#[cfg(windows)]
+use super::ticket::windows::Stream as UnixStream;
 use super::{Backend, Error, Kind, Secret, Ticket, ticket::OwnedTicket, wire};
 use crate::{
     resources::{Budget, Kind as ResourceKind, Lease},
     tasks::Cancellation,
 };
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 use std::{
     io::{self, Read, Write},
-    os::unix::net::UnixStream,
     path::Path,
     sync::Arc,
     time::{Duration, Instant},
@@ -37,9 +40,17 @@ impl From<io::Error> for Failure {
     }
 }
 enum Stage {
-    Receive { decoder: wire::RequestDecoder, request: Option<wire::Request> },
+    Receive {
+        decoder: wire::RequestDecoder,
+        request: Option<wire::Request>,
+    },
     Waiting(Ticket),
-    Send { answer: wire::Answer, written: usize },
+    Send {
+        answer: wire::Answer,
+        written: usize,
+    },
+    #[cfg(windows)]
+    Drain,
 }
 struct Client {
     stream: UnixStream,
@@ -174,6 +185,20 @@ impl Drop for Pump {
     }
 }
 impl Client {
+    fn sent(&mut self) -> bool {
+        #[cfg(unix)]
+        {
+            true
+        }
+        #[cfg(windows)]
+        {
+            // Windows 不能关闭仍有未读数据的服务端管道；等 helper 的有界确认。
+            // 切换阶段立即销毁答案，不为等待确认额外保留明文。
+            self.stage = Stage::Drain;
+            self.deadline = Instant::now() + Duration::from_secs(5);
+            false
+        }
+    }
     fn step(
         &mut self,
         endpoint: &OwnedTicket,
@@ -234,7 +259,7 @@ impl Client {
                         &answer.bytes()[*written - header.len()..]
                     };
                     if bytes.is_empty() {
-                        return Ok(true);
+                        return Ok(self.sent());
                     }
                     match self.stream.write(&bytes[..bytes.len().min(1024)]) {
                         Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero).into()),
@@ -245,9 +270,11 @@ impl Client {
                     }
                 }
                 if *written == header.len() + answer.bytes().len() {
-                    return Ok(true);
+                    return Ok(self.sent());
                 }
             }
+            #[cfg(windows)]
+            Stage::Drain => return Ok(self.stream.acknowledged()?),
         }
         Ok(false)
     }
@@ -268,7 +295,11 @@ impl Drop for Scratch {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
+#[path = "auth_ipc_windows_tests.rs"]
+mod windows_tests;
+
+#[cfg(all(test, unix))]
 mod tests {
     use super::super::{Front, Owner};
     use super::*;

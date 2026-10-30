@@ -11,7 +11,7 @@ default = []
 # macOS/Linux SFTP 预览入口，显式构建及配置启用；默认本地终端不加载。
 sftp-preview = ["ssh-auth-helper"]
 # M6 受限原生后端；尚未加入默认发布路径，评估见 docs/evaluations/m6-sftp.md。
-sftp-libssh2 = ["dep:libssh2-sys", "dep:libc"]
+sftp-libssh2 = ["dep:libssh2-sys"]
 # 独立认证 helper 的开发/验收入口，普通构建不产出或启用它。
 ssh-auth-helper = []
 # 本地目录隔离候选的开发/成本入口；不替换正常浏览后端。
@@ -24,13 +24,10 @@ required-features = ["ssh-auth-helper"]
 
 [dependencies]
 libssh2-sys = { version = "=0.3.3", optional = true, default-features = false }
-libc = { version = "=0.2.191", optional = true }
 
-# 本地状态监控的薄适配层（src/monitor）：只读 CPU/内存/磁盘，不启用进程、网络、
-# 组件与用户表，也不启用 multithread（不额外建线程）。版本与成本见
-# docs/evaluations/m7-monitor.md。
-[target.'cfg(any(target_os = "linux", target_os = "macos", windows))'.dependencies]
-sysinfo = { version = "=0.38.4", default-features = false, features = ["system", "disk"] }
+# Reuse the locked FFI definitions for fixed-size native monitor reads.
+[target.'cfg(unix)'.dependencies]
+libc = { version = "=0.2.191" }
 
 [profile.release]
 debug = 1

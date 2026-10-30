@@ -1,0 +1,8 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running unittests src/main.rs (/tmp/congminal-fix-target/debug/deps/congminal-89bc5d705c27622a)
+
+running 1 test
+test monitor::native::tests::repeated_native_reads_release_each_mach_send_right ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 918 filtered out; finished in 0.20s
+

@@ -4,17 +4,14 @@
 //! 每次采样一个 `ssh` 子进程（磁盘到期那轮再一个 `df`），由调用方的取消令牌控制超时与中止，
 //! 不常驻连接、不复用终端通道，也不起额外线程。
 use super::{Error, Raw, Sampling};
+use crate::ssh::capture::{self, Spec};
 use crate::tasks::Cancellation;
-use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// 单次读取的上限：超过就当作没有读数，避免远端异常输出把内存拖走。
 pub const TIMEOUT: Duration = Duration::from_secs(5);
 const OUTPUT_LIMIT: usize = 64 * 1024;
-/// 轮询子进程的间隔：取消与超时都按这个粒度生效。
-const POLL: Duration = Duration::from_millis(10);
 
 /// 一台远端主机与连接方式；字段与 SSH 配置档一一对应，不含任何认证内容。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,8 +33,8 @@ impl Target {
         }
     }
     /// 与终端一致的做法：主机密钥照 OpenSSH 默认校验，需要交互密码时直接失败。
-    fn command(&self) -> Command {
-        let mut command = Command::new(&self.program);
+    fn command(&self) -> Spec {
+        let mut command = Spec::new(&self.program);
         command
             .arg("-o")
             .arg("BatchMode=yes")
@@ -134,34 +131,31 @@ fn net_counters(text: &str) -> Option<(u64, u64)> {
 }
 
 /// 跑一条远端命令并取回 stdout；取消或超时就杀掉子进程，返回 `Error::Remote`。
-fn run(target: &Target, args: &[&str], cancel: &Cancellation) -> Result<String, Error> {
-    let mut command = target.command();
-    command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut child = command.spawn().map_err(|_| Error::Remote)?;
-    let deadline = Instant::now() + TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => break,
-            Ok(Some(_)) => return Err(Error::Remote),
-            Ok(None) => {}
-            Err(_) => return Err(Error::Remote),
-        }
-        if cancel.is_cancelled() || Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(Error::Remote);
-        }
-        cancel.wait(POLL);
-    }
-    let mut output = Vec::new();
-    if let Some(stdout) = child.stdout.as_mut() {
-        // `/proc/stat` 与 `df` 的输出都只有几 KB，读满上限即视为异常输出。
-        stdout.take(OUTPUT_LIMIT as u64 + 1).read_to_end(&mut output).map_err(|_| Error::Remote)?;
-    }
-    if output.len() > OUTPUT_LIMIT {
+fn run(target: &Target, args: &[&str], cancel: &Cancellation) -> Result<crate::resources::Tracked<String>, Error> {
+    let output = capture::run_split(
+        || {
+            let mut command = target.command();
+            command.args(args.iter().copied());
+            Ok(command)
+        },
+        &crate::resources::current(),
+        crate::resources::Kind::Monitor,
+        cancel,
+        TIMEOUT,
+        [OUTPUT_LIMIT, 0],
+    )
+    .map_err(|_| Error::Remote)?;
+    if !output.status.success() || output.truncated || cancel.is_cancelled() {
         return Err(Error::Remote);
     }
-    Ok(String::from_utf8_lossy(&output).into_owned())
+    // The decoded copy lives only for the sample; its maximum is admitted before allocation.
+    let text_memory = output
+        .stdout
+        .memory
+        .budget()
+        .lease(crate::resources::Kind::Monitor, OUTPUT_LIMIT * 3)
+        .map_err(|_| Error::Budget)?;
+    Ok(crate::resources::Tracked::new(String::from_utf8_lossy(&output.stdout).into_owned(), text_memory))
 }
 
 /// `/proc/stat` 里的 CPU 时间片（user+nice+system+idle+iowait+irq+softirq+steal）。

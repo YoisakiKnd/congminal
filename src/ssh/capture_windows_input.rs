@@ -28,16 +28,10 @@ unsafe extern "system" {
         timeout: u32,
         security: *const c_void,
     ) -> Handle;
-    fn ConnectNamedPipe(pipe: Handle, overlapped: *mut Overlapped) -> i32;
+    fn ConnectNamedPipe(pipe: Handle, overlapped: *mut c_void) -> i32;
     fn CreateEventW(security: *const c_void, manual: i32, initial: i32, name: *const u16) -> Handle;
     fn ResetEvent(event: Handle) -> i32;
-    fn WriteFile(
-        pipe: Handle,
-        bytes: *const c_void,
-        length: u32,
-        written: *mut u32,
-        overlapped: *mut Overlapped,
-    ) -> i32;
+    fn WriteFile(pipe: Handle, bytes: *const c_void, length: u32, written: *mut u32, overlapped: *mut c_void) -> i32;
     fn GetOverlappedResult(pipe: Handle, overlapped: *mut Overlapped, transferred: *mut u32, wait: i32) -> i32;
     fn CancelIoEx(pipe: Handle, overlapped: *mut Overlapped) -> i32;
 }
@@ -58,6 +52,10 @@ pub(super) struct Input {
     state: Option<Tracked<Box<State>>>,
     retained: bool,
 }
+// SAFETY: 所有请求地址都位于独占 Box 内，移动 Input 不移动 OVERLAPPED/数据。
+// 句柄可跨线程使用；只有 &mut Input 能提交或结束请求，未实现 Sync。
+// 完成前的内核访问及取消失败保留路径仍由 State 的原有拥有者约束。
+unsafe impl Send for Input {}
 impl Input {
     /// 调用者持有 process_launch guard；只将客户端读端放入继承白名单。
     pub(super) fn new(pool: &Arc<Budget>, security: &Security) -> Result<(Self, OwnedHandle), Error> {
@@ -93,7 +91,7 @@ impl Input {
             CreateFileW(name.as_ptr(), 0x8000_0000, 0, (security as *const Security).cast(), 3, 0x80, null_mut())
         })?;
         let state = input.state.as_ref().unwrap();
-        if unsafe { ConnectNamedPipe(state.pipe.as_raw_handle(), state.overlapped.get()) } == 0 {
+        if unsafe { ConnectNamedPipe(state.pipe.as_raw_handle(), state.overlapped.get().cast()) } == 0 {
             let error = io::Error::last_os_error();
             if error.raw_os_error() != Some(535) {
                 state.pending.set(error.raw_os_error() == Some(997));
@@ -123,7 +121,7 @@ impl Input {
                     state.bytes.get().cast(),
                     bytes.len() as u32,
                     null_mut(),
-                    state.overlapped.get(),
+                    state.overlapped.get().cast(),
                 )
             } == 0
             {

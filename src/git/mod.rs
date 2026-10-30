@@ -1,9 +1,9 @@
-//! 本地 Git 只读快照：git CLI 薄适配，NUL 分隔机器输出，不经 shell。
+//! Git CLI 薄适配：NUL 分隔机器输出、字面路径、受控子进程。
 //!
-//! 只执行 `rev-parse`、`status --porcelain=v1 -z`、`symbolic-ref` 和 `diff` 这类只读命令；
-//! 不执行会改写索引或仓库的操作，并用 `GIT_OPTIONAL_LOCKS=0` 阻止 status 顺手刷新索引。
-//! 每个请求自带账本票据：参数路径、stdout 缓冲、读取线程和结果元数据都从同一预算准入；
-//! 读取线程走固定工作池（`runtime::prepare`），取消或超时会杀掉子进程让读取线程读到 EOF。
+//! 查询使用机器格式，写操作只由明确用户动作触发；远程仓库在界面保持只读。
+//! 用 `GIT_OPTIONAL_LOCKS=0` 阻止 status 顺手刷新索引。
+//! 每个请求自带账本票据：参数路径、SSH 配置、stdout 缓冲和结果元数据都从同一预算准入；
+//! 单个任务内非阻塞排空双管道；取消/超时清理受控进程组或 Windows Job，不另建读取线程。
 //!
 //! 与成熟 Git 库的比较和同负载测量尚未进行（见 docs/evaluations/m7-git.md）；本模块只提供
 //! 可替换的薄适配，界面不直接依赖 git 命令行的数据结构。
@@ -14,9 +14,7 @@ use crate::{
 };
 use std::{
     ffi::{OsStr, OsString},
-    io::{self, Read},
     path::{Path, PathBuf},
-    process::Stdio,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -36,11 +34,47 @@ pub const NETWORK_TIMEOUT: Duration = Duration::from_secs(60);
 const STDERR_BYTES: usize = 4 * 1024;
 const PATH_LIMIT: usize = 16 * 1024;
 const DIFF_LINES: usize = 8000;
-const READ_CHUNK: usize = 16 * 1024;
 /// 结果元数据的起始工作预留：路径、分支名、版本字符串和列表索引。
 const WORK_BYTES: usize = 256 * 1024;
 /// 错误摘要上限；这是有界界面文字，不随仓库规模增长。
 const MESSAGE_LIMIT: usize = 200;
+const VERSION_BYTES: usize = 128;
+
+/// Small shared errors keep their admission through UI storage and clones.
+/// Decoding uses stack storage; even malformed stderr cannot allocate a lossy copy.
+#[derive(Clone)]
+pub struct Failure(Option<Arc<FailureText>>);
+struct FailureText {
+    text: [u8; MESSAGE_LIMIT],
+    _memory: Lease,
+}
+impl Failure {
+    fn as_str(&self) -> &str {
+        let inner = self.0.as_ref().expect("live failure");
+        let end = inner.text.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
+        std::str::from_utf8(&inner.text[..end]).expect("validated summary").trim()
+    }
+}
+impl Drop for Failure {
+    fn drop(&mut self) {
+        if let Some(inner) = self.0.take() {
+            // Every strong owner takes this path. Exactly one concurrent drop moves
+            // the payload out; Arc storage is freed before its lease is returned.
+            drop(Arc::into_inner(inner));
+        }
+    }
+}
+impl std::fmt::Debug for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.as_str().fmt(f)
+    }
+}
+impl PartialEq for Failure {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+impl Eq for Failure {}
 /// 分支列表上限：再多也不值得在 280 px 的侧栏里翻，超出就标记“已截断”。
 pub const BRANCH_LIMIT: usize = 200;
 /// 提交历史一次最多列出多少条。
@@ -62,7 +96,7 @@ pub enum Error {
     Cancelled,
     Timeout,
     /// 命令失败，附有界的 stderr 摘要。
-    Failed(String),
+    Failed(Failure),
     Output,
     Worker,
     /// 远端主机密钥未在 known_hosts 中：不在应用里替用户接受。
@@ -71,6 +105,7 @@ pub enum Error {
     Auth,
     /// 远程目录未知：shell 还没报告过远端工作目录。
     NoRemotePath,
+    Cleanup,
 }
 impl Error {
     pub fn message(&self) -> &str {
@@ -82,12 +117,13 @@ impl Error {
             Self::Path => "路径过长或无效",
             Self::Cancelled => "Git 查询已取消",
             Self::Timeout => "Git 查询超时（可调大 [git] timeout-seconds）",
-            Self::Failed(detail) => detail,
+            Self::Failed(detail) => detail.as_str(),
             Self::Output => "Git 输出无法解析，未猜测结果",
             Self::Worker => "Git 任务不可用，请重试",
             Self::HostKey => "远程主机密钥未确认，先在终端里连接一次并核对指纹",
             Self::Auth => "SSH 认证失败：先用终端连接一次，或加载密钥/agent",
             Self::NoRemotePath => "远程目录未知：先在远程终端进入仓库目录",
+            Self::Cleanup => "Git 子进程清理未确认，请检查后台进程后重试",
         }
     }
 }
@@ -139,6 +175,28 @@ impl Default for Limits {
     }
 }
 impl Limits {
+    fn clone_in(&self, pool: &Arc<Budget>) -> Result<Tracked<Self>, Error> {
+        let mut bytes = std::mem::size_of::<Self>();
+        let mut add = |length: usize| -> Result<(), Error> {
+            if length > PATH_LIMIT {
+                return Err(Error::Path);
+            }
+            bytes = bytes.checked_add(length).ok_or(Error::Path)?;
+            Ok(())
+        };
+        if let Some(program) = &self.program {
+            add(program.as_os_str().len())?;
+        }
+        if let Some(remote) = &self.remote {
+            add(remote.program.as_os_str().len())?;
+            add(remote.host.len())?;
+            for value in [&remote.user, &remote.identity, &remote.jump].into_iter().flatten() {
+                add(value.len())?;
+            }
+        }
+        let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
+        Ok(Tracked::new(self.clone(), memory))
+    }
     fn files(&self) -> usize {
         self.files.clamp(1, MAX_FILES)
     }
@@ -276,8 +334,8 @@ pub(crate) struct StatusRequest {
     pub(crate) owner: u64,
     pub(crate) generation: u64,
     dir: Tracked<PathBuf>,
-    limits: Limits,
-    known_version: Option<String>,
+    limits: Tracked<Limits>,
+    known_version: Option<Tracked<String>>,
 }
 pub(crate) struct StatusReply {
     pub(crate) owner: u64,
@@ -302,8 +360,16 @@ impl StatusRequest {
             owner,
             generation,
             dir: Tracked::new(PathBuf::from(dir), memory),
-            limits: limits.clone(),
-            known_version: known_version.map(str::to_owned),
+            limits: limits.clone_in(pool)?,
+            known_version: known_version
+                .map(|version| {
+                    if version.len() > VERSION_BYTES {
+                        return Err(Error::Path);
+                    }
+                    let memory = pool.lease(Kind::Git, version.len()).map_err(|_| Error::Budget)?;
+                    Ok(Tracked::new(version.to_owned(), memory))
+                })
+                .transpose()?,
         })
     }
 }
@@ -399,8 +465,8 @@ pub(crate) struct LogRequest {
     pub(crate) generation: u64,
     dir: Tracked<PathBuf>,
     /// 要看 `--stat` 的提交；None 表示只列历史。
-    hash: Option<OsString>,
-    limits: Limits,
+    hash: Option<Tracked<OsString>>,
+    limits: Tracked<Limits>,
 }
 pub(crate) struct LogReply {
     pub(crate) owner: u64,
@@ -431,8 +497,13 @@ impl LogRequest {
             owner,
             generation,
             dir: Tracked::new(PathBuf::from(dir), memory),
-            hash: hash.map(OsString::from),
-            limits: limits.clone(),
+            hash: hash
+                .map(|hash| {
+                    let memory = pool.lease(Kind::Git, hash.len()).map_err(|_| Error::Budget)?;
+                    Ok(Tracked::new(OsString::from(hash), memory))
+                })
+                .transpose()?,
+            limits: limits.clone_in(pool)?,
         })
     }
 }
@@ -441,7 +512,7 @@ pub(crate) struct BranchRequest {
     pub(crate) owner: u64,
     pub(crate) generation: u64,
     dir: Tracked<PathBuf>,
-    limits: Limits,
+    limits: Tracked<Limits>,
 }
 pub(crate) struct BranchReply {
     pub(crate) owner: u64,
@@ -461,7 +532,7 @@ impl BranchRequest {
             return Err(Error::Path);
         }
         let memory = pool.lease(Kind::Git, length + 128).map_err(|_| Error::Budget)?;
-        Ok(Self { owner, generation, dir: Tracked::new(PathBuf::from(dir), memory), limits: limits.clone() })
+        Ok(Self { owner, generation, dir: Tracked::new(PathBuf::from(dir), memory), limits: limits.clone_in(pool)? })
     }
 }
 
@@ -475,7 +546,7 @@ pub(crate) struct DiffRequest {
     pub(crate) generation: u64,
     target: Tracked<DiffTarget>,
     staged: bool,
-    limits: Limits,
+    limits: Tracked<Limits>,
 }
 pub(crate) struct DiffReply {
     pub(crate) owner: u64,
@@ -507,7 +578,7 @@ impl DiffRequest {
         memory
             .resize(target.root.capacity() + target.path.len() + target.label.capacity() + 256)
             .map_err(|_| Error::Budget)?;
-        Ok(Self { owner, generation, target: Tracked::new(target, memory), staged, limits: limits.clone() })
+        Ok(Self { owner, generation, target: Tracked::new(target, memory), staged, limits: limits.clone_in(pool)? })
     }
 }
 
@@ -559,8 +630,9 @@ fn scan_log(request: &LogRequest, cancel: &Cancellation) -> Result<Log, Error> {
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);
         }
+        let mut memory = pool.lease(Kind::Git, output.stdout.len() * 3 + 256).map_err(|_| Error::Budget)?;
         let stat = String::from_utf8_lossy(&output.stdout).into_owned();
-        let memory = pool.lease(Kind::Git, stat.capacity() + 256).map_err(|_| Error::Budget)?;
+        memory.resize(stat.capacity() + 256).map_err(|_| Error::Budget)?;
         return Ok(Log { commits: Vec::new(), stat: Some(stat), truncated: output.stdout_truncated, _memory: memory });
     }
     // 字段之间用 NUL 分隔，行之间用换行：主题行里的空格与制表符不会被拆错。
@@ -584,6 +656,9 @@ fn scan_log(request: &LogRequest, cancel: &Cancellation) -> Result<Log, Error> {
     if cancel.is_cancelled() {
         return Err(Error::Cancelled);
     }
+    let mut memory = pool
+        .lease(Kind::Git, output.stdout.len() * 8 + LOG_LIMIT * std::mem::size_of::<Commit>() * 3 + 512)
+        .map_err(|_| Error::Budget)?;
     let parsed = parse_log(&output.stdout, output.stdout_truncated);
     let bytes = parsed
         .commits
@@ -598,7 +673,7 @@ fn scan_log(request: &LogRequest, cancel: &Cancellation) -> Result<Log, Error> {
         })
         .sum::<usize>()
         + 256;
-    let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
+    memory.resize(bytes).map_err(|_| Error::Budget)?;
     Ok(Log { commits: parsed.commits, stat: None, truncated: parsed.truncated, _memory: memory })
 }
 
@@ -669,12 +744,15 @@ fn scan_branches(request: &BranchRequest, cancel: &Cancellation) -> Result<Branc
     if cancel.is_cancelled() {
         return Err(Error::Cancelled);
     }
+    let mut memory = pool
+        .lease(Kind::Git, output.stdout.len() * 4 + BRANCH_LIMIT * std::mem::size_of::<Branch>() * 3 + 512)
+        .map_err(|_| Error::Budget)?;
     let parsed = parse_branches(&output.stdout, output.stdout_truncated);
     let bytes =
         parsed.branches.iter().map(|branch| branch.name.capacity() + std::mem::size_of::<Branch>()).sum::<usize>()
             + parsed.branches.capacity() * std::mem::size_of::<Branch>()
             + 256;
-    let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
+    memory.resize(bytes).map_err(|_| Error::Budget)?;
     Ok(BranchList { branches: parsed.branches, truncated: parsed.truncated, _memory: memory })
 }
 
@@ -699,7 +777,10 @@ fn parse_branches(bytes: &[u8], truncated: bool) -> ParsedBranches {
                 continue;
             }
         };
-        if name.len() > BRANCH_NAME_BYTES || name.iter().any(|byte| byte.is_ascii_control()) {
+        if name.len() > BRANCH_NAME_BYTES
+            || name.iter().any(|byte| byte.is_ascii_control())
+            || std::str::from_utf8(name).is_err()
+        {
             limited = true;
             continue;
         }
@@ -717,8 +798,9 @@ fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Erro
     let pool = request.dir.memory.budget().clone();
     let limits = &request.limits;
     let started = Instant::now();
+    let mut memory = pool.lease(Kind::Git, WORK_BYTES).map_err(|_| Error::Budget)?;
     let version = match &request.known_version {
-        Some(version) => version.clone(),
+        Some(version) => version.data.clone(),
         None => probe_version(&pool, limits, cancel)?,
     };
     let dir = request.dir.as_path();
@@ -746,9 +828,9 @@ fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Erro
         if !top.success {
             return Err(classify(&top, limits));
         }
-        path_from(trim_bytes(&top.stdout))
+        path_from(path_line(&top.stdout))?
     } else {
-        path_from(&detected)
+        path_from(&detected)?
     };
     if cancel.is_cancelled() {
         return Err(Error::Cancelled);
@@ -770,7 +852,8 @@ fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Erro
         if !output.success {
             return Err(classify(&output, limits));
         }
-        let parsed = parse_status(&output.stdout, limits.files());
+        let parsed = parse_status_in(&output.stdout, limits.files(), &pool)?;
+        memory.absorb(parsed.memory);
         // 输出被截断时最后一个记录可能不完整，不猜测它，只标记不完整。
         (parsed.entries, parsed.counts, parsed.limited || output.stdout_truncated)
     } else {
@@ -778,7 +861,7 @@ fn scan(request: &StatusRequest, cancel: &Cancellation) -> Result<Snapshot, Erro
     };
     let head = detect_head(&pool, limits, &root, cancel)?;
     let bare = !worktree;
-    finish_snapshot(request, root, head, counts, entries, limited, bare, version, started.elapsed(), &pool)
+    finish_snapshot(request, root, head, counts, entries, limited, bare, version, started.elapsed(), memory)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -792,7 +875,7 @@ fn finish_snapshot(
     bare: bool,
     version: String,
     elapsed: Duration,
-    pool: &Arc<Budget>,
+    mut memory: Lease,
 ) -> Result<Snapshot, Error> {
     let label = crate::path_text::escape(root.as_os_str().as_encoded_bytes(), "");
     let head_len = match &head {
@@ -811,7 +894,7 @@ fn finish_snapshot(
             })
             .sum::<usize>()
         + WORK_BYTES;
-    let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
+    memory.resize(bytes).map_err(|_| Error::Budget)?;
     Ok(Snapshot {
         owner: request.owner,
         generation: request.generation,
@@ -854,15 +937,10 @@ fn scan_diff(request: &DiffRequest, cancel: &Cancellation) -> Result<Diff, Error
 fn build_diff(request: &DiffRequest, output: Output, pool: &Arc<Budget>) -> Result<Diff, Error> {
     let limits = &request.limits;
     let limit = limits.diff();
-    // 先准入文本与行索引的增长上限，再从已读取的输出构造显示文本。
-    let reserved = limit.saturating_add(DIFF_LINES * std::mem::size_of::<u32>()).saturating_add(4096);
-    let mut memory = pool.lease(Kind::Git, reserved).map_err(|_| Error::Budget)?;
-    let mut text = String::new();
-    let mut lines: Vec<u32> = Vec::new();
+    let mut text = Tracked::new(String::new(), pool.lease(Kind::Git, 0).map_err(|_| Error::Budget)?);
+    let mut lines = Tracked::new(Vec::<u32>::new(), pool.lease(Kind::Git, 0).map_err(|_| Error::Budget)?);
     let mut truncated = output.stdout_truncated;
-    if lines.try_reserve_exact(DIFF_LINES.min(output.stdout.len() / 32 + 1)).is_err() {
-        return Err(Error::Budget);
-    }
+    lines.reserve_capacity(DIFF_LINES.min(output.stdout.len() / 32 + 1)).ok_or(Error::Budget)?;
     let mut segments = output.stdout.split(|byte| *byte == b'\n').peekable();
     while let Some(raw) = segments.next() {
         // 末尾换行之后的空段不是一行内容。
@@ -876,26 +954,28 @@ fn build_diff(request: &DiffRequest, output: Output, pool: &Arc<Budget>) -> Resu
         let remaining = limit - text.len();
         // 最坏情况下每个字节转义成 4 个字符；按剩余额度准入，避免 String 自行扩容。
         let need = raw.len().saturating_mul(4).saturating_add(4).min(remaining);
-        if text.try_reserve(need).is_err() {
-            return Err(Error::Budget);
+        let required = text.len() + need;
+        text.reserve_capacity(required.max(text.data.capacity().saturating_mul(2)).min(limit)).ok_or(Error::Budget)?;
+        if lines.len() == lines.data.capacity() {
+            lines
+                .reserve_capacity((lines.data.capacity().saturating_mul(2)).clamp(1, DIFF_LINES))
+                .ok_or(Error::Budget)?;
         }
         let Ok(offset) = u32::try_from(text.len()) else {
             truncated = true;
             break;
         };
-        lines.push(offset);
-        truncated |= !push_line(&mut text, raw, limit);
-        text.push('\n');
+        lines.data.push(offset);
+        truncated |= !push_line(&mut text.data, raw, limit);
+        if text.len() < limit {
+            text.data.push('\n');
+        } else {
+            truncated = true;
+        }
     }
-    let target = &request.target.data;
-    let bytes = text.capacity()
-        + lines.capacity() * std::mem::size_of::<u32>()
-        + target.label.capacity()
-        + target.root.capacity()
-        + target.path.len()
-        + 256;
-    memory.resize(bytes).map_err(|_| Error::Budget)?;
-    Ok(Diff { text, lines, truncated, memory })
+    let mut memory = text.memory;
+    memory.absorb(lines.memory);
+    Ok(Diff { text: text.data, lines: lines.data, truncated, memory })
 }
 
 /// 一行 diff 的显示文本：制表符展开，控制符与无效 UTF-8 转义，超出预算即停止。
@@ -909,7 +989,7 @@ fn push_line(output: &mut String, raw: &[u8], limit: usize) -> bool {
             Err(error) => (error.valid_up_to(), error.error_len().unwrap_or(rest.len() - error.valid_up_to())),
         };
         for c in std::str::from_utf8(&rest[..valid]).unwrap().chars() {
-            let needed = if c == '\t' { 4 } else { c.len_utf8() };
+            let needed = if c == '\t' || c.is_control() { 4 } else { c.len_utf8() };
             if output.len() + needed > limit {
                 return false;
             }
@@ -942,7 +1022,14 @@ fn probe_version(pool: &Arc<Budget>, limits: &Limits, cancel: &Cancellation) -> 
     let text = String::from_utf8_lossy(&output.stdout);
     let line = text.lines().next().unwrap_or("").trim();
     let line = line.strip_prefix("git version ").unwrap_or(line);
-    Ok(line.chars().take(64).collect())
+    let end = line
+        .char_indices()
+        .map(|(index, _)| index)
+        .chain(std::iter::once(line.len()))
+        .take_while(|index| *index <= VERSION_BYTES)
+        .last()
+        .unwrap_or(0);
+    Ok(line[..end].to_owned())
 }
 
 fn detect_head(pool: &Arc<Budget>, limits: &Limits, root: &Path, cancel: &Cancellation) -> Result<Head, Error> {
@@ -990,12 +1077,25 @@ struct ParsedStatus {
     entries: Vec<Entry>,
     counts: Counts,
     limited: bool,
+    memory: Lease,
 }
 
+#[cfg(test)]
 fn parse_status(bytes: &[u8], limit: usize) -> ParsedStatus {
-    let mut entries = Vec::new();
+    parse_status_in(bytes, limit, &crate::resources::current()).unwrap()
+}
+fn parse_status_in(bytes: &[u8], limit: usize, pool: &Arc<Budget>) -> Result<ParsedStatus, Error> {
+    let mut memory = pool.lease(Kind::Git, 0).map_err(|_| Error::Budget)?;
+    let mut payload = 0;
+    let mut entries: Vec<Entry> = Vec::new();
     let mut counts = Counts::default();
     let mut limited = false;
+    let bytes = if bytes.last().is_some_and(|&byte| byte != 0) {
+        limited = true;
+        &bytes[..bytes.iter().rposition(|&byte| byte == 0).map_or(0, |i| i + 1)]
+    } else {
+        bytes
+    };
     let mut fields = bytes.split(|byte| *byte == 0);
     while let Some(record) = fields.next() {
         if record.is_empty() {
@@ -1019,6 +1119,32 @@ fn parse_status(bytes: &[u8], limit: usize) -> ParsedStatus {
             limited = true;
             continue;
         }
+        #[cfg(windows)]
+        if std::str::from_utf8(path).is_err() || source.is_some_and(|s| std::str::from_utf8(s).is_err()) {
+            limited = true;
+            continue;
+        }
+        if source.is_some_and(|s| s.len() > PATH_LIMIT) {
+            limited = true;
+            continue;
+        }
+        if entries.len() == limit {
+            limited = true;
+            break;
+        }
+        let old_index = entries.capacity() * std::mem::size_of::<Entry>();
+        let capacity = if entries.len() == entries.capacity() {
+            (entries.capacity() * 2).max(4).min(limit)
+        } else {
+            entries.capacity()
+        };
+        let new_index = capacity * std::mem::size_of::<Entry>();
+        // Cover old/new index blocks, escaped labels and temporaries before any allocation.
+        let work = (path.len() + source.map_or(0, <[u8]>::len)) * 20 + 256;
+        memory.resize(payload + old_index + new_index + work).map_err(|_| Error::Budget)?;
+        if capacity > entries.capacity() {
+            entries.try_reserve_exact(capacity - entries.len()).map_err(|_| Error::Budget)?;
+        }
         let mut label = String::with_capacity(path.len() * 4 + 16);
         label.push(index as char);
         label.push(worktree as char);
@@ -1041,27 +1167,34 @@ fn parse_status(bytes: &[u8], limit: usize) -> ParsedStatus {
                 counts.unstaged += 1;
             }
         }
-        if entries.len() == limit {
-            limited = true;
-            break;
-        }
+        payload += entry.path.capacity() + entry.label.capacity() + entry.source.as_ref().map_or(0, OsString::capacity);
         entries.push(entry);
+        memory.resize(payload + entries.capacity() * std::mem::size_of::<Entry>()).map_err(|_| Error::Budget)?;
     }
-    ParsedStatus { entries, counts, limited }
+    Ok(ParsedStatus { entries, counts, limited, memory })
 }
 
 fn parse_detect(stdout: &[u8]) -> Result<(bool, Vec<u8>), Error> {
-    let mut lines = stdout.split(|byte| *byte == b'\n');
-    let worktree = match trim_bytes(lines.next().unwrap_or(b"")) {
+    let Some(boundary) = stdout.iter().position(|&byte| byte == b'\n') else {
+        return Err(Error::Output);
+    };
+    let worktree = match trim_bytes(&stdout[..boundary]) {
         b"true" => true,
         b"false" => false,
         _ => return Err(Error::Output),
     };
-    let git_dir = trim_bytes(lines.next().unwrap_or(b""));
+    let git_dir = path_line(&stdout[boundary + 1..]);
     if git_dir.is_empty() {
         return Err(Error::Output);
     }
     Ok((worktree, git_dir.to_vec()))
+}
+
+fn path_line(bytes: &[u8]) -> &[u8] {
+    let bytes = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+    #[cfg(windows)]
+    let bytes = bytes.strip_suffix(b"\r").unwrap_or(bytes);
+    bytes
 }
 
 fn trim_bytes(bytes: &[u8]) -> &[u8] {
@@ -1081,48 +1214,91 @@ fn os_from(bytes: &[u8]) -> OsString {
     // Windows 上 git 以 UTF-8 输出路径；无效字节只影响显示，不用于写操作。
     OsString::from(String::from_utf8_lossy(bytes).into_owned())
 }
-fn path_from(bytes: &[u8]) -> PathBuf {
-    PathBuf::from(os_from(bytes))
+fn path_from(bytes: &[u8]) -> Result<PathBuf, Error> {
+    #[cfg(windows)]
+    if std::str::from_utf8(bytes).is_err() {
+        return Err(Error::Output);
+    }
+    Ok(PathBuf::from(os_from(bytes)))
 }
 
 fn classify(output: &Output, limits: &Limits) -> Error {
-    let message = String::from_utf8_lossy(&output.stderr);
-    let message = message.trim();
+    let contains = |needle: &[u8]| output.stderr.windows(needle.len()).any(|bytes| bytes == needle);
     if limits.remote.is_some() {
-        // 远端失败多半出在 ssh 本身：主机密钥、认证或网络，先把这三类分出来，
-        // 剩下的才交给有界的 stderr 摘要。
-        if message.contains("Host key verification failed") {
+        if contains(b"Host key verification failed") {
             return Error::HostKey;
         }
-        if message.contains("Permission denied")
-            || message.contains("Too many authentication failures")
-            || message.contains("no such identity")
+        if contains(b"Permission denied")
+            || contains(b"Too many authentication failures")
+            || contains(b"no such identity")
         {
             return Error::Auth;
         }
     }
-    if message.contains("not a git repository") {
+    if contains(b"not a git repository") {
         Error::NotRepository
-    } else if message.contains("Permission denied") || message.contains("permission denied") {
+    } else if contains(b"Permission denied") || contains(b"permission denied") {
         Error::Permission
     } else {
-        Error::Failed(failure_detail(&output.stderr, output.code))
+        match failure_detail(&output.stderr, output.code, output._reservation.budget()) {
+            Ok(detail) => Error::Failed(detail),
+            Err(error) => error,
+        }
     }
 }
 
-/// 错误摘要：最多 200 字节，不含换行；不随仓库规模增长。
-fn failure_detail(stderr: &[u8], code: Option<i32>) -> String {
-    let text = String::from_utf8_lossy(stderr);
-    let mut summary = String::new();
-    for c in text.chars().take(MESSAGE_LIMIT) {
-        summary.push(if c.is_control() { ' ' } else { c });
+/// Decode only the bounded prefix, including invalid UTF-8, without a temporary heap copy.
+fn failure_detail(stderr: &[u8], code: Option<i32>, pool: &Arc<Budget>) -> Result<Failure, Error> {
+    use std::fmt::Write;
+    struct Text {
+        bytes: [u8; MESSAGE_LIMIT],
+        len: usize,
     }
-    let summary = summary.trim();
-    match (summary.is_empty(), code) {
-        (true, Some(code)) => format!("Git 退出状态 {code}"),
-        (true, None) => "Git 已退出".into(),
-        (false, _) => summary.to_string(),
+    impl Write for Text {
+        fn write_str(&mut self, text: &str) -> std::fmt::Result {
+            for c in text.chars() {
+                let c = if c.is_control() { ' ' } else { c };
+                if self.len + c.len_utf8() > MESSAGE_LIMIT {
+                    return Err(std::fmt::Error);
+                }
+                self.len += c.encode_utf8(&mut self.bytes[self.len..]).len();
+            }
+            Ok(())
+        }
     }
+    let mut text = Text { bytes: [0; MESSAGE_LIMIT], len: 0 };
+    let mut remaining = stderr;
+    while !remaining.is_empty() {
+        match std::str::from_utf8(remaining) {
+            Ok(valid) => {
+                let _ = text.write_str(valid);
+                break;
+            }
+            Err(error) => {
+                let valid = std::str::from_utf8(&remaining[..error.valid_up_to()]).expect("valid prefix");
+                if text.write_str(valid).is_err() || text.write_str("�").is_err() {
+                    break;
+                }
+                remaining = &remaining
+                    [error.valid_up_to() + error.error_len().unwrap_or(remaining.len() - error.valid_up_to())..];
+            }
+        }
+    }
+    if std::str::from_utf8(&text.bytes[..text.len]).expect("valid summary").trim().is_empty() {
+        text = Text { bytes: [0; MESSAGE_LIMIT], len: 0 };
+        match code {
+            Some(code) => {
+                let _ = write!(text, "Git 退出状态 {code}");
+            }
+            None => {
+                let _ = text.write_str("Git 已退出");
+            }
+        }
+    }
+    let memory = pool
+        .lease(Kind::Git, std::mem::size_of::<FailureText>() + 2 * std::mem::size_of::<usize>())
+        .map_err(|_| Error::Budget)?;
+    Ok(Failure(Some(Arc::new(FailureText { text: text.bytes, _memory: memory }))))
 }
 
 /// 一次命令的原始结果；`_reservation` 覆盖 stdout/stderr 缓冲，随结果一起释放。
@@ -1135,40 +1311,37 @@ struct Output {
     _reservation: Lease,
 }
 
-fn kill(child: &mut std::process::Child) {
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
-/// 读取线程：超限后继续读完并丢弃，让子进程能结束，而不是卡在管道上。
-fn spawn_reader(
-    pool: &Arc<Budget>,
-    (slot, mut stream, limit): (u8, Box<dyn Read + Send>, usize),
-    sender: &std::sync::mpsc::Sender<(u8, Vec<u8>, bool)>,
-) -> Result<(), Error> {
-    let sender = sender.clone();
-    let permit = crate::runtime::prepare("git-io", pool).map_err(|_| Error::Worker)?;
-    permit
-        .spawn(move || {
-            let mut buffer = Vec::new();
-            let mut truncated = false;
-            let mut chunk = [0u8; READ_CHUNK];
-            loop {
-                match stream.read(&mut chunk) {
-                    Ok(0) => break,
-                    Ok(read) => {
-                        let room = limit.saturating_sub(buffer.len());
-                        let take = room.min(read);
-                        buffer.extend_from_slice(&chunk[..take]);
-                        truncated |= take < read;
-                    }
-                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(_) => break,
-                }
+// OpenSSH joins command arguments with spaces before the remote shell parses them.
+// Quote every byte, including filenames returned by Git. Unix paths need not be UTF-8.
+fn remote_command(dir: Option<&Path>, args: &[&OsStr]) -> Result<OsString, Error> {
+    let mut text = b"exec env -u GIT_GLOB_PATHSPECS -u GIT_NOGLOB_PATHSPECS -u GIT_ICASE_PATHSPECS GIT_LITERAL_PATHSPECS=1 GIT_OPTIONAL_LOCKS=0 GIT_TERMINAL_PROMPT=0 GIT_PAGER=cat LC_ALL=C git --literal-pathspecs".to_vec();
+    let mut quote = |arg: &OsStr| -> Result<(), Error> {
+        #[cfg(unix)]
+        let bytes = arg.as_encoded_bytes();
+        #[cfg(not(unix))]
+        let bytes = arg.to_str().ok_or(Error::Path)?.as_bytes();
+        if bytes.contains(&0) {
+            return Err(Error::Path);
+        }
+        text.extend_from_slice(b" '");
+        for &byte in bytes {
+            if byte == b'\'' {
+                text.extend_from_slice(b"'\\''");
+            } else {
+                text.push(byte);
             }
-            let _ = sender.send((slot, buffer, truncated));
-        })
-        .map_err(|_| Error::Worker)
+        }
+        text.push(b'\'');
+        Ok(())
+    };
+    if let Some(dir) = dir {
+        quote(OsStr::new("-C"))?;
+        quote(dir.as_os_str())?;
+    }
+    for arg in args {
+        quote(arg)?;
+    }
+    Ok(os_from(&text))
 }
 
 fn run(
@@ -1179,130 +1352,79 @@ fn run(
     stdout_limit: usize,
     cancel: &Cancellation,
 ) -> Result<Output, Error> {
-    if cancel.is_cancelled() {
-        return Err(Error::Cancelled);
-    }
-    let reservation = pool
-        .lease(Kind::Git, stdout_limit.saturating_add(STDERR_BYTES).saturating_add(4096))
-        .map_err(|_| Error::Budget)?;
-    let mut command = match &limits.remote {
-        // 远端：`ssh … -- host git -C <远程目录> …`。目录只作为参数传递，不经过 shell。
-        Some(remote) => {
-            let mut command = std::process::Command::new(&remote.program);
-            command
-                .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR"])
-                .arg("-o")
-                .arg("ServerAliveInterval=15");
-            if let Some(port) = remote.port {
-                command.arg("-p").arg(port.to_string());
-            }
-            if let Some(user) = &remote.user {
-                command.arg("-l").arg(user);
-            }
-            if let Some(identity) = &remote.identity {
-                command.arg("-i").arg(identity);
-            }
-            if let Some(jump) = &remote.jump {
-                command.arg("-J").arg(jump);
-            }
-            command.arg("--").arg(&remote.host).arg("git");
-            if let Some(dir) = dir {
-                command.arg("-C").arg(dir);
-            }
-            command
-        }
-        None => {
-            let program = limits.program.as_deref().map_or_else(|| OsStr::new("git"), Path::as_os_str);
-            let mut command = std::process::Command::new(program);
-            if let Some(dir) = dir {
-                command.arg("-C").arg(dir);
-            }
-            command
-        }
-    };
-    command
-        .args(args)
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_PAGER", "cat")
-        .env("LC_ALL", "C")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Err(Error::ToolMissing),
-        Err(_) => return Err(Error::Worker),
-    };
-    let (sender, receiver) = std::sync::mpsc::channel::<(u8, Vec<u8>, bool)>();
-    let mut started = 0u8;
-    let readers = [
-        child.stdout.take().map(|stream| (0u8, Box::new(stream) as Box<dyn Read + Send>, stdout_limit)),
-        child.stderr.take().map(|stream| (1u8, Box::new(stream) as Box<dyn Read + Send>, STDERR_BYTES)),
-    ];
-    for reader in readers.into_iter().flatten() {
-        if spawn_reader(pool, reader, &sender).is_err() {
-            kill(&mut child);
-            return Err(Error::Worker);
-        }
-        started += 1;
-    }
-    drop(sender);
-    let deadline = Instant::now() + limits.timeout();
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let mut stdout_truncated = false;
-    let mut received = 0u8;
-    while received < started {
-        if cancel.is_cancelled() {
-            kill(&mut child);
-            return Err(Error::Cancelled);
-        }
-        if Instant::now() >= deadline {
-            kill(&mut child);
-            return Err(Error::Timeout);
-        }
-        match receiver.recv_timeout(Duration::from_millis(20)) {
-            Ok((0, buffer, truncated)) => {
-                stdout = buffer;
-                stdout_truncated = truncated;
-                received += 1;
-            }
-            Ok((_, buffer, _)) => {
-                stderr = buffer;
-                received += 1;
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                kill(&mut child);
-                return Err(Error::Worker);
-            }
-        }
-    }
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if cancel.is_cancelled() {
-                    kill(&mut child);
-                    return Err(Error::Cancelled);
+    use crate::ssh::capture::{self, Spec};
+    let output = capture::run_split(
+        || {
+            let mut command = match &limits.remote {
+                Some(remote) => {
+                    let mut command = Spec::new(&remote.program);
+                    command.args([
+                        "-o",
+                        "BatchMode=yes",
+                        "-o",
+                        "ConnectTimeout=10",
+                        "-o",
+                        "LogLevel=ERROR",
+                        "-o",
+                        "ServerAliveInterval=15",
+                    ]);
+                    if let Some(port) = remote.port {
+                        command.arg("-p").arg(port.to_string());
+                    }
+                    if let Some(user) = &remote.user {
+                        command.arg("-l").arg(user);
+                    }
+                    if let Some(identity) = &remote.identity {
+                        command.arg("-i").arg(identity);
+                    }
+                    if let Some(jump) = &remote.jump {
+                        command.arg("-J").arg(jump);
+                    }
+                    command
+                        .arg("--")
+                        .arg(&remote.host)
+                        .arg(remote_command(dir, args).map_err(|_| capture::Error::Invalid)?);
+                    command
                 }
-                if Instant::now() >= deadline {
-                    kill(&mut child);
-                    return Err(Error::Timeout);
+                None => {
+                    let program = limits.program.as_deref().map_or_else(|| OsStr::new("git"), Path::as_os_str);
+                    let mut command = Spec::new(program);
+                    command.arg("--literal-pathspecs");
+                    if let Some(dir) = dir {
+                        command.arg("-C").arg(dir);
+                    }
+                    command.args(args);
+                    command
                 }
-                std::thread::sleep(Duration::from_millis(2));
-            }
-            Err(_) => return Err(Error::Worker),
-        }
-    };
+            };
+            command.git_environment = true;
+            Ok(command)
+        },
+        pool,
+        Kind::Git,
+        cancel,
+        limits.timeout(),
+        [stdout_limit, STDERR_BYTES],
+    )
+    .map_err(|error| match error {
+        capture::Error::Cancelled => Error::Cancelled,
+        capture::Error::Timeout => Error::Timeout,
+        capture::Error::Budget => Error::Budget,
+        capture::Error::Invalid | capture::Error::Limit => Error::Path,
+        capture::Error::Missing => Error::ToolMissing,
+        capture::Error::Permission => Error::Permission,
+        capture::Error::Cleanup(_) => Error::Cleanup,
+        _ => Error::Worker,
+    })?;
+    let mut memory = output.stdout.memory;
+    memory.absorb(output.stderr.memory);
     Ok(Output {
-        stdout,
-        stderr,
-        stdout_truncated,
-        success: status.success(),
-        code: status.code(),
-        _reservation: reservation,
+        stdout: output.stdout.data,
+        stderr: output.stderr.data,
+        stdout_truncated: output.truncated,
+        success: output.status.success(),
+        code: output.status.code(),
+        _reservation: memory,
     })
 }
 
@@ -1354,6 +1476,71 @@ pub(crate) enum WriteOp {
     },
 }
 
+/// GUI passes borrowed selections; payload copies only follow admission.
+pub(crate) enum WriteSource<'a> {
+    Stage { paths: &'a [OsString], count: usize },
+    Unstage { paths: &'a [OsString], count: usize, unborn: bool },
+    Resolve { paths: &'a [OsString], side: Side, count: usize },
+    Discard { paths: &'a [OsString], count: usize },
+    Commit { message: &'a str },
+    Checkout { name: &'a OsStr },
+    NewBranch { name: &'a OsStr },
+    DeleteBranch { name: &'a OsStr },
+    Pull,
+    Push,
+    StageAll,
+}
+impl WriteSource<'_> {
+    fn bytes(&self) -> Result<usize, Error> {
+        let bytes = match self {
+            Self::Stage { paths, .. }
+            | Self::Unstage { paths, .. }
+            | Self::Resolve { paths, .. }
+            | Self::Discard { paths, .. } => {
+                if paths.is_empty()
+                    || paths.len() > 48
+                    || paths.iter().any(|path| path.is_empty() || path.len() > PATH_LIMIT)
+                {
+                    return Err(Error::Path);
+                }
+                paths.iter().map(|path| path.len() + std::mem::size_of::<OsString>()).sum()
+            }
+            Self::Commit { message } => {
+                if message.len() > 4096 {
+                    return Err(Error::Path);
+                }
+                message.len()
+            }
+            Self::Checkout { name } | Self::NewBranch { name } | Self::DeleteBranch { name } => {
+                if name.len() > BRANCH_NAME_BYTES {
+                    return Err(Error::Path);
+                }
+                name.len()
+            }
+            Self::Pull | Self::Push | Self::StageAll => 0,
+        };
+        if bytes > 64 * 1024 {
+            return Err(Error::Path);
+        }
+        Ok(bytes)
+    }
+    fn into_owned(self) -> WriteOp {
+        match self {
+            Self::Stage { paths, count } => WriteOp::Stage { paths: paths.to_vec(), count },
+            Self::Unstage { paths, count, unborn } => WriteOp::Unstage { paths: paths.to_vec(), count, unborn },
+            Self::Resolve { paths, side, count } => WriteOp::Resolve { paths: paths.to_vec(), side, count },
+            Self::Discard { paths, count } => WriteOp::Discard { paths: paths.to_vec(), count },
+            Self::Commit { message } => WriteOp::Commit { message: message.to_owned() },
+            Self::Checkout { name } => WriteOp::Checkout { name: name.to_os_string() },
+            Self::NewBranch { name } => WriteOp::NewBranch { name: name.to_os_string() },
+            Self::DeleteBranch { name } => WriteOp::DeleteBranch { name: name.to_os_string() },
+            Self::Pull => WriteOp::Pull,
+            Self::Push => WriteOp::Push,
+            Self::StageAll => WriteOp::StageAll,
+        }
+    }
+}
+
 /// 冲突时保留哪一侧：`--ours` 是当前分支，`--theirs` 是正在合入的那一侧。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Side {
@@ -1375,21 +1562,6 @@ impl Side {
     }
 }
 impl WriteOp {
-    fn bytes(&self) -> usize {
-        match self {
-            Self::Stage { paths, .. }
-            | Self::Unstage { paths, .. }
-            | Self::Resolve { paths, .. }
-            | Self::Discard { paths, .. } => {
-                paths.iter().map(|path| path.len().saturating_add(std::mem::size_of::<OsString>())).sum()
-            }
-            Self::Commit { message } => message.capacity(),
-            Self::Checkout { name } | Self::NewBranch { name } | Self::DeleteBranch { name } => {
-                name.len().saturating_add(std::mem::size_of::<OsString>())
-            }
-            Self::Pull | Self::Push | Self::StageAll => 0,
-        }
-    }
     /// 联网操作要等远端，使用更长的时限；本地操作保持原有上限。
     fn network(&self) -> bool {
         matches!(self, Self::Pull | Self::Push)
@@ -1418,7 +1590,7 @@ pub(crate) struct WriteRequest {
     pub(crate) generation: u64,
     root: PathBuf,
     op: WriteOp,
-    limits: Limits,
+    limits: Tracked<Limits>,
     memory: Lease,
 }
 pub(crate) struct WriteReply {
@@ -1431,6 +1603,7 @@ pub(crate) struct WriteReply {
     _memory: Lease,
 }
 impl WriteRequest {
+    #[cfg(test)]
     pub(crate) fn new(
         owner: u64,
         generation: u64,
@@ -1439,9 +1612,43 @@ impl WriteRequest {
         limits: &Limits,
         pool: &Arc<Budget>,
     ) -> Result<Self, Error> {
-        let bytes = root.as_os_str().len().saturating_add(op.bytes()).saturating_add(512);
+        let source = match &op {
+            WriteOp::Stage { paths, count } => WriteSource::Stage { paths, count: *count },
+            WriteOp::Unstage { paths, count, unborn } => WriteSource::Unstage { paths, count: *count, unborn: *unborn },
+            WriteOp::Resolve { paths, side, count } => WriteSource::Resolve { paths, side: *side, count: *count },
+            WriteOp::Discard { paths, count } => WriteSource::Discard { paths, count: *count },
+            WriteOp::Commit { message } => WriteSource::Commit { message },
+            WriteOp::Checkout { name } => WriteSource::Checkout { name },
+            WriteOp::NewBranch { name } => WriteSource::NewBranch { name },
+            WriteOp::DeleteBranch { name } => WriteSource::DeleteBranch { name },
+            WriteOp::Pull => WriteSource::Pull,
+            WriteOp::Push => WriteSource::Push,
+            WriteOp::StageAll => WriteSource::StageAll,
+        };
+        Self::from_source(owner, generation, root, source, limits, pool)
+    }
+    pub(crate) fn from_source(
+        owner: u64,
+        generation: u64,
+        root: &Path,
+        source: WriteSource<'_>,
+        limits: &Limits,
+        pool: &Arc<Budget>,
+    ) -> Result<Self, Error> {
+        if root.as_os_str().is_empty() || root.as_os_str().len() > PATH_LIMIT {
+            return Err(Error::Path);
+        }
+        let bytes = root.as_os_str().len() + source.bytes()? + std::mem::size_of::<Self>() + 4096;
         let memory = pool.lease(Kind::Git, bytes).map_err(|_| Error::Budget)?;
-        Ok(Self { owner, generation, root: PathBuf::from(root), op, limits: limits.clone(), memory })
+        let mut limits = limits.clone_in(pool)?;
+        let op = source.into_owned();
+        if op.network() {
+            limits.data.timeout = limits.timeout().max(NETWORK_TIMEOUT);
+        }
+        Ok(Self { owner, generation, root: root.to_owned(), op, limits, memory })
+    }
+    pub(crate) fn description(&self) -> &'static str {
+        self.op.describe()
     }
 }
 
@@ -1459,12 +1666,9 @@ pub(crate) fn write(request: WriteRequest, cancel: &Cancellation) -> WriteReply 
 
 fn apply(request: &WriteRequest, cancel: &Cancellation) -> Result<String, Error> {
     let pool = request.memory.budget().clone();
-    let mut extended = request.limits.clone();
-    if request.op.network() {
-        // 远端可能慢，但不能无限等：仍由 `MAX_TIMEOUT` 封顶，超时后杀子进程。
-        extended.timeout = extended.timeout().max(NETWORK_TIMEOUT);
-    }
-    let limits = &extended;
+    // Bounded argv vectors, lossy stdout/stderr scratch and overlapping summaries.
+    let _work = pool.lease(Kind::Git, 32 * 1024).map_err(|_| Error::Budget)?;
+    let limits = &request.limits;
     let root = request.root.as_path();
     match &request.op {
         WriteOp::Stage { paths, count } => {

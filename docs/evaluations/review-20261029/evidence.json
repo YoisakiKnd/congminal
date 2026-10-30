@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-29",
+  "commit": "2be564fbea6db8ad538829ab8f4bf3521ecf22d2",
+  "platform": "macOS arm64",
+  "production_source_modified": false,
+  "probes_assert_observed_defects": true,
+  "default_tests": {
+    "passed": 833,
+    "failed": 1,
+    "ignored": 47
+  },
+  "feature_tests": {
+    "passed": 845,
+    "failed": 1,
+    "ignored": 50
+  },
+  "helper_tests": {
+    "passed": 20,
+    "failed": 0
+  },
+  "roadmap": {
+    "checked": 77,
+    "pending": 20
+  },
+  "logs": [
+    {
+      "name": "default-tests",
+      "file": "default-tests.log",
+      "sha256": "27cec97941064cb88cb7dc93f3d3d0880bfdf0b4dd916d0cbfe9089a16dbb744"
+    },
+    {
+      "name": "feature-tests",
+      "file": "feature-tests.log",
+      "sha256": "aa73b2b53ec216e33fe3cbe37873b74534d98a81ffbb1db1feef5b534eeb9323"
+    },
+    {
+      "name": "helper-tests",
+      "file": "helper-tests.log",
+      "sha256": "803188b0e537e25ee50ece7cf68ae164b855415703408e2d0ba998438dec7371"
+    },
+    {
+      "name": "cancel-isolated",
+      "file": "cancel-isolated.log",
+      "sha256": "a2a85b5e03c12a3040b411a2bd6808ebc7cbc4fb5945e51aed45246303ca3390"
+    },
+    {
+      "name": "probes-first",
+      "file": "probes-first.log",
+      "sha256": "b4f876e951ae9dfafecde7803e20ca9da00031a79f98aac3d822d693c3cc1d1c"
+    },
+    {
+      "name": "probes-final",
+      "file": "probes-final.log",
+      "sha256": "b96efe567652a5962bd2a3fd2f406c1e239fa75316387ab2eca22d6f04143ac9"
+    },
+    {
+      "name": "clippy",
+      "file": "clippy.log",
+      "sha256": "6792622e2f741eea421d01e432b1d95c4a1cfefea38952b424f7419a806012a8"
+    },
+    {
+      "name": "msrv",
+      "file": "msrv.log",
+      "sha256": "236750a94dc855f911022222eefc5ebaaa8d5b72c8126d0a0b2b92b922f2ee25"
+    },
+    {
+      "name": "windows-all-features",
+      "file": "windows-all-features.log",
+      "sha256": "6f412329260f09a9a8a1661a1b723b8fc6ca46183b147fff3c65b709a802d44c"
+    },
+    {
+      "name": "linux-all-features",
+      "file": "linux-all-features.log",
+      "sha256": "4a7cf290b792f185aca77420dad687d680c5d8b50b1992968dd11ffd2a597e6d"
+    },
+    {
+      "name": "linux-preview",
+      "file": "linux-preview.log",
+      "sha256": "2e17f031d0b612ee11c36751dc2b8e4e5b8dac0f08a2bfdb68f30213fdf62c3f"
+    },
+    {
+      "name": "cancel-clean-target",
+      "file": "cancel-clean-target.log",
+      "sha256": "a3a78b2f5156ce33c815968e2665514a6ed69b0ff2634165b3253a18b72bdcfa"
+    },
+    {
+      "name": "reproduction-driver",
+      "file": "reproduction-driver.log",
+      "sha256": "e1fceefc781b98b28fe0f0d47e3d42a7e3a985985a3c73813b93a8a8f62e704f"
+    }
+  ]
+}

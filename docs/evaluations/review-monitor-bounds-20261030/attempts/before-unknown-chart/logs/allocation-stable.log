@@ -1,0 +1,3 @@
+{"case": "monitor::disk::bounds_meter::maximum_table", "exit": 0}
+{"case": "monitor::disk::bounds_meter::native_volume", "exit": 0}
+{"case": "monitor::review_meter::sampler", "exit": 0}

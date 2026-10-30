@@ -343,6 +343,10 @@ pub struct Workspace {
     window_focus: bool,
     multiple: bool,
     quit: bool,
+    capture_closing: bool,
+    capture_recovery: Option<crate::tasks::LatestTask<(), ()>>,
+    capture_recovery_at: Option<Instant>,
+    capture_exit_notice: bool,
     status: Option<String>,
     round_robin: usize,
     pending_sweep: bool,
@@ -431,6 +435,10 @@ impl Workspace {
             window_focus: true,
             multiple: false,
             quit: false,
+            capture_closing: false,
+            capture_recovery: None,
+            capture_recovery_at: None,
+            capture_exit_notice: false,
             status: None,
             round_robin: 0,
             pending_sweep: false,
@@ -1028,6 +1036,51 @@ impl Workspace {
             // 准入成功后才缩减旧历史配额，失败不因多算一个会话淘汰旧历史。
             self.history_quotas();
         }
+    }
+    fn capture_exit_gate(&mut self, keep: bool) -> bool {
+        if keep && !self.capture_closing {
+            return true;
+        }
+        if !self.capture_closing {
+            self.capture_closing = true;
+            self.git.stop_for_exit();
+            self.monitor.stop_for_exit();
+        }
+        let unknown = crate::ssh::capture::unconfirmed_in(&self.git.pool) != 0;
+        if unknown && self.capture_recovery_at.is_none_or(|at| Instant::now() >= at) {
+            if self.capture_recovery.is_none() {
+                let pool = self.git.pool.clone();
+                self.capture_recovery =
+                    crate::tasks::LatestTask::new_named("capture-cleanup", self.driver.notify.clone(), move |(), _| {
+                        crate::ssh::capture::retry_cleanup_in(&pool);
+                        Ok(())
+                    })
+                    .ok();
+            }
+            if let Some(task) = &self.capture_recovery {
+                let _ = task.take();
+                if !task.stats().running {
+                    let _ = task.try_submit(());
+                }
+            }
+            self.capture_recovery_at = Some(Instant::now() + Duration::from_secs(1));
+        }
+        let recovering = self.capture_recovery.as_ref().is_some_and(|task| {
+            let s = task.stats();
+            s.running || s.pending
+        });
+        let pending = self.git.exit_pending()
+            || self.monitor.exit_pending()
+            || crate::ssh::capture::active_in(&self.git.pool) != 0
+            || recovering;
+        if pending {
+            if !self.capture_exit_notice {
+                self.notice("正在结束 Git/监控后台任务；清理未确认时窗口会保留");
+                self.capture_exit_notice = true;
+            }
+            return true;
+        }
+        false
     }
     fn close(&mut self) {
         if self.composing() {
@@ -2441,9 +2494,16 @@ impl App for Workspace {
         self.sftp_exit_gate(!self.quit)
     }
     fn event(&mut self, event: Event) -> bool {
+        if self.capture_closing {
+            if matches!(&event, Event::Resize { .. } | Event::Focus(_)) {
+                self.event_inner(event);
+            }
+            return self.capture_exit_gate(false);
+        }
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         if self.sftp_exiting() || (self.sftp.is_some() && matches!(&event, Event::CloseRequested)) {
-            return self.sftp_exit_event(event);
+            let keep = self.sftp_exit_event(event);
+            return self.capture_exit_gate(keep);
         }
         #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux")))]
         let event = match self.transfer_paths_event(event) {
@@ -2508,9 +2568,12 @@ impl App for Workspace {
         }
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         let keep = self.sftp_exit_gate(keep);
-        keep
+        self.capture_exit_gate(keep)
     }
     fn tick(&mut self) -> bool {
+        if self.capture_closing {
+            return self.capture_exit_gate(false);
+        }
         // 打开器进程在这里回收：退出后立刻不再占用进程表，也不新增线程。
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         crate::open::reap(&mut self.open_children);
@@ -2518,7 +2581,8 @@ impl App for Workspace {
         {
             self.sftp_tick();
             if self.sftp_exiting() {
-                return self.sftp_exit_gate(false);
+                let keep = self.sftp_exit_gate(false);
+                return self.capture_exit_gate(keep);
             }
         }
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
@@ -2747,7 +2811,7 @@ impl App for Workspace {
         let keep = !self.quit && (self.multiple || !self.panes[0].ended);
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         let keep = self.sftp_exit_gate(keep);
-        keep
+        self.capture_exit_gate(keep)
     }
     fn needs_redraw(&self) -> bool {
         #[cfg(all(any(test, feature = "sftp-preview"), unix))]
@@ -2865,6 +2929,9 @@ impl App for Workspace {
         }
     }
     fn deadline(&self) -> Option<Instant> {
+        if self.capture_closing {
+            return Some(Instant::now() + Duration::from_millis(50));
+        }
         let deadline = self.workspace_deadline();
         #[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
         let deadline = deadline
@@ -3620,7 +3687,7 @@ exec /bin/cat
              while [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\n\
              shift\n\
              shift\n\
-             if [ \"$1\" = \"git\" ]; then exec \"$@\"; fi\n\
+             case \"$1\" in \"exec env \"*) exec /bin/sh -c \"$*\";; esac\n\
              if [ \"$1\" = \"cat\" ]; then\n\
              cat <<'STAT'\n\
              cpu  120 30 60 800 10 0 5 0 0 0\n\

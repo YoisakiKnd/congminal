@@ -5,7 +5,6 @@
 pub(crate) mod auth;
 // 共用接口同时供独立 helper、协议适配与验收使用。
 #[cfg_attr(not(test), allow(dead_code))]
-#[cfg(any(test, all(feature = "sftp-preview", unix)))]
 pub(crate) mod capture;
 // 共用接口同时供独立 helper、协议适配与验收使用。
 #[cfg_attr(not(test), allow(dead_code))]

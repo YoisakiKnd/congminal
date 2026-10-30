@@ -13,13 +13,16 @@ mod resources;
 #[allow(dead_code)]
 #[path = "../cancellation.rs"]
 mod tasks;
+#[cfg(windows)]
+use auth::ticket::windows::Stream as AuthStream;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream as AuthStream;
 use std::{
     ffi::OsString,
     io,
     path::Path,
     process::{Command, Stdio},
 };
-#[cfg(unix)]
 use std::{
     io::{Read, Write},
     time::{Duration, Instant},
@@ -33,9 +36,20 @@ fn output() -> io::Result<std::fs::File> {
     use std::os::fd::BorrowedFd;
     Ok(std::fs::File::from(unsafe { BorrowedFd::borrow_raw(1) }.try_clone_to_owned()?))
 }
-#[cfg(unix)]
+#[cfg(windows)]
+fn output() -> io::Result<std::fs::File> {
+    use std::{ffi::c_void, os::windows::io::BorrowedHandle};
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetStdHandle(kind: u32) -> *mut c_void;
+    }
+    let handle = unsafe { GetStdHandle((-11i32) as u32) };
+    if handle.is_null() || handle as isize == -1 {
+        return Err(rejected());
+    }
+    Ok(std::fs::File::from(unsafe { BorrowedHandle::borrow_raw(handle) }.try_clone_to_owned()?))
+}
 struct Scratch([u8; 256]);
-#[cfg(unix)]
 impl Scratch {
     fn clear(&mut self) {
         for byte in &mut self.0 {
@@ -45,7 +59,6 @@ impl Scratch {
         }
     }
 }
-#[cfg(unix)]
 impl Drop for Scratch {
     fn drop(&mut self) {
         self.clear();
@@ -66,17 +79,16 @@ fn askpass(prompt: &std::ffi::OsStr, pool: &std::sync::Arc<resources::Budget>) -
     exchange(prompt, pool, Path::new(&path), ticket, kind)
 }
 #[cfg(windows)]
-fn exchange(
-    _prompt: &std::ffi::OsStr,
-    _pool: &std::sync::Arc<resources::Budget>,
-    _path: &Path,
-    _ticket: auth::ticket::Ticket,
-    _kind: auth::Kind,
-) -> io::Result<i32> {
-    Err(io::ErrorKind::Unsupported.into())
+fn ready(_stream: &AuthStream, _events: i16, deadline: Instant) -> io::Result<()> {
+    if Instant::now() >= deadline {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    // 只有按需运行的 helper 等待；主程序仍由工作槽 tick 推进，没有额外线程。
+    std::thread::sleep(Duration::from_millis(5));
+    Ok(())
 }
 #[cfg(unix)]
-fn ready(stream: &std::os::unix::net::UnixStream, events: i16, deadline: Instant) -> io::Result<()> {
+fn ready(stream: &AuthStream, events: i16, deadline: Instant) -> io::Result<()> {
     use std::os::fd::AsRawFd;
     #[repr(C)]
     struct PollFd {
@@ -110,7 +122,6 @@ fn ready(stream: &std::os::unix::net::UnixStream, events: i16, deadline: Instant
         }
     }
 }
-#[cfg(unix)]
 fn exchange(
     prompt: &std::ffi::OsStr,
     pool: &std::sync::Arc<resources::Budget>,
@@ -118,11 +129,24 @@ fn exchange(
     ticket: auth::ticket::Ticket,
     kind: auth::Kind,
 ) -> io::Result<i32> {
-    use std::{net::Shutdown, os::unix::net::UnixStream};
     let cancel = tasks::Cancellation::default();
     let packet = auth::wire::request(&ticket.capability, kind, prompt.as_encoded_bytes(), pool, &cancel)
         .map_err(|_| rejected())?;
-    let mut stream = UnixStream::connect(path.with_file_name("s"))?;
+    #[cfg(unix)]
+    let mut stream = AuthStream::connect(path.with_file_name("s"))?;
+    #[cfg(windows)]
+    let mut stream = {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match AuthStream::connect(path) {
+                Ok(stream) => break stream,
+                Err(e) if e.raw_os_error() == Some(231) && Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    };
     stream.set_nonblocking(true)?;
     let write_deadline = Instant::now() + Duration::from_secs(5);
     let mut offset = 0;
@@ -136,7 +160,8 @@ fn exchange(
         }
     }
     drop(packet);
-    stream.shutdown(Shutdown::Write)?;
+    #[cfg(unix)]
+    stream.shutdown(std::net::Shutdown::Write)?;
     let deadline = Instant::now() + Duration::from_secs(120);
     let mut decoder = auth::wire::AnswerDecoder::new(pool.clone());
     let mut bytes = Scratch([0; 256]);
@@ -159,6 +184,19 @@ fn exchange(
         match decoded? {
             Some(auth::wire::Answer::Cancelled) => return Ok(1),
             Some(auth::wire::Answer::Accepted(secret)) => {
+                #[cfg(windows)]
+                {
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    loop {
+                        match stream.acknowledge() {
+                            Ok(()) => break,
+                            Err(e) if e.kind() == io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                                std::thread::sleep(Duration::from_millis(5))
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    }
+                }
                 // 恰好 1023 字节时不追加换行；OpenSSH 以 EOF/读取上限完成。
                 // File 直接写系统句柄，避免 stdout 的 LineWriter 保留明文副本。
                 let mut output = output()?;
@@ -194,7 +232,7 @@ fn launch(args: &[OsString]) -> io::Result<i32> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        // 私有票据 DACL 验证未交付时上面的读取已拒绝，不降级成公开票据。
+        // Windows 子进程继续属于主程序创建的 Job；绝对路径避免启动器搜索歧义。
         if !Path::new(&args[2]).is_absolute() {
             return Err(rejected());
         }

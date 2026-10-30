@@ -100,6 +100,9 @@ const _: () = {
 };
 #[link(name = "kernel32")]
 unsafe extern "system" {
+    fn CompareStringOrdinal(a: *const u16, a_len: i32, b: *const u16, b_len: i32, ignore_case: i32) -> i32;
+    fn GetEnvironmentStringsW() -> *mut u16;
+    fn FreeEnvironmentStringsW(block: *mut u16) -> i32;
     fn CreateJobObjectW(attributes: *const c_void, name: *const u16) -> Handle;
     fn SetInformationJobObject(job: Handle, class: i32, information: *const c_void, size: u32) -> i32;
     fn QueryInformationJobObject(
@@ -289,9 +292,112 @@ impl Drop for Attributes {
         }
     }
 }
+// The only override mode is a fixed Git environment. Keep inherited non-Git entries,
+// including Windows drive variables, within one bounded UTF-16 work buffer.
+fn git_environment() -> Result<Vec<u16>, Error> {
+    const LIMIT: usize = 128 * 1024;
+    struct Native(*mut u16);
+    impl Drop for Native {
+        fn drop(&mut self) {
+            unsafe {
+                FreeEnvironmentStringsW(self.0);
+            }
+        }
+    }
+    let block = Native(unsafe { GetEnvironmentStringsW() });
+    if block.0.is_null() {
+        return Err(failure());
+    }
+    let names = [
+        "GIT_GLOB_PATHSPECS",
+        "GIT_NOGLOB_PATHSPECS",
+        "GIT_ICASE_PATHSPECS",
+        "GIT_LITERAL_PATHSPECS",
+        "GIT_OPTIONAL_LOCKS",
+        "GIT_TERMINAL_PROMPT",
+        "GIT_PAGER",
+        "LC_ALL",
+    ];
+    let mut out = Vec::new();
+    out.try_reserve_exact(LIMIT).map_err(|_| Error::Budget)?;
+    let mut at = 0;
+    loop {
+        if at >= LIMIT {
+            return Err(Error::Limit);
+        }
+        if unsafe { *block.0.add(at) } == 0 {
+            break;
+        }
+        let start = at;
+        while at < LIMIT && unsafe { *block.0.add(at) } != 0 {
+            at += 1;
+        }
+        if at >= LIMIT {
+            return Err(Error::Limit);
+        }
+        let entry = unsafe { std::slice::from_raw_parts(block.0.add(start), at - start) };
+        let key = &entry[..entry.iter().position(|&c| c == 61).unwrap_or(entry.len())];
+        let overridden = names.iter().any(|name| {
+            key.len() == name.len()
+                && key.iter().zip(name.bytes()).all(|(&a, b)| a < 128 && (a as u8).eq_ignore_ascii_case(&b))
+        });
+        if !overridden {
+            if out.len() + entry.len() + 512 >= LIMIT {
+                return Err(Error::Limit);
+            }
+            out.extend_from_slice(entry);
+            out.push(0);
+        }
+        at += 1;
+    }
+    for entry in
+        ["GIT_LITERAL_PATHSPECS=1", "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "LC_ALL=C"]
+    {
+        out.extend(entry.encode_utf16());
+        out.push(0);
+    }
+    out.push(0);
+    // CreateProcess expects a case-insensitively sorted environment block.
+    let mut ranges = [(0usize, 0usize); 4096];
+    let mut count = 0;
+    let mut at = 0;
+    while at + 1 < out.len() {
+        if count == ranges.len() {
+            return Err(Error::Limit);
+        }
+        let end = at + out[at..].iter().position(|&c| c == 0).ok_or(Error::Invalid)?;
+        ranges[count] = (at, end);
+        count += 1;
+        at = end + 1;
+    }
+    ranges[..count].sort_unstable_by(|&(a, end_a), &(b, end_b)| {
+        let key = |start: usize, end: usize| {
+            start + out[start + 1..end].iter().position(|&c| c == 61).map_or(end - start, |i| i + 1)
+        };
+        let end_a = key(a, end_a);
+        let end_b = key(b, end_b);
+        let order = unsafe {
+            CompareStringOrdinal(out[a..].as_ptr(), (end_a - a) as i32, out[b..].as_ptr(), (end_b - b) as i32, 1)
+        };
+        match order {
+            1 => std::cmp::Ordering::Less,
+            3 => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        }
+    });
+    let mut sorted = Vec::new();
+    sorted.try_reserve_exact(out.len()).map_err(|_| Error::Budget)?;
+    for &(start, end) in &ranges[..count] {
+        sorted.extend_from_slice(&out[start..=end]);
+    }
+    sorted.push(0);
+    Ok(sorted)
+}
+
 pub struct Process {
     process: OwnedHandle,
     output: File,
+    error: Option<File>,
     input: Option<input::Input>,
     job: OwnedHandle,
     stopped: bool,
@@ -333,6 +439,21 @@ impl Process {
         if unsafe { SetHandleInformation(read.as_raw_handle(), 1, 0) } == 0 {
             return Err(failure());
         }
+        let (error_read, error_write) = if spec.split {
+            let (mut read, mut write) = (null_mut(), null_mut());
+            if unsafe { CreatePipe(&mut read, &mut write, (&security as *const Security).cast(), 0) } == 0 {
+                return Err(failure());
+            }
+            let read = owned(read)?;
+            let write = owned(write)?;
+            if unsafe { SetHandleInformation(read.as_raw_handle(), 1, 0) } == 0 {
+                return Err(failure());
+            }
+            (Some(read), Some(write))
+        } else {
+            (None, None)
+        };
+        let environment = if spec.git_environment { Some(git_environment()?) } else { None };
         let nul = [78u16, 85, 76, 0];
         let nil = owned(unsafe {
             CreateFileW(nul.as_ptr(), 0xc000_0000, 3, (&security as *const Security).cast(), 3, 0x80, null_mut())
@@ -344,22 +465,27 @@ impl Process {
             }
             None => (None, None),
         };
-        let handles = [
-            write.as_raw_handle(),
-            nil.as_raw_handle(),
-            client.as_ref().map_or(nil.as_raw_handle(), AsRawHandle::as_raw_handle),
-        ];
+        let mut handles = [write.as_raw_handle(), nil.as_raw_handle(), null_mut(), null_mut()];
+        let mut handle_count = 2;
+        if let Some(client) = &client {
+            handles[handle_count] = client.as_raw_handle();
+            handle_count += 1;
+        }
+        if let Some(error) = &error_write {
+            handles[handle_count] = error.as_raw_handle();
+            handle_count += 1;
+        }
         let jobs = [job.as_raw_handle()];
         let mut attributes = Attributes::new()?;
         unsafe {
-            attributes.add(0x0002_0002, &handles[..if client.is_some() { 3 } else { 2 }])?;
+            attributes.add(0x0002_0002, &handles[..handle_count])?;
             attributes.add(0x0002_000d, &jobs)?;
         }
         let mut startup: StartupInfoExW = unsafe { std::mem::zeroed() };
         startup.startup_info.cb = std::mem::size_of::<StartupInfoExW>() as u32;
         startup.startup_info.flags = 0x100;
         startup.startup_info.std_input = client.as_ref().map_or(nil.as_raw_handle(), AsRawHandle::as_raw_handle);
-        startup.startup_info.std_error = nil.as_raw_handle();
+        startup.startup_info.std_error = error_write.as_ref().map_or(nil.as_raw_handle(), AsRawHandle::as_raw_handle);
         startup.startup_info.std_output = write.as_raw_handle();
         startup.attribute_list = attributes.pointer();
         let mut information: ProcessInformation = unsafe { std::mem::zeroed() };
@@ -371,7 +497,7 @@ impl Process {
                 null(),
                 1,
                 0x0808_0400,
-                null(),
+                environment.as_ref().map_or(null(), |block| block.as_ptr().cast()),
                 null(),
                 &startup.startup_info,
                 &mut information,
@@ -386,15 +512,14 @@ impl Process {
         drop(thread);
         drop(attributes);
         drop(write);
+        drop(error_write);
         drop(nil);
         drop(client);
-        Ok(Self { process, output: File::from(read), input, job, stopped: false })
+        Ok(Self { process, output: File::from(read), error: error_read.map(File::from), input, job, stopped: false })
     }
-    pub fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+    fn read_pipe(pipe: &mut File, bytes: &mut [u8]) -> io::Result<usize> {
         let mut available = 0;
-        if unsafe { PeekNamedPipe(self.output.as_raw_handle(), null_mut(), 0, null_mut(), &mut available, null_mut()) }
-            == 0
-        {
+        if unsafe { PeekNamedPipe(pipe.as_raw_handle(), null_mut(), 0, null_mut(), &mut available, null_mut()) } == 0 {
             let error = io::Error::last_os_error();
             return if matches!(error.raw_os_error(), Some(109 | 233)) { Ok(0) } else { Err(error) };
         }
@@ -403,7 +528,16 @@ impl Process {
         }
         let count = bytes.len().min(available as usize);
         // 此读端没有副本或其他读者，Peek 返回的字节不会被其他任务取走。
-        self.output.read(&mut bytes[..count])
+        pipe.read(&mut bytes[..count])
+    }
+    pub fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        Self::read_pipe(&mut self.output, bytes)
+    }
+    pub fn read_error(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+        match &mut self.error {
+            Some(pipe) => Self::read_pipe(pipe, bytes),
+            None => Ok(0),
+        }
     }
     pub fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.input.as_mut().ok_or(io::ErrorKind::BrokenPipe)?.write(bytes)
@@ -443,7 +577,6 @@ impl Process {
     }
     pub fn stop(&mut self) -> Result<ExitStatus, Error> {
         assert!(!self.stopped);
-        self.stopped = true;
         let previous = if self.exited()? { Some(self.code()?) } else { None };
         if unsafe { TerminateJobObject(self.job.as_raw_handle(), 1) } == 0 {
             let error = cleanup_error();
@@ -465,6 +598,7 @@ impl Process {
             Some(code) => code,
             None => self.code()?,
         };
+        self.stopped = true;
         Ok(ExitStatus::from_raw(code))
     }
     pub fn cleanup(&mut self) -> Result<(), Error> {
@@ -485,6 +619,9 @@ impl Process {
             0 | 258 => Ok(()),
             _ => Err(Error::Process),
         }
+    }
+    pub fn wait_split(&self, cancel: &Cancellation, eof: [bool; 2], closing: bool) -> Result<(), Error> {
+        self.wait(cancel, eof == [true; 2], closing)
     }
 }
 impl Drop for Process {

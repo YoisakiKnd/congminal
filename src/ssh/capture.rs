@@ -34,6 +34,267 @@ pub struct Output {
     pub bytes: Tracked<Vec<u8>>,
     pub status: ExitStatus,
 }
+
+/// Split machine output with one owner and no pipe-reader threads. Buffers carry
+/// their own leases through growth and delivery; cancellation covers drain and wait.
+pub(crate) struct SplitOutput {
+    pub stdout: Tracked<Vec<u8>>,
+    pub stderr: Tracked<Vec<u8>>,
+    pub truncated: bool,
+    pub status: ExitStatus,
+}
+
+// If native cleanup cannot be confirmed, keep the process identity and its work
+// lease in a fixed quarantine. Returning an error never discards the last owner.
+// No allocation or lock is needed to reserve a slot, and no slot is reused while
+// a retained process could still exist.
+struct Retained {
+    process: platform::Process,
+    _memory: Lease,
+}
+struct RetirementCell {
+    state: std::sync::atomic::AtomicU8, // free / reserved / retained / inspecting / initializing
+    owner: std::sync::atomic::AtomicUsize,
+    data: std::cell::UnsafeCell<std::mem::MaybeUninit<Retained>>,
+}
+// The state CAS grants exclusive access; readers only inspect the atomic state.
+unsafe impl Sync for RetirementCell {}
+impl RetirementCell {
+    const fn new() -> Self {
+        Self {
+            state: std::sync::atomic::AtomicU8::new(0),
+            owner: std::sync::atomic::AtomicUsize::new(0),
+            data: std::cell::UnsafeCell::new(std::mem::MaybeUninit::uninit()),
+        }
+    }
+}
+static RETIREMENTS: [RetirementCell; 64] = [const { RetirementCell::new() }; 64];
+struct RetirementSlot(Option<usize>);
+impl RetirementSlot {
+    fn reserve(pool: &Arc<Budget>) -> Result<Self, Error> {
+        use std::sync::atomic::Ordering::{Acquire, Relaxed};
+        RETIREMENTS
+            .iter()
+            .position(|cell| cell.state.compare_exchange(0, 4, Acquire, Relaxed).is_ok())
+            .map(|index| {
+                RETIREMENTS[index].owner.store(Arc::as_ptr(pool) as usize, Relaxed);
+                RETIREMENTS[index].state.store(1, std::sync::atomic::Ordering::Release);
+                Self(Some(index))
+            })
+            .ok_or(Error::Process)
+    }
+    fn retain(mut self, value: Retained) {
+        let cell = &RETIREMENTS[self.0.take().unwrap()];
+        // This reserved slot is exclusively owned until state=2 is published.
+        unsafe {
+            (*cell.data.get()).write(value);
+        }
+        cell.state.store(2, std::sync::atomic::Ordering::Release);
+    }
+}
+impl Drop for RetirementSlot {
+    fn drop(&mut self) {
+        if let Some(index) = self.0 {
+            RETIREMENTS[index].state.store(0, std::sync::atomic::Ordering::Release);
+        }
+    }
+}
+pub(crate) fn active() -> usize {
+    RETIREMENTS.iter().filter(|cell| cell.state.load(std::sync::atomic::Ordering::Acquire) != 0).count()
+}
+pub(crate) fn unconfirmed() -> usize {
+    RETIREMENTS.iter().filter(|cell| matches!(cell.state.load(std::sync::atomic::Ordering::Acquire), 2 | 3)).count()
+}
+pub(crate) fn active_in(pool: &Arc<Budget>) -> usize {
+    RETIREMENTS
+        .iter()
+        .filter(|cell| {
+            matches!(cell.state.load(std::sync::atomic::Ordering::Acquire), 1..=3)
+                && cell.owner.load(std::sync::atomic::Ordering::Relaxed) == Arc::as_ptr(pool) as usize
+        })
+        .count()
+}
+pub(crate) fn unconfirmed_in(pool: &Arc<Budget>) -> usize {
+    RETIREMENTS
+        .iter()
+        .filter(|cell| {
+            matches!(cell.state.load(std::sync::atomic::Ordering::Acquire), 2 | 3)
+                && cell.owner.load(std::sync::atomic::Ordering::Relaxed) == Arc::as_ptr(pool) as usize
+        })
+        .count()
+}
+/// Explicit background retry; no new threads, and never called on the UI thread.
+pub(crate) fn retry_cleanup_in(pool: &Arc<Budget>) {
+    use std::sync::atomic::Ordering::{Acquire, Relaxed, Release};
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let start = NEXT.fetch_add(1, Relaxed) % RETIREMENTS.len();
+    for offset in 0..RETIREMENTS.len() {
+        let cell = &RETIREMENTS[(start + offset) % RETIREMENTS.len()];
+        if cell.owner.load(Relaxed) != Arc::as_ptr(pool) as usize {
+            continue;
+        }
+        if cell.state.compare_exchange(2, 3, Acquire, Relaxed).is_err() {
+            continue;
+        }
+        // State 3 excludes all other writers and guarantees initialized data.
+        let value = unsafe { (*cell.data.get()).assume_init_mut() };
+        if value.process.cleanup().is_ok() {
+            let value = unsafe { (*cell.data.get()).assume_init_read() };
+            drop(value); // Native handles first, then their lease, outside any lock.
+            cell.state.store(0, Release);
+        } else {
+            cell.state.store(2, Release);
+        }
+        break; // At most one potentially slow native retirement per background request.
+    }
+}
+struct CaptureChild {
+    process: Option<platform::Process>,
+    memory: Option<Lease>,
+    retirement: Option<RetirementSlot>,
+}
+impl std::ops::Deref for CaptureChild {
+    type Target = platform::Process;
+    fn deref(&self) -> &Self::Target {
+        self.process.as_ref().unwrap()
+    }
+}
+impl std::ops::DerefMut for CaptureChild {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.process.as_mut().unwrap()
+    }
+}
+impl CaptureChild {
+    fn finish(&mut self) -> Result<(), Error> {
+        let Some(process) = &mut self.process else { return Ok(()) };
+        if let Err(error) = process.cleanup() {
+            self.retirement
+                .take()
+                .unwrap()
+                .retain(Retained { process: self.process.take().unwrap(), _memory: self.memory.take().unwrap() });
+            return Err(error);
+        }
+        drop(self.process.take());
+        drop(self.memory.take());
+        drop(self.retirement.take());
+        Ok(())
+    }
+}
+impl Drop for CaptureChild {
+    fn drop(&mut self) {
+        let _ = self.finish();
+    }
+}
+pub(crate) fn run_split(
+    factory: impl FnOnce() -> Result<Spec, Error>,
+    pool: &Arc<Budget>,
+    kind: Kind,
+    cancel: &Cancellation,
+    timeout: Duration,
+    limits: [usize; 2],
+) -> Result<SplitOutput, Error> {
+    if timeout.is_zero() || timeout > Duration::from_secs(120) || limits.iter().any(|&n| n > 32 * 1024 * 1024) {
+        return Err(Error::Invalid);
+    }
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    // Includes bounded argv/Windows UTF-16 environment work. Native kernel memory
+    // remains outside the managed-heap accounting, as in the original capture API.
+    let deadline = Instant::now() + timeout;
+    if unconfirmed_in(pool) != 0 {
+        retry_cleanup_in(pool);
+    }
+    let work = pool.lease(kind, 1024 * 1024).map_err(|_| Error::Budget)?;
+    let retirement = RetirementSlot::reserve(pool)?;
+    let mut out = [
+        Tracked::new(Vec::new(), pool.lease(kind, 0).map_err(|_| Error::Budget)?),
+        Tracked::new(Vec::new(), pool.lease(kind, 0).map_err(|_| Error::Budget)?),
+    ];
+    let mut spec = factory()?;
+    if spec.get_program().is_empty()
+        || spec.get_program().len() > 4096
+        || spec.get_args().count() > 64
+        || spec.get_args().map(OsStr::len).sum::<usize>() > 128 * 1024
+        || spec.get_args().any(|arg| arg.as_encoded_bytes().contains(&0))
+    {
+        return Err(Error::Invalid);
+    }
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    if Instant::now() >= deadline {
+        return Err(Error::Timeout);
+    }
+    spec.split = true;
+    let mut child = CaptureChild {
+        process: Some(platform::Process::spawn(&mut spec, None)?),
+        memory: Some(work),
+        retirement: Some(retirement),
+    };
+    drop(spec);
+    let mut eof = [false; 2];
+    let mut truncated = [false; 2];
+    let mut status = None;
+    let mut closing_checks = 0;
+    let mut chunk = [0u8; 8192];
+    let result = (|| {
+        loop {
+            if cancel.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            if Instant::now() >= deadline {
+                return Err(Error::Timeout);
+            }
+            let mut progress = false;
+            for stream in 0..2 {
+                if eof[stream] {
+                    continue;
+                }
+                let read = if stream == 0 { child.read(&mut chunk) } else { child.read_error(&mut chunk) };
+                match read {
+                    Ok(0) => eof[stream] = true,
+                    Ok(n) => {
+                        let take = n.min(limits[stream].saturating_sub(out[stream].len()));
+                        let needed = out[stream].len() + take;
+                        if needed > out[stream].data.capacity() {
+                            let capacity =
+                                needed.max(out[stream].data.capacity().saturating_mul(2)).min(limits[stream]);
+                            out[stream].reserve_capacity(capacity).ok_or(Error::Budget)?;
+                        }
+                        out[stream].data.extend_from_slice(&chunk[..take]);
+                        truncated[stream] |= take < n;
+                        progress = true;
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                    Err(_) => return Err(Error::Process),
+                }
+            }
+            if status.is_none() && child.exited()? {
+                status = Some(child.stop()?);
+            }
+            if eof == [true; 2]
+                && let Some(status) = status
+            {
+                return Ok(status);
+            }
+            if !progress {
+                child.wait_split(cancel, eof, closing_checks < 2)?;
+                if eof == [true; 2] {
+                    closing_checks += 1;
+                }
+            }
+        }
+    })();
+    child.finish()?;
+    let status = result?;
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    let [stdout, stderr] = out;
+    Ok(SplitOutput { stdout, stderr, truncated: truncated[0], status })
+}
 fn process_error(error: io::Error) -> Error {
     match error.kind() {
         io::ErrorKind::NotFound => Error::Missing,
@@ -58,10 +319,12 @@ fn validate(command: &Spec) -> Result<(), Error> {
 pub struct Spec {
     program: OsString,
     args: Vec<OsString>,
+    pub(crate) split: bool,
+    pub(crate) git_environment: bool,
 }
 impl Spec {
     pub fn new(program: impl AsRef<OsStr>) -> Self {
-        Self { program: program.as_ref().into(), args: Vec::new() }
+        Self { program: program.as_ref().into(), args: Vec::new(), split: false, git_environment: false }
     }
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
         self.args.push(arg.as_ref().into());
@@ -83,6 +346,17 @@ impl Spec {
     pub(super) fn standard(&self) -> Command {
         let mut command = Command::new(&self.program);
         command.args(&self.args);
+        if self.git_environment {
+            command
+                .env_remove("GIT_GLOB_PATHSPECS")
+                .env_remove("GIT_NOGLOB_PATHSPECS")
+                .env_remove("GIT_ICASE_PATHSPECS")
+                .env("GIT_LITERAL_PATHSPECS", "1")
+                .env("GIT_OPTIONAL_LOCKS", "0")
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .env("GIT_PAGER", "cat")
+                .env("LC_ALL", "C");
+        }
         command
     }
 }
@@ -369,7 +643,7 @@ mod platform {
     use std::{
         io::{Read, Write},
         os::{fd::AsRawFd, unix::process::CommandExt},
-        process::{Child, ChildStdin, ChildStdout},
+        process::{Child, ChildStderr, ChildStdin, ChildStdout},
     };
     #[repr(C, align(16))]
     struct Info {
@@ -416,6 +690,7 @@ mod platform {
     pub struct Process {
         child: Child,
         output: Option<ChildStdout>,
+        error: Option<ChildStderr>,
         input: Option<ChildStdin>,
         stopped: bool,
     }
@@ -423,18 +698,20 @@ mod platform {
         pub fn spawn(spec: &mut Spec, duplex: Option<&Arc<Budget>>) -> Result<Self, Error> {
             let mut command = spec.standard();
             command.stdin(if duplex.is_some() { Stdio::piped() } else { Stdio::null() });
-            command.stdout(Stdio::piped()).stderr(Stdio::null());
+            command.stdout(Stdio::piped()).stderr(if spec.split { Stdio::piped() } else { Stdio::null() });
             command.process_group(0);
             let child = {
                 let _guard = crate::process_launch::guard();
                 command.spawn().map_err(process_error)?
             };
-            let mut process = Self { child, output: None, input: None, stopped: false };
+            let mut process = Self { child, output: None, error: None, input: None, stopped: false };
             process.output = process.child.stdout.take();
+            process.error = process.child.stderr.take();
             process.input = process.child.stdin.take();
             let setup = (|| {
                 for fd in std::iter::once(process.output.as_ref().ok_or(Error::Process)?.as_raw_fd())
                     .chain(process.input.as_ref().map(AsRawFd::as_raw_fd))
+                    .chain(process.error.as_ref().map(AsRawFd::as_raw_fd))
                 {
                     let flags = unsafe { fcntl(fd, 3) };
                     if flags < 0 || unsafe { fcntl(fd, 4, flags | NONBLOCK) } < 0 {
@@ -451,6 +728,12 @@ mod platform {
         }
         pub fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
             self.output.as_mut().unwrap().read(bytes)
+        }
+        pub fn read_error(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
+            match self.error.as_mut() {
+                Some(error) => error.read(bytes),
+                None => Ok(0),
+            }
         }
         pub fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
             self.input.as_mut().ok_or(io::ErrorKind::BrokenPipe)?.write(bytes)
@@ -470,6 +753,29 @@ mod platform {
             let mut fd = PollFd { fd: self.output.as_ref().unwrap().as_raw_fd(), events: 1, revents: 0 };
             // 输出就绪立即唤醒；仅在活动查询等待时使用最多 5 ms 的取消检查间隔。
             if unsafe { poll(&mut fd, 1, 5) } < 0 && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                return Err(Error::Process);
+            }
+            Ok(())
+        }
+        pub fn wait_split(&self, cancel: &Cancellation, eof: [bool; 2], closing: bool) -> Result<(), Error> {
+            if cancel.is_cancelled() {
+                return Ok(());
+            }
+            if eof == [true; 2] {
+                return self.wait(cancel, true, closing);
+            }
+            let mut fds = [PollFd { fd: -1, events: 1, revents: 0 }, PollFd { fd: -1, events: 1, revents: 0 }];
+            if !eof[0] {
+                fds[0].fd = self.output.as_ref().unwrap().as_raw_fd();
+            }
+            if !eof[1] {
+                fds[1].fd = self.error.as_ref().unwrap().as_raw_fd();
+            }
+            // Wait on whichever stream is still open. Polling an already closed
+            // stdout can spin, and sleeping on its EOF adds 5ms per short command.
+            if unsafe { poll(fds.as_mut_ptr(), 2, 5) } < 0
+                && io::Error::last_os_error().kind() != io::ErrorKind::Interrupted
+            {
                 return Err(Error::Process);
             }
             Ok(())
@@ -508,9 +814,13 @@ mod platform {
             } else {
                 group_error
             };
-            self.stopped = true;
+            // Keep the unreaped leader identity if group termination is unknown.
+            if let Some(error) = group_error {
+                return Err(Error::Cleanup(error));
+            }
             let status = self.child.wait().map_err(|e| Error::Cleanup(e.raw_os_error().unwrap_or(0)))?;
-            if let Some(error) = group_error { Err(Error::Cleanup(error)) } else { Ok(status) }
+            self.stopped = true;
+            Ok(status)
         }
         pub fn cleanup(&mut self) -> Result<(), Error> {
             if self.stopped { Ok(()) } else { self.stop().map(|_| ()) }
@@ -532,6 +842,75 @@ mod platform;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn unknown_native_owner_retains_credit_and_only_its_budget_can_reclaim_it() {
+        let pool = Budget::new(4 * 1024 * 1024, 0);
+        let other = Budget::new(4 * 1024 * 1024, 0);
+        struct Drain(Arc<Budget>);
+        impl Drop for Drain {
+            fn drop(&mut self) {
+                retry_cleanup_in(&self.0);
+            }
+        }
+        let _drain = Drain(pool.clone());
+        let memory = pool.lease(Kind::Git, 1024 * 1024).unwrap();
+        let slot = RetirementSlot::reserve(&pool).unwrap();
+        let mut spec = shell("exec sleep 30");
+        let process = platform::Process::spawn(&mut spec, None).unwrap();
+        drop(spec);
+        // Fault fixture: native ownership is handed to the unknown-cleanup path.
+        slot.retain(Retained { process, _memory: memory });
+        assert_eq!(unconfirmed_in(&pool), 1);
+        assert_eq!(unconfirmed_in(&other), 0);
+        retry_cleanup_in(&other);
+        assert_eq!(pool.snapshot().used, 1024 * 1024);
+        retry_cleanup_in(&pool);
+        assert_eq!(unconfirmed_in(&pool), 0);
+        assert_eq!(active_in(&pool), 0);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn split_capture_drains_both_streams_and_limits_before_allocation() {
+        let pool = Budget::new(8 * 1024 * 1024, 0);
+        let output = run_split(
+            || Ok(shell("head -c 1048576 /dev/zero; head -c 1048576 /dev/zero >&2")),
+            &pool,
+            Kind::Git,
+            &Cancellation::default(),
+            Duration::from_secs(5),
+            [1024, 2048],
+        )
+        .unwrap();
+        assert!(output.status.success());
+        assert!(output.truncated);
+        assert_eq!(output.stdout.len(), 1024);
+        assert_eq!(output.stderr.len(), 2048);
+        assert_eq!(pool.snapshot().used, output.stdout.data.capacity() + output.stderr.data.capacity());
+        drop(output);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn exited_parent_does_not_leave_drain_waiting_for_inherited_pipe() {
+        let pool = Budget::new(8 * 1024 * 1024, 0);
+        let at = Instant::now();
+        let output = run_split(
+            || Ok(shell("sleep 30 & printf READY; exec /usr/bin/true")),
+            &pool,
+            Kind::Monitor,
+            &Cancellation::default(),
+            Duration::from_secs(5),
+            [4096, 0],
+        )
+        .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout.data, b"READY");
+        assert!(at.elapsed() < Duration::from_secs(3));
+        drop(output);
+        assert_eq!(pool.snapshot().used, 0);
+    }
     #[test]
     fn invalid_cancel_and_quota_do_not_construct_a_command() {
         let pool = Budget::new(0, 0);

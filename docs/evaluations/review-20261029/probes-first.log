@@ -1,0 +1,36 @@
+   Compiling congminal v0.1.0-alpha.6 (/var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-review-xmcqaa53)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.26s
+     Running unittests src/main.rs (target/debug/deps/congminal-f7113c203a18046f)
+
+running 15 tests
+test config::sftp::tests::preview_paths_are_bounded_and_invalid_paths_disable_instead_of_falling_back ... ok
+test config::theme::tests::every_theme_round_trips_through_name_index_and_preview_order ... ok
+test git::tests::review_remote_shell_reinterprets_directory ... REVIEW: remote directory executed shell printf
+ok
+test git::tests::review_selected_pathspec_stages_another_file ... REVIEW: selecting one path staged unselected victim.txt
+ok
+test git::tests::review_timeout_refunds_live_reader_buffer ... REVIEW: git-reserved=0 while 2 readers remain alive with inherited pipes
+ok
+test integration_tests::theme_preview_shows_each_theme_before_committing ... ok
+test monitor::remote::review_read_after_exit_ignores_cancellation ... 
+thread 'monitor::remote::review_read_after_exit_ignores_cancellation' (24869331) panicked at src/monitor/remote.rs:442:2:
+assertion failed: result.is_ok()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+test ssh::auth::controller::tests::confirmation_uses_scoped_commands_defaults_to_no_and_requires_review_for_yes ... ok
+test ssh::auth::viewport::tests::huge_prompt_is_cooperative_and_review_requires_end_of_current_drawn_layout ... ok
+test workspace::remote_files::preparation::tests::one_source_preparation_rejects_extra_inputs_and_opens_checked_review_after_worker_result ... ok
+test workspace::remote_files::review::tests::short_review_and_read_only_report_are_drawn_without_enabling_report_submission ... ok
+test workspace::remote_files::tests::a_local_directory_starts_an_upload_preview_instead_of_a_single_file_transfer ... ok
+test workspace::remote_files::tests::batch_preview_reports_the_scope_and_cancel_stops_before_anything_is_submitted ... ok
+test workspace::remote_files::tests::upload_preview_reports_the_scope_and_cancel_stops_before_anything_is_submitted ... ok
+test workspace::tests::workspace_preview_and_mouse_focus_loss_use_real_rendered_pane_coordinates ... ok
+
+failures:
+
+failures:
+    monitor::remote::review_read_after_exit_ignores_cancellation
+
+test result: FAILED. 14 passed; 1 failed; 0 ignored; 0 measured; 870 filtered out; finished in 1.49s
+
+error: test failed, to rerun pass `--bin congminal`

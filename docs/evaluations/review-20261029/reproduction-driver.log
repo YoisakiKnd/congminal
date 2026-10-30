@@ -1,0 +1,25 @@
+These probes assert observed defects. A pass is NOT a correctness certificate.
+Source and full log retained at: /var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-review-20261029-m9mk68tt
+   Compiling libc v0.2.191
+   Compiling bitflags v2.13.2
+   Compiling memchr v2.8.3
+   Compiling objc2-core-foundation v0.3.2
+   Compiling objc2-io-kit v0.3.2
+   Compiling sysinfo v0.38.4
+   Compiling congminal v0.1.0-alpha.6 (/var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-review-20261029-m9mk68tt/source)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.58s
+     Running unittests src/main.rs (/var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-review-20261029-m9mk68tt/target/debug/deps/congminal-f7113c203a18046f)
+
+running 4 tests
+test git::tests::reviewcheck_remote_shell_reinterprets_directory ... REVIEW: remote directory executed shell printf
+ok
+test git::tests::reviewcheck_selected_pathspec_stages_another_file ... REVIEW: selecting one path staged unselected victim.txt
+ok
+test git::tests::reviewcheck_timeout_refunds_live_reader_buffer ... REVIEW: git-reserved=0 while 2 readers remain alive with inherited pipes
+ok
+test monitor::remote::reviewcheck_read_after_exit_ignores_cancellation ... REVIEW: canceled after 1000ms, read returned success after 3.234474792s
+ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 881 filtered out; finished in 4.01s
+
+

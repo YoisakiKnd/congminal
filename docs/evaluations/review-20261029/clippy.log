@@ -1,0 +1,10 @@
+    Checking bitflags v2.13.2
+    Checking memchr v2.8.3
+    Checking openssl-sys v0.9.117
+    Checking libz-sys v1.1.30
+    Checking objc2-core-foundation v0.3.2
+    Checking libssh2-sys v0.3.3
+    Checking objc2-io-kit v0.3.2
+    Checking sysinfo v0.38.4
+    Checking congminal v0.1.0-alpha.6 (/Users/tenonsuzu/Documents/Codes/congminal)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.90s

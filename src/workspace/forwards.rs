@@ -520,7 +520,7 @@ mod tests {
         std::fs::write(
             &program,
             format!(
-                "#!/bin/sh\ncase \"$1\" in -G) exit 0;; esac\nprintf '%s\\n' \"$@\" >> {log:?}\n\
+                "#!/bin/sh\ncase \"$1\" in -G) exit 0;; esac\nrecord={log:?}.$$\nprintf '%s\\n' \"$@\" > \"$record\"\nmv \"$record\" {log:?}\n\
                  printf 'REMOTE_READY'\nexec /bin/cat\n"
             ),
         )

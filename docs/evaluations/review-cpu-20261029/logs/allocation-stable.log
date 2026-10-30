@@ -1,0 +1,3 @@
+{"case": "monitor::native::cpu_meter::native_reads", "exit": 0}
+{"case": "monitor::native::cpu_meter::bounded_linux_inputs", "exit": 0}
+{"case": "monitor::review_meter::sampler", "exit": 0}

@@ -14,6 +14,12 @@ use std::{
     sync::Arc,
 };
 use std::{io, path::Path};
+#[cfg(windows)]
+#[path = "auth_ticket_windows.rs"]
+pub mod windows;
+#[cfg(windows)]
+#[allow(unused_imports)] // 独立 helper 只消费 Ticket；主程序还消费拥有者及创建错误。
+pub use windows::{CreateError, OwnedTicket};
 const SIZE: usize = 40;
 struct Record([u8; SIZE]);
 impl Drop for Record {
@@ -58,7 +64,7 @@ impl Ticket {
         validate_path(path)?;
         #[cfg(windows)]
         {
-            Err(io::Error::new(io::ErrorKind::Unsupported, "private Windows ticket ACL validation is pending"))
+            windows::read_private(path)
         }
         #[cfg(unix)]
         {

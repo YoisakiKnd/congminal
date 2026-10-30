@@ -19,7 +19,6 @@ pub mod identity;
 pub use identity::Identity;
 #[path = "auth_editor.rs"]
 pub mod editor;
-#[cfg(unix)]
 #[path = "auth_ipc.rs"]
 pub mod ipc;
 #[path = "auth_secret.rs"]

@@ -1,0 +1,118 @@
+[
+  {
+    "name": "all-features",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 32.382770042,
+    "stored_log": "logs/all-features.log"
+  },
+  {
+    "name": "default",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 33.622719791,
+    "stored_log": "logs/default.log"
+  },
+  {
+    "name": "clippy",
+    "command": [
+      "cargo",
+      "clippy",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target-dir",
+      "/tmp/congminal-fix-target",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit": 0,
+    "seconds": 1.7550137500000034,
+    "stored_log": "logs/clippy.log"
+  },
+  {
+    "name": "msrv",
+    "command": [
+      "cargo",
+      "+1.88.0",
+      "check",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 7.663236166999994,
+    "stored_log": "logs/msrv.log"
+  },
+  {
+    "name": "windows",
+    "command": [
+      "cargo",
+      "check",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target",
+      "x86_64-pc-windows-gnu",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 12.479670583,
+    "stored_log": "logs/windows.log"
+  },
+  {
+    "name": "linux",
+    "command": [
+      "cargo",
+      "check",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--features",
+      "sftp-preview,directory-helper",
+      "--target",
+      "x86_64-unknown-linux-gnu",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 4.7507650830000046,
+    "stored_log": "logs/linux.log"
+  },
+  {
+    "name": "allocation-stable",
+    "command": [
+      "python3",
+      "tools/check_review_metadata_20261029.py",
+      "--output",
+      "/Users/tenonsuzu/Documents/Codes/congminal/docs/evaluations/review-metadata-20261029/allocation-stable.json"
+    ],
+    "exit": 1,
+    "seconds": 20.046419708000002,
+    "stored_log": "logs/allocation-stable.log"
+  }
+]

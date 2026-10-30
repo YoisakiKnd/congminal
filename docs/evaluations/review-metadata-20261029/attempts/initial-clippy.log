@@ -1,0 +1,25 @@
+    Checking openssl-sys v0.9.117
+    Checking libz-sys v1.1.30
+    Checking libssh2-sys v0.3.3
+    Checking congminal v0.1.0-alpha.6 (/Users/tenonsuzu/Documents/Codes/congminal)
+error: this expression creates a reference which is immediately dereferenced by the compiler
+   --> src/workspace/git_panel.rs:965:83
+    |
+965 |         let request = match git::LogRequest::new(self.owner, self.log_generation, &dir, hash, &self.limits, &self.pool)
+    |                                                                                   ^^^^ help: change this to: `dir`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#needless_borrow
+    = note: `-D clippy::needless-borrow` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_borrow)]`
+
+error: this expression creates a reference which is immediately dereferenced by the compiler
+    --> src/workspace/git_panel.rs:1088:81
+     |
+1088 |             match git::BranchRequest::new(self.owner, self.branches_generation, &dir, &self.limits, &self.pool) {
+     |                                                                                 ^^^^ help: change this to: `dir`
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#needless_borrow
+
+error: could not compile `congminal` (bin "congminal") due to 2 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `congminal` (bin "congminal" test) due to 2 previous errors

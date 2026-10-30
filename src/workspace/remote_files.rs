@@ -409,6 +409,7 @@ pub(super) struct State {
     batch: Option<batch::Batch>,
     /// 本地目录上传的影响范围预览。
     upload_preview: Option<upload::Preview>,
+    upload_scan: Option<upload::Scan>,
     /// 正在提交的批量上传。
     upload: Option<upload::Batch>,
     /// 批量上传建目录时占用的前台认证。
@@ -463,6 +464,7 @@ impl State {
             preview: None,
             batch: None,
             upload_preview: None,
+            upload_scan: None,
             upload: None,
             upload_authentication: None,
             delete_plan: None,
@@ -478,6 +480,7 @@ impl State {
         // 预览与批次随目录视图一起作废：换窗格/换配置档后不再提交。
         self.preview = None;
         self.batch = None;
+        self.upload_scan = None;
         self.upload_preview = None;
         self.upload = None;
         self.upload_authentication = None;
@@ -671,6 +674,7 @@ impl Workspace {
             state.error = None;
         }
         self.remote_transfer_tick(&mut state);
+        self.upload_scan_tick(&mut state);
         self.upload_pump(&mut state);
         self.batch_pump(&mut state);
         let valid =
@@ -1000,7 +1004,12 @@ impl Workspace {
             return true;
         }
         // 批量上传预览/批次占用操作行：左半确认、右半取消。
-        if row == 3 && self.sftp.as_ref().is_some_and(|s| s.upload_preview.is_some() || s.upload.is_some()) {
+        if row == 3
+            && self
+                .sftp
+                .as_ref()
+                .is_some_and(|s| s.upload_preview.is_some() || s.upload.is_some() || s.upload_scan.is_some())
+        {
             if let Some(mut state) = self.sftp.take() {
                 self.upload_click(&mut state, column);
                 self.sftp = Some(state);
@@ -1795,7 +1804,10 @@ impl Workspace {
             }
         }
         // 预览时列表区让给「将要传输的相对路径」，否则条目会盖住预览。
-        let previewing = state.upload_preview.is_some() || state.preview.is_some() || state.delete_preview.is_some();
+        let previewing = state.upload_scan.is_some()
+            || state.upload_preview.is_some()
+            || state.preview.is_some()
+            || state.delete_preview.is_some();
         if let Some(view) = view.filter(|_| !previewing)
             && let Some(listing) = view.listing()
         {
@@ -2433,7 +2445,10 @@ mod tests {
         std::fs::create_dir_all(folder.join("sub")).unwrap();
         std::fs::write(folder.join("sub/a.txt"), b"abc").unwrap();
         app.start_remote_upload_plan(&folder, b"/tmp/folder").unwrap();
-        assert!(app.sftp.as_ref().unwrap().upload_preview.is_some());
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().upload_preview.is_some()
+        });
         // 有子目录：开始后先建目录，此时还没有任何文件被提交。
         let mut state = app.sftp.take().unwrap();
         assert!(app.start_upload_batch(&mut state));
@@ -2463,6 +2478,11 @@ mod tests {
         std::fs::write(folder.join("a.txt"), b"abc").unwrap();
         std::fs::write(folder.join("sub/b.txt"), b"hello").unwrap();
         app.start_remote_upload_plan(&folder, b"/tmp/folder").unwrap();
+        assert!(app.sftp.as_ref().unwrap().upload_scan.is_some());
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().upload_scan.is_none()
+        });
         let state = app.sftp.as_ref().unwrap();
         let preview = state.upload_preview.as_ref().expect("目录应该进入批量预览");
         assert_eq!(preview.plan.items.len(), 2);
@@ -2470,7 +2490,12 @@ mod tests {
         assert_eq!(preview.plan.directories, [b"sub".to_vec()]);
         // 单个文件不是目录：直接拒绝，且不破坏已有的预览。
         let file = folder.join("a.txt");
-        assert_eq!(app.start_remote_upload_plan(&file, b"/tmp/folder"), Err(Failure::Invalid));
+        app.start_remote_upload_plan(&file, b"/tmp/folder").unwrap();
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().upload_scan.is_none()
+        });
+        assert_eq!(app.sftp.as_ref().unwrap().error, Some(Failure::Invalid));
         assert_eq!(app.sftp.as_ref().unwrap().upload_preview.as_ref().unwrap().plan.items.len(), 2);
         let _ = std::fs::remove_dir_all(&folder);
         close(&mut app);

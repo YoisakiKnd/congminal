@@ -21,11 +21,13 @@ const MKDIR_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 本地目录枚举完成后的影响范围预览。
 pub(super) struct Preview {
-    pub(super) plan: Plan,
-    /// 远端目标根目录。
-    remote: crate::sftp::model::RemotePath,
-    /// 预览来自哪台主机（只在提示与通知里用）。
     host: String,
+    remote: crate::sftp::model::RemotePath,
+    pub(super) plan: Plan,
+}
+pub(super) struct Scan {
+    binding: Binding,
+    task: crate::tasks::LatestTask<(), Result<Preview, Failure>>,
 }
 /// 正在提交的批次。
 pub(super) struct Batch {
@@ -42,6 +44,7 @@ pub(super) struct Batch {
     tickets: Vec<Ticket>,
     /// 队列满导致的中断次数，只用于诊断，不参与判断。
     stalled: usize,
+    _memory: Lease,
 }
 impl Batch {
     fn progress(&self) -> String {
@@ -60,6 +63,7 @@ impl Preview {
         let remote = crate::sftp::model::RemotePath::new(budget, root).unwrap();
         Self {
             plan: Plan {
+                memory: budget.lease(Kind::Directory, local_plan::RESULT_BYTES).unwrap(),
                 root: local.to_path_buf(),
                 items: items
                     .iter()
@@ -91,22 +95,57 @@ impl Workspace {
         if !local.is_absolute() || !remote.starts_with(b"/") {
             return Err(Failure::Invalid);
         }
-        // 本地目录枚举是同步的：上限 2000 个文件、16 层，正常目录在毫秒级完成。
-        let plan = match local_plan::walk(local, &crate::tasks::Cancellation::default()) {
-            Ok(plan) => plan,
-            Err(local_plan::Error::NotDirectory) => return Err(Failure::Invalid),
-            Err(local_plan::Error::Budget) => return Err(Failure::Budget),
-            Err(local_plan::Error::Cancelled) => return Err(Failure::Cancelled),
-            Err(local_plan::Error::Local(_)) => return Err(Failure::Invalid),
-        };
+        if state.upload_scan.is_some() || state.upload.is_some() {
+            return Err(Failure::Full);
+        }
+        let binding = state.view.as_ref().ok_or(Failure::Invalid)?.binding.clone();
         let remote =
             crate::sftp::model::RemotePath::new(state.service.budget(), remote).map_err(|_| Failure::Budget)?;
+        let pool = crate::resources::current();
+        let input_memory = pool.lease(Kind::Directory, local.as_os_str().len() + 4096).map_err(|_| Failure::Budget)?;
+        let local = Tracked::new(local.to_owned(), input_memory);
         let host = state.host().map(str::to_owned).unwrap_or_default();
-        state.upload_preview = Some(Preview { plan, remote, host });
-        state.upload = None;
+        let work_pool = pool.clone();
+        let task = crate::tasks::LatestTask::new_named_in(
+            &pool,
+            "upload-plan",
+            self.driver.notify.clone(),
+            move |(), cancel| {
+                let result = local_plan::walk_in(&local, cancel, &work_pool)
+                    .map(|plan| Preview { plan, remote: remote.clone(), host: host.clone() })
+                    .map_err(|error| match error {
+                        local_plan::Error::Budget => Failure::Budget,
+                        local_plan::Error::Cancelled => Failure::Cancelled,
+                        _ => Failure::Invalid,
+                    });
+                Ok(result)
+            },
+        )
+        .map_err(|_| Failure::Budget)?;
+        task.try_submit(()).map_err(|_| Failure::Budget)?;
+        state.upload_scan = Some(Scan { binding, task });
         state.error = None;
         self.chrome_dirty = true;
         Ok(())
+    }
+    pub(super) fn upload_scan_tick(&mut self, state: &mut State) {
+        let Some(scan) = &state.upload_scan else { return };
+        if !scan.binding.valid(self) || scan.binding.owner.session != self.selected {
+            state.upload_scan = None;
+            self.chrome_dirty = true;
+            return;
+        }
+        let Some(result) = scan.task.take() else { return };
+        state.upload_scan = None;
+        match result {
+            Ok(Ok(preview)) => {
+                state.upload_preview = Some(preview);
+                state.error = None;
+            }
+            Ok(Err(error)) => state.error = Some(error),
+            Err(_) => state.error = Some(Failure::Invalid),
+        }
+        self.chrome_dirty = true;
     }
     /// 预览确认后开始提交：先建远端子目录，建完再传文件。
     pub(super) fn start_upload_batch(&mut self, state: &mut State) -> bool {
@@ -117,9 +156,10 @@ impl Workspace {
             return true;
         }
         let total = preview.plan.items.len();
-        let dirs: VecDeque<Vec<u8>> = preview.plan.directories.into_iter().collect();
+        let dirs: VecDeque<Vec<u8>> = preview.plan.directories.into();
         let mut batch = Batch {
-            items: preview.plan.items.into_iter().collect(),
+            _memory: preview.plan.memory,
+            items: preview.plan.items.into(),
             local_root: preview.plan.root,
             remote_root: preview.remote,
             dirs,
@@ -325,6 +365,9 @@ impl Workspace {
     }
     /// 预览/批次在第二行显示的文本；没有时返回 None。
     pub(super) fn upload_line(&self, state: &State) -> Option<String> {
+        if state.upload_scan.is_some() {
+            return Some("正在后台枚举本地目录，可取消".into());
+        }
         if let Some(preview) = state.upload_preview.as_ref() {
             let plan = &preview.plan;
             // 覆盖语义放在最前面：窄侧栏会从尾部裁掉，安全提示不能被裁。
@@ -361,6 +404,9 @@ impl Workspace {
     }
     /// 预览/批次占用操作行的两个槽位：确认与取消。
     pub(super) fn upload_labels(&self, state: &State) -> Option<[&'static str; 2]> {
+        if state.upload_scan.is_some() {
+            return Some(["—", "取消"]);
+        }
         if state.upload_preview.is_some() {
             return Some(["开始", "取消"]);
         }
@@ -368,16 +414,20 @@ impl Workspace {
     }
     /// 操作行点击：只在预览/批次存在时接管。
     pub(super) fn upload_click(&mut self, state: &mut State, column: usize) -> bool {
-        if state.upload_preview.is_none() && state.upload.is_none() {
+        if state.upload_preview.is_none() && state.upload.is_none() && state.upload_scan.is_none() {
             return false;
         }
         // 操作行六个槽位折成两半：左半是确认（批次进行中不可点），右半是取消。
         match column / 3 {
-            0 if state.upload_preview.is_some() => {
+            0 if state.upload_preview.is_some() && state.upload_scan.is_none() => {
                 self.start_upload_batch(state);
             }
+            0 => {} // The disabled start slot must not cancel an in-flight scan/batch.
             _ => {
-                if state.upload_preview.take().is_some() {
+                if state.upload_scan.take().is_some() {
+                    self.notice("已取消目录枚举");
+                    self.chrome_dirty = true;
+                } else if state.upload_preview.take().is_some() {
                     self.notice("已取消批量上传预览");
                     self.chrome_dirty = true;
                 } else {

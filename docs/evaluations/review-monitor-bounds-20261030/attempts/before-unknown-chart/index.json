@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-30",
+  "base_commit": "2be564fbea6db8ad538829ab8f4bf3521ecf22d2",
+  "branch": "codex/review-latest-20261028",
+  "platform": "macOS arm64",
+  "baseline_archive": {
+    "path": "baselines/review-monitor-bounds-before.tar.gz",
+    "bytes": 970956,
+    "sha256": "21d399f65a4a933462a8f20ec17d872d23497bebf7bd728b63704c161db05421"
+  },
+  "previous_indices_sha256": {
+    "review-fixes-20261029": "c3fd59f760a2cb4c8fdc9c69a0b3a45de7f75f4e652f6abd40171906fa9f120e",
+    "review-metadata-20261029": "9756df909c6decbaf8aa9c5767248e13b1be0d4c73b9d7fe018245fc901e3e57",
+    "review-cpu-20261029": "fe21f09c727150c55d815545f7d9d837caf6d2b5e094a5485e4f1d7028e1d626"
+  },
+  "files_sha256": {
+    "allocation-msrv.json": "80dcffe91a423b6c5115696cb00c12134c25faa467189ce5aa755922c436d322",
+    "allocation-stable.json": "cf84097d4f85e127fdf08fde5a3a8f78496e4e78e71231d243de0db66fca1e36",
+    "attempts/check.log": "731a0c437a966c75a9bf08b96e82b7c39ad07b3d527b1314a1e53c909a6cdc94",
+    "attempts/clippy.log": "376328b18247a8473bcc8045a4f149c5846b1ee1b35d144d73e7acd879a64600",
+    "attempts/disk-native-corrected.log": "731e6e72c2eb23a2893be5422a2b7d17309d9b403bd46d45514c10203d945c76",
+    "attempts/disk-native.log": "d5a9f031ad8417aeaa28bfd86fe3b611254e6605681af5673a922e5e5bf67bd1",
+    "attempts/first-check.log": "c0867bc145e806bc00e0c8723b86061bae9da98eee1aab919e79e9acdd2a692f",
+    "attempts/linux-check.log": "4fd9089cad08e18bfba4e5e224474f59c187ee24ec0b87181d2f4e51eb3b9b37",
+    "attempts/monitor-tests.log": "9e12ec9a6b3d6a0ea8ac45407a13dda080c67be5b25aa5d4b2e174079009409d",
+    "attempts/process-check.log": "ab045ce68633273b7ea4b23d11e505de215f80a6c8ddccbead89fe1ff5c0e98d",
+    "attempts/win-check.log": "cc605d4bbf2dea57a01167c19555f8c0fd525754a949dc5ef51bddfd4a98354d",
+    "checks.json": "b13a7e60130351a6cfe7a741717122adf2328cb4a5672ed1cde0087b9e50bfeb",
+    "cost.json": "e75b6bb74e703894831e660f3a54f53198b00f36abb7f44b494ac25015611c02",
+    "dependencies.json": "7a717a9997cbf931713b2a351b4fa0c1ff0692f4673ca885ca4a1a5b939ca107",
+    "goal-audit.json": "c9209521e3f8152018fc3b47b2ede8608c8521c38a068f635bd521527f791095",
+    "logs/all-features.log": "506495b68626b0fb9b0e7bc1e1ca339c1aa4644ab4e25bcab3f15cadce0d5b43",
+    "logs/allocation-msrv.log": "9c13934f85938c4189c9d8cbe9fe2ea6af22d6035f7b3361d946fa223cbdaf43",
+    "logs/allocation-stable.log": "9c13934f85938c4189c9d8cbe9fe2ea6af22d6035f7b3361d946fa223cbdaf43",
+    "logs/clippy.log": "fb6c30908916b0e5c1ef999ccd54298c75a22785490d2f4c49bc113d121640b9",
+    "logs/cost.log": "6c27aafee3551bd8037c1c2937c9e592ba35ce540744c54ad3b7adb2d52930fa",
+    "logs/default.log": "4b7f0787187c58ce3a0c01313b0dfe15c0e3b17fd31e96b6828584ba2b6cfaf1",
+    "logs/disk-native.log": "8702d1480a23649e7535545ec35f10fcbeb35fb8ae373d112a9e84f50f116bb1",
+    "logs/linux.log": "27429680b3f75f11f3b5018c649e8eb1e3e9afd1eb2228406a2dd2fd4ab4a080",
+    "logs/mach-refs.log": "4847514447fbf15183954fce23a6056615b74e7e2059b1fff6bf715841e31e64",
+    "logs/msrv.log": "731a0c437a966c75a9bf08b96e82b7c39ad07b3d527b1314a1e53c909a6cdc94",
+    "logs/release.log": "67f9ba399e79d89cc82c721c79594071edab9bd73a0be3e627340b8b6735a43c",
+    "logs/windows.log": "b35401b802a2ffa6d0b35b60979772f5f2acab86b704de1499b3855a34b44d0e",
+    "semantics.json": "70d4e7036a349a0f5601d622590a58580c32ae439451fba103c2ba10159e2450"
+  },
+  "tools_sha256": {
+    "tools/check_review_monitor_bounds_20261030.py": "b547f7597653fa181c0b0e294b2e6c2c5c52bcc413804a6ce3f4b6dae7b2f1d0",
+    "tools/check_review_monitor_bounds_cost_20261030.py": "2110db6b8367cdd5780895ad4d2a76ba6ed312386041c633f234640ba3aa9284",
+    "tools/check_review_monitor_bounds_evidence_20261030.py": "5298ae79738aa939d24bc4d85c68ae9828d8eb2ecceedb225eeae2a03194d863",
+    "tools/fixtures/review_monitor_bounds_20261030.json": "5d877c18f9a9efb3dca7d275bc96164b0fc4683ce55de906a67b582dc9a91fad",
+    "tools/fixtures/review_monitor_bounds_cost_20261030.rs": "c994829fcb6a18bfccc309f147a29c02a21da32abb98ea7cccfa4fdc83f9711d",
+    "tools/fixtures/executor_allocation_meter.rs": "4e00543966514b217af7c7e8bbd33fd2df64e9800800e02db59098842f53801b",
+    "tools/check_review_cost_20261029.py": "e6ea44c6e6031836659370131db6e16273bee0ea7d95a1082f9778c6c00cab30",
+    "tools/check_font_discovery.py": "dc12d8a909a5aff20f41dc52fff5fc385c6947a7940e66449326e5eda4570f0d",
+    "tools/check_sftp_executor.py": "01105dbadda90bf38a4d18d139ddc01557d49d480247df8c494bf1b46cb446e2",
+    "tools/check_review_fix_evidence_20261029.py": "041985672c64cabed9a986b810c2ae90c6a40e0b83064b86d033de498cbaa1b0"
+  },
+  "functional_plan_complete": false,
+  "whole_application_memory_bound_proven": false,
+  "native_malloc_hard_bound_proven": false,
+  "windows_linux_native_acceptance": false
+}

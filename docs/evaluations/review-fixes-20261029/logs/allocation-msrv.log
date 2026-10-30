@@ -1,0 +1,4 @@
+{"case": "git::review_meter::parser", "exit": 0}
+{"case": "ssh::capture::review_meter::pipes", "exit": 0}
+{"case": "sftp::local_plan::review_meter::directory", "exit": 0}
+{"case": "monitor::review_meter::sampler", "exit": 0}

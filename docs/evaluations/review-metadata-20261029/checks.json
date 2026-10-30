@@ -1,0 +1,175 @@
+[
+  {
+    "name": "all-features",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 36.5009125,
+    "stored_log": "logs/all-features.log"
+  },
+  {
+    "name": "default",
+    "command": [
+      "cargo",
+      "test",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 34.993844292000006,
+    "stored_log": "logs/default.log"
+  },
+  {
+    "name": "clippy",
+    "command": [
+      "cargo",
+      "clippy",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target-dir",
+      "/tmp/congminal-fix-target",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "exit": 0,
+    "seconds": 3.781246542000005,
+    "stored_log": "logs/clippy.log"
+  },
+  {
+    "name": "msrv",
+    "command": [
+      "cargo",
+      "+1.88.0",
+      "check",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 3.5706776249999876,
+    "stored_log": "logs/msrv.log"
+  },
+  {
+    "name": "windows",
+    "command": [
+      "cargo",
+      "check",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--all-features",
+      "--target",
+      "x86_64-pc-windows-gnu",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 2.4451788749999963,
+    "stored_log": "logs/windows.log"
+  },
+  {
+    "name": "linux",
+    "command": [
+      "cargo",
+      "check",
+      "--locked",
+      "--offline",
+      "--all-targets",
+      "--features",
+      "sftp-preview,directory-helper",
+      "--target",
+      "x86_64-unknown-linux-gnu",
+      "--target-dir",
+      "/tmp/congminal-fix-target"
+    ],
+    "exit": 0,
+    "seconds": 3.292066709000011,
+    "stored_log": "logs/linux.log"
+  },
+  {
+    "name": "allocation-stable",
+    "command": [
+      "python3",
+      "tools/check_review_metadata_20261029.py",
+      "--output",
+      "/Users/tenonsuzu/Documents/Codes/congminal/docs/evaluations/review-metadata-20261029/allocation-stable.json"
+    ],
+    "exit": 0,
+    "seconds": 21.119502959000002,
+    "stored_log": "logs/allocation-stable.log"
+  },
+  {
+    "name": "allocation-msrv",
+    "command": [
+      "python3",
+      "tools/check_review_metadata_20261029.py",
+      "--toolchain",
+      "1.88.0",
+      "--output",
+      "/Users/tenonsuzu/Documents/Codes/congminal/docs/evaluations/review-metadata-20261029/allocation-msrv.json"
+    ],
+    "exit": 0,
+    "seconds": 24.09650479199999,
+    "stored_log": "logs/allocation-msrv.log"
+  },
+  {
+    "name": "cost",
+    "command": [
+      "python3",
+      "tools/check_review_cost_20261029.py",
+      "--baseline",
+      "/var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-metadata-baseline-d4_zdguv",
+      "--output",
+      "/Users/tenonsuzu/Documents/Codes/congminal/docs/evaluations/review-metadata-20261029/cost.json"
+    ],
+    "exit": 0,
+    "seconds": 61.668430083000004,
+    "stored_log": "logs/cost.log"
+  },
+  {
+    "name": "metadata-cost",
+    "command": [
+      "python3",
+      "tools/check_review_metadata_cost_20261029.py",
+      "--baseline",
+      "/var/folders/zm/zbv6zys16rd6f6v2k70891pw0000gn/T/congminal-metadata-baseline-d4_zdguv",
+      "--output",
+      "/Users/tenonsuzu/Documents/Codes/congminal/docs/evaluations/review-metadata-20261029/metadata-cost.json"
+    ],
+    "exit": 0,
+    "seconds": 43.97487050000001,
+    "stored_log": "logs/metadata-cost.log"
+  },
+  {
+    "name": "release",
+    "command": [
+      "cargo",
+      "build",
+      "--locked",
+      "--offline",
+      "--release",
+      "--target-dir",
+      "target"
+    ],
+    "exit": 0,
+    "seconds": 5.528638124999986,
+    "stored_log": "logs/release.log"
+  }
+]

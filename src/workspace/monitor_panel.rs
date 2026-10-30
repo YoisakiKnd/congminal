@@ -7,7 +7,7 @@ use super::Workspace;
 use crate::{
     config::monitor::Settings,
     monitor::{self, Error, History, Limits, Reply, Request, Sample},
-    resources::{Budget, Kind, Tracked},
+    resources::{Budget, Kind, Lease},
     session::Notify,
     tasks::{LatestTask, SubmitError},
 };
@@ -17,6 +17,16 @@ use std::{sync::Arc, time::Instant};
 pub(super) const LIST_TOP: usize = 2;
 /// 趋势图的标签宽度（“内存 ”等），剩余宽度画块状图。
 const LABEL_WIDTH: usize = 5;
+
+struct SamplerOwner {
+    source: Option<Box<dyn monitor::Sampling>>,
+    _memory: Lease,
+}
+impl SamplerOwner {
+    fn get(&mut self, factory: &monitor::Factory) -> &mut dyn monitor::Sampling {
+        self.source.get_or_insert_with(|| factory()).as_mut()
+    }
+}
 
 /// 一帧要画的监控页内容；实际绘制由界面线程负责。
 pub(super) struct View {
@@ -51,7 +61,6 @@ pub(super) struct Panel {
     pub(super) alert_pending: Option<monitor::Alert>,
     /// 上一条告警发出的时刻，用来算冷却。
     pub(super) alert_at: Option<Instant>,
-    pub(super) lease: Option<Tracked<()>>,
     pub(super) paused: bool,
     pub(super) revision: u64,
     pub(super) pool: Arc<Budget>,
@@ -60,6 +69,8 @@ pub(super) struct Panel {
     pub(super) target: Option<monitor::remote::Target>,
     /// 最近一次进程列表（最多 `PROCESS_LIMIT` 条）；不随采样历史保存。
     pub(super) processes: Vec<monitor::Proc>,
+    result_memory: Option<crate::resources::Lease>,
+    processes_limited: bool,
     /// 上次刷新进程列表的时刻，用来按 `PROCESS_INTERVAL` 降频。
     pub(super) last_processes: Option<Instant>,
     /// 配置里是否要进程列表；关掉后不再刷新，也不再占 sysinfo 的句柄缓存。
@@ -92,13 +103,14 @@ impl Panel {
             alert_cooldown: std::time::Duration::from_secs_f64(crate::config::monitor::DEFAULT_ALERT_SECONDS),
             alert_pending: None,
             alert_at: None,
-            lease: None,
             paused: false,
             revision: 0,
             pool: crate::resources::current(),
             factory,
             target: None,
             processes: Vec::new(),
+            result_memory: None,
+            processes_limited: false,
             last_processes: None,
             show_processes: true,
         }
@@ -112,7 +124,7 @@ impl Panel {
     }
     pub(super) fn bytes(&self) -> usize {
         let history = self.history.as_ref().map_or(0, History::bytes);
-        if self.lease.is_some() { monitor::RESERVED + history } else { history }
+        if self.task.is_some() { monitor::RESERVED + history } else { history }
     }
     /// 采样间隔：远端要起 `ssh` 进程，至少 `REMOTE_MIN_INTERVAL`，不能按本地节奏跑。
     pub(super) fn interval(&self) -> std::time::Duration {
@@ -133,8 +145,10 @@ impl Panel {
         self.task = None;
         self.loading = false;
         self.history = None;
-        self.points = 0;
+        self.processes = Vec::new();
         self.mount = None;
+        self.result_memory = None;
+        self.points = 0;
         self.latency = None;
         self.processes = Vec::new();
         self.last_processes = None;
@@ -164,25 +178,37 @@ impl Panel {
             return false;
         }
         self.active = true;
+        self.error = None;
         self.paused = false;
         self.next = Some(Instant::now());
         self.revision = self.revision.wrapping_add(1);
         true
     }
 
+    pub(super) fn stop_for_exit(&self) {
+        if let Some(task) = &self.task {
+            task.invalidate();
+        }
+    }
+    pub(super) fn exit_pending(&self) -> bool {
+        self.task.as_ref().is_some_and(|task| {
+            let s = task.stats();
+            s.running || s.pending
+        })
+    }
     /// 隐藏：取消在途采样，释放历史、采样线程与预留额度。
     fn close(&mut self) -> bool {
         let changed = self.task.is_some()
             || self.history.is_some()
-            || self.lease.is_some()
             || self.error.is_some()
             || self.next.is_some()
             || self.loading;
         self.task = None;
         self.history = None;
-        self.points = 0;
-        self.lease = None;
+        self.processes = Vec::new();
         self.mount = None;
+        self.result_memory = None;
+        self.points = 0;
         self.latency = None;
         self.error = None;
         self.loading = false;
@@ -225,7 +251,11 @@ impl Panel {
             return self.close();
         }
         self.enabled = settings.enabled;
-        self.limits = settings.limits();
+        let limits = settings.limits();
+        if self.limits != limits {
+            self.error = None;
+        }
+        self.limits = limits;
         // 右栏还在、只是切到别的页：保留历史曲线，释放采样线程，切回来接着画。
         if !page || !self.enabled || !focused {
             self.active = false;
@@ -233,6 +263,11 @@ impl Panel {
         }
         self.active = true;
         self.paused = false;
+        if !self.loading
+            && matches!(self.error, Some(Error::Budget | Error::Worker | Error::Unsupported | Error::Local))
+        {
+            return false;
+        }
         self.thresholds = settings.thresholds();
         self.alert_cooldown = settings.alert_cooldown();
         if self.show_processes != settings.processes {
@@ -297,6 +332,7 @@ impl Panel {
             return false;
         }
         self.next = None;
+        self.error = None;
         self.sample(notify)
     }
 
@@ -312,32 +348,50 @@ impl Panel {
         let disk = self.last_disk.is_none_or(|at| now.saturating_duration_since(at) >= self.limits.disk_interval);
         let points = monitor::Limits { interval: self.interval(), ..self.limits }.samples();
         if self.points != points || self.history.is_none() {
-            self.points = points;
-            self.history = Some(History::new(points));
-        }
-        if self.lease.is_none() {
-            match self.pool.lease(Kind::Monitor, monitor::RESERVED + self.history.as_ref().map_or(0, History::bytes)) {
-                Ok(memory) => self.lease = Some(Tracked::new((), memory)),
-                Err(_) => {
-                    self.error = Some(Error::Budget);
+            match History::try_new(points, &self.pool) {
+                Ok(history) => {
+                    self.history = Some(history);
+                    self.points = points;
+                }
+                Err(error) => {
+                    self.fail(error);
                     return true;
                 }
             }
         }
         if self.task.is_none() {
             let factory = self.factory.clone();
-            let mut source: Option<Box<dyn monitor::Sampling>> = None;
+            let memory = match self.pool.lease(Kind::Monitor, monitor::RESERVED) {
+                Ok(memory) => memory,
+                Err(_) => {
+                    self.fail(Error::Budget);
+                    return true;
+                }
+            };
+            // The method receiver captures the whole owner. Accessing only a
+            // `.data` field lets disjoint closure capture drop the lease early.
+            let mut source = SamplerOwner { source: None, _memory: memory };
+            let pool = self.pool.clone();
             match LatestTask::new_named_in(&self.pool, "monitor", notify, move |request: Request, cancel| {
-                let source = source.get_or_insert_with(|| factory());
+                let memory = pool.lease(Kind::Monitor, 32 * 1024).map_err(|_| "监控结果额度不足".to_string())?;
+                let source = source.get(&factory);
                 let at = Instant::now();
                 let (raw, error) = match source.sample(request.disk, cancel) {
                     Ok(raw) => (raw, None),
                     Err(error) => (monitor::Raw::default(), Some(error)),
                 };
-                let mount = source.mount();
+                let mount = source.mount().map(|s| crate::term::clip(&s, 4096));
                 let latency = source.latency();
-                let processes = if request.processes && error.is_none() { source.processes() } else { Vec::new() };
+                let processes = if request.processes && error.is_none() && !cancel.is_cancelled() {
+                    source.processes()
+                } else {
+                    Vec::new()
+                };
                 Ok(Reply {
+                    memory,
+                    processes_limited: source.processes_limited(),
+                    processes_refreshed: request.processes,
+                    disk_refreshed: request.disk,
                     generation: request.generation,
                     sample: Sample { at, raw },
                     mount,
@@ -363,7 +417,7 @@ impl Panel {
         if let Err(error) = self.task.as_ref().unwrap().try_submit(request) {
             self.loading = false;
             if error == SubmitError::Budget {
-                self.error = Some(Error::Budget);
+                self.fail(Error::Budget);
             } else {
                 self.fail(Error::Worker);
             }
@@ -386,26 +440,38 @@ impl Panel {
             }
             Ok(reply) if reply.generation == self.generation => {
                 self.error = None;
+                let previous_memory = self.result_memory.take();
+                self.processes_limited = reply.processes_limited;
                 self.mount = reply.mount;
                 self.latency = reply.latency;
-                if !reply.processes.is_empty() {
+                if reply.processes_refreshed {
                     self.processes = reply.processes;
                     self.last_processes = Some(reply.sample.at);
                 }
-                if reply.sample.raw.disk_total > 0 {
+                self.result_memory = Some(reply.memory);
+                drop(previous_memory);
+                if reply.disk_refreshed {
                     self.last_disk = Some(reply.sample.at);
                 }
                 match self.history.as_mut() {
                     Some(history) => history.push(reply.sample),
-                    None => {
-                        let mut history = History::new(self.limits.samples());
-                        history.push(reply.sample);
-                        self.history = Some(history);
-                    }
+                    None => match History::try_new(self.limits.samples(), &self.pool) {
+                        Ok(mut history) => {
+                            history.push(reply.sample);
+                            self.history = Some(history);
+                        }
+                        Err(error) => self.fail(error),
+                    },
                 }
             }
             Ok(_) => {}
             Err(_) => self.fail(Error::Worker),
+        }
+        if self.active
+            && self.next.is_none()
+            && !matches!(self.error, Some(Error::Budget | Error::Worker | Error::Unsupported | Error::Local))
+        {
+            self.next = Some(Instant::now() + self.interval());
         }
         self.revision = self.revision.wrapping_add(1);
         true
@@ -417,6 +483,11 @@ impl Panel {
             self.failure_notice = true;
         }
         self.error = Some(error);
+        if matches!(error, Error::Budget | Error::Worker | Error::Unsupported | Error::Local) {
+            self.next = None;
+            self.loading = false;
+            self.task = None;
+        }
     }
 
     /// 取出待发的失败通知；取过就不再重复。
@@ -517,9 +588,9 @@ impl Panel {
                 100.0,
             );
             let disk = monitor::sparkline(
-                history
-                    .iter()
-                    .map(|sample| monitor::percent(sample.raw.disk_used, sample.raw.disk_total).unwrap_or(0) as f32),
+                history.iter().map(|sample| {
+                    monitor::percent(sample.raw.disk_used, sample.raw.disk_total).map_or(f32::NAN, f32::from)
+                }),
                 series,
                 100.0,
             );
@@ -528,8 +599,12 @@ impl Panel {
             content.push(format!("磁盘 {disk}"));
         }
         // 进程列表：条数与名字长度都有上限，按显示列裁掉超宽部分。
+        if self.processes_limited && self.processes.is_empty() {
+            content.push("进程采样不完整或不可用".into());
+        }
         if !self.processes.is_empty() {
-            content.push("进程（按 CPU）".to_string());
+            content
+                .push(if self.processes_limited { "进程（部分采样，按 CPU）" } else { "进程（按 CPU）" }.to_string());
             for process in &self.processes {
                 content.push(crate::term::clip(&process.line(), width));
             }
@@ -571,5 +646,186 @@ impl Workspace {
         }
         let notify = self.driver.notify.clone();
         self.monitor.refresh_now(notify)
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    use std::sync::{Condvar, Mutex};
+    #[test]
+    fn budget_denial_waits_for_an_explicit_retry_instead_of_redrawing_every_tick() {
+        let pool = Budget::new(0, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let mut panel = Panel::new();
+        let settings = Settings::default();
+        let notify: Notify = Arc::new(|| {});
+        assert!(panel.tick(true, true, true, &settings, notify.clone()));
+        assert_eq!(panel.error, Some(Error::Budget));
+        let denied = pool.snapshot().denied;
+        for _ in 0..100 {
+            assert!(!panel.tick(true, true, true, &settings, notify.clone()));
+            assert_eq!(panel.deadline(), None);
+        }
+        assert_eq!(pool.snapshot().denied, denied);
+        assert!(panel.refresh_now(notify));
+        assert_eq!(pool.snapshot().denied, denied + 1);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+    #[test]
+    fn unknown_disk_attempt_advances_the_disk_deadline() {
+        struct Unknown(Arc<Mutex<Vec<bool>>>);
+        impl monitor::Sampling for Unknown {
+            fn sample(&mut self, disk: bool, _: &crate::tasks::Cancellation) -> Result<monitor::Raw, Error> {
+                self.0.lock().unwrap().push(disk);
+                Ok(monitor::Raw::default())
+            }
+        }
+        let pool = Budget::new(64 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let source = calls.clone();
+        let mut panel = Panel::with_source(Arc::new(move || Box::new(Unknown(source.clone()))));
+        let settings = Settings::default();
+        let notify: Notify = Arc::new(|| {});
+        let until = Instant::now() + std::time::Duration::from_secs(5);
+        for _ in 0..2 {
+            panel.next = Some(Instant::now());
+            panel.tick(true, true, true, &settings, notify.clone());
+            while panel.loading {
+                panel.poll();
+                assert!(Instant::now() < until);
+                std::thread::yield_now();
+            }
+            assert!(panel.last_disk.is_some());
+        }
+        assert_eq!(*calls.lock().unwrap(), [true, false]);
+        let view = panel.view(40);
+        assert!(view.headline.iter().any(|line| line.contains("暂无读数")));
+        assert!(view.content.iter().any(|line| line.starts_with("磁盘 ") && line.contains('?')));
+        panel.close();
+        while pool.snapshot().used != 0 || pool.snapshot().managed_workers != 0 {
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+    }
+    #[test]
+    fn native_failure_latches_until_explicit_refresh() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Failed(Arc<AtomicUsize>);
+        impl monitor::Sampling for Failed {
+            fn sample(&mut self, _: bool, _: &crate::tasks::Cancellation) -> Result<monitor::Raw, Error> {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                Err(Error::Local)
+            }
+        }
+        let pool = Budget::new(64 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let calls = Arc::new(AtomicUsize::new(0));
+        let source_calls = calls.clone();
+        let mut panel = Panel::with_source(Arc::new(move || Box::new(Failed(source_calls.clone()))));
+        let settings = Settings::default();
+        let notify: Notify = Arc::new(|| {});
+        panel.tick(true, true, true, &settings, notify.clone());
+        let until = Instant::now() + std::time::Duration::from_secs(5);
+        while panel.error != Some(Error::Local) {
+            panel.poll();
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        for _ in 0..100 {
+            assert!(!panel.tick(true, true, true, &settings, notify.clone()));
+            assert_eq!(panel.deadline(), None);
+        }
+        assert!(panel.refresh_now(notify));
+        while panel.error != Some(Error::Local) {
+            panel.poll();
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+        assert_eq!(calls.load(Ordering::Relaxed), 2);
+        panel.close();
+        while pool.snapshot().used != 0 || pool.snapshot().managed_workers != 0 {
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+    }
+    #[test]
+    fn late_sample_schedules_the_next_deadline_without_needing_another_input_event() {
+        struct Immediate;
+        impl monitor::Sampling for Immediate {
+            fn sample(&mut self, _: bool, _: &crate::tasks::Cancellation) -> Result<monitor::Raw, Error> {
+                Ok(monitor::Raw::default())
+            }
+        }
+        let pool = Budget::new(64 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let mut panel = Panel::with_source(Arc::new(|| Box::new(Immediate)));
+        panel.tick(true, true, true, &Settings::default(), Arc::new(|| {}));
+        // The previous timer fired while the sample was still in flight.
+        panel.next = None;
+        let until = Instant::now() + std::time::Duration::from_secs(5);
+        while !panel.task.as_ref().unwrap().stats().result {
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+        assert!(panel.poll());
+        assert!(panel.deadline().is_some());
+        panel.close();
+        while pool.snapshot().used != 0 || pool.snapshot().managed_workers != 0 {
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+    }
+    #[test]
+    fn cancellation_keeps_sampler_fee_until_uninterruptible_body_and_owner_retire() {
+        let pool = Budget::new(64 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        struct Block(Arc<(Mutex<(bool, bool)>, Condvar)>);
+        impl monitor::Sampling for Block {
+            fn sample(&mut self, _: bool, _: &crate::tasks::Cancellation) -> Result<monitor::Raw, Error> {
+                let mut state = self.0.0.lock().unwrap();
+                state.0 = true;
+                self.0.1.notify_all();
+                while !state.1 {
+                    state = self.0.1.wait(state).unwrap();
+                }
+                Ok(monitor::Raw::default())
+            }
+        }
+        let gate = Arc::new((Mutex::new((false, false)), Condvar::new()));
+        struct Release(Arc<(Mutex<(bool, bool)>, Condvar)>);
+        impl Drop for Release {
+            fn drop(&mut self) {
+                self.0.0.lock().unwrap().1 = true;
+                self.0.1.notify_all();
+            }
+        }
+        let _release = Release(gate.clone());
+        let factory_gate = gate.clone();
+        let mut panel = Panel::with_source(Arc::new(move || Box::new(Block(factory_gate.clone()))));
+        let notify: Notify = Arc::new(|| {});
+        panel.tick(true, true, true, &Settings::default(), notify);
+        let until = Instant::now() + std::time::Duration::from_secs(5);
+        while !gate.0.lock().unwrap().0 {
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+        panel.stop_for_exit();
+        assert!(panel.exit_pending());
+        assert!(pool.snapshot().kinds[Kind::Monitor as usize] >= monitor::RESERVED);
+        gate.0.lock().unwrap().1 = true;
+        gate.1.notify_all();
+        while panel.exit_pending() {
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
+        assert!(pool.snapshot().kinds[Kind::Monitor as usize] >= monitor::RESERVED);
+        panel.close();
+        while pool.snapshot().used != 0 || pool.snapshot().managed_workers != 0 {
+            assert!(Instant::now() < until);
+            std::thread::yield_now();
+        }
     }
 }

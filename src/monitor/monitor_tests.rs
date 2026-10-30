@@ -43,6 +43,20 @@ fn limits_convert_history_to_a_bounded_point_count() {
 }
 
 #[test]
+fn history_replacement_admits_overlap_and_denial_preserves_the_old_history() {
+    let bytes = 300 * std::mem::size_of::<Sample>();
+    let pool = crate::resources::Budget::new(bytes, 0);
+    let mut old = History::try_new(300, &pool).unwrap();
+    old.push(sample(Instant::now(), 42.0));
+    assert!(matches!(History::try_new(900, &pool), Err(Error::Budget)));
+    assert_eq!(old.len(), 1);
+    assert_eq!(old.last().unwrap().raw.cpu, 42.0);
+    assert_eq!(pool.snapshot().used, bytes);
+    drop(old);
+    assert_eq!(pool.snapshot().used, 0);
+}
+
+#[test]
 fn stale_follows_the_last_sample_and_the_interval() {
     let mut history = History::new(4);
     let now = Instant::now();
@@ -70,7 +84,7 @@ fn sparkline_scales_buckets_and_stays_inside_the_width() {
     assert!(sparkline([1.0].into_iter(), 0, 100.0).is_empty());
     // 上限为 0 时按 1.0 兜底，2.0 被裁到满格，不会越界取块。
     assert_eq!(sparkline([1.0, 2.0].into_iter(), 2, 0.0), "@@");
-    assert_eq!(sparkline([f32::NAN].into_iter(), 1, f32::NAN), ".");
+    assert_eq!(sparkline([f32::NAN].into_iter(), 1, f32::NAN), "?");
 }
 
 #[test]
@@ -134,8 +148,8 @@ fn process_list_keeps_the_file_handle_count_bounded() {
     let after = fds();
     // 并行测试也会开关文件，留一点余量；但绝不能出现“每个进程一个句柄”的量级。
     assert!(
-        after <= before + FILE_HANDLES + 32,
-        "进程表刷新后句柄从 {before} 涨到 {after}（上限 {FILE_HANDLES}）：{} 个进程",
+        after <= before + 32,
+        "进程表刷新后句柄从 {before} 涨到 {after}（不缓存 stat 句柄）：{} 个进程",
         processes.len()
     );
 }
@@ -257,4 +271,47 @@ fn monitor_sample_cost() {
     }
     stat("processes", processes);
     eprintln!("process rows={rows} limit={PROCESS_LIMIT} interval={PROCESS_INTERVAL:?}");
+}
+
+#[test]
+fn local_network_reader_requires_complete_bounded_input_and_handles_short_reads() {
+    use std::io::{self, Read};
+    let row = b"header\nheader\neth0: 12 0 0 0 0 0 0 0 34 0 0 0 0 0 0 0\n";
+    struct Short<'a> {
+        bytes: &'a [u8],
+        interrupt: bool,
+    }
+    impl Read for Short<'_> {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            if self.interrupt {
+                self.interrupt = false;
+                return Err(io::ErrorKind::Interrupted.into());
+            }
+            let count = output.len().min(self.bytes.len()).min(3);
+            output[..count].copy_from_slice(&self.bytes[..count]);
+            self.bytes = &self.bytes[count..];
+            Ok(count)
+        }
+    }
+    assert_eq!(read_net_dev(Short { bytes: row, interrupt: true }), Some((12, 34)));
+    let mut exact = row.to_vec();
+    exact.resize(NET_DEV_BYTES, b' ');
+    assert_eq!(read_net_dev(exact.as_slice()), Some((12, 34)));
+    exact.push(b' ');
+    assert_eq!(read_net_dev(exact.as_slice()), None);
+    assert_eq!(read_net_dev(&b"header\nheader\n\xff"[..]), None);
+    struct Broken;
+    impl Read for Broken {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Err(io::ErrorKind::PermissionDenied.into())
+        }
+    }
+    assert_eq!(read_net_dev(Broken), None);
+}
+
+#[test]
+fn missing_history_samples_are_marked_instead_of_plotted_as_zero() {
+    assert_eq!(sparkline([f32::NAN, 0.0, 100.0].into_iter(), 3, 100.0), "?.@");
+    assert_eq!(sparkline([0.0, f32::NAN, 100.0, 100.0].into_iter(), 2, 100.0), "?@");
+    assert_eq!(sparkline([f32::INFINITY].into_iter(), 1, 100.0), "?");
 }

@@ -1,0 +1,23 @@
+   Compiling congminal v0.1.0-alpha.6 (/Users/tenonsuzu/Documents/Codes/congminal)
+warning: constant `MEMORY_BYTES` is never used
+  --> src/monitor/native.rs:52:7
+   |
+52 | const MEMORY_BYTES: usize = 64 * 1024;
+   |       ^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `congminal` (bin "congminal" test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.37s
+     Running unittests src/main.rs (/tmp/congminal-fix-target/debug/deps/congminal-660e12cb72cb99bd)
+
+running 6 tests
+test monitor::native::tests::aggregate_deltas_handle_idle_busy_wrap_overflow_and_hotplug ... ok
+test monitor::native::tests::linux_aggregate_ignores_guest_double_count_and_per_core_rows ... ok
+test monitor::native::tests::linux_memory_uses_available_and_validates_units_duplicates_and_overflow ... ok
+test monitor::native::tests::native_reading_has_no_per_core_owned_table ... ok
+test monitor::native::tests::repeated_native_reads_release_each_mach_send_right ... ignored, process-global Mach refs; run alone to avoid other native samplers
+test monitor::native::tests::text_input_is_bounded_short_readable_and_cancelled_before_io ... ok
+
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 899 filtered out; finished in 0.00s
+

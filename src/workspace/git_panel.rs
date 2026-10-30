@@ -85,10 +85,10 @@ pub(super) enum RemoteOp {
     Push,
 }
 impl RemoteOp {
-    fn write(self) -> git::WriteOp {
+    fn write(self) -> git::WriteSource<'static> {
         match self {
-            Self::Pull => git::WriteOp::Pull,
-            Self::Push => git::WriteOp::Push,
+            Self::Pull => git::WriteSource::Pull,
+            Self::Push => git::WriteSource::Push,
         }
     }
     fn describe(self) -> &'static str {
@@ -342,6 +342,35 @@ impl Panel {
     ///
     /// 在途写操作是例外：中途杀 `git` 可能留下 `index.lock`，所以保留任务直到它自己
     /// 结束，只释放显示状态。`tick` 在面板隐藏时也会结算这个任务。
+    pub(super) fn stop_for_exit(&self) {
+        if let Some(task) = &self.status {
+            task.invalidate();
+        }
+        if let Some(task) = &self.diff_task {
+            task.invalidate();
+        }
+        if let Some(task) = &self.write {
+            task.invalidate();
+        }
+        if let Some(task) = &self.branches_task {
+            task.invalidate();
+        }
+        if let Some(task) = &self.log_task {
+            task.invalidate();
+        }
+    }
+    pub(super) fn exit_pending(&self) -> bool {
+        [
+            self.status.as_ref().map(LatestTask::stats),
+            self.diff_task.as_ref().map(LatestTask::stats),
+            self.write.as_ref().map(LatestTask::stats),
+            self.branches_task.as_ref().map(LatestTask::stats),
+            self.log_task.as_ref().map(LatestTask::stats),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|s| s.running || s.pending)
+    }
     fn close(&mut self) -> bool {
         let had = self.status.is_some()
             || self.diff_task.is_some()
@@ -917,23 +946,23 @@ impl Panel {
         self.log_stat_error = None;
     }
     /// 查历史（`hash` 为 None）或某条提交的 `--stat`。
-    pub(super) fn query_log(&mut self, notify: Notify, hash: Option<std::ffi::OsString>) -> bool {
+    pub(super) fn query_log(&mut self, notify: Notify, index: Option<usize>) -> bool {
         if !self.enabled || self.log_loading || self.log_stat_loading {
             return false;
         }
-        let Some(dir) = self.dir.as_deref().map(|dir| dir.to_path_buf()) else {
+        let hash = match index {
+            Some(index) => match self.log.as_ref().and_then(|log| log.commits.get(index)) {
+                Some(commit) => Some(std::ffi::OsStr::new(&commit.hash)),
+                None => return false,
+            },
+            None => None,
+        };
+        let Some(dir) = self.dir.as_deref() else {
             self.log_error = Some(Error::Path);
             return true;
         };
         self.log_generation = self.log_generation.wrapping_add(1);
-        let request = match git::LogRequest::new(
-            self.owner,
-            self.log_generation,
-            &dir,
-            hash.as_deref(),
-            &self.limits,
-            &self.pool,
-        ) {
+        let request = match git::LogRequest::new(self.owner, self.log_generation, dir, hash, &self.limits, &self.pool) {
             Ok(request) => request,
             Err(error) => {
                 self.log_error = Some(error);
@@ -1022,16 +1051,15 @@ impl Panel {
     }
     /// 选中一条提交并打开它的 `--stat` 页。
     pub(super) fn open_commit_stat(&mut self, index: usize, notify: Notify) -> bool {
-        let Some(hash) = self.log.as_ref().and_then(|log| log.commits.get(index)).map(|commit| commit.hash.clone())
-        else {
+        if self.log.as_ref().and_then(|log| log.commits.get(index)).is_none() {
             return false;
-        };
+        }
         self.log_selected = Some(index);
         self.log_stat_open = true;
         self.log_stat = None;
         self.log_stat_error = None;
         self.revision = self.revision.wrapping_add(1);
-        self.query_log(notify, Some(std::ffi::OsString::from(hash)))
+        self.query_log(notify, Some(index))
     }
     /// 从单条提交页返回历史列表。
     pub(super) fn close_commit_stat(&mut self) -> bool {
@@ -1050,19 +1078,19 @@ impl Panel {
         if !self.enabled || self.branches_loading {
             return false;
         }
-        let Some(dir) = self.dir.as_deref().map(|dir| dir.to_path_buf()) else {
+        let Some(dir) = self.dir.as_deref() else {
             self.branches_error = Some(Error::Path);
             return true;
         };
         self.branches_generation = self.branches_generation.wrapping_add(1);
-        let request =
-            match git::BranchRequest::new(self.owner, self.branches_generation, &dir, &self.limits, &self.pool) {
-                Ok(request) => request,
-                Err(error) => {
-                    self.branches_error = Some(error);
-                    return true;
-                }
-            };
+        let request = match git::BranchRequest::new(self.owner, self.branches_generation, dir, &self.limits, &self.pool)
+        {
+            Ok(request) => request,
+            Err(error) => {
+                self.branches_error = Some(error);
+                return true;
+            }
+        };
         if self.branches_task.is_none() {
             match LatestTask::new_named_in(&self.pool, "git-branches", notify, |request, cancel| {
                 Ok(git::branches(request, cancel))
@@ -1159,7 +1187,7 @@ impl Panel {
             self.revision = self.revision.wrapping_add(1);
             return true;
         };
-        let Some(name) = self.branches.as_ref().and_then(|list| list.branches.get(index)).map(|b| b.name.clone())
+        let Some(name) = self.branches.as_ref().and_then(|list| list.branches.get(index)).map(|b| b.name.as_str())
         else {
             return false;
         };
@@ -1172,12 +1200,13 @@ impl Panel {
             return true;
         }
         self.branch_pending = None;
-        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.as_path()) else {
             self.write_note = Some("还没有 Git 状态，先刷新".into());
             self.revision = self.revision.wrapping_add(1);
             return true;
         };
-        self.start_write(git::WriteOp::Checkout { name: std::ffi::OsString::from(name) }, &root, notify)
+        let request = self.prepare_write(git::WriteSource::Checkout { name: std::ffi::OsStr::new(name) }, root);
+        self.start_write(request, notify)
     }
 
     /// 分支页的“取消”：撤掉待确认（切换或删除），不离开页面。
@@ -1243,8 +1272,8 @@ impl Panel {
         let Some(entry) = self.snapshot.as_ref().and_then(|snapshot| snapshot.entries.get(index)) else {
             return false;
         };
-        let label = entry.label.clone();
-        let path = entry.path.clone();
+        let label = &entry.label;
+        let path = &entry.path;
         let confirmed = self.discard_pending.is_some_and(|until| Instant::now() < until);
         if !confirmed {
             self.discard_pending = Some(Instant::now() + REMOTE_CONFIRM);
@@ -1253,12 +1282,14 @@ impl Panel {
             return true;
         }
         self.discard_pending = None;
-        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.as_path()) else {
             self.write_note = Some("还没有 Git 状态，先刷新".into());
             self.revision = self.revision.wrapping_add(1);
             return true;
         };
-        self.start_write(git::WriteOp::Discard { paths: vec![path], count: 1 }, &root, notify)
+        let request =
+            self.prepare_write(git::WriteSource::Discard { paths: std::slice::from_ref(path), count: 1 }, root);
+        self.start_write(request, notify)
     }
     /// 列表里点一行只改变选中项；“差异”按钮才打开该条目的 diff。
     /// 选中的条目是否是未解决的冲突。
@@ -1854,7 +1885,7 @@ impl Panel {
         let Some(branch) = self.branches.as_ref().and_then(|list| list.branches.get(index)) else {
             return false;
         };
-        let name = branch.name.clone();
+        let name = branch.name.as_str();
         if branch.current {
             self.write_note = Some(format!("{name} 是当前分支，不能删除"));
             self.revision = self.revision.wrapping_add(1);
@@ -1869,17 +1900,18 @@ impl Panel {
             return true;
         }
         self.delete_pending = None;
-        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.as_path()) else {
             self.write_note = Some("还没有 Git 状态，先刷新".into());
             self.revision = self.revision.wrapping_add(1);
             return true;
         };
-        self.start_write(git::WriteOp::DeleteBranch { name: std::ffi::OsString::from(name) }, &root, notify)
+        let request = self.prepare_write(git::WriteSource::DeleteBranch { name: std::ffi::OsStr::new(name) }, root);
+        self.start_write(request, notify)
     }
 
     fn submit_input(&mut self, notify: Notify) -> bool {
         let Some(input) = self.input.take() else { return false };
-        let message = input.text.data.trim().to_string();
+        let message = input.text.data.trim();
         self.revision = self.revision.wrapping_add(1);
         if message.is_empty() {
             self.write_note = Some(match input.kind {
@@ -1888,16 +1920,17 @@ impl Panel {
             });
             return true;
         }
-        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.as_path()) else {
             self.write_note = Some("没有可提交的仓库".into());
             return true;
         };
         let op = match input.kind {
-            InputKind::Commit => git::WriteOp::Commit { message },
+            InputKind::Commit => git::WriteSource::Commit { message },
             // 分支名不做 trim 之外的改写：合法性交给 git 层统一校验，非法名会报错而不是猜。
-            InputKind::Branch => git::WriteOp::NewBranch { name: std::ffi::OsString::from(message) },
+            InputKind::Branch => git::WriteSource::NewBranch { name: std::ffi::OsStr::new(message) },
         };
-        self.start_write(op, &root, notify)
+        let request = self.prepare_write(op, root);
+        self.start_write(request, notify)
     }
 
     /// 远端操作按钮：第一次点击只进入确认态，窗口内再点同一个按钮才真正执行。
@@ -1922,12 +1955,13 @@ impl Panel {
             return true;
         }
         self.pending = None;
-        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.clone()) else {
+        let Some(root) = self.snapshot.as_ref().map(|snapshot| snapshot.root.as_path()) else {
             self.write_note = Some("还没有 Git 状态，先刷新".into());
             self.revision = self.revision.wrapping_add(1);
             return true;
         };
-        self.start_write(op.write(), &root, notify)
+        let request = self.prepare_write(op.write(), root);
+        self.start_write(request, notify)
     }
 
     /// 取消待确认的远端操作。
@@ -1949,14 +1983,14 @@ impl Panel {
             self.write_note = Some("裸仓库没有工作区文件".into());
             return true;
         }
-        let paths = vec![entry.path.clone()];
+        let paths = std::slice::from_ref(&entry.path);
         let op = if entry.fully_staged() {
-            git::WriteOp::Unstage { paths, count: 1, unborn: snapshot.head.unborn() }
+            git::WriteSource::Unstage { paths, count: 1, unborn: snapshot.head.unborn() }
         } else {
-            git::WriteOp::Stage { paths, count: 1 }
+            git::WriteSource::Stage { paths, count: 1 }
         };
-        let root = snapshot.root.clone();
-        self.start_write(op, &root, notify)
+        let request = self.prepare_write(op, &snapshot.root);
+        self.start_write(request, notify)
     }
 
     /// “全部暂存”：一次 `add -A` 把新增、修改、删除与改名都放进暂存区。
@@ -1975,8 +2009,8 @@ impl Panel {
             self.revision = self.revision.wrapping_add(1);
             return true;
         }
-        let root = snapshot.root.clone();
-        self.start_write(git::WriteOp::StageAll, &root, notify)
+        let request = self.prepare_write(git::WriteSource::StageAll, &snapshot.root);
+        self.start_write(request, notify)
     }
 
     /// 进入冲突解决页：只对当前选中的冲突条目开放。
@@ -2018,28 +2052,34 @@ impl Panel {
         if snapshot.bare || !entry.conflicted() {
             return false;
         }
-        let paths = vec![entry.path.clone()];
-        let root = snapshot.root.clone();
-        self.start_write(git::WriteOp::Resolve { paths, side, count: 1 }, &root, notify)
+        let paths = std::slice::from_ref(&entry.path);
+        let request = self.prepare_write(git::WriteSource::Resolve { paths, side, count: 1 }, &snapshot.root);
+        self.start_write(request, notify)
     }
 
-    fn start_write(&mut self, op: git::WriteOp, root: &Path, notify: Notify) -> bool {
-        if self.write_loading {
-            // 同一时间只有一个写操作：防重复点击，也避免两次 git 抢同一个索引。
-            return false;
+    fn prepare_write(&self, op: git::WriteSource<'_>, root: &Path) -> Option<Result<WriteRequest, Error>> {
+        if self.write_loading || !self.enabled {
+            return None;
         }
-        if !self.enabled {
+        let Some(generation) = self.write_generation.checked_add(1) else {
+            return Some(Err(Error::Worker));
+        };
+        Some(WriteRequest::from_source(self.owner, generation, root, op, &self.limits, &self.pool))
+    }
+
+    fn start_write(&mut self, prepared: Option<Result<WriteRequest, Error>>, notify: Notify) -> bool {
+        let Some(prepared) = prepared else {
             return false;
-        }
-        let description = op.describe();
-        self.write_generation = self.write_generation.wrapping_add(1);
-        let request = match WriteRequest::new(self.owner, self.write_generation, root, op, &self.limits, &self.pool) {
+        };
+        let request = match prepared {
             Ok(request) => request,
             Err(error) => {
                 self.write_note = Some(error.message().to_string());
                 return true;
             }
         };
+        let description = request.description();
+        self.write_generation = request.generation;
         if self.write.is_none() {
             match LatestTask::new_named_in(&self.pool, "git-write", notify, |request, cancel| {
                 Ok(git::write(request, cancel))
@@ -2170,13 +2210,7 @@ impl Workspace {
                     return match slot {
                         0 => {
                             if self.git.log_stat_open {
-                                let hash = self
-                                    .git
-                                    .log
-                                    .as_ref()
-                                    .and_then(|log| self.git.log_selected.and_then(|i| log.commits.get(i)))
-                                    .map(|commit| commit.hash.clone());
-                                self.git.query_log(notify, hash.map(std::ffi::OsString::from))
+                                self.git.query_log(notify, self.git.log_selected)
                             } else {
                                 self.git.query_log(notify, None)
                             }

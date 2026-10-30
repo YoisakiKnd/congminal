@@ -3,7 +3,9 @@
 //! 第三方类型只出现在本模块里，上层拿到的是定长 `Sample`；采样在后台任务线程里跑，
 //! 界面线程只读已发布的结果。历史是定长环形队列，`Limits` 决定保留多少点，
 //! 面板隐藏时由上层停止采样并释放，不保留没有用途的轮询。
+use crate::resources::{Budget, Kind, Lease};
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// 默认采样间隔（秒）；`MIN_INTERVAL` 是下限，避免把采样做成忙轮询。
@@ -22,17 +24,23 @@ pub const MIN_DISK_INTERVAL: Duration = Duration::from_secs(5);
 pub const MAX_DISK_INTERVAL: Duration = Duration::from_secs(120);
 /// 历史最多保留的采样点数（15 分钟 @1 Hz 也只需要 900 点，这里按 1 Hz/5 分钟定默认上限）。
 pub const MAX_SAMPLES: usize = 900;
-/// 采样器自身结构的固定预留：本机实测 sysinfo 约 240 KiB（见 `docs/evaluations/m7-monitor.md`）。
+/// 采样器基础预留：固定状态、512项旧计数向量及工厂对象。
+/// 磁盘表与标签另行准入，不由基础预留冒充完整应用堆上界。
 pub const RESERVED: usize = 256 * 1024;
 /// 进程列表：最多显示几行、名字最长多少字节、刷新间隔（读全部进程的 /proc 比读全局读数贵）。
 pub const PROCESS_LIMIT: usize = 5;
-/// `sysinfo` 允许保留的 `/proc/<pid>/stat` 句柄数。
-///
-/// 它默认会为**每个进程**留一个打开的句柄（上限是 rlimit 的一半，本机 553 个进程就是 553 个 fd），
-/// 并且在第一次用到时把 `RLIMIT_NOFILE` 的软上限提到硬上限。句柄是硬资源：撞上上限后
-/// 整个进程的所有 open/socket 都会失败，而监控页只需要前 5 个进程。
-/// 这里显式压到 16：超出部分 sysinfo 改成每次开关句柄，代价是进程表刷新慢 2–3 ms。
-pub const FILE_HANDLES: usize = 16;
+pub const PROCESS_SCAN_LIMIT: usize = 512;
+// Selected-PID adapters own only fixed records, two bounded counter vectors
+// and the top-five names. Disk work is admitted separately.
+pub const PROCESS_WORK: usize = 64 * 1024;
+#[cfg(any(target_os = "linux", target_os = "macos", windows, test))]
+mod disk;
+#[cfg(any(target_os = "linux", target_os = "macos", windows, test))]
+mod native;
+#[cfg(any(target_os = "linux", target_os = "macos", windows, test))]
+mod native_process;
+#[path = "process_ids.rs"]
+mod process_ids;
 pub const PROCESS_NAME_BYTES: usize = 24;
 pub const PROCESS_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -66,9 +74,12 @@ pub fn top(entries: impl Iterator<Item = Proc>) -> Vec<Proc> {
         if top.len() == PROCESS_LIMIT && order(&entry, &top[PROCESS_LIMIT - 1]) != std::cmp::Ordering::Greater {
             continue;
         }
-        top.push(entry);
-        top.sort_by(|a, b| order(b, a));
-        top.truncate(PROCESS_LIMIT);
+        if top.len() == PROCESS_LIMIT {
+            top[PROCESS_LIMIT - 1] = entry;
+        } else {
+            top.push(entry);
+        }
+        top.sort_unstable_by(|a, b| order(b, a));
     }
     top
 }
@@ -140,15 +151,22 @@ impl Limits {
 }
 
 /// 定长历史：满了丢最旧的，容量在创建时确定，运行期不再扩容。
-#[derive(Debug)]
 pub struct History {
     samples: VecDeque<Sample>,
     limit: usize,
+    _memory: Lease,
 }
 impl History {
+    #[cfg(test)]
     pub fn new(limit: usize) -> Self {
+        Self::try_new(limit, &crate::resources::current()).unwrap()
+    }
+    pub(crate) fn try_new(limit: usize, pool: &Arc<Budget>) -> Result<Self, Error> {
         let limit = limit.clamp(2, MAX_SAMPLES);
-        Self { samples: VecDeque::with_capacity(limit), limit }
+        let memory = pool.lease(Kind::Monitor, limit * std::mem::size_of::<Sample>()).map_err(|_| Error::Budget)?;
+        let mut samples = VecDeque::new();
+        samples.try_reserve_exact(limit).map_err(|_| Error::Budget)?;
+        Ok(Self { samples, limit, _memory: memory })
     }
     pub fn push(&mut self, sample: Sample) {
         if self.samples.len() == self.limit {
@@ -206,6 +224,9 @@ pub trait Sampling: Send {
     fn processes(&mut self) -> Vec<Proc> {
         Vec::new()
     }
+    fn processes_limited(&self) -> bool {
+        false
+    }
 }
 
 /// 任务输入：哪一代、这轮要不要刷新磁盘。主机读数与活动窗格无关，因此不带窗格归属。
@@ -217,8 +238,10 @@ pub struct Request {
     pub processes: bool,
 }
 
-#[derive(Clone, Debug)]
 pub struct Reply {
+    pub processes_limited: bool,
+    pub processes_refreshed: bool,
+    pub disk_refreshed: bool,
     pub generation: u64,
     pub sample: Sample,
     pub mount: Option<String>,
@@ -228,6 +251,7 @@ pub struct Reply {
     pub processes: Vec<Proc>,
     /// 远端读数的往返耗时；本地采样为 `None`。
     pub latency: Option<std::time::Duration>,
+    pub(crate) memory: Lease,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -238,6 +262,8 @@ pub enum Error {
     Worker,
     /// 平台没有可用的本地采样接口。
     Unsupported,
+    /// 本机读数失败或超出原生适配支持范围。
+    Local,
     /// 远端主机没有返回可用的读数（连不上、没有 `/proc`、输出无法解析）。
     Remote,
 }
@@ -247,6 +273,7 @@ impl Error {
             Self::Budget => "监控额度不足，已停止采样",
             Self::Worker => "监控采样线程不可用",
             Self::Unsupported => "此平台不支持本地状态采样",
+            Self::Local => "本机状态读取失败或超出支持范围，已停止采样",
             Self::Remote => "远程主机未返回读数",
         }
     }
@@ -261,59 +288,31 @@ fn bytes_per_second(bytes: u64, seconds: f64) -> u32 {
 
 #[cfg(any(target_os = "linux", target_os = "macos", windows))]
 mod system {
-    use super::{Proc, Raw, Sampling};
+    use super::{Instant, Proc, Raw, Sampling};
 
-    /// sysinfo 的适配：只读 CPU/内存/磁盘三项，不启用进程、网络、组件与用户表。
+    /// 原生全局读数和有界磁盘/选定进程；不缓存每核心或全局进程表。
     pub struct SystemSource {
-        system: sysinfo::System,
-        disks: sysinfo::Disks,
-        disk: Option<(u64, u64)>,
-        mount: Option<String>,
+        metrics: super::native::Source,
+        disk: Option<super::disk::Sample>,
         /// 上一次的网络累计字节与时间：速率靠两次采样的差值算，不做逐包统计。
         net: Option<(u64, u64, std::time::Instant)>,
+        previous_processes: Vec<(u32, u64, u64)>,
+        process_at: Option<Instant>,
+        process_limited: bool,
     }
-    /// 只设一次：`set_open_files_limit` 是进程级全局状态，重复调用没有意义。
-    /// 非 Linux 目标上 sysinfo 直接返回 false（没有这套句柄缓存），调用无害。
-    fn limit_file_handles() {
-        static ONCE: std::sync::Once = std::sync::Once::new();
-        ONCE.call_once(|| {
-            sysinfo::set_open_files_limit(super::FILE_HANDLES);
-        });
-    }
-
     impl SystemSource {
         pub fn new() -> Self {
-            limit_file_handles();
-            let mut system = sysinfo::System::new();
-            // 先刷新一次，让下一次调用有可比的基线。
-            system.refresh_cpu_usage();
-            Self { system, disks: sysinfo::Disks::new_with_refreshed_list(), disk: None, mount: None, net: None }
-        }
-        fn refresh_disk(&mut self) {
-            self.disks.refresh(true);
-            let list = self.disks.list();
-            let mut best: Option<(u64, u64, String)> = None;
-            for disk in list {
-                if disk.is_read_only() || disk.total_space() == 0 {
-                    continue;
-                }
-                // 嵌套挂载（如 /boot 在 / 之内）会重复计数，只保留最外层。
-                let nested = list.iter().any(|other| {
-                    other.mount_point() != disk.mount_point() && other.mount_point().starts_with(disk.mount_point())
-                });
-                if nested {
-                    continue;
-                }
-                let total = disk.total_space();
-                if best.as_ref().is_none_or(|(_, best_total, _)| total > *best_total) {
-                    let used = total.saturating_sub(disk.available_space());
-                    best = Some((used, total, disk.mount_point().to_string_lossy().into_owned()));
-                }
+            Self {
+                metrics: super::native::Source::default(),
+                disk: None,
+                net: None,
+                previous_processes: Vec::with_capacity(super::PROCESS_SCAN_LIMIT),
+                process_at: None,
+                process_limited: false,
             }
-            self.disk = best.as_ref().map(|(used, total, _)| (*used, *total));
-            self.mount = best.map(|(_, _, mount)| mount);
         }
     }
+
     impl SystemSource {
         /// 用两次采样的累计字节差算速率；第一次采样只记基线，返回未知。
         fn refresh_net(&mut self) -> (Option<u32>, Option<u32>) {
@@ -331,7 +330,7 @@ mod system {
     }
     #[cfg(target_os = "linux")]
     fn net_counters() -> Option<(u64, u64)> {
-        super::parse_net_dev(&std::fs::read_to_string("/proc/net/dev").ok()?)
+        super::read_net_dev(std::fs::File::open("/proc/net/dev").ok()?)
     }
     /// 其他平台没有零成本、零新增依赖的累计字节接口：如实报告未知。
     #[cfg(not(target_os = "linux"))]
@@ -345,19 +344,23 @@ mod system {
         }
     }
     impl Sampling for SystemSource {
-        fn sample(&mut self, disk: bool, _cancel: &crate::tasks::Cancellation) -> Result<Raw, super::Error> {
-            self.system.refresh_cpu_usage();
-            self.system.refresh_memory();
+        fn sample(&mut self, disk: bool, cancel: &crate::tasks::Cancellation) -> Result<Raw, super::Error> {
+            let reading = self.metrics.sample(cancel).ok_or(super::Error::Local)?;
             if disk {
-                self.refresh_disk();
+                match super::disk::sample(&crate::resources::current(), cancel) {
+                    Ok(disk) => self.disk = disk,
+                    Err(super::disk::Error::Budget) => return Err(super::Error::Budget),
+                    Err(super::disk::Error::Cancelled) => return Err(super::Error::Local),
+                    Err(super::disk::Error::Read | super::disk::Error::Limit) => self.disk = None,
+                }
             }
-            let (disk_used, disk_total) = self.disk.unwrap_or_default();
+            let (disk_used, disk_total) = self.disk.as_ref().map_or((0, 0), |disk| (disk.used, disk.total));
             let (net_down, net_up) = self.refresh_net();
             Ok(Raw {
-                cpu: self.system.global_cpu_usage().clamp(0.0, 100.0),
-                cores: self.system.cpus().len(),
-                mem_used: self.system.used_memory(),
-                mem_total: self.system.total_memory(),
+                cpu: reading.cpu,
+                cores: reading.cores,
+                mem_used: reading.used,
+                mem_total: reading.total,
                 disk_used,
                 disk_total,
                 net_down,
@@ -365,23 +368,52 @@ mod system {
             })
         }
         fn mount(&self) -> Option<String> {
-            self.mount.clone()
+            self.disk.as_ref().map(|disk| disk.label.data.clone())
         }
         fn processes(&mut self) -> Vec<Proc> {
-            // 只读 CPU 与内存，不碰可执行路径、命令行、环境与用户表——全量刷新比这贵十倍以上。
-            // `true` 表示顺带清理已退出的进程。
-            self.system.refresh_processes_specifics(
-                sysinfo::ProcessesToUpdate::All,
-                true,
-                sysinfo::ProcessRefreshKind::nothing().with_cpu().with_memory(),
-            );
-            let entries = self.system.processes().iter().map(|(pid, process)| Proc {
-                pid: pid.as_u32(),
-                name: process.name().to_string_lossy().into_owned(),
-                cpu: process.cpu_usage(),
-                memory: process.memory(),
+            let pool = crate::resources::current();
+            let Ok(_work) = pool.lease(crate::resources::Kind::Monitor, super::PROCESS_WORK) else {
+                self.process_limited = true;
+                return Vec::new();
+            };
+            let Some(clock) = super::native_process::Clock::new() else {
+                self.process_limited = true;
+                return Vec::new();
+            };
+            let (pids, mut limited) = super::process_ids::list();
+            let now = Instant::now();
+            let elapsed = self.process_at.map(|at| now.saturating_duration_since(at).as_secs_f64() * 1000.0);
+            // Only one old and one incoming512-entry counter vector can overlap.
+            let mut next = Vec::with_capacity(super::PROCESS_SCAN_LIMIT);
+            let rows = pids.iter().filter_map(|pid| {
+                let Some(mut record) = super::native_process::read(*pid, &clock) else {
+                    limited = true;
+                    return None;
+                };
+                let id = record.row.pid;
+                if let Some((old, ms)) = self
+                    .previous_processes
+                    .binary_search_by_key(&id, |row| row.0)
+                    .ok()
+                    .filter(|&i| self.previous_processes[i].1 == record.start)
+                    .zip(elapsed)
+                    .filter(|(_, ms)| *ms > 0.0)
+                {
+                    record.row.cpu =
+                        (record.milliseconds.saturating_sub(self.previous_processes[old].2) as f64 / ms * 100.0) as f32;
+                }
+                next.push((id, record.start, record.milliseconds));
+                Some(record.row)
             });
-            super::top(entries)
+            let top = super::top(rows);
+            next.sort_unstable_by_key(|row| row.0);
+            self.previous_processes = next;
+            self.process_at = Some(now);
+            self.process_limited = limited;
+            top
+        }
+        fn processes_limited(&self) -> bool {
+            self.process_limited
         }
     }
 }
@@ -419,7 +451,7 @@ pub const SUPPORTED: bool = cfg!(any(target_os = "linux", target_os = "macos", w
 /// 采样器工厂：第一次采样时才在后台线程里创建，界面线程不承担初始化开销。
 ///
 /// 用 `Arc<dyn Fn>` 而不是 `FnOnce`：暂停或关闭面板会连任务带采样器一起释放，
-/// 恢复时需要重新造一个。造一次的成本是 `System`/`Disks` 的冷刷新（本机实测约 0.2 ms）。
+/// 恢复时重新构造固定状态；首次磁盘读取延迟到后台采样，不在构造器中枚举。
 pub type Factory = std::sync::Arc<dyn Fn() -> Box<dyn Sampling> + Send + Sync>;
 
 pub fn factory() -> Factory {
@@ -438,6 +470,30 @@ pub fn remote_factory(target: remote::Target) -> Factory {
 /// 一个可用接口都没有时返回 `None`（界面显示“未知”，不显示成 0）。
 // 只有 Linux 适配层会调用它；解析本身与平台无关，测试在各平台都跑。
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg(any(target_os = "linux", test))]
+const NET_DEV_BYTES: usize = 64 * 1024;
+
+/// One overflow byte distinguishes a complete record set from a truncated file.
+/// Oversized, unreadable or invalid UTF-8 input reports unknown, without partial totals.
+#[cfg(any(target_os = "linux", test))]
+fn read_net_dev(mut reader: impl std::io::Read) -> Option<(u64, u64)> {
+    let mut bytes = [0u8; NET_DEV_BYTES + 1];
+    let mut length = 0;
+    loop {
+        match reader.read(&mut bytes[length..]) {
+            Ok(0) => return parse_net_dev(std::str::from_utf8(&bytes[..length]).ok()?),
+            Ok(count) => {
+                length += count;
+                if length > NET_DEV_BYTES {
+                    return None;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return None,
+        }
+    }
+}
+
 pub fn parse_net_dev(text: &str) -> Option<(u64, u64)> {
     let mut rx = 0u64;
     let mut tx = 0u64;
@@ -507,7 +563,11 @@ pub fn sparkline(values: impl Iterator<Item = f32>, width: usize, maximum: f32) 
         let start = column * values.len() / width;
         let end = ((column + 1) * values.len() / width).max(start + 1).min(values.len());
         let bucket = &values[start..end];
-        let value = bucket.iter().copied().sum::<f32>() / bucket.len() as f32;
+        let Some(sum) = bucket.iter().try_fold(0.0f32, |sum, value| value.is_finite().then_some(sum + value)) else {
+            out.push('?');
+            continue;
+        };
+        let value = sum / bucket.len() as f32;
         let level = ((value.clamp(0.0, maximum) / maximum) * 8.0).floor() as usize;
         out.push(BLOCKS[level.min(7)]);
     }

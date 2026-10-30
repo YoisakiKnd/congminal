@@ -10,7 +10,6 @@ use crate::{
     tasks::Cancellation,
 };
 use std::{sync::Arc, time::Duration};
-#[cfg(unix)]
 #[path = "openssh_auth.rs"]
 pub mod authenticated;
 #[cfg(all(test, unix))]

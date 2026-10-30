@@ -100,7 +100,6 @@ impl<I: Read + Write> Channel<I> {
     pub fn capabilities(&self) -> Capabilities {
         self.caps
     }
-    #[cfg(unix)]
     pub(super) fn transport_mut(&mut self) -> &mut I {
         &mut self.io
     }

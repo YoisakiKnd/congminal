@@ -1,4 +1,4 @@
-//! Unix 测试后端：独立流在同一工作槽推进认证，VERSION 后销毁认证阶段。
+//! 独立流在同一工作槽推进认证，VERSION 后销毁认证阶段。
 use super::super::client::{self, Channel, Source};
 use crate::{
     config::profiles::Ssh,
@@ -20,7 +20,7 @@ use std::{
     time::Duration,
 };
 #[path = "openssh_auth_bench.rs"]
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod benchmark;
 
 #[derive(Debug)]

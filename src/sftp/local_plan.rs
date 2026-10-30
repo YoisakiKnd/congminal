@@ -2,7 +2,11 @@
 //!
 //! 和远端预览（`plan`）对称：这里把「将要上传哪些文件、一共多大、要建哪些远端目录」
 //! 算清楚，真正的提交仍走既有的单文件上传通道（额度、并发、取消、认证规则一条不少）。
-use crate::tasks::Cancellation;
+use crate::{
+    resources::{Budget, Kind, Lease},
+    tasks::Cancellation,
+};
+use std::sync::Arc;
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},
@@ -18,6 +22,13 @@ pub const BYTES: u64 = 8 * 1024 * 1024 * 1024;
 pub const MEMORY: usize = 512 * 1024;
 /// 每条条目在额度里按「路径字节 + 固定开销」估算。
 const ITEM_OVERHEAD: usize = 128;
+pub const SCANS: usize = 8192;
+pub const DIRECTORY_ENTRIES: usize = FILES;
+const NAME_WORK: usize = 2 * 1024 * 1024;
+pub const QUEUED_DIRECTORIES: usize = 128;
+const PATH_BYTES: usize = 4096;
+const WORK_BYTES: usize = 5 * 1024 * 1024;
+pub(crate) const RESULT_BYTES: usize = MEMORY * 3 + 128 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
@@ -55,7 +66,6 @@ pub struct Item {
 }
 
 /// 影响范围预览。
-#[derive(Debug)]
 pub struct Plan {
     /// 被展开的本地根目录。
     pub root: PathBuf,
@@ -69,8 +79,19 @@ pub struct Plan {
     pub skipped: usize,
     /// 是否因为上限被截断。
     pub truncated: bool,
+    pub(crate) memory: Lease,
 }
 
+impl std::fmt::Debug for Plan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Plan")
+            .field("root", &self.root)
+            .field("files", &self.items.len())
+            .field("directories", &self.directories.len())
+            .field("truncated", &self.truncated)
+            .finish()
+    }
+}
 impl Plan {
     /// 条目实际占用的额度字节数。
     pub fn bytes(&self) -> usize {
@@ -80,12 +101,24 @@ impl Plan {
 }
 
 /// 遍历本地目录。不跟随符号链接，只收普通文件；超出上限就停下并标记截断。
+#[cfg(test)]
 pub fn walk(root: &Path, cancel: &Cancellation) -> Result<Plan, Error> {
+    walk_in(root, cancel, &crate::resources::current())
+}
+pub(crate) fn walk_in(root: &Path, cancel: &Cancellation, pool: &Arc<Budget>) -> Result<Plan, Error> {
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
+    if root.as_os_str().len() > PATH_BYTES {
+        return Err(Error::Budget);
+    }
+    let memory = pool.lease(Kind::Directory, WORK_BYTES).map_err(|_| Error::Budget)?;
     let metadata = std::fs::symlink_metadata(root)?;
     if !metadata.is_dir() {
         return Err(Error::NotDirectory);
     }
     let mut plan = Plan {
+        memory,
         root: root.to_path_buf(),
         items: Vec::new(),
         directories: Vec::new(),
@@ -98,7 +131,8 @@ pub fn walk(root: &Path, cancel: &Cancellation) -> Result<Plan, Error> {
     // (目录, 相对路径, 深度)
     let mut queue: VecDeque<(PathBuf, Vec<u8>, usize)> = VecDeque::new();
     queue.push_back((root.to_path_buf(), Vec::new(), 1));
-    while let Some((dir, relative, depth)) = queue.pop_front() {
+    let mut scans = 0;
+    'walk: while let Some((dir, relative, depth)) = queue.pop_front() {
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);
         }
@@ -112,16 +146,42 @@ pub fn walk(root: &Path, cancel: &Cancellation) -> Result<Plan, Error> {
             }
         };
         let mut names: Vec<(Vec<u8>, std::fs::DirEntry)> = Vec::new();
+        let mut names_bytes = 0;
         for entry in entries {
+            if cancel.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            if scans >= SCANS || names.len() >= DIRECTORY_ENTRIES {
+                plan.truncated = true;
+                break;
+            }
+            scans += 1;
             let Ok(entry) = entry else {
                 plan.skipped += 1;
                 continue;
             };
-            names.push((name_bytes(&entry.file_name()), entry));
+            let name = entry.file_name();
+            if name.len() > PATH_BYTES {
+                plan.truncated = true;
+                continue;
+            }
+            names_bytes += name.len() * 2 + ITEM_OVERHEAD;
+            if names_bytes > NAME_WORK {
+                plan.truncated = true;
+                break;
+            }
+            names.push((name_bytes(&name), entry));
         }
         // 排序让预览与提交顺序稳定（read_dir 的顺序由文件系统决定）。
         names.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, entry) in names {
+            if cancel.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            if relative.len() + name.len() + 1 + root.as_os_str().len() > PATH_BYTES {
+                plan.truncated = true;
+                continue;
+            }
             if name.is_empty() || name == b"." || name == b".." {
                 plan.skipped += 1;
                 continue;
@@ -136,7 +196,7 @@ pub fn walk(root: &Path, cancel: &Cancellation) -> Result<Plan, Error> {
                 continue;
             };
             if metadata.is_dir() {
-                if depth >= DEPTH {
+                if depth >= DEPTH || queue.len() >= QUEUED_DIRECTORIES || plan.directories.len() >= QUEUED_DIRECTORIES {
                     plan.truncated = true;
                     continue;
                 }
@@ -164,8 +224,19 @@ pub fn walk(root: &Path, cancel: &Cancellation) -> Result<Plan, Error> {
             }
             plan.total += metadata.len();
             plan.items.push(Item { relative: path, length: metadata.len() });
+            if plan.items.len() >= FILES {
+                plan.truncated = true;
+                break 'walk;
+            }
+        }
+        if scans >= SCANS {
+            plan.truncated = true;
+            break;
         }
     }
+    // Keep the result, bounded UI-to-batch container conversion and mkdir argument
+    // work admitted until the preview/batch is actually discarded.
+    plan.memory.resize(RESULT_BYTES).map_err(|_| Error::Budget)?;
     Ok(plan)
 }
 
@@ -262,7 +333,7 @@ mod tests {
             folder.file(&format!("f{i:05}.txt"), 1);
         }
         let plan = walk(&folder.0, &Cancellation::default()).unwrap();
-        assert_eq!(plan.items.len(), FILES);
+        assert_eq!(plan.items.len(), DIRECTORY_ENTRIES);
         assert!(plan.truncated);
     }
 }

@@ -35,8 +35,10 @@ impl Snapshot {
     }
     pub fn describe(&self) -> String {
         let runtime = crate::runtime::stats();
+        let capture_active = crate::ssh::capture::active();
+        let capture_unconfirmed = crate::ssh::capture::unconfirmed();
         format!(
-            "资源（字节；负载/容量，非 RSS）：grid={} history={} marks={} input={} output={} frame={} glyphs={} font-files={}；字体任务 running={} pending={} result={} closed={}；回收器 active={}/64 starting={} joining={} unconfirmed={} closing={} body-stopped={} joined={} faults={}；{}",
+            "资源（字节；负载/容量，非 RSS）：grid={} history={} marks={} input={} output={} frame={} glyphs={} font-files={}；字体任务 running={} pending={} result={} closed={}；回收器 active={}/64 starting={} joining={} unconfirmed={} closing={} body-stopped={} joined={} faults={} capture-active={} capture-unconfirmed={}；{}",
             self.grid,
             self.history,
             self.marks,
@@ -57,6 +59,8 @@ impl Snapshot {
             runtime.body_stopped,
             runtime.joined,
             runtime.faults,
+            capture_active,
+            capture_unconfirmed,
             current().snapshot().describe()
         )
     }

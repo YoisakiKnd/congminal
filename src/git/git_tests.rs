@@ -418,15 +418,28 @@ fn cancellation_and_timeout_kill_the_child_and_return_credit() {
         };
         let cancel = Cancellation::default();
         let stopper = cancel.clone();
+        let _ = std::fs::remove_file(&pid_file);
+        let observed = pid_file.clone();
         let handle = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(60));
+            let until = Instant::now() + Duration::from_secs(5);
+            while !std::fs::read_to_string(&observed).is_ok_and(|pid| !pid.trim().is_empty()) {
+                if Instant::now() >= until {
+                    stopper.cancel();
+                    return false;
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
             stopper.cancel();
+            true
         });
         let result = status(request, &cancel).result;
-        handle.join().unwrap();
+        let spawned = handle.join().unwrap();
         match result {
             Err(Error::Worker) if Instant::now() < until => continue,
-            other => break other.unwrap_err(),
+            other => {
+                assert!(spawned, "fake process did not publish its PID");
+                break other.unwrap_err();
+            }
         }
     };
     assert_eq!(error, Error::Cancelled);
@@ -474,6 +487,27 @@ fn truncated_status_output_is_marked_incomplete() {
     assert!(malformed.limited);
     assert_eq!(malformed.entries.len(), 1);
     assert!(malformed.entries[0].source.is_none());
+}
+
+#[test]
+fn truncated_machine_output_never_turns_a_prefix_into_a_clickable_path() {
+    let parsed = parse_status(b" M complete\0 M dangerous-prefix", 10);
+    assert!(parsed.limited);
+    assert_eq!(parsed.entries.len(), 1);
+    assert_eq!(parsed.entries[0].path, OsStr::new("complete"));
+    let rename = parse_status(b"R  new\0old-incomplete", 10);
+    assert!(rename.entries.is_empty());
+    assert!(rename.limited);
+}
+
+#[cfg(windows)]
+#[test]
+fn invalid_windows_bytes_never_become_a_different_actionable_filename() {
+    let parsed = parse_status(b" M bad\xff\0 M bad\xef\xbf\xbd\0", 10);
+    assert!(parsed.limited);
+    assert_eq!(parsed.entries.len(), 1);
+    assert_eq!(parsed.entries[0].path, OsStr::new("bad\u{fffd}"));
+    assert!(matches!(path_from(b"bad\xff"), Err(Error::Output)));
 }
 
 fn run_write(pool: &Arc<Budget>, dir: &Path, op: WriteOp) -> Result<(), Error> {
@@ -572,6 +606,7 @@ fn commit_failures_are_reported_instead_of_silently_accepted() {
     // 空白提交信息：git 自己会拒绝，界面必须拿到错误而不是成功。
     let error = run_write(&pool, fixture.path(), WriteOp::Commit { message: "   ".into() }).unwrap_err();
     assert!(matches!(error, Error::Failed(_)), "{error:?}");
+    drop(error); // Error text owns its quota until the last error is discarded.
     // 不在仓库里：分类成 NotRepository，提示可读。
     let outside = Fixture::new("write-outside");
     let error = run_write(&pool, outside.path(), WriteOp::Commit { message: "x".into() }).unwrap_err();
@@ -633,6 +668,7 @@ fn push_without_an_upstream_fails_with_a_readable_reason() {
     let error = run_write_summary(&pool, fixture.path(), WriteOp::Push).unwrap_err();
     assert!(matches!(error, Error::Failed(_)), "{error:?}");
     assert!(!error.message().is_empty());
+    drop(error); // Error text owns its quota until the last error is discarded.
     wait_released(&pool);
 }
 
@@ -663,6 +699,7 @@ fn pull_fast_forwards_and_refuses_to_merge_diverged_history() {
     assert!(matches!(error, Error::Failed(_)), "{error:?}");
     let log = work.git(&["log", "-1", "--pretty=%s"]);
     assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "local", "分叉时不能生成合并提交");
+    drop(error); // Error text owns its quota until the last error is discarded.
     wait_released(&pool);
 }
 
@@ -738,6 +775,7 @@ fn resolve_fails_loudly_when_the_chosen_side_has_no_version() {
     .unwrap_err();
     assert!(matches!(error, Error::Failed(_)), "{error:?}");
     assert!(!error.message().is_empty());
+    drop(error); // Error text owns its quota until the last error is discarded.
     wait_released(&pool);
 }
 
@@ -771,7 +809,7 @@ fn fake_ssh(fixture: &Fixture, name: &str, body: &str) -> PathBuf {
     let path = fixture.path().join(name);
     // 跳过 ssh 选项、`--` 与目标主机，剩下的就是远端命令。
     let script = format!(
-        "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nexec \"$@\"\n{body}"
+        "#!/bin/sh\nwhile [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nexec /bin/sh -c \"$*\"\n{body}"
     );
     std::fs::write(&path, script).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -785,7 +823,7 @@ fn fake_ssh_recording(fixture: &Fixture, name: &str, argv: &std::path::Path) -> 
     let path = fixture.path().join(name);
     let script = format!(
         "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '{argv}'\n\
-         while [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nexec \"$@\"\n",
+         while [ $# -gt 0 ] && [ \"$1\" != \"--\" ]; do shift; done\nshift\nshift\nexec /bin/sh -c \"$*\"\n",
         argv = argv.display()
     );
     std::fs::write(&path, script).unwrap();
@@ -836,6 +874,111 @@ fn remote_status_runs_git_through_ssh_with_the_remote_path() {
     assert_eq!(limits.remote.as_ref().unwrap().label(), "dev@fixture");
     drop(snapshot);
     wait_released(&pool);
+}
+
+#[cfg(unix)]
+#[test]
+fn remote_shell_preserves_metacharacters_in_paths() {
+    use std::os::unix::ffi::OsStringExt;
+    let fixture = Fixture::new("remote-literal");
+    let name = OsString::from_vec(b"repo space;'$(printf INJECTED)\n".to_vec());
+    let directory = fixture.path().join(name);
+    std::fs::create_dir(&directory).unwrap();
+    let script = fake_ssh(&fixture, "ssh-shell", "");
+    let limits = Limits {
+        remote: Some(Remote {
+            program: script,
+            host: "fixture".into(),
+            user: None,
+            port: None,
+            identity: None,
+            jump: None,
+        }),
+        ..base_limits()
+    };
+    let pool = pool();
+    assert!(
+        std::process::Command::new("git").arg("-C").arg(&directory).args(["init", "-q"]).status().unwrap().success()
+    );
+    let filename = "literal;$(printf FILE)\n.txt";
+    std::fs::write(directory.join(filename), b"data").unwrap();
+    let request = StatusRequest::new(1, 7, &directory, &limits, None, &pool).unwrap();
+    let snapshot = status(request, &Cancellation::default()).result.unwrap();
+    assert!(same_path(&snapshot.root, &directory));
+    assert_eq!(snapshot.entries.len(), 1);
+    assert_eq!(snapshot.entries[0].path, OsStr::new(filename));
+    drop(snapshot);
+    wait_released(&pool);
+}
+
+#[cfg(unix)]
+#[test]
+fn literal_pathspec_write_and_diff_leave_unselected_files_untouched() {
+    let fixture = Fixture::new("literal-pathspec");
+    fixture.repo();
+    let selected = ":(glob)*.txt";
+    std::fs::write(fixture.path().join(selected), b"selected\n").unwrap();
+    std::fs::write(fixture.path().join("victim.txt"), b"unselected\n").unwrap();
+    fixture.git(&["add", "victim.txt"]);
+    fixture.git(&["commit", "-qm", "victim"]);
+    std::fs::write(fixture.path().join("victim.txt"), b"unselected changed\n").unwrap();
+    let pool = pool();
+    run_write(&pool, fixture.path(), WriteOp::Stage { paths: vec![selected.into()], count: 1 }).unwrap();
+    let staged = fixture.git(&["diff", "--cached", "--name-only", "-z"]);
+    assert_eq!(staged.stdout, b":(glob)*.txt\0");
+    let snapshot = read_status(&pool, fixture.path());
+    let entry = snapshot.entries.iter().find(|entry| entry.path == OsStr::new(selected)).unwrap();
+    let request = DiffRequest::new(1, 1, fixture.path(), entry, true, &base_limits(), &pool).unwrap();
+    let diff = diff(request, &Cancellation::default()).result.unwrap();
+    assert!(diff.text.contains("+selected"));
+    assert!(!diff.text.contains("+unselected"));
+    drop((diff, snapshot));
+    run_write(&pool, fixture.path(), WriteOp::Unstage { paths: vec![selected.into()], count: 1, unborn: false })
+        .unwrap();
+    assert!(fixture.git(&["diff", "--cached", "--name-only"]).stdout.is_empty());
+    fixture.git(&["--literal-pathspecs", "add", "--", selected]);
+    fixture.git(&["commit", "-qm", "selected"]);
+    std::fs::write(fixture.path().join(selected), b"dirty\n").unwrap();
+    run_write(&pool, fixture.path(), WriteOp::Discard { paths: vec![selected.into()], count: 1 }).unwrap();
+    assert_eq!(std::fs::read(fixture.path().join(selected)).unwrap(), b"selected\n");
+    assert_eq!(std::fs::read(fixture.path().join("victim.txt")).unwrap(), b"unselected changed\n");
+    wait_released(&pool);
+}
+
+#[test]
+fn status_parser_admits_before_growth_and_keeps_its_own_credit() {
+    let denied = Budget::new(0, 0);
+    assert!(matches!(parse_status_in(b" M path\0", 10, &denied), Err(Error::Budget)));
+    assert_eq!(denied.snapshot().used, 0);
+    let pool = pool();
+    let mut raw = Vec::new();
+    for _ in 0..100 {
+        raw.extend_from_slice(b" M ");
+        raw.extend(std::iter::repeat_n(0x7f, 1024));
+        raw.push(0);
+    }
+    let parsed = parse_status_in(&raw, 100, &pool).unwrap();
+    let retained = parsed.entries.capacity() * std::mem::size_of::<Entry>()
+        + parsed.entries.iter().map(|entry| entry.path.capacity() + entry.label.capacity()).sum::<usize>();
+    assert_eq!(parsed.memory.bytes(), retained);
+    assert_eq!(pool.snapshot().used, retained);
+    assert_eq!(parsed.entries[0].label.len(), 3 + 1024 * 4);
+    drop(parsed);
+    assert_eq!(pool.snapshot().used, 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn timeout_with_inherited_pipes_has_no_live_reader_or_refunded_buffer() {
+    let fixture = Fixture::new("pipe-timeout");
+    let program = fake_git(fixture.path(), "#!/bin/sh\nhead -c 65536 /dev/zero\nsleep 30 &\nwait\n");
+    let pool = pool();
+    let limits = Limits { program: Some(program), timeout: Duration::from_millis(300), ..base_limits() };
+    let at = Instant::now();
+    assert!(matches!(run(&pool, &limits, &[], None, 1024 * 1024, &Cancellation::default()), Err(Error::Timeout)));
+    assert!(at.elapsed() < Duration::from_secs(3));
+    assert_eq!(pool.snapshot().managed_workers, 0);
+    assert_eq!(pool.snapshot().used, 0);
 }
 
 /// 远端仓库走 `ssh -J` 时跳板机作为独立参数传给 ssh，不拼进远端命令。
@@ -1089,6 +1232,7 @@ fn delete_branch_removes_merged_branches_and_refuses_the_current_one() {
     let list = read_branches(&pool, fixture.path());
     assert!(!list.branches.iter().any(|branch| branch.name == "merged"));
     drop(list);
+    drop(error); // Error text owns its quota until the last error is discarded.
     wait_released(&pool);
 }
 
@@ -1128,6 +1272,7 @@ fn checkout_switches_the_working_branch_and_reports_dirty_conflicts() {
     // 拒绝后仍在原分支上，工作区改动没被丢。
     assert_eq!(fixture.branch(), before);
     assert_eq!(std::fs::read(fixture.path().join("modified.txt")).unwrap(), b"two\nuncommitted\n");
+    drop(error); // Error text owns its quota until the last error is discarded.
     wait_released(&pool);
 }
 
@@ -1143,4 +1288,118 @@ fn checkout_rejects_names_git_would_read_as_options() {
     let error = run_write(&pool, fixture.path(), WriteOp::Checkout { name: OsString::from("") }).unwrap_err();
     assert_eq!(error, Error::Path);
     wait_released(&pool);
+}
+
+#[test]
+fn request_metadata_is_admitted_bounded_and_released_with_each_owner() {
+    let pool = pool();
+    let mut limits = base_limits();
+    limits.program = Some(PathBuf::from("git-program"));
+    limits.remote = Some(Remote {
+        program: "ssh-program".into(),
+        host: "host".repeat(300),
+        user: Some("user".repeat(100)),
+        port: Some(22),
+        identity: Some("identity".repeat(100)),
+        jump: Some("jump".repeat(100)),
+    });
+    let owned = limits.program.as_ref().unwrap().as_os_str().len()
+        + limits.remote.as_ref().unwrap().program.as_os_str().len()
+        + limits.remote.as_ref().unwrap().host.len()
+        + limits.remote.as_ref().unwrap().user.as_ref().unwrap().len()
+        + limits.remote.as_ref().unwrap().identity.as_ref().unwrap().len()
+        + limits.remote.as_ref().unwrap().jump.as_ref().unwrap().len();
+    let request = StatusRequest::new(1, 1, Path::new("/repo"), &limits, Some("2.50"), &pool).unwrap();
+    assert!(pool.snapshot().used >= owned + 4);
+    drop(request);
+    assert_eq!(pool.snapshot().used, 0);
+    let request = LogRequest::new(1, 1, Path::new("/repo"), Some(OsStr::new("a123")), &limits, &pool).unwrap();
+    assert!(pool.snapshot().used >= owned + 4);
+    drop(request);
+    assert_eq!(pool.snapshot().used, 0);
+    limits.remote.as_mut().unwrap().identity = Some("x".repeat(PATH_LIMIT + 1));
+    assert!(matches!(BranchRequest::new(1, 1, Path::new("/repo"), &limits, &pool), Err(Error::Path)));
+    assert_eq!(pool.snapshot().used, 0);
+    assert!(matches!(
+        StatusRequest::new(1, 1, Path::new("/repo"), &base_limits(), Some(&"x".repeat(VERSION_BYTES + 1)), &pool),
+        Err(Error::Path)
+    ));
+    assert_eq!(pool.snapshot().used, 0);
+}
+
+#[test]
+fn error_summary_is_byte_bounded_sanitized_and_shared_until_last_clone() {
+    let pool = pool();
+    let mut input = "你\n\0好".repeat(1000).into_bytes();
+    input.extend_from_slice(&[0xff, 0xf0, 0x90]);
+    let failure = failure_detail(&input, Some(1), &pool).unwrap();
+    assert!(failure.as_str().len() <= MESSAGE_LIMIT);
+    assert!(!failure.as_str().chars().any(char::is_control));
+    let retained = pool.snapshot().used;
+    let clone = failure.clone();
+    assert_eq!(pool.snapshot().used, retained);
+    drop(failure);
+    assert_eq!(pool.snapshot().used, retained);
+    drop(clone);
+    assert_eq!(pool.snapshot().used, 0);
+    assert_eq!(failure_detail(&[b'a', 0xff, b'b', 0xf0], None, &pool).unwrap().as_str(), "a�b�");
+    assert_eq!(failure_detail(b"\n\t", Some(-9), &pool).unwrap().as_str(), "Git 退出状态 -9");
+    assert!(matches!(failure_detail(b"error", None, &Budget::new(0, 0)), Err(Error::Budget)));
+}
+
+#[test]
+fn borrowed_write_payload_rejects_limits_and_releases_on_admission_failure() {
+    let paths = vec![OsString::from("file"); 49];
+    let pool = pool();
+    assert!(matches!(
+        WriteRequest::from_source(
+            1,
+            1,
+            Path::new("/repo"),
+            WriteSource::Stage { paths: &paths, count: paths.len() },
+            &base_limits(),
+            &pool
+        ),
+        Err(Error::Path)
+    ));
+    assert_eq!(pool.snapshot().used, 0);
+    let limits = base_limits();
+    let denied = Budget::new(1, 0);
+    assert!(matches!(
+        WriteRequest::from_source(
+            1,
+            1,
+            Path::new("/repo"),
+            WriteSource::Commit { message: "commit" },
+            &limits,
+            &denied
+        ),
+        Err(Error::Budget)
+    ));
+    assert_eq!(denied.snapshot().used, 0);
+    let request = WriteRequest::from_source(1, 1, Path::new("/repo"), WriteSource::Pull, &limits, &pool).unwrap();
+    assert_eq!(limits.timeout, DEFAULT_TIMEOUT);
+    assert!(request.limits.timeout() >= NETWORK_TIMEOUT);
+    drop(request);
+    assert_eq!(pool.snapshot().used, 0);
+}
+
+#[test]
+fn simultaneous_error_clone_drops_release_exactly_once() {
+    for _ in 0..32 {
+        let pool = pool();
+        let error = failure_detail(b"failure", Some(1), &pool).unwrap();
+        let clone = error.clone();
+        let gate = std::sync::Barrier::new(2);
+        std::thread::scope(|scope| {
+            let gate = &gate;
+            scope.spawn(move || {
+                gate.wait();
+                drop(clone);
+            });
+            gate.wait();
+            drop(error);
+        });
+        assert_eq!(pool.snapshot().used, 0);
+    }
 }
