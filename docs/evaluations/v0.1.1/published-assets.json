@@ -1,0 +1,37 @@
+{
+  "expected_commit": "4ea4119ef3db88256de735b6128da6d30437467e",
+  "assets": [
+    {
+      "asset": "congminal-0.1.1-linux-x86_64.tar.gz",
+      "bytes": 7090307,
+      "sha256": "0faacb5de5adfe847b2a62cd783d2960ddefd6d5eb52c71d7052c25128060c24",
+      "build": "version=0.1.1\ncommit=4ea4119ef3db88256de735b6128da6d30437467e\n",
+      "architecture": "ELF x86_64 (main and helper)",
+      "required_files": true,
+      "full_project_and_third_party_licenses_verified": true
+    },
+    {
+      "asset": "congminal-0.1.1-macos-universal.zip",
+      "bytes": 3620025,
+      "sha256": "23632c91781ce01bfb056991c70f056bb311dc8a2dd65f28eebe4b1c3cdfbb63",
+      "build": "版本：0.1.1\n架构：universal\n构建时间（UTC）：2026-10-30T07:50:51Z\n来源提交：4ea4119ef3db88256de735b6128da6d30437467e\nSFTP：内置，使用系统 OpenSSH 及附带的按需 helper。Unix Rust 运行时依赖为 libc FFI。\n",
+      "architecture": "universal arm64+x86_64 (main and helper)",
+      "required_files": true,
+      "full_project_and_third_party_licenses_verified": true
+    },
+    {
+      "asset": "congminal-0.1.1-windows-x86_64.zip",
+      "bytes": 1531528,
+      "sha256": "8ee6cd3c54b0c4b22ec19db061a0477c941862ec73c8d8f71c21213f8c20fd0f",
+      "build": "version=0.1.1\ncommit=4ea4119ef3db88256de735b6128da6d30437467e\n",
+      "architecture": "PE x86_64 (main and helper)",
+      "required_files": true,
+      "full_project_and_third_party_licenses_verified": true
+    }
+  ],
+  "all_checks_passed": true,
+  "license": "GPL-3.0-only",
+  "license_sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+  "source_url": "https://github.com/YoisakiKnd/congminal/tree/v0.1.1",
+  "release_ci": "https://github.com/YoisakiKnd/congminal/actions/runs/41022263296"
+}

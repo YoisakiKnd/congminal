@@ -2,7 +2,7 @@
 
 用 Rust 编写的跨平台终端模拟器，提供多标签、分屏、SSH/SFTP、Git、状态监控和通知。窗口与界面直接使用 Cocoa/AppKit、Win32、X11，终端和侧栏由自有软件渲染器绘制。
 
-首个正式版本 **[v0.1.0 已发布](https://github.com/YoisakiKnd/congminal/releases/tag/v0.1.0)**，提供 macOS、Windows、Linux 安装包和 SHA256。发布过程与实际验收范围见 [正式版记录](docs/evaluations/v0.1.0/README.md)。
+当前稳定版 **[v0.1.1](https://github.com/YoisakiKnd/congminal/releases/tag/v0.1.1)**，提供带完整 GPL 许可的 macOS、Windows、Linux 安装包和 SHA256。首个正式版 v0.1.0 的功能与性能验收见 [正式版记录](docs/evaluations/v0.1.0/README.md)。
 
 ## 安装和运行
 
@@ -13,6 +13,22 @@
 | macOS | macOS 11 或更新；通用包支持 Apple 芯片与 Intel。将 `.app` 放到应用程序目录后打开。发布包仅临时签名，尚无 Apple 开发者签名和公证，首次打开需按系统提示允许。 |
 | Windows | Windows 10 1809 或更新，使用 ConPTY；运行 `congminal.exe`。 |
 | Linux | X11，Wayland 桌面通过 XWayland；运行 `./congminal`。CI 包在 Ubuntu 上构建，旧发行版可能不满足其 glibc 要求。 |
+
+通过个人 Homebrew tap 安装（macOS）：
+
+```sh
+brew tap YoisakiKnd/tap
+brew install --cask YoisakiKnd/tap/congminal
+```
+
+通过个人 Scoop bucket 安装（Windows x86_64）：
+
+```powershell
+scoop bucket add yoisaki https://github.com/YoisakiKnd/scoop-bucket
+scoop install yoisaki/congminal
+```
+
+两种方式都保留 SFTP helper；Homebrew 将许可放在应用包内，Scoop 随安装目录保留。SSH/OpenSSH 要求仍按下文配置，macOS 首次运行仍需系统允许。
 
 源码构建需要 Rust **1.88+**。Linux 编译需 X11 开发库（Debian/Ubuntu 为 `libx11-dev`）；其他平台使用系统 SDK。
 
