@@ -167,7 +167,7 @@ fn real_picker_without_forced_console_modes() {
     while !(exit.is_some() && eof) && Instant::now() < deadline {
         match recv.recv_timeout(Duration::from_millis(100)) {
             Ok(PtyEvent::Data(data)) => {
-                assert!(captured.len() + data.len() < 65536);
+                assert!(captured.len() + data.len() < 256 * 1024);
                 captured.extend_from_slice(&data);
                 parser.advance(&mut term, &data);
                 let reply = term.take_response();
@@ -183,11 +183,25 @@ fn real_picker_without_forced_console_modes() {
         }
     }
     drop(pty);
-    let captured = String::from_utf8_lossy(&captured);
-    println!("REAL_PICKER_WIRE {captured:?}");
-    assert_eq!(exit, Some(Some(0)), "real picker failed: {captured:?}");
+    let prefix = String::from_utf8_lossy(&captured[..captured.len().min(1024)]);
+    println!("REAL_PICKER_WIRE bytes={} prefix={prefix:?}", captured.len());
+    assert_eq!(exit, Some(Some(0)), "real picker failed: {prefix:?}");
     assert!(eof);
-    assert!(captured.contains("REAL_PICKER protocol=Kitty"), "{captured:?}");
+    assert!(String::from_utf8_lossy(&captured).contains("REAL_PICKER protocol=Kitty"), "{prefix:?}");
+    assert!(
+        term.graphics.placements().any(|p| p.virtual_),
+        "real library image transmission did not survive native console"
+    );
+    let image = &term.graphics.images.iter().flatten().find(|s| s.image.width == 128).unwrap().image;
+    assert_eq!((image.width, image.height), (128, 128));
+    for y in 0..128 {
+        for x in 0..128 {
+            assert_eq!(
+                &image.rgba()[(y * 128 + x) * 4..][..4],
+                &[(x * 2) as u8, (y * 2) as u8, 127, if x < 8 && y < 8 { 0 } else { 255 }]
+            );
+        }
+    }
 }
 
 #[cfg(windows)]

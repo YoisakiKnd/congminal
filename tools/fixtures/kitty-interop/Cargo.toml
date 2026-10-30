@@ -6,3 +6,4 @@ edition="2024"
 ratatui={version="=0.30.2",default-features=false}
 ratatui-image={version="=11.0.6",default-features=false,features=["crossterm"]}
 image={version="=0.25.10",default-features=false,features=["png"]}
+crossterm="=0.29.0"
