@@ -1,4 +1,4 @@
-//! M6 协议与独立 OpenSSH 通道；预览显式启用，原生库候选仍仅测试。
+//! 内置 SFTP 协议与独立 OpenSSH 通道；原生库候选仍仅测试。
 #[cfg(test)]
 mod allocation;
 mod client;

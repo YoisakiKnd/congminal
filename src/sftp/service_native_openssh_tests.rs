@@ -8,6 +8,7 @@ fn wait(
     mut authentication: Authentication,
     cancel: bool,
 ) -> Result<Tracked<Reply>, executor::Error> {
+    let phrase = std::env::var("CONGMINAL_NATIVE_PASSWORD").unwrap_or_else(|_| "fixture only".into());
     let started = Instant::now();
     let mut front = None;
     let mut handled = None;
@@ -31,9 +32,7 @@ fn wait(
                     assert!(service.cancel(ticket));
                 } else {
                     let mut answer = front.input(prompt.ticket()).unwrap();
-                    answer
-                        .insert(0, if prompt.display().contains("SHA256:") { "yes" } else { "fixture only" })
-                        .unwrap();
+                    answer.insert(0, if prompt.display().contains("SHA256:") { "yes" } else { &phrase }).unwrap();
                     front.answer(prompt.ticket(), answer).unwrap();
                 }
                 handled = Some(prompt.ticket());

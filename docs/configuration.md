@@ -103,10 +103,10 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `sftp.enabled` | `false` | 启用文件页（需要 macOS/Linux 的 `sftp-preview` 构建） |
+| `sftp.enabled` | `true` | 三平台默认构建包含文件页；点击连接前不建立 SFTP 池、线程或网络连接 |
 | `sftp.helper` | 主程序旁的 `congminal-ssh-helper` | 独立 SFTP 的辅助程序 |
 | `sftp.ssh-config` | 系统默认 | 独立 SFTP 用的 ssh 配置，不影响终端 |
-| `sftp.opener` | 平台默认 | 打开远端文件用的程序（`xdg-open` / `open` / `cmd`） |
+| `sftp.opener` | 平台默认 | 打开远端文件用的程序（`xdg-open` / `open` / Windows 原生 ShellExecuteExW） |
 | `sftp.open-max-mib` | `4` | 允许打开（临时下载）的最大 MiB，1–32 |
 
 ### `git`

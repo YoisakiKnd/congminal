@@ -42,7 +42,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libx11-dev xvfb imagemagick
+          sudo apt-get install -y --no-install-recommends libx11-dev xvfb imagemagick openssh-server
 
       - name: 添加 macOS 编译目标
         if: runner.os == 'macOS'
@@ -81,6 +81,14 @@ jobs:
               "target/x86_64-apple-darwin/release/$bin"
             lipo "target/release/$bin" -verify_arch arm64 x86_64
           done
+
+      - name: 原生 Windows OpenSSH 与 SFTP 认证传输
+        if: runner.os == 'Windows'
+        run: python ci/check-windows-sftp.py
+
+      - name: 原生 Linux OpenSSH 密码与 SFTP 认证传输
+        if: runner.os == 'Linux'
+        run: python3 ci/check-linux-password-sftp.py
 
       - name: 冒烟测试
         if: runner.os == 'Linux'

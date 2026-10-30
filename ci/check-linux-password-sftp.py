@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import secrets
 import subprocess
 import tempfile
 import time
@@ -30,6 +31,9 @@ def main():
                   and a.get('target', {}).get('name') == 'congminal' and a.get('profile', {}).get('test')
                   and a.get('executable'))
     user = 'cg' + uuid.uuid4().hex[:12]
+    password = secrets.token_urlsafe(32)
+    # No system listener may authenticate the temporary account; only the loopback fixture below.
+    run(['sudo', 'systemctl', 'stop', 'ssh.service', 'ssh.socket'])
     with tempfile.TemporaryDirectory(prefix='cg-pwd-', dir='/tmp') as temporary:
         root = Path(temporary)
         # Allow traversal to the isolated server user's own remote directory; no public read or write.
@@ -43,8 +47,8 @@ def main():
         try:
             run(['sudo', 'useradd', '-M', '-U', '-d', str(remote), '-s', '/bin/sh', user])
             created = True
-            # Deliberately public fixture password, accepted only by this generated local-only sshd/account.
-            run(['sudo', 'chpasswd'], input=user + ':fixture only\n')
+            # Generated, never printed; the account is removed in finally.
+            run(['sudo', 'chpasswd'], input=user + ':' + password + '\n')
             run(['sudo', 'chown', '-R', user + ':' + user, str(remote)])
             run(['sudo', 'mkdir', '-p', '/run/sshd'])
             with socket.socket() as probe:
@@ -77,7 +81,8 @@ def main():
                         assert time.monotonic() < deadline
                         time.sleep(0.05)
                 env = dict(os.environ, CONGMINAL_NATIVE_ROOT=str(root), CONGMINAL_NATIVE_SSH='/usr/bin/ssh',
-                    CONGMINAL_NATIVE_HELPER=str(repository/'target/release/congminal-ssh-helper'))
+                    CONGMINAL_NATIVE_HELPER=str(repository/'target/release/congminal-ssh-helper'),
+                    CONGMINAL_NATIVE_PASSWORD=password)
                 result = subprocess.run([binary, CASE, '--exact', '--ignored', '--nocapture', '--test-threads=1'],
                     cwd=repository, env=env, capture_output=True, text=True, timeout=120)
                 print(result.stdout + result.stderr)
