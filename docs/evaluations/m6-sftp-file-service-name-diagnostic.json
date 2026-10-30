@@ -1,7 +1,0 @@
-{
-  "scope": "Native filesystem byte-name capability probe in a generated temporary directory, no SSH/user data",
-  "platform": "macOS-27.0.1-arm64-arm-64bit",
-  "created": false,
-  "errno": 1,
-  "error": "Operation not permitted"
-}

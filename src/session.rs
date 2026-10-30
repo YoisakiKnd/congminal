@@ -432,6 +432,51 @@ impl Session {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    #[test]
+    fn local_sessions_use_home_and_honor_explicit_or_inherited_directories() {
+        use std::{os::unix::ffi::OsStringExt, path::PathBuf};
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = Fixture(std::env::temp_dir().join(format!("congminal-startup-{}-{stamp}", std::process::id())));
+        std::fs::create_dir(&root.0).unwrap();
+        let explicit = root.0.join("cwd with spaces 中");
+        std::fs::create_dir(&explicit).unwrap();
+        let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+        for (name, directory, expected) in [
+            ("default", None, home),
+            ("explicit", Some(explicit.clone()), explicit),
+            ("inherit", Some(PathBuf::from(".")), std::env::current_dir().unwrap()),
+        ] {
+            let report = root.0.join(name);
+            let mut config = Config::default();
+            if let Some(directory) = directory {
+                config.shell.working_directory = Some(directory);
+            }
+            config.shell.program = Some("/bin/sh".into());
+            config.shell.args = vec![
+                "-c".into(),
+                "pwd -P > \"$1\"; printf STARTUP_OK".into(),
+                "startup-fixture".into(),
+                report.to_str().unwrap().into(),
+            ];
+            let mut session = Session::spawn(&config, Arc::new(|| {})).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !session.poll().finished {
+                assert!(Instant::now() < deadline, "cwd fixture timed out: {name}");
+                std::thread::yield_now();
+            }
+            assert_eq!(session.exit_status(), Some(Some(0)));
+            let mut actual = std::fs::read(report).unwrap();
+            assert_eq!(actual.pop(), Some(b'\n'));
+            let actual = PathBuf::from(std::ffi::OsString::from_vec(actual));
+            assert_eq!(actual, expected.canonicalize().unwrap(), "{name}");
+        }
+    }
     fn async_session() -> Session {
         let mut config = Config::default();
         config.shell.program = Some("/bin/sh".into());

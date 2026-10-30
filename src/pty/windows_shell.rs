@@ -25,7 +25,7 @@ fn local(path: &Path) -> bool {
         && path.as_os_str().encode_wide().count() <= 4096
 }
 pub(super) fn home_directory() -> Option<PathBuf> {
-    environment("USERPROFILE")
+    environment("USERPROFILE").filter(|path| path.as_os_str().len() <= 4096)
 }
 pub(super) fn default_program() -> String {
     let program_files = environment("ProgramFiles").map(|p| p.join("PowerShell/7/pwsh.exe"));

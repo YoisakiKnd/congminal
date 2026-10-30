@@ -1,0 +1,4702 @@
+{
+  "archive_ref": "v0.2.2",
+  "commit": "c2aafdc6464b8d42dd2174d23cddcdf473d6a46b",
+  "files": {
+    "docs/DEEPSEEK_HANDOFF.md": {
+      "blob": "804a6ae78ec06f15bf8da9112d97aa6b93125458",
+      "bytes": 37561
+    },
+    "docs/configuration.md": {
+      "blob": "07c2dc76a7bf56739b66298d3c2b280b188ef048",
+      "bytes": 11790
+    },
+    "docs/dependency-policy.md": {
+      "blob": "8592283357e4aa9c6c438b1aca12e6f0d5fb0943",
+      "bytes": 8298
+    },
+    "docs/design-appearance.md": {
+      "blob": "b7bf00c50cc82c9f5f004077a215f3ba7c8921d5",
+      "bytes": 15451
+    },
+    "docs/design-auth-ui.md": {
+      "blob": "a5f950ac1a7cfd02f56435e97a3efc145ffc1c6d",
+      "bytes": 9661
+    },
+    "docs/design-git-panel.md": {
+      "blob": "673b73458bce4703c16e31d970ced1db31263f9f",
+      "bytes": 24365
+    },
+    "docs/design-monitor-panel.md": {
+      "blob": "f779022030f9cd34868859f573fb7d7412c2fe7f",
+      "bytes": 15458
+    },
+    "docs/design-notifications.md": {
+      "blob": "d27a54ad40044e588bcaf1049016f3fd0e6ca521",
+      "bytes": 10273
+    },
+    "docs/design-sftp-auth.md": {
+      "blob": "a5e0379d08930641bc16b8df5ad6c6d5aefcbdd4",
+      "bytes": 7889
+    },
+    "docs/design-sftp-ops.md": {
+      "blob": "8cfa45414d90e33a6603cc4643cc69c389918598",
+      "bytes": 27027
+    },
+    "docs/design-term-queries.md": {
+      "blob": "2e8c3d65d59541a35e9ce82162ae15abf7194428",
+      "bytes": 15050
+    },
+    "docs/evaluations/baselines/check-font-map-short.py": {
+      "blob": "f35b4cdf8d8a959fa142e44834b90c0bd3521763",
+      "bytes": 4760
+    },
+    "docs/evaluations/baselines/check_task_runtime-before-capture-limit.py": {
+      "blob": "e766214ac31cbe0000bf4058f68172d9aa8702c2",
+      "bytes": 12901
+    },
+    "docs/evaluations/baselines/m4-config-borrow-before.tar.gz": {
+      "blob": "3fd2c2ffc696a6c9516bb706e412267a507e3231",
+      "bytes": 692526
+    },
+    "docs/evaluations/baselines/m4-config-parser-before.tar.gz": {
+      "blob": "2378152fe81ef5c530df898a64319bb58a8c5429",
+      "bytes": 693638
+    },
+    "docs/evaluations/baselines/m4-copy-resources-before.tar.gz": {
+      "blob": "60244d64d42b6ec1f6cb71294a598e7b97fd779f",
+      "bytes": 667876
+    },
+    "docs/evaluations/baselines/m4-font-discovery-before.tar.gz": {
+      "blob": "457cd6db45277b4ff29ca3a3d92e9f74b15da34d",
+      "bytes": 647431
+    },
+    "docs/evaluations/baselines/m4-font-map-before.tar.gz": {
+      "blob": "837e397971273ef3a7f6995049aea4766b9f0c01",
+      "bytes": 654481
+    },
+    "docs/evaluations/baselines/m4-font-metadata-before.tar.gz": {
+      "blob": "2fda5127fd1255d7fe1a0f84155a307f7915cf2b",
+      "bytes": 651643
+    },
+    "docs/evaluations/baselines/m4-layout-resources-before.tar.gz": {
+      "blob": "da8c6ec71809bd025aff6ddb6e242db95a255f29",
+      "bytes": 688537
+    },
+    "docs/evaluations/baselines/m4-link-resources-before.tar.gz": {
+      "blob": "b73ae46459796e138ebceafc1bcaad9ff4f8a3a5",
+      "bytes": 674188
+    },
+    "docs/evaluations/baselines/m4-notice-resources-before.tar.gz": {
+      "blob": "e8c071ed31bf9d370772956b435e79adc1f4fe1e",
+      "bytes": 664286
+    },
+    "docs/evaluations/baselines/m4-paste-resources-before.tar.gz": {
+      "blob": "7eed05ba9a45cdbd1066754a341972b8cfd2915a",
+      "bytes": 671133
+    },
+    "docs/evaluations/baselines/m4-render-work-before.tar.gz": {
+      "blob": "bd4c211e207f3f2a2b559baa14f4cd019949deea",
+      "bytes": 645530
+    },
+    "docs/evaluations/baselines/m4-root-budget-before.tar.gz": {
+      "blob": "d6f123b5695ad147f61e9edf397c07078f09d535",
+      "bytes": 678487
+    },
+    "docs/evaluations/baselines/m4-search-resources-before.tar.gz": {
+      "blob": "0fa419b068f4c2ee232341ef8e6ed33a12d6b6e7",
+      "bytes": 662663
+    },
+    "docs/evaluations/baselines/m4-shell-resources-before.tar.gz": {
+      "blob": "9ab9c0fd651cc97362d185ce38e1c16ed49187cb",
+      "bytes": 665343
+    },
+    "docs/evaluations/baselines/m4-system-threads-before.tar.gz": {
+      "blob": "90b3cd5bef01b16ae753f54fc8c478e614e31cdc",
+      "bytes": 685310
+    },
+    "docs/evaluations/baselines/m4-task-resources-before.tar.gz": {
+      "blob": "42d054738be96d468a16ccbf8d4beaa56737e3fc",
+      "bytes": 676154
+    },
+    "docs/evaluations/baselines/m4-task-runtime-before-wake.rs": {
+      "blob": "d489ef5c25d643a142cf5bcd8802c3712d1abd94",
+      "bytes": 13402
+    },
+    "docs/evaluations/baselines/m4-task-runtime-before.tar.gz": {
+      "blob": "d496880e3a9f0ac74b4644f811f3f81a432a38ca",
+      "bytes": 679149
+    },
+    "docs/evaluations/baselines/m4-ui-state-before.tar.gz": {
+      "blob": "93109384bd8c6b7a42607843de320a1ea7c44fe5",
+      "bytes": 659141
+    },
+    "docs/evaluations/baselines/review-20261029-before.tar.gz": {
+      "blob": "3a1e86ed1c6b6c124c7a6bc9b72fed5b44d41cbc",
+      "bytes": 947279
+    },
+    "docs/evaluations/baselines/review-cpu-before.tar.gz": {
+      "blob": "409b8bf8bd2cdc31e85f6b311bbd76728e02fc02",
+      "bytes": 964057
+    },
+    "docs/evaluations/baselines/review-metadata-before.tar.gz": {
+      "blob": "fad909de60711fdfe54486676f08c76e0d8276db",
+      "bytes": 961480
+    },
+    "docs/evaluations/baselines/review-monitor-bounds-before.tar.gz": {
+      "blob": "1e66b4f59fbdc97021fa720ee60990eca6f06d45",
+      "bytes": 970956
+    },
+    "docs/evaluations/baselines/ui-state-before-single-pass.rs": {
+      "blob": "72049df288ae75c29c7c87879a808356ec051596",
+      "bytes": 10673
+    },
+    "docs/evaluations/m1-bench.json": {
+      "blob": "adfa56c9097c447ae782ac04be643b4cad5a3b30",
+      "bytes": 3214
+    },
+    "docs/evaluations/m1-runtime.json": {
+      "blob": "751424e1f9799a693404cd05dc674a8df37396cd",
+      "bytes": 7071
+    },
+    "docs/evaluations/m1.md": {
+      "blob": "17f54aa58ec6a48cd21e9288593fcc44f3ad2a9c",
+      "bytes": 7171
+    },
+    "docs/evaluations/m2-bench-initial.json": {
+      "blob": "fceaefa3c74981b73661fb35cab97f4dd3eb94dd",
+      "bytes": 3184
+    },
+    "docs/evaluations/m2-bench.json": {
+      "blob": "fd69b5573af9617a062e394b986d4c60b885900a",
+      "bytes": 4359
+    },
+    "docs/evaluations/m2-runtime.json": {
+      "blob": "0531f202660af73323e24d6a13a79a8edfd7f026",
+      "bytes": 3541
+    },
+    "docs/evaluations/m2-stress.json": {
+      "blob": "a162e76714e1fa177088c61eff8b225d3d9c08a4",
+      "bytes": 10961
+    },
+    "docs/evaluations/m2.md": {
+      "blob": "00c67824f5bffcaf51e244fb9055b8f8abdc1389",
+      "bytes": 8230
+    },
+    "docs/evaluations/m3-bench.json": {
+      "blob": "9d60320015d1911fd8a81b55365a2434c5084c03",
+      "bytes": 7207
+    },
+    "docs/evaluations/m3-runtime-initial.json": {
+      "blob": "c0438a196c57018253b0ffb36860f70df0cb6770",
+      "bytes": 3534
+    },
+    "docs/evaluations/m3-runtime.json": {
+      "blob": "ab7e5402f9bf28dcca4b1b6bef027ca34bc845d2",
+      "bytes": 6442
+    },
+    "docs/evaluations/m3-shell-hooks.json": {
+      "blob": "f2ed318cb1834791b5403e2060ddfacb07ed1d28",
+      "bytes": 20257
+    },
+    "docs/evaluations/m3-startup.json": {
+      "blob": "44dbfa2837b4bc7c9c99e049f14b212a96772c6b",
+      "bytes": 3614
+    },
+    "docs/evaluations/m3-stress-initial.json": {
+      "blob": "ba7a4d8860e8a00262dbfb47c4cca57961b4b642",
+      "bytes": 9514
+    },
+    "docs/evaluations/m3-stress.json": {
+      "blob": "f1a986f3d835f8d645b998456ec421332da8e184",
+      "bytes": 9397
+    },
+    "docs/evaluations/m3.md": {
+      "blob": "686945fce3fded862708e961bc6955ae423fddea",
+      "bytes": 8329
+    },
+    "docs/evaluations/m4-bench-initial.json": {
+      "blob": "8c6c4ad24fa985fc037a3e42c5a8b86245d5955f",
+      "bytes": 12458
+    },
+    "docs/evaluations/m4-bench-intermediate.json": {
+      "blob": "58628c3bd633ed45bcd18d7db9ff8ac1dea15133",
+      "bytes": 12504
+    },
+    "docs/evaluations/m4-bench.json": {
+      "blob": "99920829fc4e69291b23b647e8b3751cbbf0a968",
+      "bytes": 22314
+    },
+    "docs/evaluations/m4-cache-index-allocation.json": {
+      "blob": "32ffd113a09dba24d338fb917b1f8b2162d2aa33",
+      "bytes": 71606
+    },
+    "docs/evaluations/m4-cache-index-bench.json": {
+      "blob": "8b2b951b6721bfff3e2642a6717f0b830609d348",
+      "bytes": 25275
+    },
+    "docs/evaluations/m4-cache-index-build.json": {
+      "blob": "da1ccc5b67ea4463ae6c1cdc96a82f0ca99b877e",
+      "bytes": 58074
+    },
+    "docs/evaluations/m4-cache-index-pressure-smoke.json": {
+      "blob": "37ac0bcc04adcd4d0d0343ae67941a0b9c298fc0",
+      "bytes": 27919
+    },
+    "docs/evaluations/m4-cache-index-render-isolated.json": {
+      "blob": "bf73e84238f12324f3e9f3ec91bc0d4db1531268",
+      "bytes": 25379
+    },
+    "docs/evaluations/m4-cache-index-tool-smoke.json": {
+      "blob": "2cf126faa79c450cc21a87f3caa0e36437900d4d",
+      "bytes": 36279
+    },
+    "docs/evaluations/m4-cache-index-workload.json": {
+      "blob": "150bd6510f9204e192f4cb423775d171b76f5d99",
+      "bytes": 53573
+    },
+    "docs/evaluations/m4-cache-index.md": {
+      "blob": "15df82e3050e5b8ef166e7ba70204ef10abe09dc",
+      "bytes": 4422
+    },
+    "docs/evaluations/m4-config-borrow-allocation-msrv.json": {
+      "blob": "88c68432a895994ec4d4e4927678d83a09368f1f",
+      "bytes": 41778
+    },
+    "docs/evaluations/m4-config-borrow-allocation.json": {
+      "blob": "c77d510b26703cc70c45593535ac6b85b4466647",
+      "bytes": 41733
+    },
+    "docs/evaluations/m4-config-borrow-audit.json": {
+      "blob": "0cc7be58bc3c097e17f0d363d4af1101780c72f4",
+      "bytes": 18813
+    },
+    "docs/evaluations/m4-config-borrow-build.json": {
+      "blob": "b5ac4fdc97f5ddc933501fb130b9f1f0afa80109",
+      "bytes": 161060
+    },
+    "docs/evaluations/m4-config-borrow-cost.json": {
+      "blob": "b3add6f4e47f9012df1e98cbe5e0230a3c2a0b1d",
+      "bytes": 684831
+    },
+    "docs/evaluations/m4-config-borrow-preview-entry.json": {
+      "blob": "bc7fbee3e849aa3455e4e6439a7203c064150d3a",
+      "bytes": 119985
+    },
+    "docs/evaluations/m4-config-borrow-ssh-interrupt.json": {
+      "blob": "9cdae60e4ef2b37b6dff09fbbc5db9969cb92c83",
+      "bytes": 103390
+    },
+    "docs/evaluations/m4-config-borrow-ssh-positive.json": {
+      "blob": "1e7f02f50fcd47cc328cb0b9f762e86d6471ede1",
+      "bytes": 636354
+    },
+    "docs/evaluations/m4-config-borrow-ui-allocation.json": {
+      "blob": "272114323ddd917b04bca0c99d2f4fdbf14dc7e5",
+      "bytes": 129379
+    },
+    "docs/evaluations/m4-config-borrow-workspace.json": {
+      "blob": "1ce81399e3bd678d74b0cf38c2ee463f8da3f3d4",
+      "bytes": 49692
+    },
+    "docs/evaluations/m4-config-borrow.md": {
+      "blob": "2e938ad2d75778b2ae5d0a5cf502d8fb1d74cbd4",
+      "bytes": 6282
+    },
+    "docs/evaluations/m4-copy-resources-allocation-before-cold-grow.json": {
+      "blob": "529d0853465c75baa7285e16117b608f025992d5",
+      "bytes": 31171
+    },
+    "docs/evaluations/m4-copy-resources-allocation-before-lock-warm.json": {
+      "blob": "591c0c30853e0dfe2d267433173a6ee412ca366d",
+      "bytes": 29420
+    },
+    "docs/evaluations/m4-copy-resources-allocation-initial.json": {
+      "blob": "1d65d0077c9c2a3dbebb28b41f1d9d45ee026068",
+      "bytes": 29234
+    },
+    "docs/evaluations/m4-copy-resources-allocation-msrv-before-lock-warm.json": {
+      "blob": "15bc9c1697d3a6ab2caaff3c05b63b29bd0069a9",
+      "bytes": 29235
+    },
+    "docs/evaluations/m4-copy-resources-allocation-msrv.json": {
+      "blob": "2394da6a18e47b55bd1e4372754bf6134baea517",
+      "bytes": 31216
+    },
+    "docs/evaluations/m4-copy-resources-allocation.json": {
+      "blob": "c54785ef90d8115269ba0d35a66b2b1147c5b729",
+      "bytes": 31171
+    },
+    "docs/evaluations/m4-copy-resources-audit.json": {
+      "blob": "63a21711fdd8ba6d063053a8d6c2e8c05d816f0a",
+      "bytes": 18215
+    },
+    "docs/evaluations/m4-copy-resources-build-before-cold-grow.json": {
+      "blob": "9912f4af0b3487f82bfec6a4d7376d6d82fdf07e",
+      "bytes": 147906
+    },
+    "docs/evaluations/m4-copy-resources-build.json": {
+      "blob": "7be638fb8fb79575b218b363c161af5e47a85abe",
+      "bytes": 147894
+    },
+    "docs/evaluations/m4-copy-resources-cost-before-cold-grow.json": {
+      "blob": "d00ab3f093399fc8a459ab711340dc83e11e1964",
+      "bytes": 1908031
+    },
+    "docs/evaluations/m4-copy-resources-cost.json": {
+      "blob": "0774d735b3c898c991626df145030557d1e40b8a",
+      "bytes": 1906767
+    },
+    "docs/evaluations/m4-copy-resources-file-quota.json": {
+      "blob": "702fb38990ba1560f6aa874b31a8418e33980780",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-copy-resources-ui-allocation.json": {
+      "blob": "66a8f2465236baea5b2d1c7b5a0060abeb8bc83c",
+      "bytes": 128902
+    },
+    "docs/evaluations/m4-copy-resources-ui-cost.json": {
+      "blob": "21f219576b72a83209d39bcccdab37c44bf5348b",
+      "bytes": 1645778
+    },
+    "docs/evaluations/m4-copy-resources-workspace.json": {
+      "blob": "0a5d9541bf80097458e3f1ef97deefa23ac272a5",
+      "bytes": 48874
+    },
+    "docs/evaluations/m4-copy-resources.md": {
+      "blob": "9a291bd7e9495131e84156abf87d2c16c1f4309d",
+      "bytes": 10475
+    },
+    "docs/evaluations/m4-directory-bench.json": {
+      "blob": "71a9bcb171f69a8084cb80963bd876630b81aff0",
+      "bytes": 25356
+    },
+    "docs/evaluations/m4-directory-build.json": {
+      "blob": "f2a218adf0a9e9eee13dcd5b47ad045fbccaef70",
+      "bytes": 6190
+    },
+    "docs/evaluations/m4-directory-isolated-audit.json": {
+      "blob": "1a3b10c076d729cd91fb064bbaa234425fc61e26",
+      "bytes": 17445
+    },
+    "docs/evaluations/m4-directory-isolated-build-before-child-mode-gate.json": {
+      "blob": "ecf6c8eb2ec8100903618b699dc8e6e8b8b0eafb",
+      "bytes": 134795
+    },
+    "docs/evaluations/m4-directory-isolated-build-before-dev-gate.json": {
+      "blob": "9f8957b418fdcdf20ecd5c47c0cca855613f24df",
+      "bytes": 135730
+    },
+    "docs/evaluations/m4-directory-isolated-build-before-unix-field-gate.json": {
+      "blob": "2876b7ea035ffdcb8e80e4f159c46d571ab12206",
+      "bytes": 134839
+    },
+    "docs/evaluations/m4-directory-isolated-build.json": {
+      "blob": "93ecc1ecc68d902a9a621af0b0529d563d3b9fc7",
+      "bytes": 135881
+    },
+    "docs/evaluations/m4-directory-isolated-cost-before-deadline-test.json": {
+      "blob": "d938259b6255eb4df31d28e5b9de641b8ba9caa0",
+      "bytes": 94036
+    },
+    "docs/evaluations/m4-directory-isolated-cost-initial.json": {
+      "blob": "f005e2f22705ad3d90ed478a7513fa8ae6eb9450",
+      "bytes": 100111
+    },
+    "docs/evaluations/m4-directory-isolated-cost.json": {
+      "blob": "bc27dcbb93c75f7bd6efca0d7e4ea3fdadb5b876",
+      "bytes": 94342
+    },
+    "docs/evaluations/m4-directory-isolated-minimal-cost-before-dev-gate.json": {
+      "blob": "a2fe4c6f1c086184b4ce413570073968e9070dfb",
+      "bytes": 73697
+    },
+    "docs/evaluations/m4-directory-isolated-minimal-cost-before-unix-field-gate.json": {
+      "blob": "3303306043d28e3c9fd72053b420838e31a64dd7",
+      "bytes": 75086
+    },
+    "docs/evaluations/m4-directory-isolated-minimal-cost.json": {
+      "blob": "64a868cde92e50a3f19b28cc592e93f7e653960a",
+      "bytes": 74307
+    },
+    "docs/evaluations/m4-directory-isolated-msrv-before-dev-gate.json": {
+      "blob": "a783542fcfdbbd59514def1f2244b177068e175b",
+      "bytes": 18949
+    },
+    "docs/evaluations/m4-directory-isolated-msrv.json": {
+      "blob": "0306c40b9cab9542e397e1077a45d488da4cbef8",
+      "bytes": 19048
+    },
+    "docs/evaluations/m4-directory-isolated.md": {
+      "blob": "c9614536631d6c01e60f6874345c2389816b841b",
+      "bytes": 6516
+    },
+    "docs/evaluations/m4-directory-render-isolated.json": {
+      "blob": "14461dc2cd01b52fdc988d0f1b6294e87ab84b7e",
+      "bytes": 25513
+    },
+    "docs/evaluations/m4-directory-workload.json": {
+      "blob": "ce0cedb7d4c32f41d6f632fb2b445fea87a3544d",
+      "bytes": 19941
+    },
+    "docs/evaluations/m4-directory.md": {
+      "blob": "6e0d3f3ac91b4e959d84e6214ee6ed81089060a5",
+      "bytes": 3629
+    },
+    "docs/evaluations/m4-final-build.json": {
+      "blob": "41e1f1d2158e70cddeef7886cd2f1159dee47dd7",
+      "bytes": 5107
+    },
+    "docs/evaluations/m4-font-discovery-allocation-before-directory-budget.json": {
+      "blob": "5188f2186d6f82c506d52534deaa1d3400272185",
+      "bytes": 29041
+    },
+    "docs/evaluations/m4-font-discovery-allocation-msrv.json": {
+      "blob": "1f421c5dbc36067b9b3b8a4fe16185faf8e60a7d",
+      "bytes": 30967
+    },
+    "docs/evaluations/m4-font-discovery-allocation.json": {
+      "blob": "249be9aa2d009b0244b93358303e8074dad8c276",
+      "bytes": 30922
+    },
+    "docs/evaluations/m4-font-discovery-audit.json": {
+      "blob": "8a4c0221f81fda11d4e29f49d3e317abec480e7a",
+      "bytes": 16858
+    },
+    "docs/evaluations/m4-font-discovery-build.json": {
+      "blob": "437adcee8cb4a32a21f978b602e7210536a732a7",
+      "bytes": 142010
+    },
+    "docs/evaluations/m4-font-discovery-cost-before-metadata-reuse.json": {
+      "blob": "fea59cae9bc45b3a9d47010d6299074b78cc9483",
+      "bytes": 62674
+    },
+    "docs/evaluations/m4-font-discovery-cost.json": {
+      "blob": "d9e3ea07b72881c25a7ea44b51c7d912dcdf0ac4",
+      "bytes": 100769
+    },
+    "docs/evaluations/m4-font-discovery-file-quota.json": {
+      "blob": "48617a3b3180eccc7df823cc9ecc5b0c2858ee61",
+      "bytes": 31538
+    },
+    "docs/evaluations/m4-font-discovery-unicode-before-reserve.json": {
+      "blob": "49c7e1b20f26ab38585f5c1aba9894ca83d2906a",
+      "bytes": 30944
+    },
+    "docs/evaluations/m4-font-discovery-workspace.json": {
+      "blob": "0d3654b0d94b8fe5e5426766a759063eac494356",
+      "bytes": 48469
+    },
+    "docs/evaluations/m4-font-discovery.md": {
+      "blob": "bcb27a51afab3d62eb9822d917b86581c4cafc0c",
+      "bytes": 8782
+    },
+    "docs/evaluations/m4-font-map-allocation-before-pipeline-fix.json": {
+      "blob": "d08249bbcd22ef9254b573180cd3b9de096a7c86",
+      "bytes": 28764
+    },
+    "docs/evaluations/m4-font-map-allocation-before-static-lock.json": {
+      "blob": "c6fa2bba4fd4de854a9ddf1efdd253421f23a29b",
+      "bytes": 28979
+    },
+    "docs/evaluations/m4-font-map-allocation-msrv.json": {
+      "blob": "666e5bf87d18b6bc062a196b2cc7728de4cd7ffa",
+      "bytes": 32163
+    },
+    "docs/evaluations/m4-font-map-allocation.json": {
+      "blob": "7ec04262bddac1a36cd5cfd3f600cfe6be2e0fad",
+      "bytes": 32146
+    },
+    "docs/evaluations/m4-font-map-audit.json": {
+      "blob": "3f5bfc2469c9ccf042eaefd032541f092f53b47c",
+      "bytes": 17404
+    },
+    "docs/evaluations/m4-font-map-build-before-windows-fixture.json": {
+      "blob": "cac4db394f5de7039a8ae9663ff55d6b0de20495",
+      "bytes": 139552
+    },
+    "docs/evaluations/m4-font-map-build.json": {
+      "blob": "41a95898ada9f56a5612dcd76e67075d9c469cee",
+      "bytes": 145137
+    },
+    "docs/evaluations/m4-font-map-cost-short-samples.json": {
+      "blob": "64f02ba992506e3338275c4cf62a94795f18396f",
+      "bytes": 101690
+    },
+    "docs/evaluations/m4-font-map-cost.json": {
+      "blob": "4bb59c69f58410296b262d52577176321826a5eb",
+      "bytes": 165534
+    },
+    "docs/evaluations/m4-font-map-workspace.json": {
+      "blob": "882a9a9fb014d6e8e7185cd07fa9608890ff741c",
+      "bytes": 48777
+    },
+    "docs/evaluations/m4-font-map.md": {
+      "blob": "ad32f04ce4e8fc3ca0ca6c55f2b52fe99a617352",
+      "bytes": 9477
+    },
+    "docs/evaluations/m4-font-metadata-allocation-before-startup-drop.json": {
+      "blob": "51d0c97dc8577c90049443b73f4c80de2b91373f",
+      "bytes": 30460
+    },
+    "docs/evaluations/m4-font-metadata-allocation-msrv-before-startup-drop.json": {
+      "blob": "630bdb1271f67381a9e9b19286af385879498696",
+      "bytes": 30385
+    },
+    "docs/evaluations/m4-font-metadata-allocation-msrv.json": {
+      "blob": "fee2625130486a5bdd95de0147657618252ed179",
+      "bytes": 30385
+    },
+    "docs/evaluations/m4-font-metadata-allocation.json": {
+      "blob": "7147cb358b805cdb008f948cc8bc190e96ea7da5",
+      "bytes": 30460
+    },
+    "docs/evaluations/m4-font-metadata-audit-before-startup-drop.json": {
+      "blob": "e22948599b2227446b8cd16a1a0271e66f77b6d5",
+      "bytes": 16981
+    },
+    "docs/evaluations/m4-font-metadata-audit.json": {
+      "blob": "a9981fe45a0077e21ee582035f03b4f71b833de8",
+      "bytes": 17872
+    },
+    "docs/evaluations/m4-font-metadata-build-before-startup-drop.json": {
+      "blob": "1910135345f63a43da7df9e17350af89914701ee",
+      "bytes": 143613
+    },
+    "docs/evaluations/m4-font-metadata-build.json": {
+      "blob": "8a936f376845d7992bec9086a62fe6068bd584f7",
+      "bytes": 143674
+    },
+    "docs/evaluations/m4-font-metadata-cost-before-startup-drop.json": {
+      "blob": "ab565883e312a0f2f7a00a787b7bdcc061269582",
+      "bytes": 101359
+    },
+    "docs/evaluations/m4-font-metadata-cost.json": {
+      "blob": "5c93565a63dde0610ce95d11167b09ca45329632",
+      "bytes": 101351
+    },
+    "docs/evaluations/m4-font-metadata-file-quota-before-startup-drop.json": {
+      "blob": "2ca92f58ab387e9d70f9fad69bbac15aef2443e1",
+      "bytes": 31634
+    },
+    "docs/evaluations/m4-font-metadata-file-quota.json": {
+      "blob": "271fef941ba1ddf633b8ae861ca711ea900b3597",
+      "bytes": 31634
+    },
+    "docs/evaluations/m4-font-metadata-workspace-before-startup-drop.json": {
+      "blob": "2d11a5b2935ce3107f3cd0d9a2d244e4b3575f89",
+      "bytes": 48584
+    },
+    "docs/evaluations/m4-font-metadata-workspace.json": {
+      "blob": "3b8ae16a8f049f9e4f55e12715107d6dc13333c0",
+      "bytes": 48966
+    },
+    "docs/evaluations/m4-font-metadata.md": {
+      "blob": "0ac3a96d7fdc1439cd1520c2a1a2c84e2c3a965c",
+      "bytes": 7838
+    },
+    "docs/evaluations/m4-grid-allocation-probe-pre-floor.json": {
+      "blob": "a2d3cb07bdcc9376df090494dca00a1f85884e51",
+      "bytes": 12593
+    },
+    "docs/evaluations/m4-grid-allocation-probe.json": {
+      "blob": "1d76f4274920d749bdf720f271e59d5568391dbc",
+      "bytes": 12593
+    },
+    "docs/evaluations/m4-grid-bench-pre-floor.json": {
+      "blob": "032943ee1a6f9350e9e9d9f5ea8e63ee7191d429",
+      "bytes": 24605
+    },
+    "docs/evaluations/m4-grid-bench.json": {
+      "blob": "b7ca6004207b491de2fdceba1ea4ea14a82c8aca",
+      "bytes": 24592
+    },
+    "docs/evaluations/m4-grid-build.json": {
+      "blob": "37123a55c6f0001dccc29a459e587db1f899e20f",
+      "bytes": 6569
+    },
+    "docs/evaluations/m4-grid-pressure-tool-smoke.json": {
+      "blob": "8ece3146811e407bfb2030d65a2757e13fe2ad0f",
+      "bytes": 7114
+    },
+    "docs/evaluations/m4-grid-reflow-200-pre-floor.json": {
+      "blob": "9bbfd65695f12767ca97d4d8197df2031070f702",
+      "bytes": 12641
+    },
+    "docs/evaluations/m4-grid-reflow-200.json": {
+      "blob": "7f9ec21b0aad8320bcf8be17e165c2e6bfe6ea34",
+      "bytes": 12643
+    },
+    "docs/evaluations/m4-grid-reflow-isolated-pre-floor.json": {
+      "blob": "3c2a4f3ce3dfa20e90766a688742650ae24cfe89",
+      "bytes": 18138
+    },
+    "docs/evaluations/m4-grid-render-isolated.json": {
+      "blob": "a1baa079241b4a3746ba110d0b9da5608b0d324a",
+      "bytes": 13537
+    },
+    "docs/evaluations/m4-grid-runtime-pre-floor.json": {
+      "blob": "cd67043810c1b455c9c3d58e7c87bc1b9fcbe5e4",
+      "bytes": 14858
+    },
+    "docs/evaluations/m4-grid-runtime.json": {
+      "blob": "3a00260075d9151f034b322d91192b5f3ceb0124",
+      "bytes": 14845
+    },
+    "docs/evaluations/m4-grid-stress-pre-floor.json": {
+      "blob": "c982a6713ad2f95cc7c945d979e96fc3a024811f",
+      "bytes": 18873
+    },
+    "docs/evaluations/m4-grid-stress.json": {
+      "blob": "9d4d4ec0a473bc51d143533daa0316b32deda1e9",
+      "bytes": 24532
+    },
+    "docs/evaluations/m4-grid.md": {
+      "blob": "be8a2ec49df19e9880a30c66f5af76daac5c4985",
+      "bytes": 8389
+    },
+    "docs/evaluations/m4-history-allocation-probe-pre-index.json": {
+      "blob": "961d51996f9fe7ea0caade19d15ea3be93d4b795",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-history-allocation-probe.json": {
+      "blob": "9b2b40665677a56924b32d4fc7303ea81a515675",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-history-bench-pre-index.json": {
+      "blob": "715b1bae4bbb5c7f4ec27f02eb4b61df9ab8ed7b",
+      "bytes": 25079
+    },
+    "docs/evaluations/m4-history-bench.json": {
+      "blob": "84b43ee546f02336904d737277980e3a66b865c9",
+      "bytes": 25065
+    },
+    "docs/evaluations/m4-history-build.json": {
+      "blob": "d0f551cebbd092bf4e23a71079febc864506d22b",
+      "bytes": 6558
+    },
+    "docs/evaluations/m4-history-pressure-tool-smoke-pre-index.json": {
+      "blob": "011625db9bc4e0342e7052481ccd6cde850f6e77",
+      "bytes": 27818
+    },
+    "docs/evaluations/m4-history-pressure-tool-smoke.json": {
+      "blob": "9ab9574dc449ce30182f0b6971e0b36b16245a08",
+      "bytes": 27818
+    },
+    "docs/evaluations/m4-history-ui-pre-index.json": {
+      "blob": "630327999502ee1704f6f57f0b33dfd0ac50481d",
+      "bytes": 480036
+    },
+    "docs/evaluations/m4-history-ui-pressure-pre-index.json": {
+      "blob": "62d464b0fccd8b9d1bbf0fd13b52e80e386090c8",
+      "bytes": 321763
+    },
+    "docs/evaluations/m4-history-ui-pressure.json": {
+      "blob": "616e8780522cef62a6b70b2a7d135751207c0204",
+      "bytes": 322917
+    },
+    "docs/evaluations/m4-history-ui.json": {
+      "blob": "114534ac2e74c6a1cacc54aa1db1f3b4cb1d9151",
+      "bytes": 472524
+    },
+    "docs/evaluations/m4-history.md": {
+      "blob": "47197553c6fed14e194e0f7f2ff1901e450c3b8f",
+      "bytes": 7091
+    },
+    "docs/evaluations/m4-index-allocation-after-pre-compact.json": {
+      "blob": "a73cad863c6fb662bb392fb736603213b5f68262",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-index-allocation-after.json": {
+      "blob": "5f79baaff321e3a9dfefe0b04fea7b56eb34f9e9",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-index-allocation-before-pre-compact.json": {
+      "blob": "9b2b40665677a56924b32d4fc7303ea81a515675",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-index-allocation-before.json": {
+      "blob": "9b2b40665677a56924b32d4fc7303ea81a515675",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-index-bench-pre-compact.json": {
+      "blob": "b8174a31e56dd4d48483d6afb6ad4a4a5b3a786d",
+      "bytes": 25073
+    },
+    "docs/evaluations/m4-index-bench.json": {
+      "blob": "01511dfc0d9eac2f7641d269d475bec20b9f4f97",
+      "bytes": 25035
+    },
+    "docs/evaluations/m4-index-build.json": {
+      "blob": "1a0112774f38bdb1a0fc0f56620cea8d65ce944d",
+      "bytes": 12188
+    },
+    "docs/evaluations/m4-index-hard-isolated.json": {
+      "blob": "6127477d32f0d47d9a32f3c28380ca278a926f36",
+      "bytes": 217827
+    },
+    "docs/evaluations/m4-index-pressure-tool-smoke-pre-compact.json": {
+      "blob": "e1f31848102c731dd1a3e5b290114d3fe60d3ff6",
+      "bytes": 27818
+    },
+    "docs/evaluations/m4-index-pressure-tool-smoke.json": {
+      "blob": "5a8cad201758311680df1151d2e57b884496fc33",
+      "bytes": 27818
+    },
+    "docs/evaluations/m4-index-render-isolated.json": {
+      "blob": "5795253278492b75d37b635ad5c5e231c411fa23",
+      "bytes": 25269
+    },
+    "docs/evaluations/m4-index-ui-pre-compact.json": {
+      "blob": "1b52e873f69cba784728674d097f6cc48183eef1",
+      "bytes": 781102
+    },
+    "docs/evaluations/m4-index-ui-pressure-pre-compact.json": {
+      "blob": "3660fe6000af7e64b7767c5e3420fef86134df96",
+      "bytes": 321315
+    },
+    "docs/evaluations/m4-index-ui-pressure.json": {
+      "blob": "9866ca6e20319cef25b34f879d26f4b6c1ab6140",
+      "bytes": 321636
+    },
+    "docs/evaluations/m4-index-ui.json": {
+      "blob": "52964c69b66f6a161a94d3793d5cd326d62bba40",
+      "bytes": 779741
+    },
+    "docs/evaluations/m4-index.md": {
+      "blob": "ec457f032897d7199a90b0a92d08600ac6f99629",
+      "bytes": 7417
+    },
+    "docs/evaluations/m4-layout-bench-concurrent.json": {
+      "blob": "bdc3ca3da0cb1fff84352504f78c0b104ea3f57f",
+      "bytes": 4116
+    },
+    "docs/evaluations/m4-layout-bench-initial.json": {
+      "blob": "adbeb4415933dc5282d642150cd053719b9c12d6",
+      "bytes": 1828
+    },
+    "docs/evaluations/m4-layout-bench.json": {
+      "blob": "c31fb905ee3ca5c96103a73238590ed877633dc9",
+      "bytes": 4148
+    },
+    "docs/evaluations/m4-layout-build.json": {
+      "blob": "65ce538194f1acf7c33d054618acdd14898b8de5",
+      "bytes": 6054
+    },
+    "docs/evaluations/m4-layout-quit-input-attempt.json": {
+      "blob": "930346dd1b551a23839da582091b2462be00bda7",
+      "bytes": 393
+    },
+    "docs/evaluations/m4-layout-quit.json": {
+      "blob": "c470ffbe65fade4a4c9bcaa8d270aa54348bebcb",
+      "bytes": 353
+    },
+    "docs/evaluations/m4-layout-resources-allocation-before-native-path-limit.json": {
+      "blob": "23b8c7bdfab89f76501beaa9deb07a9503d7a688",
+      "bytes": 29198
+    },
+    "docs/evaluations/m4-layout-resources-allocation-msrv.json": {
+      "blob": "323cfa4978ced62eff648a89c7e150f06b6b6a54",
+      "bytes": 31254
+    },
+    "docs/evaluations/m4-layout-resources-allocation.json": {
+      "blob": "1b40d686ec023af57d4ec226085e3a2157b4758e",
+      "bytes": 31209
+    },
+    "docs/evaluations/m4-layout-resources-audit.json": {
+      "blob": "319d004b103490b9fcf20420f42119cc5abecbca",
+      "bytes": 18384
+    },
+    "docs/evaluations/m4-layout-resources-build-before-clippy.json": {
+      "blob": "a3695813e0990f08b4f30ceb250a8fe1862b4bf9",
+      "bytes": 152355
+    },
+    "docs/evaluations/m4-layout-resources-build.json": {
+      "blob": "8d82561b58fd19365f2bb33d973034672b8b1846",
+      "bytes": 158655
+    },
+    "docs/evaluations/m4-layout-resources-cost-before-compact-snapshot.json": {
+      "blob": "96886bc39eca82c14bdd6608f0c9c24afe1e1115",
+      "bytes": 2281424
+    },
+    "docs/evaluations/m4-layout-resources-cost-before-wait-tuple.json": {
+      "blob": "8483150bb5c577c3be2232eb33784e16f3975f98",
+      "bytes": 31913
+    },
+    "docs/evaluations/m4-layout-resources-cost.json": {
+      "blob": "a2428e8f368f4027c9222198aca35fb65a46fd33",
+      "bytes": 2232950
+    },
+    "docs/evaluations/m4-layout-resources-preview-entry.json": {
+      "blob": "3a933059c9b900b10ad2da7b54c510b070cc5528",
+      "bytes": 106404
+    },
+    "docs/evaluations/m4-layout-resources-ui-allocation.json": {
+      "blob": "feec3ee6dd827bc26a07372fb02e64cc37fa78a4",
+      "bytes": 129366
+    },
+    "docs/evaluations/m4-layout-resources-workspace.json": {
+      "blob": "1c3e0c809907efba97712cfabd9a02ad06dde559",
+      "bytes": 49689
+    },
+    "docs/evaluations/m4-layout-resources.md": {
+      "blob": "361f37750071630c069493953e1785a025458d05",
+      "bytes": 7894
+    },
+    "docs/evaluations/m4-layout-runtime-initial.json": {
+      "blob": "b55a0e1533e15804697fa10fdfc51f1376e287c7",
+      "bytes": 4200
+    },
+    "docs/evaluations/m4-layout-runtime.json": {
+      "blob": "0b9f0bdbf2fe3b64af9600f5ae99e2de326cdfcb",
+      "bytes": 9329
+    },
+    "docs/evaluations/m4-layout.md": {
+      "blob": "09ae83d97b0a68ccf1b9009e5a5d29f9b0f90ee3",
+      "bytes": 7598
+    },
+    "docs/evaluations/m4-link-resources-allocation-before-dense-index.json": {
+      "blob": "24cf4784251f1279c8df9e425f87c3264878a704",
+      "bytes": 29653
+    },
+    "docs/evaluations/m4-link-resources-allocation-msrv.json": {
+      "blob": "30b8ba0e8f5923973f45060418356b58fe51e4c4",
+      "bytes": 32153
+    },
+    "docs/evaluations/m4-link-resources-allocation.json": {
+      "blob": "84beaafd62d527bbd3e13304739e1e87f9102c41",
+      "bytes": 32108
+    },
+    "docs/evaluations/m4-link-resources-audit.json": {
+      "blob": "3baadffc1999aa0481c30bf1589dab0c6ff67837",
+      "bytes": 18659
+    },
+    "docs/evaluations/m4-link-resources-build.json": {
+      "blob": "fb54ee1e4144591338489bb1b3945c52caa976e8",
+      "bytes": 148266
+    },
+    "docs/evaluations/m4-link-resources-cost-before-dense-index.json": {
+      "blob": "70106c7a5df7532e09c22923d5f55af30f7dd406",
+      "bytes": 1280184
+    },
+    "docs/evaluations/m4-link-resources-cost.json": {
+      "blob": "8fba1949ee29fb9806dfe00cf9b09255f02d663f",
+      "bytes": 1281025
+    },
+    "docs/evaluations/m4-link-resources-file-quota.json": {
+      "blob": "132dd22848e8e08deca53fac17f42fc70bcc9078",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-link-resources-ui-allocation.json": {
+      "blob": "f1c4bbc855c738d5223a94980e0dbc4cdcfc4c03",
+      "bytes": 128842
+    },
+    "docs/evaluations/m4-link-resources-ui-cost.json": {
+      "blob": "1cedacfd9b7aabc55a9e8009d2e2781fce63fc6b",
+      "bytes": 1637531
+    },
+    "docs/evaluations/m4-link-resources-workspace.json": {
+      "blob": "dfc2743ee1253c768b2909e09fcb78fc3b94df7a",
+      "bytes": 49118
+    },
+    "docs/evaluations/m4-link-resources.md": {
+      "blob": "de05c522d42c4c0f779439783a203e3343929cb4",
+      "bytes": 10491
+    },
+    "docs/evaluations/m4-memory-bench-aggregate.json": {
+      "blob": "8546af66044c0e9a68c884a707380d8873571184",
+      "bytes": 24400
+    },
+    "docs/evaluations/m4-memory-bench-index.json": {
+      "blob": "8d3f1347e34149f32c99d78c882661e358bba4d2",
+      "bytes": 24408
+    },
+    "docs/evaluations/m4-memory-bench-initial.json": {
+      "blob": "88653315f1af43d900d0daa43bbb7da9323f2671",
+      "bytes": 24382
+    },
+    "docs/evaluations/m4-memory-bench-pre-cold.json": {
+      "blob": "efab3ee8cd1be521ffca8e3690074890c0e35b95",
+      "bytes": 24382
+    },
+    "docs/evaluations/m4-memory-bench.json": {
+      "blob": "9554b30550b23fe7e012e1e88917e37f78afc8ab",
+      "bytes": 24398
+    },
+    "docs/evaluations/m4-memory-build.json": {
+      "blob": "73e0981573c4439516c952415a2db13a5be3ab47",
+      "bytes": 6175
+    },
+    "docs/evaluations/m4-memory-reflow-index.json": {
+      "blob": "d4532d970e30a03e54cf5fd7b45181a3a0ee4014",
+      "bytes": 1977
+    },
+    "docs/evaluations/m4-memory-reflow-isolated.json": {
+      "blob": "90b20d8fe4efd916f21d63cb6d5239504c3620e6",
+      "bytes": 1939
+    },
+    "docs/evaluations/m4-memory-runtime-initial.json": {
+      "blob": "a389cf6f347b44252000d7b4e51c8041991c118a",
+      "bytes": 14672
+    },
+    "docs/evaluations/m4-memory-runtime.json": {
+      "blob": "0627695ebe5c4dec1d2e931bfce7eeb72e03be99",
+      "bytes": 14671
+    },
+    "docs/evaluations/m4-memory-stress.json": {
+      "blob": "4f02eb687bca016cf25a75cbe1124ef56d273d9b",
+      "bytes": 17920
+    },
+    "docs/evaluations/m4-memory.md": {
+      "blob": "19a7c3fec467583673b5d2293e32db8755e169b5",
+      "bytes": 7482
+    },
+    "docs/evaluations/m4-notice-resources-allocation-before-cold-path.json": {
+      "blob": "df47a497e6122eb4a33c11c55f84e337cf604892",
+      "bytes": 29034
+    },
+    "docs/evaluations/m4-notice-resources-allocation-msrv-before-cold-path.json": {
+      "blob": "ce4f7e5a5cc7184db331e8fc83ae24a92984a50a",
+      "bytes": 29079
+    },
+    "docs/evaluations/m4-notice-resources-allocation-msrv.json": {
+      "blob": "5d24a7ed47da6eae1cc3d55333d17cfc196065b2",
+      "bytes": 29079
+    },
+    "docs/evaluations/m4-notice-resources-allocation.json": {
+      "blob": "8837d212054e3e2f9fa4103e97aece9a9fdd66ee",
+      "bytes": 29034
+    },
+    "docs/evaluations/m4-notice-resources-audit.json": {
+      "blob": "3e4908491d6d37709a0a5d1d47560b8402ce5690",
+      "bytes": 18347
+    },
+    "docs/evaluations/m4-notice-resources-build-before-cold-path.json": {
+      "blob": "064cd825739c6c53782d3fe31310ee00b0c888d2",
+      "bytes": 143935
+    },
+    "docs/evaluations/m4-notice-resources-build.json": {
+      "blob": "93d61daf26bccff60c76b285c1573fff61b7d05b",
+      "bytes": 143996
+    },
+    "docs/evaluations/m4-notice-resources-cost-before-cold-path.json": {
+      "blob": "c423b560ad02bbc25d5acb9500e2e6d3f6595157",
+      "bytes": 2685640
+    },
+    "docs/evaluations/m4-notice-resources-cost-cold-path-inline-hint.json": {
+      "blob": "b37763aa52f20ac4677f730a44c8663dcb0e2cdf",
+      "bytes": 2691464
+    },
+    "docs/evaluations/m4-notice-resources-cost.json": {
+      "blob": "aa219ad847ed4fb5c361e56aa3cce4cfbc899608",
+      "bytes": 2685120
+    },
+    "docs/evaluations/m4-notice-resources-file-quota-before-cold-path.json": {
+      "blob": "1b8deca16d6fbea20fd32991ebd532563b0ad993",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-notice-resources-file-quota.json": {
+      "blob": "99c28a0a83635d8a7b9c18d079dbe87c992baeb1",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-notice-resources-layout.json": {
+      "blob": "02cf406192d6d94524b135f6fca0df44132488e2",
+      "bytes": 15779
+    },
+    "docs/evaluations/m4-notice-resources-ui-allocation-before-cold-path.json": {
+      "blob": "bc535e38d189b18446ca4393c0afb10f8cc8c204",
+      "bytes": 132784
+    },
+    "docs/evaluations/m4-notice-resources-ui-allocation.json": {
+      "blob": "0d238f8c49f9d5f2a04bc9e88496254bbbd53a18",
+      "bytes": 128745
+    },
+    "docs/evaluations/m4-notice-resources-ui-cost.json": {
+      "blob": "a39be38d0d62a1313a819f5189d9b465b343235b",
+      "bytes": 1639137
+    },
+    "docs/evaluations/m4-notice-resources-workspace-before-cold-path.json": {
+      "blob": "60e3c70961264ec17bac40aebdb0d1ade8a47849",
+      "bytes": 48860
+    },
+    "docs/evaluations/m4-notice-resources-workspace.json": {
+      "blob": "5de29fe2def0522bff1481437504a70319ba2576",
+      "bytes": 49138
+    },
+    "docs/evaluations/m4-notice-resources.md": {
+      "blob": "cb434d19ae28bbcc71975c407f48e97da9fbb239",
+      "bytes": 7484
+    },
+    "docs/evaluations/m4-paste-resources-allocation-before-batched-scan.json": {
+      "blob": "da3b73c9e76a0d1951e94441fba41f255773e5c0",
+      "bytes": 27371
+    },
+    "docs/evaluations/m4-paste-resources-allocation-before-platform-gates.json": {
+      "blob": "d39c0e1d666aea643a203a45af793fc6c4895fe6",
+      "bytes": 30081
+    },
+    "docs/evaluations/m4-paste-resources-allocation-before-utf16-count-reuse.json": {
+      "blob": "d39c0e1d666aea643a203a45af793fc6c4895fe6",
+      "bytes": 30081
+    },
+    "docs/evaluations/m4-paste-resources-allocation-msrv-before-platform-gates.json": {
+      "blob": "4bf4dd3f33369824c6c81495bc46d17fd14013db",
+      "bytes": 30126
+    },
+    "docs/evaluations/m4-paste-resources-allocation-msrv-before-utf16-count-reuse.json": {
+      "blob": "4bf4dd3f33369824c6c81495bc46d17fd14013db",
+      "bytes": 30126
+    },
+    "docs/evaluations/m4-paste-resources-allocation-msrv.json": {
+      "blob": "191bdb238f7f1ec66212ba2a889a40b50b496eb6",
+      "bytes": 30126
+    },
+    "docs/evaluations/m4-paste-resources-allocation.json": {
+      "blob": "2317023dd5a791128cada72305f5a627728983e6",
+      "bytes": 30081
+    },
+    "docs/evaluations/m4-paste-resources-audit.json": {
+      "blob": "ce091a8216d4feef5c32f2f50eff8e7534997d8e",
+      "bytes": 19786
+    },
+    "docs/evaluations/m4-paste-resources-build.json": {
+      "blob": "e524692f440aa3e7468cd7a22265d9d0487c3df6",
+      "bytes": 149068
+    },
+    "docs/evaluations/m4-paste-resources-cost-batched-before-utf16.json": {
+      "blob": "d9c6a62de3b6f6836483059e95a50c1ef552245f",
+      "bytes": 1754866
+    },
+    "docs/evaluations/m4-paste-resources-cost-before-batched-scan.json": {
+      "blob": "d5c71c7759e2d13cf896f5b0ef66be499db0b588",
+      "bytes": 1753765
+    },
+    "docs/evaluations/m4-paste-resources-cost-before-ordinary-release.json": {
+      "blob": "976dd1d824402722ab002eb08a10f27361315f4f",
+      "bytes": 4472137
+    },
+    "docs/evaluations/m4-paste-resources-cost-before-platform-gates.json": {
+      "blob": "78f7936c3355e0424b9a5f09bbb772b89aed0a1e",
+      "bytes": 4383502
+    },
+    "docs/evaluations/m4-paste-resources-cost-before-release-timing.json": {
+      "blob": "2c057f2fad800fcbbca6d45f88e000d904940b16",
+      "bytes": 3188273
+    },
+    "docs/evaluations/m4-paste-resources-cost-before-utf16-count-reuse.json": {
+      "blob": "23150e6c70b93b44f386e2ed6679055aa7c1ee93",
+      "bytes": 4532253
+    },
+    "docs/evaluations/m4-paste-resources-cost.json": {
+      "blob": "e578e6f537f48575e940bbcd5dc50181ee0fb7be",
+      "bytes": 4385460
+    },
+    "docs/evaluations/m4-paste-resources-file-quota.json": {
+      "blob": "ca57bad2e77bb56feb2e7338903b72f6ae3f7940",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-paste-resources-ui-allocation.json": {
+      "blob": "e3b9a308c3fe627e0c77cba3061cf272483b8598",
+      "bytes": 128782
+    },
+    "docs/evaluations/m4-paste-resources-ui-cost.json": {
+      "blob": "d781ca936e32b377c2e424767818e76aa478f7a6",
+      "bytes": 1637604
+    },
+    "docs/evaluations/m4-paste-resources-workspace.json": {
+      "blob": "073797334bb5356c3317af2286e3d51c397742b0",
+      "bytes": 48866
+    },
+    "docs/evaluations/m4-paste-resources.md": {
+      "blob": "a55ec31840decf12a12259c0561d8d56a729481a",
+      "bytes": 11231
+    },
+    "docs/evaluations/m4-png-bench-pre-exact.json": {
+      "blob": "c10d679f920a41b73b26ac7d3692dc168bd15d1f",
+      "bytes": 25058
+    },
+    "docs/evaluations/m4-png-bench.json": {
+      "blob": "c62611dfdd3d70408ba84feda93811d949c72699",
+      "bytes": 25096
+    },
+    "docs/evaluations/m4-png-build.json": {
+      "blob": "8bce8833f738072dd6854176ddaabf7021c06f93",
+      "bytes": 12430
+    },
+    "docs/evaluations/m4-png-decode-pre-exact.json": {
+      "blob": "c059f1b90b6985dd1046166b94c5bbb401c50035",
+      "bytes": 41579
+    },
+    "docs/evaluations/m4-png-decode.json": {
+      "blob": "ac5faa2939f963a35b3babd6e17ac86ee9fa0ab6",
+      "bytes": 41577
+    },
+    "docs/evaluations/m4-png-hard-isolated-pre-exact.json": {
+      "blob": "e3918837733768507cbd95189d4e075d2f6441b4",
+      "bytes": 217850
+    },
+    "docs/evaluations/m4-png-hard-isolated.json": {
+      "blob": "475d7438afac403525d2c0c61081fdef30c9f1ac",
+      "bytes": 217852
+    },
+    "docs/evaluations/m4-png-render-isolated-pre-exact.json": {
+      "blob": "a83248e71f9371066f2bf142dac0374d2c9b5a3b",
+      "bytes": 25056
+    },
+    "docs/evaluations/m4-png-render-isolated.json": {
+      "blob": "82b6bdff9d8a806f9da8eb75e8b4e1982931e415",
+      "bytes": 25046
+    },
+    "docs/evaluations/m4-png-ui-pre-exact.json": {
+      "blob": "318476ad5f2f67405e62c34ac7a15d3b6ebef599",
+      "bytes": 787070
+    },
+    "docs/evaluations/m4-png-ui.json": {
+      "blob": "ac464be02bff2259b7008ebd5aa7b6600cd1b1b2",
+      "bytes": 786373
+    },
+    "docs/evaluations/m4-png.md": {
+      "blob": "9e24df62194a951408cb6e6b63157051280039f4",
+      "bytes": 7399
+    },
+    "docs/evaluations/m4-profiles-bench.json": {
+      "blob": "98817e583d1bebc9ff6b74393182ab3b00254cf0",
+      "bytes": 25574
+    },
+    "docs/evaluations/m4-profiles-build.json": {
+      "blob": "9e77f2ebc70677063922cc7f6df897a4d95d89c9",
+      "bytes": 6219
+    },
+    "docs/evaluations/m4-profiles-render-isolated.json": {
+      "blob": "0a9c489eaf39482920b7200a20196ff7f16709c8",
+      "bytes": 25775
+    },
+    "docs/evaluations/m4-profiles-workload.json": {
+      "blob": "03acf729a867aab60dbfbe10815f29d854bd9e56",
+      "bytes": 18199
+    },
+    "docs/evaluations/m4-profiles.md": {
+      "blob": "fddd3510108d413f68fd0cbf349acd6143af93ff",
+      "bytes": 3760
+    },
+    "docs/evaluations/m4-raster-bench.json": {
+      "blob": "e9700fec9f4d3518536549e760b50ffc15f0ec41",
+      "bytes": 25252
+    },
+    "docs/evaluations/m4-raster-build.json": {
+      "blob": "aecf76a0b398aa10abe1e269bd61cafa4a553b6d",
+      "bytes": 55833
+    },
+    "docs/evaluations/m4-raster-glyph.json": {
+      "blob": "7cee5290a223b3f574d3b2f92774c815243711fb",
+      "bytes": 43781
+    },
+    "docs/evaluations/m4-raster-render-isolated.json": {
+      "blob": "e9622bd286b6b53b8fe0e3c9679654bd944efee4",
+      "bytes": 25409
+    },
+    "docs/evaluations/m4-raster.md": {
+      "blob": "d22dad5c52ee8564a5af301dceae438ac0f26580",
+      "bytes": 3112
+    },
+    "docs/evaluations/m4-reflow-stress.json": {
+      "blob": "eb9858fcfb9972e5177e0afea6944522bc3319fb",
+      "bytes": 16851
+    },
+    "docs/evaluations/m4-render-work-allocation-before-cluster-cap.json": {
+      "blob": "1000f86c5d6716807673dfdbcd8ec4270430c241",
+      "bytes": 48735
+    },
+    "docs/evaluations/m4-render-work-allocation-before-idle-return.json": {
+      "blob": "0be10d11aefbf501d6faee56220e35b0eeaaccf8",
+      "bytes": 48767
+    },
+    "docs/evaluations/m4-render-work-allocation-msrv-before-cluster-cap.json": {
+      "blob": "0c6c781a6282df0e9b64d1a3d60fb0c344af9f41",
+      "bytes": 48985
+    },
+    "docs/evaluations/m4-render-work-allocation-msrv-before-idle-return.json": {
+      "blob": "8bed3c7beb4bcef47537098abf482dea267e37fa",
+      "bytes": 48957
+    },
+    "docs/evaluations/m4-render-work-allocation-msrv-short-samples.json": {
+      "blob": "c785897ee7b6f8376df7f368e8bce057cf02804b",
+      "bytes": 48913
+    },
+    "docs/evaluations/m4-render-work-allocation-msrv.json": {
+      "blob": "8310e7658723b73cd2d51cd7febedfb831c82f48",
+      "bytes": 236685
+    },
+    "docs/evaluations/m4-render-work-allocation-short-samples.json": {
+      "blob": "cb24a2061e37325840c6885bd6f41ec5bbd2f331",
+      "bytes": 48785
+    },
+    "docs/evaluations/m4-render-work-allocation.json": {
+      "blob": "d898e6cefbef2cbfee11dac6d2f09caa450a1de6",
+      "bytes": 236262
+    },
+    "docs/evaluations/m4-render-work-audit.json": {
+      "blob": "e23b0eecf7ac5295f3fcdc0066f7f9fbe5178aa5",
+      "bytes": 20744
+    },
+    "docs/evaluations/m4-render-work-build-before-cluster-cap.json": {
+      "blob": "8ce73d057286db88cf89a988ececddb6ff69cc91",
+      "bytes": 135995
+    },
+    "docs/evaluations/m4-render-work-build-before-idle-return.json": {
+      "blob": "f02a962010774a5171e77676c5749f16edb8cee3",
+      "bytes": 136112
+    },
+    "docs/evaluations/m4-render-work-build-short-samples.json": {
+      "blob": "50e91ccc14c06038014af19c2d90bbb5739e61eb",
+      "bytes": 136195
+    },
+    "docs/evaluations/m4-render-work-build.json": {
+      "blob": "bf49fa6ababe423c2cc44acbd9fca98a45ce5b5c",
+      "bytes": 136196
+    },
+    "docs/evaluations/m4-render-work-cost-before-cluster-cap.json": {
+      "blob": "9634a8d57a2632a344bc5c3792a2d73e773bd848",
+      "bytes": 465590
+    },
+    "docs/evaluations/m4-render-work-cost-before-idle-return.json": {
+      "blob": "b97a5ae7b4c4cf8bfcba59f45f13bdc01531c68f",
+      "bytes": 456381
+    },
+    "docs/evaluations/m4-render-work-cost-short-samples.json": {
+      "blob": "921ee5096aeba97f7c1e5ec2e3d6d98c21faa659",
+      "bytes": 444060
+    },
+    "docs/evaluations/m4-render-work-cost.json": {
+      "blob": "09a172cb977f8937112ebd944ebcc5a0d2ba6b0f",
+      "bytes": 3370913
+    },
+    "docs/evaluations/m4-render-work-file-quota-before-idle-return.json": {
+      "blob": "069469b9ea7cc41dd1bdc6ff55a3c54f21da386d",
+      "bytes": 31332
+    },
+    "docs/evaluations/m4-render-work-file-quota-short-samples.json": {
+      "blob": "f09005dceacacf4fc6b208cc4f9911dae0d88c7a",
+      "bytes": 31332
+    },
+    "docs/evaluations/m4-render-work-file-quota.json": {
+      "blob": "f90b5812e85f1931f762aa4f07885cae32daf89c",
+      "bytes": 31332
+    },
+    "docs/evaluations/m4-render-work-workspace-before-idle-return.json": {
+      "blob": "49e9b3ace00f70d71007b875c27b2b0a54094aac",
+      "bytes": 48272
+    },
+    "docs/evaluations/m4-render-work-workspace-short-samples.json": {
+      "blob": "ee78fb2c115e7a021474b402b582b482facd2a4f",
+      "bytes": 48272
+    },
+    "docs/evaluations/m4-render-work-workspace.json": {
+      "blob": "a2789804ee02fde2ff6574d0f7369e4c759d18ce",
+      "bytes": 48272
+    },
+    "docs/evaluations/m4-render-work.md": {
+      "blob": "9e39a4366c40be9b3fc6fb1a7040357b877bcf14",
+      "bytes": 6358
+    },
+    "docs/evaluations/m4-root-budget-allocation-before-cold-lock-observation.json": {
+      "blob": "41ce27449193bbae5b97a74b2f95b50e476e2a10",
+      "bytes": 23856
+    },
+    "docs/evaluations/m4-root-budget-allocation-before-production-constructor-guard.json": {
+      "blob": "41577322111793e675764645b080f9fe8783a99e",
+      "bytes": 23856
+    },
+    "docs/evaluations/m4-root-budget-allocation-msrv-before-cold-lock-observation.json": {
+      "blob": "26332416c3ac1c800f4d4165944e2603c6edeb1b",
+      "bytes": 23901
+    },
+    "docs/evaluations/m4-root-budget-allocation-msrv-before-production-constructor-guard.json": {
+      "blob": "83c6ab192f5861211ed638a3cd4d87630a9df507",
+      "bytes": 23901
+    },
+    "docs/evaluations/m4-root-budget-allocation-msrv.json": {
+      "blob": "41e60d722f9a73acd54af61070513ab2099a3ab3",
+      "bytes": 23901
+    },
+    "docs/evaluations/m4-root-budget-allocation.json": {
+      "blob": "b730e63d7ef1b5ca4464bc358b8f1432e8bf760b",
+      "bytes": 23856
+    },
+    "docs/evaluations/m4-root-budget-audit.json": {
+      "blob": "f970797f2173b6859a65018862a20e16fb4c29a6",
+      "bytes": 18095
+    },
+    "docs/evaluations/m4-root-budget-build-before-production-constructor-guard.json": {
+      "blob": "05a22542a417f69fe89e28b7f6ef747ca2c23942",
+      "bytes": 152494
+    },
+    "docs/evaluations/m4-root-budget-build.json": {
+      "blob": "4dc3e563bbb076e572e98f87a300551517a65571",
+      "bytes": 152395
+    },
+    "docs/evaluations/m4-root-budget-cost-before-production-constructor-guard.json": {
+      "blob": "86a10fff4665333c5799c329af40279881ec17be",
+      "bytes": 159946
+    },
+    "docs/evaluations/m4-root-budget-cost.json": {
+      "blob": "677690e9dc44841e8d02d76641dea1bb1e558162",
+      "bytes": 160166
+    },
+    "docs/evaluations/m4-root-budget-directory-helper.json": {
+      "blob": "317eaa60cc0e1faf4a70bd2576ad20e78b477ebc",
+      "bytes": 19595
+    },
+    "docs/evaluations/m4-root-budget-file-quota-before-production-constructor-guard.json": {
+      "blob": "447283152daf35b7b948857a7a9838815546bfbd",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-root-budget-file-quota.json": {
+      "blob": "00fb9562452a51cfeab12f3c9bc30f44daaf2c5e",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-root-budget-preview-entry.json": {
+      "blob": "e3bf7b870bb935a4ee7d57d413912da1f8c70ae6",
+      "bytes": 120739
+    },
+    "docs/evaluations/m4-root-budget-ui-allocation-before-production-constructor-guard.json": {
+      "blob": "0916b0a8b847b0c644def74b334438c3c90e84eb",
+      "bytes": 128740
+    },
+    "docs/evaluations/m4-root-budget-ui-allocation.json": {
+      "blob": "17b2a1922ccbf11b4767aa409483f82bfe449e1b",
+      "bytes": 128751
+    },
+    "docs/evaluations/m4-root-budget-ui-cost-before-production-constructor-guard.json": {
+      "blob": "728e17595657fef9327f02fb471949d9cfd2482c",
+      "bytes": 1637501
+    },
+    "docs/evaluations/m4-root-budget-ui-cost.json": {
+      "blob": "bb3a0731fda8c10a2ee0cce861314b5ccaef7324",
+      "bytes": 1637619
+    },
+    "docs/evaluations/m4-root-budget.md": {
+      "blob": "69711267f51dc95df3e3b87b8a4516836e4236f3",
+      "bytes": 7170
+    },
+    "docs/evaluations/m4-runtime-initial.json": {
+      "blob": "b281d0e8b6aa7b275717c48df62c109a0d051d8f",
+      "bytes": 4143
+    },
+    "docs/evaluations/m4-runtime.json": {
+      "blob": "809b9db29c2b4874d7e20ceeb6cd0980cd7ac853",
+      "bytes": 4125
+    },
+    "docs/evaluations/m4-scale-bench.json": {
+      "blob": "362415d5f8b8dda7877dd25334ba3146ab12a557",
+      "bytes": 25152
+    },
+    "docs/evaluations/m4-scale-build.json": {
+      "blob": "62a705c247ade119239af046543a09892ab4ae58",
+      "bytes": 5970
+    },
+    "docs/evaluations/m4-scale-render-isolated.json": {
+      "blob": "8ce9ab3ccf2848a2c30291aaf02185dc544642be",
+      "bytes": 25288
+    },
+    "docs/evaluations/m4-scale-resize.json": {
+      "blob": "45cd4f41f1daa5c3c55b4b53619b15c4ab0abb93",
+      "bytes": 39012
+    },
+    "docs/evaluations/m4-scale.md": {
+      "blob": "9ae917cf2700c84b3025eb0ffccbe5459488da6d",
+      "bytes": 2971
+    },
+    "docs/evaluations/m4-search-resources-allocation-before-capacity-check.json": {
+      "blob": "5dac33dbfe55629579c0f26af48edf4c19cd7dc3",
+      "bytes": 26862
+    },
+    "docs/evaluations/m4-search-resources-allocation-msrv-before-capacity-check.json": {
+      "blob": "4d47a729be113f2a872aa246e0b5e7f7ba2c3322",
+      "bytes": 26907
+    },
+    "docs/evaluations/m4-search-resources-allocation-msrv.json": {
+      "blob": "f52fd83da0bd74382faa8a8f73b9a7eb28811d16",
+      "bytes": 29353
+    },
+    "docs/evaluations/m4-search-resources-allocation.json": {
+      "blob": "4c1456b895c4babab33ae40b9aeb798c30c8c922",
+      "bytes": 29308
+    },
+    "docs/evaluations/m4-search-resources-audit.json": {
+      "blob": "7d6c49408f9ba55e7d6d8b745d8f8027046b3e23",
+      "bytes": 16741
+    },
+    "docs/evaluations/m4-search-resources-build-before-capacity-check.json": {
+      "blob": "1206bb9782c130a71f9887647c0729cc32a2035a",
+      "bytes": 142546
+    },
+    "docs/evaluations/m4-search-resources-build.json": {
+      "blob": "02f36d5501f32c1f51be09b0145789d70d214d81",
+      "bytes": 142641
+    },
+    "docs/evaluations/m4-search-resources-cost-before-capacity-check.json": {
+      "blob": "0590e3726830a17f745bbe54d9b4a092180a7f45",
+      "bytes": 433750
+    },
+    "docs/evaluations/m4-search-resources-cost.json": {
+      "blob": "0b44fd4c17285e06409b69653f0e33ec71f1892b",
+      "bytes": 736456
+    },
+    "docs/evaluations/m4-search-resources-file-quota-before-capacity-check.json": {
+      "blob": "091286e763cc0ecda6e1681cf142de2d0ec45c58",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-search-resources-file-quota.json": {
+      "blob": "be574a50e859103f1c77346787c7242e8c200fb2",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-search-resources-ui-allocation-before-capacity-check.json": {
+      "blob": "e94079658b0a5ccf87f7d170a66be42171a98895",
+      "bytes": 128793
+    },
+    "docs/evaluations/m4-search-resources-ui-allocation.json": {
+      "blob": "7f50f9c059c236b0ae0138d546e5682f43a9e1ef",
+      "bytes": 128754
+    },
+    "docs/evaluations/m4-search-resources-workspace-before-capacity-check.json": {
+      "blob": "f9572af22a606fbabe689edf2e5bec9caa16a834",
+      "bytes": 48953
+    },
+    "docs/evaluations/m4-search-resources-workspace.json": {
+      "blob": "f0db2812203fd56baf81313dce58571224098a8e",
+      "bytes": 49143
+    },
+    "docs/evaluations/m4-search-resources.md": {
+      "blob": "d6064434158d15fe825afc4d90f2ee08a81cf765",
+      "bytes": 9383
+    },
+    "docs/evaluations/m4-shaper-bench.json": {
+      "blob": "93b0bf1155e420ff8b298f65404f7311844b7532",
+      "bytes": 25267
+    },
+    "docs/evaluations/m4-shaper-build.json": {
+      "blob": "be4b49f21e8bd031d29e12358b5d12baab5fa767",
+      "bytes": 57391
+    },
+    "docs/evaluations/m4-shaper-render-isolated.json": {
+      "blob": "126b2ee25ecaf368d98aa40b8f66f3c4ec6731d1",
+      "bytes": 25414
+    },
+    "docs/evaluations/m4-shaper-workload-initial.json": {
+      "blob": "ad6868b07f6c0b9cb41c0a294aca7be0cf3d068d",
+      "bytes": 46308
+    },
+    "docs/evaluations/m4-shaper-workload.json": {
+      "blob": "7d0b6abe4876144d478320cb8de88832048a4a41",
+      "bytes": 46303
+    },
+    "docs/evaluations/m4-shaper.md": {
+      "blob": "879e423b2eae7d541bbbebaa2f50e1c7ef195e5c",
+      "bytes": 4316
+    },
+    "docs/evaluations/m4-shell-resources-allocation-before-selector-fix.json": {
+      "blob": "72dbc525731083b2a2723c1a2b55fbf81501a921",
+      "bytes": 27181
+    },
+    "docs/evaluations/m4-shell-resources-allocation-before-test-only-matches.json": {
+      "blob": "f7f9f7cdde8ae0ce50de24362a4cfa381b8008e0",
+      "bytes": 31720
+    },
+    "docs/evaluations/m4-shell-resources-allocation-before-ui-isolation.json": {
+      "blob": "45e00c1f01cc34d55a55f671ce1d5cc1eff4bdea",
+      "bytes": 31720
+    },
+    "docs/evaluations/m4-shell-resources-allocation-msrv-before-selector-fix.json": {
+      "blob": "b05864e4c78fbc38923341fe9f69d007627561d2",
+      "bytes": 27226
+    },
+    "docs/evaluations/m4-shell-resources-allocation-msrv-before-test-only-matches.json": {
+      "blob": "c016d54d3e1b6ab5030c68c625a025047d31f203",
+      "bytes": 31765
+    },
+    "docs/evaluations/m4-shell-resources-allocation-msrv-before-ui-isolation.json": {
+      "blob": "a09b6c76a69dda6cb309d5baba401f0d19010560",
+      "bytes": 31765
+    },
+    "docs/evaluations/m4-shell-resources-allocation-msrv.json": {
+      "blob": "7130279acaa895f8f428c35151e6ac31f2f5acc7",
+      "bytes": 31765
+    },
+    "docs/evaluations/m4-shell-resources-allocation.json": {
+      "blob": "a74a8d1c169d9eaa6545a7c6aea28c20eb95ea03",
+      "bytes": 31720
+    },
+    "docs/evaluations/m4-shell-resources-audit.json": {
+      "blob": "a366f48cbe5de5ac4500f67ed00b5d316ca6f86a",
+      "bytes": 18161
+    },
+    "docs/evaluations/m4-shell-resources-build-before-test-only-matches.json": {
+      "blob": "8495884c035a5729da1280c3a97724d1a9658c06",
+      "bytes": 142256
+    },
+    "docs/evaluations/m4-shell-resources-build-before-ui-isolation.json": {
+      "blob": "4cd8d7c818a51f75e5c3cbbb69ef10727e3a2a15",
+      "bytes": 144061
+    },
+    "docs/evaluations/m4-shell-resources-build.json": {
+      "blob": "58ce343dcf75ce9628bb185054ab50967d8cd183",
+      "bytes": 145092
+    },
+    "docs/evaluations/m4-shell-resources-cost-before-test-only-matches.json": {
+      "blob": "f856f8d753770fd9fa1a923eb17b9a81e27f81fb",
+      "bytes": 2885406
+    },
+    "docs/evaluations/m4-shell-resources-cost-before-time-permission.json": {
+      "blob": "bc20ed29308231133efbb97b0ecb22f5c2c4bc86",
+      "bytes": 31554
+    },
+    "docs/evaluations/m4-shell-resources-cost-before-ui-isolation.json": {
+      "blob": "e3a25c85d7f06355248563963d8bd1179086c1b7",
+      "bytes": 2885006
+    },
+    "docs/evaluations/m4-shell-resources-cost.json": {
+      "blob": "dc7ae92ab79954b9b134b48ba84f12d54af1f74c",
+      "bytes": 2885248
+    },
+    "docs/evaluations/m4-shell-resources-file-quota-before-test-only-matches.json": {
+      "blob": "a5ed8078fcf9b915bc13ca509fc8c2020382c268",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-shell-resources-file-quota-before-ui-isolation.json": {
+      "blob": "132cb02db37b3ccd1e2896136c30f852a363e5b3",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-shell-resources-file-quota.json": {
+      "blob": "ebb3e6858f68175eaefe28eb028347ebbb3566f0",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-shell-resources-ui-allocation-before-test-only-matches.json": {
+      "blob": "5b9d113d06ce108c0cfe78520b1ab0dd80606853",
+      "bytes": 128745
+    },
+    "docs/evaluations/m4-shell-resources-ui-allocation-before-ui-isolation.json": {
+      "blob": "bd0dc7fe512796ba7bf5526473b1450f0db8dc16",
+      "bytes": 128838
+    },
+    "docs/evaluations/m4-shell-resources-ui-allocation.json": {
+      "blob": "2ec5ae4ba675a2d446e0132547b0662c30365b85",
+      "bytes": 128914
+    },
+    "docs/evaluations/m4-shell-resources-ui-cost-before-test-only-matches.json": {
+      "blob": "411ace4d543aa1b905ee0339750f47569153cf63",
+      "bytes": 1637483
+    },
+    "docs/evaluations/m4-shell-resources-ui-cost-before-ui-isolation.json": {
+      "blob": "7473928da92d00c7c615e7e3437e8f0a22f0c244",
+      "bytes": 1641390
+    },
+    "docs/evaluations/m4-shell-resources-ui-cost-isolated-begin.json": {
+      "blob": "50166fae1d8f2083eb419486f37e9d8b4466a086",
+      "bytes": 1641563
+    },
+    "docs/evaluations/m4-shell-resources-ui-cost-isolated-update.json": {
+      "blob": "36f2096f1bacd1f36c30e56069453b3d4d13b88c",
+      "bytes": 1640642
+    },
+    "docs/evaluations/m4-shell-resources-ui-cost-slices-before-regression-test.json": {
+      "blob": "7df307bb839f961c81812aeaaf0e6c82832e5c35",
+      "bytes": 1637543
+    },
+    "docs/evaluations/m4-shell-resources-ui-cost.json": {
+      "blob": "2a140f702aa4a8b2c739aba62d731900083a255e",
+      "bytes": 1637529
+    },
+    "docs/evaluations/m4-shell-resources-workspace-before-test-only-matches.json": {
+      "blob": "15cc8b272a728428733ef3de61a67b0684b7b9b2",
+      "bytes": 48848
+    },
+    "docs/evaluations/m4-shell-resources-workspace-before-ui-isolation.json": {
+      "blob": "08d58a3535c13de70f24f168933b4d1f8d3ccef3",
+      "bytes": 48848
+    },
+    "docs/evaluations/m4-shell-resources-workspace.json": {
+      "blob": "94918e6e58dbc9289c26023d01c992c40fb91285",
+      "bytes": 48865
+    },
+    "docs/evaluations/m4-shell-resources.md": {
+      "blob": "61adab026db07a119a6900008916c597d7059617",
+      "bytes": 8097
+    },
+    "docs/evaluations/m4-stream-allocation-probe.json": {
+      "blob": "6b54d5c54f8f503fddd399dbfbde966cd3240f0b",
+      "bytes": 12692
+    },
+    "docs/evaluations/m4-stream-bench.json": {
+      "blob": "ccb702b8653b81cc32cd8bafb1ae308ca5f492ca",
+      "bytes": 24784
+    },
+    "docs/evaluations/m4-stream-build.json": {
+      "blob": "9fb8901865a7d7063dc12bfd3ba9878e8c24389f",
+      "bytes": 8437
+    },
+    "docs/evaluations/m4-stream-pressure.json": {
+      "blob": "109f9703d63359de1ddb159bc984527902c131c6",
+      "bytes": 278755
+    },
+    "docs/evaluations/m4-stream-render-isolated.json": {
+      "blob": "726ea5dcdd66bde2b4171965daa9b633971cb9e5",
+      "bytes": 13695
+    },
+    "docs/evaluations/m4-stream-slices.json": {
+      "blob": "7fa34178bb11ea006793e9b8a6555f1d79f9605b",
+      "bytes": 6672
+    },
+    "docs/evaluations/m4-stream.md": {
+      "blob": "9eeef5965382b7c39879b5c476f8694742e5972e",
+      "bytes": 8311
+    },
+    "docs/evaluations/m4-system-threads-allocation-before-test-process-isolation.json": {
+      "blob": "cd809840034429ba983c3ff2e8325c8a9d5041ea",
+      "bytes": 31857
+    },
+    "docs/evaluations/m4-system-threads-allocation-msrv-before-test-process-isolation.json": {
+      "blob": "bdfadb27effd442ead64ddff7b3988688ca1a8df",
+      "bytes": 31906
+    },
+    "docs/evaluations/m4-system-threads-allocation-msrv.json": {
+      "blob": "f2ec56e3d07d728ede21e7ccc7e6968ddc69489c",
+      "bytes": 31906
+    },
+    "docs/evaluations/m4-system-threads-allocation.json": {
+      "blob": "c62576d2bd3ac171965e3cb81f429a28ee49e00d",
+      "bytes": 31857
+    },
+    "docs/evaluations/m4-system-threads-audit.json": {
+      "blob": "b02a8a46563f0bfb815948934b3be0df380f98d3",
+      "bytes": 22716
+    },
+    "docs/evaluations/m4-system-threads-build-before-test-process-isolation.json": {
+      "blob": "df5a9a9e037c2865b5403dbabb97cc802c1a9515",
+      "bytes": 89795
+    },
+    "docs/evaluations/m4-system-threads-build.json": {
+      "blob": "03e4e27ecbe8d5a511ef9be3c23f369fa905b055",
+      "bytes": 160971
+    },
+    "docs/evaluations/m4-system-threads-cost.json": {
+      "blob": "0eb45aeaed0ab467d1c99c2eb18fa85586f011e6",
+      "bytes": 592907
+    },
+    "docs/evaluations/m4-system-threads-file-quota.json": {
+      "blob": "eb2cade240e40b24ac5bdf0895e1f4140625ecd9",
+      "bytes": 32106
+    },
+    "docs/evaluations/m4-system-threads-preview-entry.json": {
+      "blob": "eb62d29a0bd497a187d390702b15eb414ba59d83",
+      "bytes": 102858
+    },
+    "docs/evaluations/m4-system-threads-pty-cost.json": {
+      "blob": "46505b2051998d95ceab8c0890c2d459480cb081",
+      "bytes": 76442
+    },
+    "docs/evaluations/m4-system-threads-ui-allocation.json": {
+      "blob": "5273741439c8cc47bbf2e5b30e3757f37cbd3054",
+      "bytes": 129366
+    },
+    "docs/evaluations/m4-system-threads-ui-cost.json": {
+      "blob": "6e14b185beb1474dbb26c737628681b1fa2ae5cd",
+      "bytes": 2619963
+    },
+    "docs/evaluations/m4-system-threads-workspace-before-final-log.json": {
+      "blob": "bccb56211b62361df6e4769d3e6ee9b0c093e166",
+      "bytes": 40546
+    },
+    "docs/evaluations/m4-system-threads-workspace-before-wait-diagnostic.json": {
+      "blob": "406ca315a16315a284eb690af040ed7c4bf7e485",
+      "bytes": 39961
+    },
+    "docs/evaluations/m4-system-threads-workspace-retained.json": {
+      "blob": "b502df06b3af90df9974d9c45116ce743b105cd8",
+      "bytes": 42332
+    },
+    "docs/evaluations/m4-system-threads-workspace.json": {
+      "blob": "f813afba2f80079d559b6b9706090e15ddf26ed0",
+      "bytes": 49689
+    },
+    "docs/evaluations/m4-system-threads.md": {
+      "blob": "81e3bfb4fd7f7a37b47294c2de72e111c46f800c",
+      "bytes": 7901
+    },
+    "docs/evaluations/m4-task-draw-allocation-trace-before-private-round-cwd.json": {
+      "blob": "b27099795c89ca16bd69775ad2030d83d810ab0f",
+      "bytes": 45836
+    },
+    "docs/evaluations/m4-task-draw-allocation-trace-before-wait-markers.json": {
+      "blob": "3e12668b98ae3cec7004d96ecf4ef0f13d080f08",
+      "bytes": 39781
+    },
+    "docs/evaluations/m4-task-draw-allocation-trace.json": {
+      "blob": "a0dd7e93f42f41cf753cce86b2eba3b9cb7d91ce",
+      "bytes": 99567
+    },
+    "docs/evaluations/m4-task-resources-allocation-before-directory-lifetime-tests.json": {
+      "blob": "f8189e017e622a6614afe2dd13b17d4e44bfe0ba",
+      "bytes": 26583
+    },
+    "docs/evaluations/m4-task-resources-allocation-msrv-before-directory-lifetime-tests.json": {
+      "blob": "57c3d95b6416ecb46f9ce09c480fe4bff381efcd",
+      "bytes": 26628
+    },
+    "docs/evaluations/m4-task-resources-allocation-msrv.json": {
+      "blob": "bfe1c58bcf226787e09ee00564573216c03d3b4b",
+      "bytes": 26628
+    },
+    "docs/evaluations/m4-task-resources-allocation.json": {
+      "blob": "d9744089e77c79ad4c14d17ace99b1f5102b2f94",
+      "bytes": 26583
+    },
+    "docs/evaluations/m4-task-resources-audit.json": {
+      "blob": "f14b6ffa7f02bc0aa348a34a54694aebcb5a8049",
+      "bytes": 18229
+    },
+    "docs/evaluations/m4-task-resources-build-before-directory-lifetime-tests.json": {
+      "blob": "ef55034f056ab54b4adad83cd598f3b39631e61b",
+      "bytes": 88740
+    },
+    "docs/evaluations/m4-task-resources-build.json": {
+      "blob": "f1bd42db1374ea17ec9a8210d3f5ae577d4b00b2",
+      "bytes": 151643
+    },
+    "docs/evaluations/m4-task-resources-cost-before-directory-lifetime-tests.json": {
+      "blob": "ec6c60f06161cec6b2242061f539a9f20a402521",
+      "bytes": 153086
+    },
+    "docs/evaluations/m4-task-resources-cost.json": {
+      "blob": "66a1268ae882152dbc603415aac084aa13eafc5b",
+      "bytes": 153130
+    },
+    "docs/evaluations/m4-task-resources-file-quota.json": {
+      "blob": "4ce14c5570bca29edf7885f0028d6b4f76e66f78",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-task-resources-ui-allocation.json": {
+      "blob": "cdae747fc64c1d4f22bb53ea5948e00d9a6fefcd",
+      "bytes": 130247
+    },
+    "docs/evaluations/m4-task-resources-ui-cost.json": {
+      "blob": "bce3fdf9dfb328c3bdfe2155142ed9578177dd9d",
+      "bytes": 1637605
+    },
+    "docs/evaluations/m4-task-resources-workspace-first-attempt.json": {
+      "blob": "fb03434fb61211e2b9c738ea53ccc8c644dd330c",
+      "bytes": 39690
+    },
+    "docs/evaluations/m4-task-resources-workspace.json": {
+      "blob": "4d885e0431b4c0a3699f779ec94b768b96cffad6",
+      "bytes": 48853
+    },
+    "docs/evaluations/m4-task-resources.md": {
+      "blob": "cbfdfbc042fad2ee6ae06bf19829f1fed55050c8",
+      "bytes": 7700
+    },
+    "docs/evaluations/m4-task-runtime-allocation-before-capture-limit.json": {
+      "blob": "c3ec2c70d2a445bcb184724c42a9f0da4ec88866",
+      "bytes": 29516
+    },
+    "docs/evaluations/m4-task-runtime-allocation-before-cost-driver.json": {
+      "blob": "d5e45b370af5cec0a6a87736b382aa27c8ffb337",
+      "bytes": 29475
+    },
+    "docs/evaluations/m4-task-runtime-allocation-before-ui-driver.json": {
+      "blob": "0215497cf74dc2f46f608eebdec2722b54060c09",
+      "bytes": 29516
+    },
+    "docs/evaluations/m4-task-runtime-allocation-before-wake-coalescing.json": {
+      "blob": "34f75e429d2db2a99abc9c16b800f6a15d990c52",
+      "bytes": 30528
+    },
+    "docs/evaluations/m4-task-runtime-allocation-msrv-before-capture-limit.json": {
+      "blob": "0323a67fdd0b85d95b089a9c3a038f79afd9682b",
+      "bytes": 29567
+    },
+    "docs/evaluations/m4-task-runtime-allocation-msrv-before-cost-driver.json": {
+      "blob": "f4b75909e277d960ae4d1230ae165fbb80b3df5f",
+      "bytes": 29524
+    },
+    "docs/evaluations/m4-task-runtime-allocation-msrv-before-ui-driver.json": {
+      "blob": "5ef85c4c36c0ca2ed97203a42637f4b4bcbc17d1",
+      "bytes": 29567
+    },
+    "docs/evaluations/m4-task-runtime-allocation-msrv-before-wake-coalescing.json": {
+      "blob": "0e5c44c27777f9315741add607c4946eee51adca",
+      "bytes": 30579
+    },
+    "docs/evaluations/m4-task-runtime-allocation-msrv.json": {
+      "blob": "4784901e38613d17d7aa29a0c163654ff5f9814c",
+      "bytes": 30579
+    },
+    "docs/evaluations/m4-task-runtime-allocation.json": {
+      "blob": "64654320e395fb0f9932096252257ee06b62719b",
+      "bytes": 30528
+    },
+    "docs/evaluations/m4-task-runtime-audit.json": {
+      "blob": "72ec53b1ee16722c9806b8551e994259fbcab8c4",
+      "bytes": 20117
+    },
+    "docs/evaluations/m4-task-runtime-build-before-wake-coalescing.json": {
+      "blob": "182b83c5a5171e6e0f19e0d3a7ef730a2bb04cba",
+      "bytes": 157122
+    },
+    "docs/evaluations/m4-task-runtime-build.json": {
+      "blob": "5b00276a0dd8dcef0509f34c677812ea91b49e64",
+      "bytes": 157023
+    },
+    "docs/evaluations/m4-task-runtime-cost-before-wake-coalescing.json": {
+      "blob": "ed245cd298566bd5e609e12dcd26d90829797dd0",
+      "bytes": 590079
+    },
+    "docs/evaluations/m4-task-runtime-cost.json": {
+      "blob": "ab26044e8c5bf8d283290b6b025c866f3c35257d",
+      "bytes": 591612
+    },
+    "docs/evaluations/m4-task-runtime-file-quota.json": {
+      "blob": "6ce3524eed4d739c644d8f5c26a787cf66ea5301",
+      "bytes": 32106
+    },
+    "docs/evaluations/m4-task-runtime-preview-entry.json": {
+      "blob": "42d6dd554b28b0a889cfd820a1cfdff9a5dbc145",
+      "bytes": 106885
+    },
+    "docs/evaluations/m4-task-runtime-root-self-msrv.json": {
+      "blob": "eef91fba728147904d827e80a28f0832d3b70691",
+      "bytes": 24087
+    },
+    "docs/evaluations/m4-task-runtime-root-self.json": {
+      "blob": "3a027f78a5cca06894c20251c0a9477115f7b58f",
+      "bytes": 24042
+    },
+    "docs/evaluations/m4-task-runtime-ui-allocation-before-wake-coalescing.json": {
+      "blob": "98afde2fff6ddcd62ff13205a7e9f22914a54366",
+      "bytes": 129366
+    },
+    "docs/evaluations/m4-task-runtime-ui-allocation.json": {
+      "blob": "661ac86f6536fa66436ad5c5a8e36331b0c750f5",
+      "bytes": 129366
+    },
+    "docs/evaluations/m4-task-runtime-ui-cost-before-wake-coalescing.json": {
+      "blob": "0a1b7f1761ef7d83f7cb732ccfb9dfb61c0b27f3",
+      "bytes": 2631399
+    },
+    "docs/evaluations/m4-task-runtime-ui-cost.json": {
+      "blob": "24bc87f6903fec0fce24cf04546f783d598780cc",
+      "bytes": 2621675
+    },
+    "docs/evaluations/m4-task-runtime-workspace.json": {
+      "blob": "c33093ba0115f03bedda7981757d829395ea015b",
+      "bytes": 49046
+    },
+    "docs/evaluations/m4-task-runtime.md": {
+      "blob": "908dc61a8ca167add56eb8d08536eb8626fa6b42",
+      "bytes": 11534
+    },
+    "docs/evaluations/m4-tick-allocation-probe-parallel.json": {
+      "blob": "4ac552246a4a21badedec65e4eac080aa3a16505",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-tick-allocation-probe-pre-drop-order.json": {
+      "blob": "994fa0a75f71666a848cb1edacad6cbc28a718b3",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-tick-allocation-probe.json": {
+      "blob": "a013a2265f766094e450fd4e9fd4c1d07e51da3c",
+      "bytes": 13018
+    },
+    "docs/evaluations/m4-tick-bench-pre-drop-order.json": {
+      "blob": "b511074ccb7305b24833d19838eb88fdf367d1de",
+      "bytes": 24962
+    },
+    "docs/evaluations/m4-tick-bench.json": {
+      "blob": "3d5406f37f2b8ef379bbe288dcb400e132cfb1e9",
+      "bytes": 24967
+    },
+    "docs/evaluations/m4-tick-build.json": {
+      "blob": "5494fc25b9c537d32018ad97303a77c3917091ff",
+      "bytes": 9848
+    },
+    "docs/evaluations/m4-tick-pressure-tool-smoke.json": {
+      "blob": "0a03957ad2ccc82066e63d014092b936d314ee80",
+      "bytes": 27756
+    },
+    "docs/evaluations/m4-tick-ui-parallel.json": {
+      "blob": "ebb706da90815e64153db423bfabefd11df356b4",
+      "bytes": 478176
+    },
+    "docs/evaluations/m4-tick-ui-pre-drop-order.json": {
+      "blob": "7a07bfee3295ceddb1edf5fe07920b71fc5b14e0",
+      "bytes": 475903
+    },
+    "docs/evaluations/m4-tick-ui-pressure-pre-drop-order.json": {
+      "blob": "0e2672522cfaad54d94bdf817d9c8251292a9e2f",
+      "bytes": 324496
+    },
+    "docs/evaluations/m4-tick-ui-pressure.json": {
+      "blob": "97ec83015b3401523c2abfcbd2f603425a860517",
+      "bytes": 321263
+    },
+    "docs/evaluations/m4-tick-ui.json": {
+      "blob": "380a8605192eb66f7e60968061375eacaa5cbb5a",
+      "bytes": 475911
+    },
+    "docs/evaluations/m4-tick.md": {
+      "blob": "b2a5eaf4e9ca2874ce322fccb28f10f8d9b1f9c1",
+      "bytes": 10135
+    },
+    "docs/evaluations/m4-ui-state-allocation-before-decoration-batch.json": {
+      "blob": "4d79cbb0f37b20cdd247913d5e1f468f20d7182a",
+      "bytes": 135551
+    },
+    "docs/evaluations/m4-ui-state-allocation-before-pty-wait.json": {
+      "blob": "3dedb57905e0797b2aa2cf53403beebd5b56d511",
+      "bytes": 26254
+    },
+    "docs/evaluations/m4-ui-state-allocation-before-single-pass.json": {
+      "blob": "c0bc0dd8f287aef550818f3d38c723d5ef3d2311",
+      "bytes": 138892
+    },
+    "docs/evaluations/m4-ui-state-allocation-before-windows-test-gate.json": {
+      "blob": "31402b0584a971aae5be0fafc44cffca5f8ee571",
+      "bytes": 138812
+    },
+    "docs/evaluations/m4-ui-state-allocation-msrv-before-decoration-batch.json": {
+      "blob": "5b70bb2bb2fa7ec9523f8c01b88250ef0ad26edc",
+      "bytes": 138962
+    },
+    "docs/evaluations/m4-ui-state-allocation-msrv-before-single-pass.json": {
+      "blob": "1c9b819d9c375b1e62f28ca63b5d13caee606fc5",
+      "bytes": 138915
+    },
+    "docs/evaluations/m4-ui-state-allocation-msrv-before-windows-test-gate.json": {
+      "blob": "4faca82eb5f11cda25d64b1799378cc13e0d7019",
+      "bytes": 138801
+    },
+    "docs/evaluations/m4-ui-state-allocation-msrv.json": {
+      "blob": "8b92e5f067d8692714819cb357c24c8e161a8462",
+      "bytes": 129354
+    },
+    "docs/evaluations/m4-ui-state-allocation.json": {
+      "blob": "da958a52e596ad501bf680d3306a64ee2eb3695b",
+      "bytes": 128752
+    },
+    "docs/evaluations/m4-ui-state-audit.json": {
+      "blob": "5c78a77fa5ee658ab1cebec80a13b562c0df9555",
+      "bytes": 16869
+    },
+    "docs/evaluations/m4-ui-state-build-before-decoration-batch.json": {
+      "blob": "a12b6e3d498277e364ea752f7c282202c03e64aa",
+      "bytes": 143730
+    },
+    "docs/evaluations/m4-ui-state-build-before-single-pass.json": {
+      "blob": "44aa30b5b355fa97a163ea7ef6e9687f32be49c5",
+      "bytes": 143633
+    },
+    "docs/evaluations/m4-ui-state-build-before-windows-test-gate.json": {
+      "blob": "733c430e45579d46e6b197e1206cad586ea47221",
+      "bytes": 140249
+    },
+    "docs/evaluations/m4-ui-state-build.json": {
+      "blob": "0421f669656369c6b76aec441c10372e7b322222",
+      "bytes": 143727
+    },
+    "docs/evaluations/m4-ui-state-cost-before-decoration-batch.json": {
+      "blob": "9bbb46b652287aaf5774be8c07cb7a494cd5c2b6",
+      "bytes": 1777452
+    },
+    "docs/evaluations/m4-ui-state-cost-before-single-pass.json": {
+      "blob": "697c368c7e96a5126303f20913a3f80bcf0020df",
+      "bytes": 1777454
+    },
+    "docs/evaluations/m4-ui-state-cost.json": {
+      "blob": "95c6f28099ab506bb2d073939408776cedc39bea",
+      "bytes": 1707373
+    },
+    "docs/evaluations/m4-ui-state-file-quota-before-decoration-batch.json": {
+      "blob": "c95f0823a395a38e5cf2b1fcf7ed0d084212cb00",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-ui-state-file-quota-before-single-pass.json": {
+      "blob": "b16d05174a084ace631f9d6f0828c3897bf21120",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-ui-state-file-quota-before-windows-test-gate.json": {
+      "blob": "05d341a4cf5179f5fdcb551d66c83677d591ae3c",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-ui-state-file-quota.json": {
+      "blob": "c6e2522fb02562b1a81379ef045e746cd5b489b2",
+      "bytes": 31920
+    },
+    "docs/evaluations/m4-ui-state-workspace-before-decoration-batch.json": {
+      "blob": "bf63269b1248bd9df1bbfdbb4ce7a46f77ab5e2e",
+      "bytes": 49214
+    },
+    "docs/evaluations/m4-ui-state-workspace-before-single-pass.json": {
+      "blob": "4aa8ab983d0425a4ef36ff617e18990c69dafc51",
+      "bytes": 49062
+    },
+    "docs/evaluations/m4-ui-state-workspace-before-windows-test-gate.json": {
+      "blob": "61f56f398260b471d8c877dfa758592c4d4ce85c",
+      "bytes": 48868
+    },
+    "docs/evaluations/m4-ui-state-workspace.json": {
+      "blob": "d3aa508503838934a58998c29654ce0be65632ba",
+      "bytes": 49047
+    },
+    "docs/evaluations/m4-ui-state.md": {
+      "blob": "31cb63e029e76fc20bd598588a3eae491ac903a3",
+      "bytes": 8323
+    },
+    "docs/evaluations/m4-workspace-stress.json": {
+      "blob": "ebec7724a36a0b7ef2304f689c42fa258411e644",
+      "bytes": 7915
+    },
+    "docs/evaluations/m4.md": {
+      "blob": "edd123d141d09e3405af634cb1a3868257bf0423",
+      "bytes": 7656
+    },
+    "docs/evaluations/m5-ssh-agent.json": {
+      "blob": "bc936ead68ba4b9b7ec8c5ceadb3600c7d4f31fd",
+      "bytes": 576505
+    },
+    "docs/evaluations/m5-ssh-ask.json": {
+      "blob": "bf4b290f949dd846aca6c59d458c7afafba3e35b",
+      "bytes": 498233
+    },
+    "docs/evaluations/m5-ssh-auth-failure.json": {
+      "blob": "5ba0c8f64d8b7aa70dd3fe80888fa0bd80559477",
+      "bytes": 46074
+    },
+    "docs/evaluations/m5-ssh-bench.json": {
+      "blob": "14c48d961d3ebd03d1f624211c82d4256ba27e45",
+      "bytes": 25835
+    },
+    "docs/evaluations/m5-ssh-build.json": {
+      "blob": "7de33451efd39916c3e47f777d8cca7546679d62",
+      "bytes": 6584
+    },
+    "docs/evaluations/m5-ssh-changed.json": {
+      "blob": "2b0fb9de2d3a7adfe0671dad387c39c0370ab908",
+      "bytes": 82315
+    },
+    "docs/evaluations/m5-ssh-connect-guard.json": {
+      "blob": "9325772b71b5a1667329f655b9bcb73eb681f227",
+      "bytes": 534923
+    },
+    "docs/evaluations/m5-ssh-decline.json": {
+      "blob": "ad6e50bde4b43a489a4fec921112bc6e7eb4b9f8",
+      "bytes": 42551
+    },
+    "docs/evaluations/m5-ssh-interrupt-initial.json": {
+      "blob": "a5a2ca06af0b246fcaea74082124fa2df5219fb2",
+      "bytes": 1424608
+    },
+    "docs/evaluations/m5-ssh-interrupt.json": {
+      "blob": "e10cf3368592f6943854b44a0aece0551f0999b3",
+      "bytes": 151218
+    },
+    "docs/evaluations/m5-ssh-jump.json": {
+      "blob": "eac1ca8ee42271bb71f96b5f17e3d9fdec38427c",
+      "bytes": 847344
+    },
+    "docs/evaluations/m5-ssh-native.json": {
+      "blob": "42288afecc64597e295c25f467cb69a1062c0f32",
+      "bytes": 490993
+    },
+    "docs/evaluations/m5-ssh-passphrase.json": {
+      "blob": "74de4320c0cbb01556ab53b559023eb9f08fa443",
+      "bytes": 575359
+    },
+    "docs/evaluations/m5-ssh-probe-result.json": {
+      "blob": "3c7c91659041ad410ef2e83202afba9c7d1effc0",
+      "bytes": 683279
+    },
+    "docs/evaluations/m5-ssh-prototype-initial.json": {
+      "blob": "b4c725fb48f763ca9acd185a86b99892623359f6",
+      "bytes": 1257811
+    },
+    "docs/evaluations/m5-ssh-prototype.json": {
+      "blob": "de016f240b73cb7561681c491d41e9c3bed83333",
+      "bytes": 1163495
+    },
+    "docs/evaluations/m5-ssh-refused.json": {
+      "blob": "2836c387eb3e18eb76073c5173cd89d03129380d",
+      "bytes": 223180
+    },
+    "docs/evaluations/m5-ssh-render-isolated.json": {
+      "blob": "77bad3d9570a82d8df457e1a0524c93a356ce44d",
+      "bytes": 26074
+    },
+    "docs/evaluations/m5-ssh-unknown.json": {
+      "blob": "48ba14146cbfff1f6fcdbd650b717f8e87f7968d",
+      "bytes": 148295
+    },
+    "docs/evaluations/m5-ssh.md": {
+      "blob": "6ff65a39296e9778cf1aa1147af7d923d22886ab",
+      "bytes": 5481
+    },
+    "docs/evaluations/m6-sftp-adapter-bench-throughput-initial.json": {
+      "blob": "09f3c79b2c483553d349a1a2c93e1306a3d445e7",
+      "bytes": 1092746
+    },
+    "docs/evaluations/m6-sftp-adapter-bench.json": {
+      "blob": "695a7b368ec10c15496219ec9cb9d3bff696ea3f",
+      "bytes": 1180577
+    },
+    "docs/evaluations/m6-sftp-adapter-build-msrv-initial.json": {
+      "blob": "abe52d598d4dfd333a63cde02c83412220ea2382",
+      "bytes": 156503
+    },
+    "docs/evaluations/m6-sftp-adapter-build.json": {
+      "blob": "27e4ca54bd3e276233d2b61b41ca5fc930c2ea5e",
+      "bytes": 155961
+    },
+    "docs/evaluations/m6-sftp-adapter.md": {
+      "blob": "a41f5777959319804150ee70d089615ca3b6e985",
+      "bytes": 4904
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-allocation-before-pending-guard.json": {
+      "blob": "efd4613ba808278da6b3b10653226414e84981ec",
+      "bytes": 32640
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-allocation-before-plain-probe.json": {
+      "blob": "e7d6a7624902a5a0e00ec1b84c671008361d1e09",
+      "bytes": 31734
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-allocation-initial.json": {
+      "blob": "ccccc116ea7f977e820524fbac8d5adbd6e90e1c",
+      "bytes": 29352
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-allocation-msrv-before-pending-guard.json": {
+      "blob": "0b03eab50b5504b1cae39d9007a5f500cd8c516b",
+      "bytes": 32679
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-allocation-msrv.json": {
+      "blob": "c20d4fe3ee2772cfeb951905508af69c34cfab7f",
+      "bytes": 32679
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-allocation.json": {
+      "blob": "60c7b593307b12e23acba0a60fa5e43a4ba9879c",
+      "bytes": 32640
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-build-before-pending-guard.json": {
+      "blob": "5611ac2b05571450a96350949e698a2679c5c871",
+      "bytes": 179049
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard-build.json": {
+      "blob": "c640b5f29077b4c6eead17a168295626fee3cd38",
+      "bytes": 179062
+    },
+    "docs/evaluations/m6-sftp-auth-clipboard.md": {
+      "blob": "4d838785ffd87c1f59bbb9aacd8cc723c22d13e2",
+      "bytes": 5743
+    },
+    "docs/evaluations/m6-sftp-auth-controller-allocation-before-final-sync.json": {
+      "blob": "d29fe602eb03553a1cff3c1e64d0e7415f2d7dae",
+      "bytes": 33697
+    },
+    "docs/evaluations/m6-sftp-auth-controller-allocation-msrv.json": {
+      "blob": "f5e85c215c69f3a3d6f01dc73b482ca7997e2120",
+      "bytes": 33736
+    },
+    "docs/evaluations/m6-sftp-auth-controller-allocation.json": {
+      "blob": "b00a9ef0f711ed400c94d4b26e439413364f898f",
+      "bytes": 33697
+    },
+    "docs/evaluations/m6-sftp-auth-controller-build.json": {
+      "blob": "12c87646c6aad9232d00d694c4a59e0a5a094db7",
+      "bytes": 190908
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-bridge-before-final-sync.json": {
+      "blob": "df3a6b67fc348c8cd859962f87e68c5925131695",
+      "bytes": 167506
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-bridge-before-render-helper.json": {
+      "blob": "db94a2c361a02ce60b5765cf096f7c889e9f9083",
+      "bytes": 28731
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-bridge-msrv.json": {
+      "blob": "520ee6b627ad56ab076408eaaec023a5178c681d",
+      "bytes": 50602
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-bridge.json": {
+      "blob": "f9f416068b38c25c3152df014f27828de5c2ec24",
+      "bytes": 167506
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-editor-msrv.json": {
+      "blob": "d0c0fea342cca4b003ced39c02db4cae98221c92",
+      "bytes": 74039
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-editor.json": {
+      "blob": "4c1e0287099c6e24d7655c453512784f613a206a",
+      "bytes": 217395
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-lifetime-msrv.json": {
+      "blob": "5c4e7ce858d1dbfc44ca16a98664de4c047e875c",
+      "bytes": 55222
+    },
+    "docs/evaluations/m6-sftp-auth-controller-native-lifetime.json": {
+      "blob": "e031e34e600d8f0feaa45d7829a4abf23475be45",
+      "bytes": 199786
+    },
+    "docs/evaluations/m6-sftp-auth-controller.md": {
+      "blob": "afd76d46078ad62aaf08fc5e961ea52088b4f661",
+      "bytes": 8996
+    },
+    "docs/evaluations/m6-sftp-auth-core-allocation-diagnostic.json": {
+      "blob": "a1d2b58bd0b75db096d940f623222f366ac435a4",
+      "bytes": 20339
+    },
+    "docs/evaluations/m6-sftp-auth-core-allocation-initial.json": {
+      "blob": "ee9823a979e0542bb682baf887ba5940976a9993",
+      "bytes": 20186
+    },
+    "docs/evaluations/m6-sftp-auth-core-allocation-msrv.json": {
+      "blob": "ee30dbb37d5a8dd4b27e3788e56cd5fd3d080d66",
+      "bytes": 21127
+    },
+    "docs/evaluations/m6-sftp-auth-core-allocation-wait.json": {
+      "blob": "8eb2435d99f0371b8cb51e06769a532ac256fb7a",
+      "bytes": 20529
+    },
+    "docs/evaluations/m6-sftp-auth-core-allocation.json": {
+      "blob": "843a7b7fe3ad0e6553bcb4794113ea031166377e",
+      "bytes": 21088
+    },
+    "docs/evaluations/m6-sftp-auth-core-build.json": {
+      "blob": "7da05ac2259a8ba4f668c57667f86f707ff1b561",
+      "bytes": 161135
+    },
+    "docs/evaluations/m6-sftp-auth-core.md": {
+      "blob": "a3400aa1dabce8a99068f9ec8d1ed7e12be8ee85",
+      "bytes": 5302
+    },
+    "docs/evaluations/m6-sftp-auth-cost-allocation-msrv.json": {
+      "blob": "927100168d62dd44c9bdadd1f51a1ad10ecea40e",
+      "bytes": 22301
+    },
+    "docs/evaluations/m6-sftp-auth-cost-allocation.json": {
+      "blob": "0d2749754aa6045dc36dbc2e60ba61dc2030120c",
+      "bytes": 22262
+    },
+    "docs/evaluations/m6-sftp-auth-cost-build.json": {
+      "blob": "dd76b4b3ef88400873ac2b5ca923db7f1f298f6d",
+      "bytes": 167597
+    },
+    "docs/evaluations/m6-sftp-auth-cost-initial.json": {
+      "blob": "7dddbc239211174c889840bd52182887e1affd10",
+      "bytes": 3201939
+    },
+    "docs/evaluations/m6-sftp-auth-cost-parent-regression.json": {
+      "blob": "d51c321b4c596c942f921bc9a71d3ecaed58ba08",
+      "bytes": 208881
+    },
+    "docs/evaluations/m6-sftp-auth-cost.json": {
+      "blob": "e01fd30cfcede63512c9367e21fab0da9731450b",
+      "bytes": 3222946
+    },
+    "docs/evaluations/m6-sftp-auth-cost.md": {
+      "blob": "1cd18b83ddd0bcc465bf892677204e4539962c69",
+      "bytes": 6134
+    },
+    "docs/evaluations/m6-sftp-auth-editor-allocation-msrv.json": {
+      "blob": "47a5d071a574ef96b6afa498d7419a7c96263c27",
+      "bytes": 23214
+    },
+    "docs/evaluations/m6-sftp-auth-editor-allocation.json": {
+      "blob": "441f409267b675cd31f1c169e456e415cf604c1e",
+      "bytes": 23175
+    },
+    "docs/evaluations/m6-sftp-auth-editor-build.json": {
+      "blob": "dacb225e56a36b74d128267ac1a7856bf21ccf57",
+      "bytes": 170505
+    },
+    "docs/evaluations/m6-sftp-auth-editor.md": {
+      "blob": "090533991d16b5ecdad625c9b7137f9231adb873",
+      "bytes": 4201
+    },
+    "docs/evaluations/m6-sftp-auth-helper-build.json": {
+      "blob": "da4bfcdb32d0445014220524027f5e36650b9e2c",
+      "bytes": 203788
+    },
+    "docs/evaluations/m6-sftp-auth-helper-diagnostic.json": {
+      "blob": "47f0a42b31f060ca0d76651fa345a8d78a5c9a65",
+      "bytes": 33450
+    },
+    "docs/evaluations/m6-sftp-auth-helper-initial.json": {
+      "blob": "a50d52c93635bd5aa458780597ec59fef86115af",
+      "bytes": 22664
+    },
+    "docs/evaluations/m6-sftp-auth-helper-timeout-check.json": {
+      "blob": "4465d58a30e0766d68c14de051324a82bf38396f",
+      "bytes": 99995
+    },
+    "docs/evaluations/m6-sftp-auth-helper-whole-frame.json": {
+      "blob": "dce5a99e8e0123b3a7c8e4711df81b6e24924191",
+      "bytes": 10002
+    },
+    "docs/evaluations/m6-sftp-auth-helper.json": {
+      "blob": "3a433dd47bb8c475192c93a966fcacd3623697e2",
+      "bytes": 87212
+    },
+    "docs/evaluations/m6-sftp-auth-helper.md": {
+      "blob": "6ee8a3dca7ca66ec6b6beabfce3c5c823ead81d6",
+      "bytes": 4821
+    },
+    "docs/evaluations/m6-sftp-auth-ime-build-before-rejection-latch.json": {
+      "blob": "8ddd19e6a7de9256237d158ffb1f8f2d4817771a",
+      "bytes": 181120
+    },
+    "docs/evaluations/m6-sftp-auth-ime-build.json": {
+      "blob": "ce7ae7441022919e6794fdc5aa2c5377a098dffc",
+      "bytes": 181118
+    },
+    "docs/evaluations/m6-sftp-auth-ime-editor-native-before-ns.json": {
+      "blob": "67b76cd5a2660d2ab3745f331e85124c009ce218",
+      "bytes": 211345
+    },
+    "docs/evaluations/m6-sftp-auth-ime-editor-native-before-warm-probe.json": {
+      "blob": "bb98707474f453e917573abc4d9032e7bfc3685f",
+      "bytes": 207514
+    },
+    "docs/evaluations/m6-sftp-auth-ime-editor-native-msrv.json": {
+      "blob": "41c9e0fb6f4eb28711f27f34f620376f5caf5b65",
+      "bytes": 69192
+    },
+    "docs/evaluations/m6-sftp-auth-ime-editor-native.json": {
+      "blob": "b0b6682fb648d4395dfe88145afb4a040212b7ff",
+      "bytes": 212164
+    },
+    "docs/evaluations/m6-sftp-auth-ime-input-build-before-windows-coverage.json": {
+      "blob": "8e1a2a7f0d58cd66975c1856a036a52b32e0b170",
+      "bytes": 184428
+    },
+    "docs/evaluations/m6-sftp-auth-ime-input-build.json": {
+      "blob": "3af9e6bc0bac84a53e09cd38c887334888390c00",
+      "bytes": 184532
+    },
+    "docs/evaluations/m6-sftp-auth-ime-input-native-msrv.json": {
+      "blob": "4c541ce83dd9c6be976f1db08c3957ecc7b82080",
+      "bytes": 49606
+    },
+    "docs/evaluations/m6-sftp-auth-ime-input-native.json": {
+      "blob": "6dd85d0c602f49c33f9dc7ef96697aab4567581d",
+      "bytes": 194024
+    },
+    "docs/evaluations/m6-sftp-auth-ime-input.md": {
+      "blob": "693206ff50e6a8fd9b97aac586ec3f49d896bad6",
+      "bytes": 6543
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-before-diagnostic.json": {
+      "blob": "1d65d0b7c197661e5ce273276c58efbbe5dac6dd",
+      "bytes": 189299
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-before-full-queue.json": {
+      "blob": "2025da9f01a0f6d5c8169a262b6f9fe512ae8a5c",
+      "bytes": 191405
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-before-rejection-latch.json": {
+      "blob": "49be9248c3094c3138d449c91f45ed1b1615f1af",
+      "bytes": 192589
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-diagnostic.json": {
+      "blob": "996717d26175dd8ecdea2517ffd4e00285cf6f71",
+      "bytes": 197987
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-msrv-before-full-queue.json": {
+      "blob": "8195a4e9695f24e316680946f6cca82886acd66f",
+      "bytes": 48369
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-msrv-before-rejection-latch.json": {
+      "blob": "25fd4e87b5441148c55d98236b76eea219aff86c",
+      "bytes": 49545
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-msrv.json": {
+      "blob": "0811e155091a98f668623770d7f5d712ed577c82",
+      "bytes": 49537
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native-sandbox-initial.json": {
+      "blob": "b7a5d682c5fbf72d3985704555bcfd03b4564476",
+      "bytes": 191340
+    },
+    "docs/evaluations/m6-sftp-auth-ime-native.json": {
+      "blob": "9e44eb4e0b4852ae20821f2c2b7e42fd0aeb8b75",
+      "bytes": 192599
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-bridge-before-command-pressure.json": {
+      "blob": "8225d4ac432bf89ec4149963965d4a7455dd6e8c",
+      "bytes": 199859
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-bridge-before-retired-source-check.json": {
+      "blob": "dd1381e97cf747debe3caa6bf0a717ef46685308",
+      "bytes": 199859
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-bridge-msrv-before-retired-source-check.json": {
+      "blob": "8f175ca20542b5ed1d3265a5e5be7a710488cf6b",
+      "bytes": 52802
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-bridge-msrv.json": {
+      "blob": "09509da47539c62a6bfba4fa0bba7b5c39496b9c",
+      "bytes": 53342
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-bridge.json": {
+      "blob": "988b479cf4e48ac617ee3ecf7d003fc476c4ceb6",
+      "bytes": 200399
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-build-before-identity-use.json": {
+      "blob": "951ecf230ee891fbd7fe76790f84ffb35feea5b2",
+      "bytes": 186385
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-build.json": {
+      "blob": "6ba0f6eaa3f3247af1f473e7e8d8e703ac2f7928",
+      "bytes": 187097
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-bundle-diagnostic.json": {
+      "blob": "625084a330502ec04e50c3d4e54173bd489b3278",
+      "bytes": 195098
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-diagnostic.json": {
+      "blob": "adc5b52cfd9975b4721ae0481188115bc40dd4d4",
+      "bytes": 194635
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-editor-msrv.json": {
+      "blob": "1e35e929140d7ac3bd56c16c090d258f6c6dfa62",
+      "bytes": 73937
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-editor.json": {
+      "blob": "708821904887aef3a9635c9cb282f9a990ea991f",
+      "bytes": 217293
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-focus-diagnostic.json": {
+      "blob": "7bf4e8f9b62aeb65c36f9a44adddd71f9ddb82ec",
+      "bytes": 194701
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-framework-diagnostic.json": {
+      "blob": "6e890d80c22b87305917c87649ed63aec1272a6c",
+      "bytes": 195612
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-initial.json": {
+      "blob": "9030db40c6a747dc548b7e5f8847e8c30594792b",
+      "bytes": 194532
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-launchservices-diagnostic.json": {
+      "blob": "e706fac54465e65014ff4df64fdb47b349fab333",
+      "bytes": 195856
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-lifetime-msrv.json": {
+      "blob": "34ddcb365aeecef0f236af5f939fd2f88471bba6",
+      "bytes": 55116
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-lifetime.json": {
+      "blob": "f71dd958f846bf0bf450adba979c6ef6fdccfc39",
+      "bytes": 199686
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-route-diagnostic.json": {
+      "blob": "d373352d6ebfbaa64127c4ac7329af48f9e91f62",
+      "bytes": 194747
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window-state-diagnostic.json": {
+      "blob": "77b0955cfdb1ab5a4ccd6680788cdb1429f08636",
+      "bytes": 194902
+    },
+    "docs/evaluations/m6-sftp-auth-ime-window.md": {
+      "blob": "a7e2472db4173a509a6f791a248f73654cbddd3b",
+      "bytes": 7973
+    },
+    "docs/evaluations/m6-sftp-auth-ime.md": {
+      "blob": "72bf4fe54ceb200117d86102109a1985c7432bde",
+      "bytes": 7366
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-allocation-before-pending-release.json": {
+      "blob": "f8b9e81e83d8f49a20135c4d90e848b2f12d53a4",
+      "bytes": 23607
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-allocation-before-unit-check.json": {
+      "blob": "d8f32bd90cb54c7140406d56e5431adc4d07b646",
+      "bytes": 23607
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-allocation-msrv-before-pending-release.json": {
+      "blob": "cb0e7919838e7555c31fd410f429391a604c59b3",
+      "bytes": 23646
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-allocation-msrv-before-unit-check.json": {
+      "blob": "7dc56d6273219a98554915ed625103660fc3b2a8",
+      "bytes": 23646
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-allocation-msrv.json": {
+      "blob": "fd82aa1829defd3c5619b116d68ed59f048d23f5",
+      "bytes": 23646
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-allocation.json": {
+      "blob": "88bbb5ec695187d475760e7c7bae45a7ccb353e4",
+      "bytes": 23607
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-build-before-pending-release.json": {
+      "blob": "ceadfda7a8836570e516046677bde118d36e6c96",
+      "bytes": 176250
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-build-before-unit-check.json": {
+      "blob": "4299a68239fbb935feb38f245d096afc1aa54e79",
+      "bytes": 176263
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-build.json": {
+      "blob": "50207158cd45624b2ccdb18b52c095437094eab2",
+      "bytes": 176188
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission-trace.json": {
+      "blob": "6b55c2c0070e0c668ed33aa8850b6e8f5f605936",
+      "bytes": 1108
+    },
+    "docs/evaluations/m6-sftp-auth-input-admission.md": {
+      "blob": "9408cc936e73cdbb4a2122a5ace3ea1f24c13ad3",
+      "bytes": 5842
+    },
+    "docs/evaluations/m6-sftp-auth-input-build-before-alias.json": {
+      "blob": "46f7fd5fced9572ed123cd8e05505b884f54386b",
+      "bytes": 150587
+    },
+    "docs/evaluations/m6-sftp-auth-input-build-parallel-failure.json": {
+      "blob": "2b20a813726a3ffc6f6bef9a98abb366a4111957",
+      "bytes": 77315
+    },
+    "docs/evaluations/m6-sftp-auth-input-build.json": {
+      "blob": "9ddedcfef5dadc645d01758b24fe908e2551f124",
+      "bytes": 151511
+    },
+    "docs/evaluations/m6-sftp-auth-inputs-before-oracle.json": {
+      "blob": "274a98b318ffbcfb10710e8bcf4ee62652417364",
+      "bytes": 930503
+    },
+    "docs/evaluations/m6-sftp-auth-inputs.json": {
+      "blob": "ba14608a85e7d9821ecc430981a66c6ac1283dea",
+      "bytes": 1220412
+    },
+    "docs/evaluations/m6-sftp-auth-ipc-allocation-initial.json": {
+      "blob": "b66daf816938bcb7fa3c9dab63e178542407a907",
+      "bytes": 18776
+    },
+    "docs/evaluations/m6-sftp-auth-ipc-allocation-msrv.json": {
+      "blob": "bd196fd76577e9f0435d0abeebd25ed7fcadde5c",
+      "bytes": 22095
+    },
+    "docs/evaluations/m6-sftp-auth-ipc-allocation.json": {
+      "blob": "fcf54114dbb075bcf6df28cac6229ecaf5be9d72",
+      "bytes": 22057
+    },
+    "docs/evaluations/m6-sftp-auth-ipc-build.json": {
+      "blob": "db914049e709f606ffb97036ed7fb686b56ac28d",
+      "bytes": 164373
+    },
+    "docs/evaluations/m6-sftp-auth-ipc.md": {
+      "blob": "620c6ae6140642685142b8603d3f57fbb7dfbc19",
+      "bytes": 4452
+    },
+    "docs/evaluations/m6-sftp-auth-parent-adapter-bench.json": {
+      "blob": "8ddaa1a73cc2c8bd3f8a55242661ac7ea5317ac7",
+      "bytes": 1095254
+    },
+    "docs/evaluations/m6-sftp-auth-parent-build.json": {
+      "blob": "91bfbc9369dd9ea32bab682e3ff402b62a936a93",
+      "bytes": 166332
+    },
+    "docs/evaluations/m6-sftp-auth-parent-penalty-diagnostic.json": {
+      "blob": "f5377bf9d71b29afabeeec53cf85f5a1e626709a",
+      "bytes": 63749
+    },
+    "docs/evaluations/m6-sftp-auth-parent-runner-initial.json": {
+      "blob": "877799c0f5b27ae32f374bdcb591cf3820748b96",
+      "bytes": 34725
+    },
+    "docs/evaluations/m6-sftp-auth-parent-wait-initial.json": {
+      "blob": "feed07b0e9c9398c5f614a73e5ca15ed718f3606",
+      "bytes": 81275
+    },
+    "docs/evaluations/m6-sftp-auth-parent.json": {
+      "blob": "4853c7bcfe466caeec2c0aa35b7566fef3e2df17",
+      "bytes": 206179
+    },
+    "docs/evaluations/m6-sftp-auth-parent.md": {
+      "blob": "e2670c0e8f80ed29be87f04663ac37e13c2c93d3",
+      "bytes": 5719
+    },
+    "docs/evaluations/m6-sftp-auth-path-oracle-initial.json": {
+      "blob": "e6a7c69a41c57deb1b156ed01349d59835112dcb",
+      "bytes": 19363
+    },
+    "docs/evaluations/m6-sftp-auth-path-oracle.json": {
+      "blob": "ea0dc870beec41b9d7aecbf67488323ce289c50c",
+      "bytes": 161131
+    },
+    "docs/evaluations/m6-sftp-auth-view-allocation-before-ime-preview.json": {
+      "blob": "276e96298a7c3fe4ad416e73a4f4f5c69b697c81",
+      "bytes": 27794
+    },
+    "docs/evaluations/m6-sftp-auth-view-allocation-msrv.json": {
+      "blob": "d6e8eb9c902b51e13a349ef40765cda4cfeb2ca9",
+      "bytes": 27833
+    },
+    "docs/evaluations/m6-sftp-auth-view-allocation.json": {
+      "blob": "08e71f11b3ef13e1fa9fdeb12efd4c85c8d36803",
+      "bytes": 27794
+    },
+    "docs/evaluations/m6-sftp-auth-view-build-before-ime-preview.json": {
+      "blob": "7309180f12da9ede2c77aac7f4ec1664c8ba5bec",
+      "bytes": 173656
+    },
+    "docs/evaluations/m6-sftp-auth-view-build.json": {
+      "blob": "2be3ccd3f41dde844726299f297565bf6a1ec5cd",
+      "bytes": 174418
+    },
+    "docs/evaluations/m6-sftp-auth-view.md": {
+      "blob": "b78738c4c6730c99bde6a0ce15fdf7704f124208",
+      "bytes": 4793
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-allocation-before-exact-name-boundary.json": {
+      "blob": "25bb01ea425e15582055f72a3c20967bdc3447ae",
+      "bytes": 35063
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-allocation-msrv-before-exact-name-boundary.json": {
+      "blob": "61777f97ae03266df314db4fd629846b4b8b36d9",
+      "bytes": 35096
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-allocation-msrv.json": {
+      "blob": "5ec612fe06db9a55952f9bbb2b1ae35b932dab73",
+      "bytes": 35107
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-allocation.json": {
+      "blob": "12b1931b72e4dcdd096cdddf46bc20909ca7c615",
+      "bytes": 35072
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-build-before-generation-zero-check.json": {
+      "blob": "da420e675f9f308e64908707c11e0e13b5d81d05",
+      "bytes": 194521
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-build.json": {
+      "blob": "e953575161b916f0cec1f0c84ccc53426c624b87",
+      "bytes": 194363
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-native-bridge-msrv.json": {
+      "blob": "be0e2794cdf11ff9fe21143a99ea751cf1040fd7",
+      "bytes": 52830
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-native-bridge.json": {
+      "blob": "d807c0a76b798811d60ac4119503a4d087b551e3",
+      "bytes": 158416
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-native-editor-msrv.json": {
+      "blob": "d73931f8e0461c5e2c9ff90dae47d6509a6d711a",
+      "bytes": 75759
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-native-editor.json": {
+      "blob": "0e766f998157a4716586f53ac95c5b6941b02da6",
+      "bytes": 219196
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-native-lifetime-msrv.json": {
+      "blob": "9e2f71208232acde7ea450b707efc4f4444c3494",
+      "bytes": 55516
+    },
+    "docs/evaluations/m6-sftp-auth-workspace-native-lifetime.json": {
+      "blob": "f11a13c89bcf224f95c96f7f7e31ae7967851140",
+      "bytes": 200177
+    },
+    "docs/evaluations/m6-sftp-auth-workspace.md": {
+      "blob": "cc520a4e0ce79cf7071772239679bb65feb08b8b",
+      "bytes": 10270
+    },
+    "docs/evaluations/m6-sftp-backends-smoke.json": {
+      "blob": "65f10fede8838ebe6466683befff123153025927",
+      "bytes": 359878
+    },
+    "docs/evaluations/m6-sftp-backends.json": {
+      "blob": "00e3e8a5a3a79f8876be5ed74c8328c9c42c472e",
+      "bytes": 1097455
+    },
+    "docs/evaluations/m6-sftp-build.json": {
+      "blob": "e841ad7075f1ffd8b4f8bca7cc0a20795dbc7138",
+      "bytes": 71451
+    },
+    "docs/evaluations/m6-sftp-connect-build.json": {
+      "blob": "e938c57782f3bfeaab2290a53570f0f5e60217f7",
+      "bytes": 145102
+    },
+    "docs/evaluations/m6-sftp-connect-cache.json": {
+      "blob": "b8f4b11244e34206ef1614106df314beded8e143",
+      "bytes": 678848
+    },
+    "docs/evaluations/m6-sftp-connect-native.json": {
+      "blob": "590c9c3eee52412672837f2cfe18dc4875f06b30",
+      "bytes": 697732
+    },
+    "docs/evaluations/m6-sftp-connect-resolved.json": {
+      "blob": "603f1646439392cc2cceb4ef23518354b8cb715e",
+      "bytes": 101493
+    },
+    "docs/evaluations/m6-sftp-executor-allocation-before-poll-snapshot-check.json": {
+      "blob": "76e1ba0be32612fb14e2ee477f3802e273e1b9a7",
+      "bytes": 25455
+    },
+    "docs/evaluations/m6-sftp-executor-allocation-msrv-before-poll-snapshot-check.json": {
+      "blob": "79a56aeb4724485724af63a1d015dd04f1511fb2",
+      "bytes": 25545
+    },
+    "docs/evaluations/m6-sftp-executor-allocation-msrv.json": {
+      "blob": "ce6221e25de506242eefc6af0d5159abbebd30e3",
+      "bytes": 25545
+    },
+    "docs/evaluations/m6-sftp-executor-allocation.json": {
+      "blob": "2e4c47c2d25a71ec53c6e9739e6784b8e448b2ce",
+      "bytes": 25455
+    },
+    "docs/evaluations/m6-sftp-executor-auth-parent-before-poll-snapshot-check.json": {
+      "blob": "49733ebba0cc51c35b08f673e14b2088b9b7de0e",
+      "bytes": 197946
+    },
+    "docs/evaluations/m6-sftp-executor-auth-parent.json": {
+      "blob": "684f29ba9755dd2307b91b94e6d0e8dc93f081cd",
+      "bytes": 196656
+    },
+    "docs/evaluations/m6-sftp-executor-build-before-poll-snapshot-check.json": {
+      "blob": "419f4a1237b48a7ff040aa7cfa41a99f8eac7f61",
+      "bytes": 202721
+    },
+    "docs/evaluations/m6-sftp-executor-build.json": {
+      "blob": "1f8d4b407a65c85bf829163e51f9f0f2a03410c0",
+      "bytes": 203117
+    },
+    "docs/evaluations/m6-sftp-executor-cost-before-poll-snapshot-check.json": {
+      "blob": "8090bb3d0596feb3c88e4bebcd558ae9e069a32d",
+      "bytes": 378275
+    },
+    "docs/evaluations/m6-sftp-executor-cost.json": {
+      "blob": "0ad08627b02875baf33aa835ecf7b62d997efa97",
+      "bytes": 380302
+    },
+    "docs/evaluations/m6-sftp-executor-service-regression-allocation-msrv.json": {
+      "blob": "74d1ba11c55beb52af40638af0571dfe608246c6",
+      "bytes": 26908
+    },
+    "docs/evaluations/m6-sftp-executor-service-regression-allocation.json": {
+      "blob": "f29362a71033207fb1c0809c615bf28e2b786fe4",
+      "bytes": 26772
+    },
+    "docs/evaluations/m6-sftp-executor.md": {
+      "blob": "0a855c5fbb75db180999ffa08baaae8b63faf83e",
+      "bytes": 10972
+    },
+    "docs/evaluations/m6-sftp-exit-disposition-allocation.json": {
+      "blob": "3763950fb1c246522dfe07ea0662ce04a70b13c2",
+      "bytes": 40779
+    },
+    "docs/evaluations/m6-sftp-exit-disposition-audit.json": {
+      "blob": "7bf4bdca51f8c4597967e0cea040824522351ed4",
+      "bytes": 1243
+    },
+    "docs/evaluations/m6-sftp-exit-disposition-build.json": {
+      "blob": "7a97a23bd606a593b957225804934358ca633857",
+      "bytes": 75886
+    },
+    "docs/evaluations/m6-sftp-exit-disposition-real.json": {
+      "blob": "47dbb1a963c4d07d0a731cfa58cb6997bbee2120",
+      "bytes": 441153
+    },
+    "docs/evaluations/m6-sftp-exit-disposition-transfer.json": {
+      "blob": "5930b736ae4229f434b704ede75466a3a0d43604",
+      "bytes": 964048
+    },
+    "docs/evaluations/m6-sftp-exit-disposition.md": {
+      "blob": "551d99a0b4ddf44300209e34b44fc28b27e689ff",
+      "bytes": 4526
+    },
+    "docs/evaluations/m6-sftp-file-service-allocation-initial.json": {
+      "blob": "7318659009975093eae1d585a4107f5469c0e7f0",
+      "bytes": 24986
+    },
+    "docs/evaluations/m6-sftp-file-service-allocation-max-fixture-diagnostic.json": {
+      "blob": "b31cf916c2e1ac26124df3f6ec5e95bd5211db87",
+      "bytes": 32969
+    },
+    "docs/evaluations/m6-sftp-file-service-allocation-msrv.json": {
+      "blob": "eb69bb81036c458cbc80cb8757eca96aff362c3d",
+      "bytes": 27420
+    },
+    "docs/evaluations/m6-sftp-file-service-allocation.json": {
+      "blob": "49a11e5db3a41d28cd1873c1e067dd2d670e8640",
+      "bytes": 27284
+    },
+    "docs/evaluations/m6-sftp-file-service-build.json": {
+      "blob": "09d7d146044d5b841037e6832ab9d16d6cf3df22",
+      "bytes": 232781
+    },
+    "docs/evaluations/m6-sftp-file-service-name-diagnostic.json": {
+      "blob": "41a89775402f3a002c89cb1e84483c173bbcf468",
+      "bytes": 233
+    },
+    "docs/evaluations/m6-sftp-file-service-name-native.json": {
+      "blob": "57b5a671ab2eb59a0867fe7972bfbfa2116feeff",
+      "bytes": 507
+    },
+    "docs/evaluations/m6-sftp-file-service-real-after-cancel.json": {
+      "blob": "c16d01b531718f4813281a5431d364485c286efc",
+      "bytes": 247858
+    },
+    "docs/evaluations/m6-sftp-file-service-real-after-name.json": {
+      "blob": "aa4d9d4ac99a817f7d603ed82a78ceb79cfbca46",
+      "bytes": 168872
+    },
+    "docs/evaluations/m6-sftp-file-service-real-diagnostic.json": {
+      "blob": "877cf7d745eda883e56977a7cd537dcac991749e",
+      "bytes": 63816
+    },
+    "docs/evaluations/m6-sftp-file-service-real-initial.json": {
+      "blob": "4a7621dfb975c412d614e0c89752afece44b929e",
+      "bytes": 70585
+    },
+    "docs/evaluations/m6-sftp-file-service-service.json": {
+      "blob": "6ca9b3f5b8d23937337724f030afe8f16a53e0b6",
+      "bytes": 182066
+    },
+    "docs/evaluations/m6-sftp-file-service-transfer.json": {
+      "blob": "39176d3cb93997c91d848a70c82a6d694351eff5",
+      "bytes": 250680
+    },
+    "docs/evaluations/m6-sftp-file-service-workspace.json": {
+      "blob": "5a402e5dc4bdca20c99e766167a5b08f1769d7a7",
+      "bytes": 344464
+    },
+    "docs/evaluations/m6-sftp-file-service.md": {
+      "blob": "8e00b2a98611664766df82d8c6e940d14a1e638f",
+      "bytes": 11305
+    },
+    "docs/evaluations/m6-sftp-io-admission.md": {
+      "blob": "e336c96e54248341407b34fb55681ac6728eaabf",
+      "bytes": 8024
+    },
+    "docs/evaluations/m6-sftp-io-allocation-msrv.json": {
+      "blob": "4a55ac2e8180e30ecbe8df68e50175c009071429",
+      "bytes": 29560
+    },
+    "docs/evaluations/m6-sftp-io-allocation.json": {
+      "blob": "030871b4e850a592e571eb9adcff8bfee65cee9c",
+      "bytes": 29424
+    },
+    "docs/evaluations/m6-sftp-io-build-initial.json": {
+      "blob": "7cac050fef21a45c193f280e185d8b6b6da3e1e6",
+      "bytes": 225711
+    },
+    "docs/evaluations/m6-sftp-io-build.json": {
+      "blob": "0a023833168db30367e5a41f17cb2632580fd751",
+      "bytes": 236719
+    },
+    "docs/evaluations/m6-sftp-io-executor-allocation-msrv.json": {
+      "blob": "690b20a0b2d37d04d7c948d2b6c3c5e7f25c4812",
+      "bytes": 27217
+    },
+    "docs/evaluations/m6-sftp-io-executor-allocation.json": {
+      "blob": "38ba0a7b54f00f4f4ab3046a9ee9483eda08a89c",
+      "bytes": 27081
+    },
+    "docs/evaluations/m6-sftp-io-service-allocation-msrv.json": {
+      "blob": "c2038f7dc6a123fb2b2a7c99dc0928fa301d0f39",
+      "bytes": 25408
+    },
+    "docs/evaluations/m6-sftp-io-service-allocation.json": {
+      "blob": "a3f376a4fde6bbb9dd95e7cf3c52fc62965d7a1f",
+      "bytes": 25272
+    },
+    "docs/evaluations/m6-sftp-io-service.json": {
+      "blob": "0d7acd7cb20270371567fc5d356dea72914652a2",
+      "bytes": 184198
+    },
+    "docs/evaluations/m6-sftp-io-transfer-initial.json": {
+      "blob": "9fa2785a984ebacc9521348e0ff41eced48fc49c",
+      "bytes": 301414
+    },
+    "docs/evaluations/m6-sftp-io-transfer.json": {
+      "blob": "4e43a346509be043e4b6f1131ce17b47b83c7419",
+      "bytes": 285961
+    },
+    "docs/evaluations/m6-sftp-io-workspace-allocation-msrv.json": {
+      "blob": "3b61a5c59e406c353ceeb1b43a21fa3cdfd21fe1",
+      "bytes": 26491
+    },
+    "docs/evaluations/m6-sftp-io-workspace-allocation.json": {
+      "blob": "19a4515e37caa012cfc2929f12483109cd6f9dca",
+      "bytes": 26355
+    },
+    "docs/evaluations/m6-sftp-io-workspace.json": {
+      "blob": "61d4fe8abcb0bc5cdd2df17991222e5c551ecaf7",
+      "bytes": 353623
+    },
+    "docs/evaluations/m6-sftp-limited-smoke.json": {
+      "blob": "0ebd336ad9e42fb084f940d878cad76f37d437f1",
+      "bytes": 343551
+    },
+    "docs/evaluations/m6-sftp-local-allocation-after-launch-warmup.json": {
+      "blob": "5ea6073e211dc9d187ef7ed922bfd641216eb615",
+      "bytes": 26969
+    },
+    "docs/evaluations/m6-sftp-local-allocation-initial.json": {
+      "blob": "16cc050c21374f99dbbe779067152f014196195a",
+      "bytes": 22290
+    },
+    "docs/evaluations/m6-sftp-local-allocation-msrv.json": {
+      "blob": "074331091b06f9a97db8508601d03a6f49a80080",
+      "bytes": 28744
+    },
+    "docs/evaluations/m6-sftp-local-allocation.json": {
+      "blob": "537fcfe06e73c54b49dc385bafa088f65005a540",
+      "bytes": 28564
+    },
+    "docs/evaluations/m6-sftp-local-build.json": {
+      "blob": "f23c8b18958d9dc0f991a95534594707609cf85b",
+      "bytes": 218562
+    },
+    "docs/evaluations/m6-sftp-local-cost.json": {
+      "blob": "0a48c56a465e501dbe1f9e219ed03afd04a846f5",
+      "bytes": 89561
+    },
+    "docs/evaluations/m6-sftp-local-picker-allocation.json": {
+      "blob": "71c0cb643af6b4f1e511a08a91eba22c97b75956",
+      "bytes": 42875
+    },
+    "docs/evaluations/m6-sftp-local-picker-audit.json": {
+      "blob": "1e3b1f052a02cf4434d29096f28fcf62b87a00b5",
+      "bytes": 15449
+    },
+    "docs/evaluations/m6-sftp-local-picker-build.json": {
+      "blob": "d0b7affdfe6ce91a2881c206b9a8ba6c4e0d0057",
+      "bytes": 139207
+    },
+    "docs/evaluations/m6-sftp-local-picker-file-quota.json": {
+      "blob": "9e14bd29835bf3f651c8e38965fa2a3418dad43a",
+      "bytes": 30908
+    },
+    "docs/evaluations/m6-sftp-local-picker-real.json": {
+      "blob": "f7ff1c2c800903e12985b86b424f715ad8f1d428",
+      "bytes": 104613
+    },
+    "docs/evaluations/m6-sftp-local-picker-timing-msrv.json": {
+      "blob": "1c42670c88b97f62ee1ebaf8567a3b98c49e2481",
+      "bytes": 47983
+    },
+    "docs/evaluations/m6-sftp-local-picker-timing.json": {
+      "blob": "a11439978956e640ac31cd8c53066f44fdb3ab06",
+      "bytes": 47848
+    },
+    "docs/evaluations/m6-sftp-local-picker-transfer-regression.json": {
+      "blob": "c9ee08e763d6e50c9cd3d81b247704c046ad561f",
+      "bytes": 853603
+    },
+    "docs/evaluations/m6-sftp-local-picker.md": {
+      "blob": "1bb0f7a407108bf7cceaade1389866e4ae35e47e",
+      "bytes": 6397
+    },
+    "docs/evaluations/m6-sftp-local-transfer.md": {
+      "blob": "dce73794c3f3a5c61a4c648aaabe6a7c9f113875",
+      "bytes": 9049
+    },
+    "docs/evaluations/m6-sftp-manual-retry-allocation.json": {
+      "blob": "d15f65fd14917d782ed277765cc3bc3637525072",
+      "bytes": 39145
+    },
+    "docs/evaluations/m6-sftp-manual-retry-audit.json": {
+      "blob": "e2d38692014432006c4dfc0d769abd0e257efae8",
+      "bytes": 877
+    },
+    "docs/evaluations/m6-sftp-manual-retry-build.json": {
+      "blob": "2dfec3e5a725253eccfd169e42bbce6672254a50",
+      "bytes": 74658
+    },
+    "docs/evaluations/m6-sftp-manual-retry-real.json": {
+      "blob": "add1c325dff4bae0b9951e3f4c01c0bfc0db7f39",
+      "bytes": 983529
+    },
+    "docs/evaluations/m6-sftp-manual-retry.md": {
+      "blob": "a05e05904b2205c77822ef35682893ce7a2601bb",
+      "bytes": 4329
+    },
+    "docs/evaluations/m6-sftp-native-faults-before-eof.json": {
+      "blob": "073e6f93fb6ee3e16161fd13b43ea77b136ed55e",
+      "bytes": 27823
+    },
+    "docs/evaluations/m6-sftp-native-faults.json": {
+      "blob": "967cb99bbaf34ce7ad21f1ce477fede9a1e1333e",
+      "bytes": 28302
+    },
+    "docs/evaluations/m6-sftp-native-pool-build.json": {
+      "blob": "be1b9881b5771f783de9e1e5655232f36ad0efd8",
+      "bytes": 71625
+    },
+    "docs/evaluations/m6-sftp-native-pool-extra-frameworks.json": {
+      "blob": "8613527d4d7a2abad94991fe3986c836e9253454",
+      "bytes": 1153696
+    },
+    "docs/evaluations/m6-sftp-native-pool-smoke.json": {
+      "blob": "fbaad09487e8f6e13b935b4c88673b7dd2016a63",
+      "bytes": 357529
+    },
+    "docs/evaluations/m6-sftp-native-pool.json": {
+      "blob": "d78b48c9122853becc93e77d97134dab42e218ca",
+      "bytes": 1158597
+    },
+    "docs/evaluations/m6-sftp-native-session-build.json": {
+      "blob": "5216c3ddd658fd3bf96bf2340beac12df3a6e624",
+      "bytes": 139684
+    },
+    "docs/evaluations/m6-sftp-native-session-credential-initial.json": {
+      "blob": "1b0e3f8e580f84248d0e3d2ac241b87f6000bea1",
+      "bytes": 397567
+    },
+    "docs/evaluations/m6-sftp-native-session-positive-final.json": {
+      "blob": "efffe86b7d5b9f23dd11af7d3f03bcc4022510db",
+      "bytes": 145716
+    },
+    "docs/evaluations/m6-sftp-native-session-positive-initial.json": {
+      "blob": "1b3579d5c1c8402bcdf236a6fabd052ff3682f01",
+      "bytes": 42849
+    },
+    "docs/evaluations/m6-sftp-native-session-positive.json": {
+      "blob": "833b7aaf8b9e7743b2e9be1088f7d27a7c3b9fec",
+      "bytes": 140703
+    },
+    "docs/evaluations/m6-sftp-native-session-quota-test-initial.json": {
+      "blob": "03058754b4ca8dea0158e9a650638e472a303469",
+      "bytes": 74291
+    },
+    "docs/evaluations/m6-sftp-native-session.json": {
+      "blob": "dbd6dc9c9b61513d4d737e94d5e23652a01d4414",
+      "bytes": 620913
+    },
+    "docs/evaluations/m6-sftp-openssh-stream-initial.json": {
+      "blob": "0b1777646feb3a4240a55795e49405f81fa849be",
+      "bytes": 617233
+    },
+    "docs/evaluations/m6-sftp-openssh-stream.json": {
+      "blob": "160a1d6f477136d05816bd27d85a2b1265ce3d5d",
+      "bytes": 1205753
+    },
+    "docs/evaluations/m6-sftp-path-input-allocation-msrv.json": {
+      "blob": "6469e5fd77b3021e00e6a0005f8ccf6bf203070a",
+      "bytes": 34439
+    },
+    "docs/evaluations/m6-sftp-path-input-allocation.json": {
+      "blob": "cbb058ef0f3f2f8a779b08ea5b41c3271e05b6a7",
+      "bytes": 34304
+    },
+    "docs/evaluations/m6-sftp-path-input-audit.json": {
+      "blob": "4431bc3b90e3999524d56bfa5699fa104f80d0ed",
+      "bytes": 2394
+    },
+    "docs/evaluations/m6-sftp-path-input-build-before-directory-label.json": {
+      "blob": "71f195c05347a749526c902783e8b9c3f07a4a58",
+      "bytes": 248304
+    },
+    "docs/evaluations/m6-sftp-path-input-build-before-fixture-view.json": {
+      "blob": "d771f6f5bc18899438a2cd3536d9386442443493",
+      "bytes": 248124
+    },
+    "docs/evaluations/m6-sftp-path-input-build-before-generation-exhaustion.json": {
+      "blob": "360679d136022d1df2e31630746dd623f3de72da",
+      "bytes": 248309
+    },
+    "docs/evaluations/m6-sftp-path-input-build-initial.json": {
+      "blob": "2232ac252a822e018790592b16cb82375a303217",
+      "bytes": 237726
+    },
+    "docs/evaluations/m6-sftp-path-input-build-sandbox.json": {
+      "blob": "17e8f0c8e1882cb94f77ae7ccb9b86d8eb563d15",
+      "bytes": 73003
+    },
+    "docs/evaluations/m6-sftp-path-input-build-selection-style.json": {
+      "blob": "400f3f7d6b7b5ee1b909093e3e5feeb9f63a2a75",
+      "bytes": 236864
+    },
+    "docs/evaluations/m6-sftp-path-input-build.json": {
+      "blob": "ff86d3becf13bd3e2b4c747ba9304a22a33d7351",
+      "bytes": 247953
+    },
+    "docs/evaluations/m6-sftp-path-input-file-allocation-msrv.json": {
+      "blob": "54a8175a8016f9ffff89654eba728005181960a9",
+      "bytes": 30422
+    },
+    "docs/evaluations/m6-sftp-path-input-file-allocation.json": {
+      "blob": "13735a4c68c55e976d2e815176d15a57ea15fabf",
+      "bytes": 30287
+    },
+    "docs/evaluations/m6-sftp-path-input-local.json": {
+      "blob": "69019a0a492163fdddc351403aa6fb1265bb651f",
+      "bytes": 14802
+    },
+    "docs/evaluations/m6-sftp-path-input-real-extra-directory.json": {
+      "blob": "0f790dc8f5873dab2d97f2c1c5f96cd8322e85ce",
+      "bytes": 103773
+    },
+    "docs/evaluations/m6-sftp-path-input-real.json": {
+      "blob": "fd5e1ebb5ea70f37945c85fc6e589d2b6bfc7c51",
+      "bytes": 479737
+    },
+    "docs/evaluations/m6-sftp-path-input-transfer.json": {
+      "blob": "c1369c69c380ac8ae31660f7d0474add0a9e7479",
+      "bytes": 278473
+    },
+    "docs/evaluations/m6-sftp-path-input-workspace.json": {
+      "blob": "9ff40e106052881c2cf4c54615955ea57ad67a11",
+      "bytes": 361570
+    },
+    "docs/evaluations/m6-sftp-path-input.md": {
+      "blob": "48ff6cf78e20a61128df9b8e83963b6b3a81f0eb",
+      "bytes": 8482
+    },
+    "docs/evaluations/m6-sftp-preview-entry-allocation.json": {
+      "blob": "3d5c33631cac0a68cb43237a8e0d65e74ba87e98",
+      "bytes": 40976
+    },
+    "docs/evaluations/m6-sftp-preview-entry-audit.json": {
+      "blob": "d8a3c8637033a84ea28dafc36fe25dcd24d1ae4b",
+      "bytes": 1410
+    },
+    "docs/evaluations/m6-sftp-preview-entry-build-before-native-candidate-gate.json": {
+      "blob": "65a838370890ca4b2868d6beb2ac3266f701cf05",
+      "bytes": 134336
+    },
+    "docs/evaluations/m6-sftp-preview-entry-build.json": {
+      "blob": "9c8e0fbded325bc265f78284446f58908669e7f2",
+      "bytes": 136880
+    },
+    "docs/evaluations/m6-sftp-preview-entry-package.json": {
+      "blob": "90e6a0d377ba142d93538ab9da9422a40a38c973",
+      "bytes": 14207
+    },
+    "docs/evaluations/m6-sftp-preview-entry-real-before-name-selection.json": {
+      "blob": "d449256d4a78d6b0e9ba3e721274a6d923990a3f",
+      "bytes": 123587
+    },
+    "docs/evaluations/m6-sftp-preview-entry-real.json": {
+      "blob": "dcc1cfd6ecbc7ecda7cdb34fcae832ca7af7ad2e",
+      "bytes": 132777
+    },
+    "docs/evaluations/m6-sftp-preview-entry.md": {
+      "blob": "4ae4c698a9104f85bd46cc9fe7a157587505d2c1",
+      "bytes": 5490
+    },
+    "docs/evaluations/m6-sftp-preview-native-initial-timeout.json": {
+      "blob": "44e4acd1f6af5f9e6348eb168e35589d8c3ac157",
+      "bytes": 315
+    },
+    "docs/evaluations/m6-sftp-preview-native.json": {
+      "blob": "b131fbd7eefea5c9b87c0da21a9c91a84410f34f",
+      "bytes": 13091
+    },
+    "docs/evaluations/m6-sftp-probe-diagnostic.json": {
+      "blob": "11caadcf508a61f65db3537fe5be6e32120ca1ce",
+      "bytes": 102385
+    },
+    "docs/evaluations/m6-sftp-probe-repeat-failure.json": {
+      "blob": "23418348170bbf34db652552c62feed7a1d1520a",
+      "bytes": 42710
+    },
+    "docs/evaluations/m6-sftp-probe-unsandboxed.json": {
+      "blob": "74bc10c32d698e1a68fc4819b4df727cdf2a5d59",
+      "bytes": 35870
+    },
+    "docs/evaluations/m6-sftp-query-build-initial.json": {
+      "blob": "852860213460b3a029bf90fd814a769e59aa2a1f",
+      "bytes": 147140
+    },
+    "docs/evaluations/m6-sftp-query-build-parallel-failure.json": {
+      "blob": "15987814aa7a8208771865236a5bec2fb8d964d2",
+      "bytes": 146215
+    },
+    "docs/evaluations/m6-sftp-query-build.json": {
+      "blob": "1b2fab84254652243853adea446e7391b808f207",
+      "bytes": 148054
+    },
+    "docs/evaluations/m6-sftp-query-supervisor-initial.json": {
+      "blob": "120a0f1ae2ef3cc9c1f1e312ba2349b66efaedd0",
+      "bytes": 128409
+    },
+    "docs/evaluations/m6-sftp-query-supervisor-poll-initial.json": {
+      "blob": "e10bbffacd48029dce53989ca03f0828b57fd6af",
+      "bytes": 137194
+    },
+    "docs/evaluations/m6-sftp-query-supervisor.json": {
+      "blob": "a14556d8c94c207002c17ff1e72cf79f22117547",
+      "bytes": 133282
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-allocation-msrv.json": {
+      "blob": "b5d982eec64e9bd8776095f3b0ad832f6730e34a",
+      "bytes": 37012
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-allocation.json": {
+      "blob": "307ebabc8b8c044466fb81fc134dbea402315460",
+      "bytes": 36877
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-audit.json": {
+      "blob": "5136f32b9675adc7d905a78dee8192b903a0a165",
+      "bytes": 2728
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-build-before-cancel-contract.json": {
+      "blob": "b880a6f23edf0f5fdbceb9309b6659349a398583",
+      "bytes": 250874
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-build-windows-fixture.json": {
+      "blob": "9706f8368f89eccade6260c6d8354cbed6e46b2e",
+      "bytes": 239770
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-build.json": {
+      "blob": "2cb30d2fbc5165a08aa2481b1c8f7c483a66e79a",
+      "bytes": 250619
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-cost.json": {
+      "blob": "318319308f3b03ed48b66e30ae290dedd8ee4004",
+      "bytes": 1671532
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-file-allocation-msrv.json": {
+      "blob": "cfd9cc1d6c34bf846972d38fa158602c25caa2ba",
+      "bytes": 30422
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-file-allocation.json": {
+      "blob": "806be97d7373a9d46d037d89a6d210ca0042c327",
+      "bytes": 30287
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-local.json": {
+      "blob": "4a16f3c27a6e79fe6000a2da5689429d83a8719b",
+      "bytes": 14802
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-real-before-type-bits.json": {
+      "blob": "531d385d12823cf1ba1187985f452613d1cae125",
+      "bytes": 657457
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-real-queued-cancel.json": {
+      "blob": "f77567eb08ba874917b47cf1ab8daffaad96b4b2",
+      "bytes": 1789641
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-real.json": {
+      "blob": "2617a6c906ec39c2afd0f87106e1f1a9cb7dbae5",
+      "bytes": 740402
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-transfer.json": {
+      "blob": "98a083846b108b65035989808213f645594a522d",
+      "bytes": 307869
+    },
+    "docs/evaluations/m6-sftp-remote-attributes-workspace.json": {
+      "blob": "ff7358b5105948e3b39c6d2043fab675ea99ffb2",
+      "bytes": 405999
+    },
+    "docs/evaluations/m6-sftp-remote-attributes.md": {
+      "blob": "4a5a85fded9c834028c8bace1c1b8b919e03d76d",
+      "bytes": 9042
+    },
+    "docs/evaluations/m6-sftp-report-allocation-msrv.json": {
+      "blob": "bf4dd9b1bd12795acc3c1248341e60448e2d754a",
+      "bytes": 29264
+    },
+    "docs/evaluations/m6-sftp-report-allocation.json": {
+      "blob": "5b559ddac2ce60180235139abb137e2f86a5b243",
+      "bytes": 29129
+    },
+    "docs/evaluations/m6-sftp-report-build.json": {
+      "blob": "b5c83437d4dde3e211b9b08cdc353e75f444e453",
+      "bytes": 229505
+    },
+    "docs/evaluations/m6-sftp-report-cost.json": {
+      "blob": "637720e97fc954833f3b460b5657f3a9dd9c12cf",
+      "bytes": 24630
+    },
+    "docs/evaluations/m6-sftp-report-service.json": {
+      "blob": "d436a578d4d9d580ab132b79c2af92362a19a34c",
+      "bytes": 216804
+    },
+    "docs/evaluations/m6-sftp-service-allocation-initial.json": {
+      "blob": "d39a2bb2d6e2e3ef9bb8341eaf63320b231a3834",
+      "bytes": 21888
+    },
+    "docs/evaluations/m6-sftp-service-allocation-msrv.json": {
+      "blob": "bbf6982bbc07267b19c50c061bc90f2c20bcbe6f",
+      "bytes": 24951
+    },
+    "docs/evaluations/m6-sftp-service-allocation.json": {
+      "blob": "fd52149d17e398b7d52a2ac15cfaeaef7f2b99eb",
+      "bytes": 24816
+    },
+    "docs/evaluations/m6-sftp-service-auth-parent.json": {
+      "blob": "bb83764f1ae9d5f348934511eab6b559072a9547",
+      "bytes": 185551
+    },
+    "docs/evaluations/m6-sftp-service-build.json": {
+      "blob": "838a376305b8db31798668073d9269488eaa9285",
+      "bytes": 206151
+    },
+    "docs/evaluations/m6-sftp-service-cost-build.json": {
+      "blob": "02e7bcd18cb18c538bf7a5a54d7131f546c42be2",
+      "bytes": 233537
+    },
+    "docs/evaluations/m6-sftp-service-cost-cpu-calibration.json": {
+      "blob": "19077aac825bd28e4928ed7f84ebb990f6f98441",
+      "bytes": 24108
+    },
+    "docs/evaluations/m6-sftp-service-cost-file-allocation-msrv.json": {
+      "blob": "86339c7f76895f3e4553d5f0f55eaf061e488aab",
+      "bytes": 29660
+    },
+    "docs/evaluations/m6-sftp-service-cost-file-allocation.json": {
+      "blob": "cd20bd4d45abf1f5992d7e719df223ff39ccc8cd",
+      "bytes": 29525
+    },
+    "docs/evaluations/m6-sftp-service-cost-initial.json": {
+      "blob": "d9d378f2abea6298a0651d79276911d5d68f057e",
+      "bytes": 1808541
+    },
+    "docs/evaluations/m6-sftp-service-cost-service.json": {
+      "blob": "58abac67471dd979da02d169a206536fba37b6de",
+      "bytes": 205103
+    },
+    "docs/evaluations/m6-sftp-service-cost-transfer.json": {
+      "blob": "c877cb60033f4b79b902287dbeb0f8798bec524a",
+      "bytes": 340097
+    },
+    "docs/evaluations/m6-sftp-service-cost-workspace-allocation-msrv.json": {
+      "blob": "5663342dac2f09f783adaa4191fe650b5fbacc5f",
+      "bytes": 26591
+    },
+    "docs/evaluations/m6-sftp-service-cost-workspace-allocation.json": {
+      "blob": "1565fe6dfac9e676d384ec20d47774543f816f30",
+      "bytes": 26456
+    },
+    "docs/evaluations/m6-sftp-service-cost-workspace.json": {
+      "blob": "602ef2a8508c25d59dbf3e00adc0d56c8d9f9f2f",
+      "bytes": 403512
+    },
+    "docs/evaluations/m6-sftp-service-cost.json": {
+      "blob": "2e6dbc1480eb733c07edfb470d63a660145860ab",
+      "bytes": 1812041
+    },
+    "docs/evaluations/m6-sftp-service-cost.md": {
+      "blob": "236f2d4593f5d6781dbc1cdd6fb16640721c1167",
+      "bytes": 8852
+    },
+    "docs/evaluations/m6-sftp-service-initial.json": {
+      "blob": "b192012f39180deaae3fa9060d382521600fe7a7",
+      "bytes": 210012
+    },
+    "docs/evaluations/m6-sftp-service-real.json": {
+      "blob": "7028458b93f81f0d4e9887e8bea7eccfe29a000e",
+      "bytes": 195369
+    },
+    "docs/evaluations/m6-sftp-service.md": {
+      "blob": "0af0c7472515d52250b582e95756ed08de40acaf",
+      "bytes": 8964
+    },
+    "docs/evaluations/m6-sftp-settings.json": {
+      "blob": "fd4e41a91680952214382056ac07f47b76a453ef",
+      "bytes": 101673
+    },
+    "docs/evaluations/m6-sftp-source-prepare-allocation-msrv.json": {
+      "blob": "18c2ce8b65a1474b9225519ec10b2044c7f8f1e4",
+      "bytes": 31372
+    },
+    "docs/evaluations/m6-sftp-source-prepare-allocation.json": {
+      "blob": "684a43265dd664c5c4ce38d9a1e01cef815f1f94",
+      "bytes": 31237
+    },
+    "docs/evaluations/m6-sftp-source-prepare-build-initial.json": {
+      "blob": "ab9e2bcf74e12a71f4aec48fc7b8e74a53f97421",
+      "bytes": 234008
+    },
+    "docs/evaluations/m6-sftp-source-prepare-build.json": {
+      "blob": "90f95cafb99a98069b296f120824661ce294a604",
+      "bytes": 245303
+    },
+    "docs/evaluations/m6-sftp-source-prepare-file-allocation-msrv.json": {
+      "blob": "e5c60ad66bfc55f1f77ae20acf212b8c2661125f",
+      "bytes": 30315
+    },
+    "docs/evaluations/m6-sftp-source-prepare-file-allocation.json": {
+      "blob": "e1dbae20a27f797ae4be9b2f8b402ffe31796e1e",
+      "bytes": 30180
+    },
+    "docs/evaluations/m6-sftp-source-prepare-real-before-test-order.json": {
+      "blob": "38f0c1d0e6b381cc302ee146eb44076a86434d56",
+      "bytes": 366639
+    },
+    "docs/evaluations/m6-sftp-source-prepare-real.json": {
+      "blob": "da68c8970a208d2dc7cadbe8272830d5dbf1cdce",
+      "bytes": 372274
+    },
+    "docs/evaluations/m6-sftp-source-prepare-transfer.json": {
+      "blob": "b3e200e6349172c700ebdcafce448b93de9d7234",
+      "bytes": 277463
+    },
+    "docs/evaluations/m6-sftp-source-prepare-workspace.json": {
+      "blob": "3963ebb95d1330e7e8ac9009063bbfca11831558",
+      "bytes": 357978
+    },
+    "docs/evaluations/m6-sftp-source-prepare.md": {
+      "blob": "83033e2ca10656248761d1a7a8c236529fb8f295",
+      "bytes": 7642
+    },
+    "docs/evaluations/m6-sftp-ssh-probe-before.json": {
+      "blob": "658499fbe549a86283a0a908a2416ac395084138",
+      "bytes": 38963
+    },
+    "docs/evaluations/m6-sftp-ssh2-build.json": {
+      "blob": "1c75d28b0faff13500fe9017bfa9764e8983d99e",
+      "bytes": 12467
+    },
+    "docs/evaluations/m6-sftp-ssh2-smoke.json": {
+      "blob": "aaeeeaf99cf838c49803c1cd7f730ce4ff448153",
+      "bytes": 323930
+    },
+    "docs/evaluations/m6-sftp-ssh2.json": {
+      "blob": "a2a935f24674b63d449300e0b7085efaed4806b9",
+      "bytes": 1104340
+    },
+    "docs/evaluations/m6-sftp-stream-build.json": {
+      "blob": "a636dae08a27836f9f842304262899c732c8948a",
+      "bytes": 152714
+    },
+    "docs/evaluations/m6-sftp-stream-native-regression.json": {
+      "blob": "7ade14103f12d4fb938df89ada2cf65537bb8b9c",
+      "bytes": 971341
+    },
+    "docs/evaluations/m6-sftp-stream-windows-bundle.json": {
+      "blob": "f6d2283b36ea66c44528a8a32f2ee48d404f93e9",
+      "bytes": 9616
+    },
+    "docs/evaluations/m6-sftp-transfer-notifications-real.json": {
+      "blob": "6899df0eac32ee2cca829382e75e9b0f00a90c15",
+      "bytes": 766936
+    },
+    "docs/evaluations/m6-sftp-transfer-notifications.md": {
+      "blob": "30a2829bcb6bdfbd77cd05c0e2c4d24971d244af",
+      "bytes": 2507
+    },
+    "docs/evaluations/m6-sftp-transfer-report.md": {
+      "blob": "886a5e25545fba506177c2177de74b4497d59ef8",
+      "bytes": 9340
+    },
+    "docs/evaluations/m6-sftp-transfer-ui-allocation-msrv.json": {
+      "blob": "bf8021ccce44d50f2aa88a9534a3b32d56f5fcfe",
+      "bytes": 29888
+    },
+    "docs/evaluations/m6-sftp-transfer-ui-allocation.json": {
+      "blob": "73ad7e9a34e5942db7bfe679c0d67ca789357ab3",
+      "bytes": 29753
+    },
+    "docs/evaluations/m6-sftp-transfer-ui-build.json": {
+      "blob": "47caaf4c6c94b4127d14cdbc19977aa28c26d2e3",
+      "bytes": 241836
+    },
+    "docs/evaluations/m6-sftp-transfer-ui-real.json": {
+      "blob": "cc8be800b31ed45df237b1af519407a9d33369e7",
+      "bytes": 341754
+    },
+    "docs/evaluations/m6-sftp-transfer-ui-transfer.json": {
+      "blob": "5b7a90a5806fb4431dde1159599a3f67bd66ea99",
+      "bytes": 303877
+    },
+    "docs/evaluations/m6-sftp-transfer-ui-workspace.json": {
+      "blob": "2cf8738908a8433f91a179d3ec717633c667d452",
+      "bytes": 400552
+    },
+    "docs/evaluations/m6-sftp-transfer-ui.md": {
+      "blob": "e62e55040dcb26fe498df5cb522baeb5ff77b58d",
+      "bytes": 8450
+    },
+    "docs/evaluations/m6-sftp-windows-capture-build.json": {
+      "blob": "154ff4a5ca7ccec7be0aca79467ab44e2f03416f",
+      "bytes": 148113
+    },
+    "docs/evaluations/m6-sftp-windows-capture-bundle.json": {
+      "blob": "bbd7f811dcc5173b0560c6a0162ea2ab5ef397bd",
+      "bytes": 9352
+    },
+    "docs/evaluations/m6-sftp-windows-spec-query.json": {
+      "blob": "430caedef5761839e65d8d19bff634d8c7a68895",
+      "bytes": 139733
+    },
+    "docs/evaluations/m6-sftp-wire-workload.json": {
+      "blob": "6946fec533761be10a7cfb8c07c5db93d60a1cf2",
+      "bytes": 19104
+    },
+    "docs/evaluations/m6-sftp-workspace-after-name-fixture.json": {
+      "blob": "ff38245a5fb1655cf76a1be1d0f1bd9eda587b5e",
+      "bytes": 137716
+    },
+    "docs/evaluations/m6-sftp-workspace-after-unclassified.json": {
+      "blob": "b61a9208d8a9fa767f3589f0c73be53d49f95635",
+      "bytes": 12851
+    },
+    "docs/evaluations/m6-sftp-workspace-allocation-initial.json": {
+      "blob": "5008ce75987edb27ec589d94123952c198fce878",
+      "bytes": 26151
+    },
+    "docs/evaluations/m6-sftp-workspace-allocation-msrv.json": {
+      "blob": "6fb20ddbdb0987d44b9c145f22b2e8c6d41460c0",
+      "bytes": 26286
+    },
+    "docs/evaluations/m6-sftp-workspace-allocation.json": {
+      "blob": "21af82a7812c5d7b30131a94af39de22199373af",
+      "bytes": 26151
+    },
+    "docs/evaluations/m6-sftp-workspace-build.json": {
+      "blob": "136ab172b5a642e7e46c0f67e9d5daf9ae9cdbb7",
+      "bytes": 210811
+    },
+    "docs/evaluations/m6-sftp-workspace-files-build.json": {
+      "blob": "248621cd84be79a6fd9a1acfff40cb5a75fdb0a5",
+      "bytes": 238099
+    },
+    "docs/evaluations/m6-sftp-workspace-files-real.json": {
+      "blob": "b9c10da2eab4bbe224e398f6ff18292b7311eb08",
+      "bytes": 154478
+    },
+    "docs/evaluations/m6-sftp-workspace-files-transfer.json": {
+      "blob": "b589558b7be5ad7ea58721be993f05703c7b5c79",
+      "bytes": 266287
+    },
+    "docs/evaluations/m6-sftp-workspace-files-workspace-allocation-msrv.json": {
+      "blob": "c78d265e192119ea5acd1eecc0ceccbf9b7010aa",
+      "bytes": 27887
+    },
+    "docs/evaluations/m6-sftp-workspace-files-workspace-allocation.json": {
+      "blob": "8b3a244f1bdfe19b7704eeaeb28e89f5805ea976",
+      "bytes": 27751
+    },
+    "docs/evaluations/m6-sftp-workspace-files-workspace.json": {
+      "blob": "50f71158138cbd9e84857b054e2faada25ec5f1d",
+      "bytes": 348369
+    },
+    "docs/evaluations/m6-sftp-workspace-files.md": {
+      "blob": "94e350ee60b65e7db3171bb4c1f30e2138f654ac",
+      "bytes": 8803
+    },
+    "docs/evaluations/m6-sftp-workspace-helper.json": {
+      "blob": "7d6099ce01aa82543e0ee22a3390bc60f31a1166",
+      "bytes": 57071
+    },
+    "docs/evaluations/m6-sftp-workspace-initial.json": {
+      "blob": "b3f95231078986a3fb2cc4522f71ec1d32bc57b0",
+      "bytes": 28490
+    },
+    "docs/evaluations/m6-sftp-workspace-parent.json": {
+      "blob": "d2f2ecc3335dde578ae5274f95c572ce53d26a73",
+      "bytes": 184984
+    },
+    "docs/evaluations/m6-sftp-workspace-real.json": {
+      "blob": "becbb5886381a4913ca05619500136c87c082e88",
+      "bytes": 376798
+    },
+    "docs/evaluations/m6-sftp-workspace-routed.json": {
+      "blob": "b0e9ec5f77c670b21c7ec6b87153dadd6d5dc402",
+      "bytes": 384715
+    },
+    "docs/evaluations/m6-sftp-workspace-service.json": {
+      "blob": "f5930b6df956e06e5954089d20e1af0a0def42b9",
+      "bytes": 187404
+    },
+    "docs/evaluations/m6-sftp-workspace.md": {
+      "blob": "0ce8266377e8426f54ab3eed9bf1be1b9cfe4944",
+      "bytes": 10615
+    },
+    "docs/evaluations/m6-sftp.md": {
+      "blob": "fb89d117709b4785e0d396d22f9da80e77ff75aa",
+      "bytes": 18736
+    },
+    "docs/evaluations/m7-git-large-repo.md": {
+      "blob": "e395d4e203b04f0f9a01393461b939da0200e4fc",
+      "bytes": 3455
+    },
+    "docs/evaluations/m7-monitor.md": {
+      "blob": "44636d8e03e7fa964be993d92c2cb3e53d138f33",
+      "bytes": 5591
+    },
+    "docs/evaluations/m8-comparison.md": {
+      "blob": "d141211042e39db05a0320dc156abe88efd5512d",
+      "bytes": 5606
+    },
+    "docs/evaluations/m8-dependencies.md": {
+      "blob": "f207782365d25bc13ff55f31f66aacf6aba87024",
+      "bytes": 5563
+    },
+    "docs/evaluations/m8-soak.md": {
+      "blob": "4afc162b7d6d01bc9aa70cf4174689231a16c500",
+      "bytes": 3514
+    },
+    "docs/evaluations/review-20261029.md": {
+      "blob": "aa2968daed0ed9d814ac3c7a5b554639b8346b01",
+      "bytes": 10255
+    },
+    "docs/evaluations/review-20261029/cancel-clean-target.log": {
+      "blob": "b91fb894fde7fe0c52db4ba1b2e9256b94c631ad",
+      "bytes": 1131
+    },
+    "docs/evaluations/review-20261029/cancel-isolated.log": {
+      "blob": "b187a92169e13dad8de4579db668cf9f567ef71f",
+      "bytes": 831
+    },
+    "docs/evaluations/review-20261029/clippy.log": {
+      "blob": "81439f09d80c57f00970dab5e89d76ca92886fda",
+      "bytes": 412
+    },
+    "docs/evaluations/review-20261029/default-tests.log": {
+      "blob": "bee67de8d3288c8c1f26ad22e646e13153c49455",
+      "bytes": 85978
+    },
+    "docs/evaluations/review-20261029/evidence.json": {
+      "blob": "1db728337c93949b6433f63a4d64f8eefae2c9e7",
+      "bytes": 2605
+    },
+    "docs/evaluations/review-20261029/feature-tests.log": {
+      "blob": "9c3ac49aaa97703db1748657d94267f1345aceb2",
+      "bytes": 87745
+    },
+    "docs/evaluations/review-20261029/git-probes.rs": {
+      "blob": "702b7f2d1e2357579b468749e6676077e844a311",
+      "bytes": 2459
+    },
+    "docs/evaluations/review-20261029/helper-tests.log": {
+      "blob": "5f55b8c8dce3e049b2603cfa1d647c851dfd3a03",
+      "bytes": 2431
+    },
+    "docs/evaluations/review-20261029/linux-all-features.log": {
+      "blob": "76ea7ac70fdaf994768b6c4d6139b7d3cbb3b5d0",
+      "bytes": 21751
+    },
+    "docs/evaluations/review-20261029/linux-preview.log": {
+      "blob": "a31f10d5c13b92c7091eeae2825e2bfb9c8a2f9b",
+      "bytes": 155
+    },
+    "docs/evaluations/review-20261029/monitor-probe.rs": {
+      "blob": "7586dcc8267e5c72a3a0be9e9b95f7886ff4422d",
+      "bytes": 1052
+    },
+    "docs/evaluations/review-20261029/msrv.log": {
+      "blob": "37d00a1709d32c8e10c6cd556ebc00dbe2027527",
+      "bytes": 584
+    },
+    "docs/evaluations/review-20261029/probes-final.log": {
+      "blob": "8b84a08630cd81195a355df9a692e773f4d9e5f0",
+      "bytes": 928
+    },
+    "docs/evaluations/review-20261029/probes-first.log": {
+      "blob": "9df608887f78ba126ef1a9d96e37a749be8960c5",
+      "bytes": 2484
+    },
+    "docs/evaluations/review-20261029/reproduction-driver.log": {
+      "blob": "1b190bd72d778398f3f3e167b279a938cc772ad1",
+      "bytes": 1413
+    },
+    "docs/evaluations/review-20261029/windows-all-features.log": {
+      "blob": "21da5e9863f70b13b13d1c522907c5ff48704218",
+      "bytes": 920
+    },
+    "docs/evaluations/review-cpu-20261029.md": {
+      "blob": "d10d2da245ce2d725ecd0774959d2c887486403e",
+      "bytes": 8111
+    },
+    "docs/evaluations/review-cpu-20261029/allocation-msrv.json": {
+      "blob": "72f6bffd42992e6109e50b2788a72aa604e81867",
+      "bytes": 32613
+    },
+    "docs/evaluations/review-cpu-20261029/allocation-stable.json": {
+      "blob": "04888dbc0b23abe1b2a2d71759e6cc1d332c9d5d",
+      "bytes": 32568
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/allocation-msrv.json": {
+      "blob": "c0ac0aa6cbf57b2b1a4764cffa3192a85b8da894",
+      "bytes": 32511
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/allocation-stable.json": {
+      "blob": "abd0d69d48c4640472b8e34d9196c0e4174ee12f",
+      "bytes": 32466
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/checks.json": {
+      "blob": "16d33f4fa51247745b9b4950ab343a0594ab6b0e",
+      "bytes": 3903
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/cost.json": {
+      "blob": "1725d54a83848800ad066772dcde9ebbc5e67a68",
+      "bytes": 96629
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/fixture.rs": {
+      "blob": "56d429fb6f64e7d10d0c4cd9433595626a64ac76",
+      "bytes": 1338
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/all-features.log": {
+      "blob": "5e83351b620ab9300ff0ebc37e421974850aa9bd",
+      "bytes": 92027
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/allocation-msrv.log": {
+      "blob": "ac95f98e8c8c42d2bf9844a25127b4d9ca98f848",
+      "bytes": 190
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/allocation-stable.log": {
+      "blob": "ac95f98e8c8c42d2bf9844a25127b4d9ca98f848",
+      "bytes": 190
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/clippy.log": {
+      "blob": "0504427bca0c235ea45d95e3707ac94cc7ddb3aa",
+      "bytes": 251
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/cost.log": {
+      "blob": "3e89e2b2e01c9e5f2ebddaf5fbe32945b21c5107",
+      "bytes": 305
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/default.log": {
+      "blob": "8a13fd5c2fd466cf976bc09195963043526b4b75",
+      "bytes": 87859
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/linux.log": {
+      "blob": "1c6d93989ad29e9e288e2a19d6305498b35ef9eb",
+      "bytes": 155
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/mach-refs.log": {
+      "blob": "5777dc1a0823c8e185cbe1546b14edbbe55c3aa5",
+      "bytes": 375
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/msrv.log": {
+      "blob": "d8b36fc1641475e27bf0c84ef79a8b7c45ac12ba",
+      "bytes": 155
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/release.log": {
+      "blob": "169966a0360ad44105332d925681032b399452bd",
+      "bytes": 157
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/logs/windows.log": {
+      "blob": "ba4cb979fcb11703c61366a1d4d4168e8d74400b",
+      "bytes": 155
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/before-native-processes/producer.py": {
+      "blob": "c88b06a40e4c7c0a60494bd44eab2a153be72449",
+      "bytes": 6289
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/clippy-first.log": {
+      "blob": "4a23526847a150a00f943925d30581988088e21a",
+      "bytes": 155
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/initial-abi-check.txt": {
+      "blob": "a48a8a4227246b838da07e181b892e092665094a",
+      "bytes": 420
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/native-final.log": {
+      "blob": "5daf798e4170d85b399f5e3695b68034f96b9a02",
+      "bytes": 1342
+    },
+    "docs/evaluations/review-cpu-20261029/attempts/native-first.log": {
+      "blob": "6181e26495600d7fb76864274d3e894481c126cb",
+      "bytes": 1306
+    },
+    "docs/evaluations/review-cpu-20261029/checks.json": {
+      "blob": "033a4454075806e8f07f1159d3408e98b5a3b8c9",
+      "bytes": 3910
+    },
+    "docs/evaluations/review-cpu-20261029/cost.json": {
+      "blob": "80dcc26cbfb4833ddc5f050b75aea6c87893fd07",
+      "bytes": 99068
+    },
+    "docs/evaluations/review-cpu-20261029/index.json": {
+      "blob": "ad8698ebbeecc4d8f5d89af618a1ba83e3fb4412",
+      "bytes": 5819
+    },
+    "docs/evaluations/review-cpu-20261029/logs/all-features.log": {
+      "blob": "b924422e368ae2ea524a5f8fdb2267a1ca86d4dd",
+      "bytes": 92038
+    },
+    "docs/evaluations/review-cpu-20261029/logs/allocation-msrv.log": {
+      "blob": "ac95f98e8c8c42d2bf9844a25127b4d9ca98f848",
+      "bytes": 190
+    },
+    "docs/evaluations/review-cpu-20261029/logs/allocation-stable.log": {
+      "blob": "ac95f98e8c8c42d2bf9844a25127b4d9ca98f848",
+      "bytes": 190
+    },
+    "docs/evaluations/review-cpu-20261029/logs/clippy.log": {
+      "blob": "c94ae3d12eefc7a38ceb1a2e3d92facf2d1825bf",
+      "bytes": 155
+    },
+    "docs/evaluations/review-cpu-20261029/logs/cost.log": {
+      "blob": "3e89e2b2e01c9e5f2ebddaf5fbe32945b21c5107",
+      "bytes": 305
+    },
+    "docs/evaluations/review-cpu-20261029/logs/default.log": {
+      "blob": "beb3676a3cbe4fa8d6698455dc6297a529de33fb",
+      "bytes": 87966
+    },
+    "docs/evaluations/review-cpu-20261029/logs/linux.log": {
+      "blob": "c4eceee7fbfa922bf9c801d69fe73ef57714ce6c",
+      "bytes": 155
+    },
+    "docs/evaluations/review-cpu-20261029/logs/mach-refs.log": {
+      "blob": "9c26078122d841e5b3dccfe0a93ba7a7d7db4c15",
+      "bytes": 375
+    },
+    "docs/evaluations/review-cpu-20261029/logs/msrv.log": {
+      "blob": "358000c2b36d9be40b88bf7c79213febd42158ab",
+      "bytes": 155
+    },
+    "docs/evaluations/review-cpu-20261029/logs/release.log": {
+      "blob": "b3e9ea69862896a553d910d0e88399165df05802",
+      "bytes": 157
+    },
+    "docs/evaluations/review-cpu-20261029/logs/windows.log": {
+      "blob": "45d0683fcb49ee9b9552006d3cc4fce50d2f52a6",
+      "bytes": 155
+    },
+    "docs/evaluations/review-fixes-20261029.md": {
+      "blob": "786bcfaf23112f34a7aa8b223617b81e5666b7c9",
+      "bytes": 10863
+    },
+    "docs/evaluations/review-fixes-20261029/allocation-msrv.json": {
+      "blob": "696f6f0164a626f09ff8d4d1195f3ce4130b3bd0",
+      "bytes": 34787
+    },
+    "docs/evaluations/review-fixes-20261029/allocation-stable.json": {
+      "blob": "dc3257378d3b945794deaae2ef6a1b21f787edbb",
+      "bytes": 34741
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/clippy-style.log": {
+      "blob": "9e92ea7f62731eea5374620df16ea6d274b55a28",
+      "bytes": 1002
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/closure-ownership-and-global-runtime.log": {
+      "blob": "ef6c0ed79c01e2f96d0b7cead062cac39bcb010d",
+      "bytes": 145117
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/cost-rejected-fixed-wait.json": {
+      "blob": "07581532f307132958e35d12fbfdf93738e72091",
+      "bytes": 108809
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/cost-wait-refinement.json": {
+      "blob": "e646ebc7e2cc4cf56ae9243dd58383ec103e7913",
+      "bytes": 108728
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/full-first.log": {
+      "blob": "812d94ce8e0a4e819388d578f5bbf774df8e09ed",
+      "bytes": 89763
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/git-phase1.log": {
+      "blob": "6a4831824650cf2768f718ba82c0eb2437c96d43",
+      "bytes": 4109
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/interface-migration.log": {
+      "blob": "6edb31f652d1ea9c6de6201fb4234ac948b06293",
+      "bytes": 915
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/msrv-allocation-initial.json": {
+      "blob": "1d161e6ed818f9bea1e9c90d0a28bc5d102fea87",
+      "bytes": 32821
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/msrv-allocation-trace-deterministic.json": {
+      "blob": "dbbcb12f770631479414cd594585c9d31be9aa41",
+      "bytes": 33218
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/msrv-allocation-trace-nondeterministic.json": {
+      "blob": "66cc7b3a5bede00972476219ce7f313faf2fbb49",
+      "bytes": 33797
+    },
+    "docs/evaluations/review-fixes-20261029/attempts/partial-argv-fixture.log": {
+      "blob": "b791c035a41347136f90095d6ed5a75609d359bf",
+      "bytes": 88735
+    },
+    "docs/evaluations/review-fixes-20261029/checks.json": {
+      "blob": "34c8f8d5519f1bc40a81d5066243a4246f2444ce",
+      "bytes": 3416
+    },
+    "docs/evaluations/review-fixes-20261029/cost.json": {
+      "blob": "14d6c9e21dc14149704b631b43caeb7514c4356c",
+      "bytes": 108779
+    },
+    "docs/evaluations/review-fixes-20261029/index.json": {
+      "blob": "4642b8d36fe2a57ffdef751f76047df87d6ac66e",
+      "bytes": 3033
+    },
+    "docs/evaluations/review-fixes-20261029/logs/all-features.log": {
+      "blob": "87a891096ef7e1c3b1e330ce44b1a292f3b6fd35",
+      "bytes": 90726
+    },
+    "docs/evaluations/review-fixes-20261029/logs/allocation-msrv.log": {
+      "blob": "c698bb06de43c7f9cce22f6057d0e41742b0a7ae",
+      "bytes": 225
+    },
+    "docs/evaluations/review-fixes-20261029/logs/allocation-stable.log": {
+      "blob": "c698bb06de43c7f9cce22f6057d0e41742b0a7ae",
+      "bytes": 225
+    },
+    "docs/evaluations/review-fixes-20261029/logs/clippy.log": {
+      "blob": "415ae07f1404e1bb0c298a9e9c43ca042c3f9608",
+      "bytes": 251
+    },
+    "docs/evaluations/review-fixes-20261029/logs/cost.log": {
+      "blob": "eb82964038c3da86d45d119255fbcf8d9500a262",
+      "bytes": 290
+    },
+    "docs/evaluations/review-fixes-20261029/logs/default.log": {
+      "blob": "ce5a6d67f3d83bc9d1cc386be3e828465dd48637",
+      "bytes": 86654
+    },
+    "docs/evaluations/review-fixes-20261029/logs/linux.log": {
+      "blob": "be3030e5b7bb657db08f62f71e56576200710d4e",
+      "bytes": 155
+    },
+    "docs/evaluations/review-fixes-20261029/logs/msrv.log": {
+      "blob": "9408a670f16d4f78fc9a6097d70d58fd196ea10a",
+      "bytes": 155
+    },
+    "docs/evaluations/review-fixes-20261029/logs/release.log": {
+      "blob": "f60b2aaa78fdce5aadd6a450c99004fee3d4d073",
+      "bytes": 318
+    },
+    "docs/evaluations/review-fixes-20261029/logs/windows.log": {
+      "blob": "2ccdc62563c630d6a9c5e7b060ebd80770ff1375",
+      "bytes": 155
+    },
+    "docs/evaluations/review-metadata-20261029.md": {
+      "blob": "66933f4d17c4f0f15a1215c886498dad90727ff9",
+      "bytes": 7267
+    },
+    "docs/evaluations/review-metadata-20261029/allocation-msrv.json": {
+      "blob": "e1861030a1113c20d4ba8af74f2b4b11414a7cae",
+      "bytes": 33566
+    },
+    "docs/evaluations/review-metadata-20261029/allocation-stable.json": {
+      "blob": "75c7b9769066f3e3090749c268c70d466541fa5e",
+      "bytes": 33521
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/allocation-msrv.json": {
+      "blob": "31d6e27776a9b3dfde4245b1fc70600436e19b1a",
+      "bytes": 33566
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/allocation-stable.json": {
+      "blob": "0a87898db70a081a026e6bc48dcf3f8ca9421ea7",
+      "bytes": 33521
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/checks.json": {
+      "blob": "d987a0490e74af9ce3dbc4d5fbeb384435a7a9eb",
+      "bytes": 3934
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/cost.json": {
+      "blob": "e029efd754c236fcc4cad39d8466af3a4681132c",
+      "bytes": 108902
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/all-features.log": {
+      "blob": "2a3a69ae8018af7362b296cb4bd8f076a57fab97",
+      "bytes": 91213
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/allocation-msrv.log": {
+      "blob": "b615c794e7c326e998e594e29236ebe4786f44e2",
+      "bytes": 160
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/allocation-stable.log": {
+      "blob": "b615c794e7c326e998e594e29236ebe4786f44e2",
+      "bytes": 160
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/clippy.log": {
+      "blob": "907ffb1926f745320b7265c7a71611428a5b5173",
+      "bytes": 251
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/cost.log": {
+      "blob": "eb82964038c3da86d45d119255fbcf8d9500a262",
+      "bytes": 290
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/default.log": {
+      "blob": "f052bfad8f1e07729e3a3d6042869794ececa19b",
+      "bytes": 87045
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/linux.log": {
+      "blob": "7588c258fb8ec3fe7b39e86d80515c2848b522d3",
+      "bytes": 238
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/metadata-cost.log": {
+      "blob": "38d31403b73444476b51f4e6611b09314ece01ea",
+      "bytes": 675
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/msrv.log": {
+      "blob": "3580c3105782001a1c982e042228c0616a0cb0cb",
+      "bytes": 584
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/release.log": {
+      "blob": "a547d63a3429241166cb886face9e549868a9073",
+      "bytes": 157
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/logs/windows.log": {
+      "blob": "1d7664ae8fd074c670ceac585025bf66ada55907",
+      "bytes": 1065
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/before-arc-release-order/metadata-cost.json": {
+      "blob": "9f63c6d7e9012f050a2138a82b14d45545874027",
+      "bytes": 60826
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/initial-all-features.log": {
+      "blob": "3266fd358170cdccb554bade680ec68994e4be0a",
+      "bytes": 92656
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/initial-allocation-stable.json": {
+      "blob": "8336862dc588b04fff61aac037abba25651f16fb",
+      "bytes": 32082
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/initial-allocation-stable.log": {
+      "blob": "ab0e60b9c043bb2771615aaa7deb09d45388c441",
+      "bytes": 825
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/initial-checks.json": {
+      "blob": "39a9adf6b2e45fea651db1e1311c81aaf9781aa8",
+      "bytes": 2393
+    },
+    "docs/evaluations/review-metadata-20261029/attempts/initial-clippy.log": {
+      "blob": "0fd2fcd6180bc5b0a765d7ba3080aeabcbce8147",
+      "bytes": 1576
+    },
+    "docs/evaluations/review-metadata-20261029/checks.json": {
+      "blob": "2d77d29d69f01eedf058bfd0539f8ddfb4d35444",
+      "bytes": 3965
+    },
+    "docs/evaluations/review-metadata-20261029/cost.json": {
+      "blob": "8195e39bc267c6d97328fe722eeb3dd115951172",
+      "bytes": 108894
+    },
+    "docs/evaluations/review-metadata-20261029/index.json": {
+      "blob": "8044fe28e45e8d4dfb67e86b600750da59f64070",
+      "bytes": 5972
+    },
+    "docs/evaluations/review-metadata-20261029/logs/all-features.log": {
+      "blob": "73889c907b870b6079e74d0eda2fdf9d0410572c",
+      "bytes": 91193
+    },
+    "docs/evaluations/review-metadata-20261029/logs/allocation-msrv.log": {
+      "blob": "b615c794e7c326e998e594e29236ebe4786f44e2",
+      "bytes": 160
+    },
+    "docs/evaluations/review-metadata-20261029/logs/allocation-stable.log": {
+      "blob": "b615c794e7c326e998e594e29236ebe4786f44e2",
+      "bytes": 160
+    },
+    "docs/evaluations/review-metadata-20261029/logs/clippy.log": {
+      "blob": "435862037b68eb21f4691222655c5e720b16ca47",
+      "bytes": 155
+    },
+    "docs/evaluations/review-metadata-20261029/logs/cost.log": {
+      "blob": "eb82964038c3da86d45d119255fbcf8d9500a262",
+      "bytes": 290
+    },
+    "docs/evaluations/review-metadata-20261029/logs/default.log": {
+      "blob": "fa042fa1f4bab61a3b6d6c986c3b3b081ca8be75",
+      "bytes": 87121
+    },
+    "docs/evaluations/review-metadata-20261029/logs/linux.log": {
+      "blob": "a41652844a865f99022a9f5c161caf195ea80148",
+      "bytes": 155
+    },
+    "docs/evaluations/review-metadata-20261029/logs/metadata-cost.log": {
+      "blob": "358f2cf4e22005920449ba87a3d7577694f87b8f",
+      "bytes": 679
+    },
+    "docs/evaluations/review-metadata-20261029/logs/msrv.log": {
+      "blob": "086ff605345747410f57e89849170a71cc3d03e1",
+      "bytes": 155
+    },
+    "docs/evaluations/review-metadata-20261029/logs/release.log": {
+      "blob": "a4ef033dec7119406fec8ded6d4153fa06781d24",
+      "bytes": 157
+    },
+    "docs/evaluations/review-metadata-20261029/logs/windows.log": {
+      "blob": "41895304b8a2b358fe069f93cebac8ea67696a6c",
+      "bytes": 155
+    },
+    "docs/evaluations/review-metadata-20261029/metadata-cost.json": {
+      "blob": "5777a7a3755de1f444d517284e1866ec172286ae",
+      "bytes": 60820
+    },
+    "docs/evaluations/review-monitor-bounds-20261030.md": {
+      "blob": "d623ad99f42d798437d67dce1e1a76ea17981f20",
+      "bytes": 8397
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/allocation-msrv.json": {
+      "blob": "9a697233aa08981b74d74b4a5de0b3ee7d45fb68",
+      "bytes": 32957
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/allocation-stable.json": {
+      "blob": "ac4f1b2547450fd655f9b5c0675567083d740ac0",
+      "bytes": 32912
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/allocation-msrv.json": {
+      "blob": "9da8c75dce122f2161d770a7a8355df09190d0f1",
+      "bytes": 32957
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/allocation-stable.json": {
+      "blob": "ec524fcaa3e0d44a417ae0e6105901e393511baa",
+      "bytes": 32912
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/checks.json": {
+      "blob": "0f55ae4c68004994a525f87a6e745fd9a66224dc",
+      "bytes": 4463
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/cost.json": {
+      "blob": "924043f686f2877424533741ed0438b5c8822218",
+      "bytes": 77070
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/dependencies.json": {
+      "blob": "34bb28e76bd8606ea5c6c5098e1af76a7ce07b65",
+      "bytes": 6028
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/goal-audit.json": {
+      "blob": "e487a632a7d4cb322ab24514a34697abbd6eda1f",
+      "bytes": 3474
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/index.json": {
+      "blob": "39691fd4c5a0bdd19299925788c63f67828a6151",
+      "bytes": 4758
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/all-features.log": {
+      "blob": "c878e679e7aba864d48c256df0a9eac69437826d",
+      "bytes": 93326
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/allocation-msrv.log": {
+      "blob": "088986da5c7e0e31e4f5ed42cb0e85e2652384fb",
+      "bytes": 186
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/allocation-stable.log": {
+      "blob": "088986da5c7e0e31e4f5ed42cb0e85e2652384fb",
+      "bytes": 186
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/clippy.log": {
+      "blob": "736b157e30fe7b619a09c18c1cbf0b6b73eefc6f",
+      "bytes": 251
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/cost.log": {
+      "blob": "aafda6d8d294dc2f575517d486de5344c61ef254",
+      "bytes": 60
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/default.log": {
+      "blob": "7ce334ca6fc9b7baaca7fb2bb6b656fdb2a0a77c",
+      "bytes": 89158
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/disk-native.log": {
+      "blob": "b821bd52db3ea2123620a52fbcf8cb45c9016721",
+      "bytes": 482
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/linux.log": {
+      "blob": "d0974e160cb9b28cf3e8248140567c46a9bb9d90",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/mach-refs.log": {
+      "blob": "fdec3695b0a967798f514852fa4cf7fcc86d88a5",
+      "bytes": 375
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/msrv.log": {
+      "blob": "13be5258232ea9786a00b138014d288625c0b931",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/release.log": {
+      "blob": "1aa70106fa24f8bd1db5af18a592acb79a42df04",
+      "bytes": 157
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/logs/windows.log": {
+      "blob": "c5a1fbfe814fe94eb1f1c1b93ed9dbccec60f182",
+      "bytes": 217
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/before-unknown-chart/semantics.json": {
+      "blob": "35bd6a178a5b217bbda25004fb98b76ef2246dbe",
+      "bytes": 509
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/check.log": {
+      "blob": "13be5258232ea9786a00b138014d288625c0b931",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/clippy.log": {
+      "blob": "2dd291232a864b175d9046f02283738245a9e1a8",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/disk-native-corrected.log": {
+      "blob": "1f0e5632d5266df7c9d0ef5a5117b05304a3f49a",
+      "bytes": 565
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/disk-native.log": {
+      "blob": "18db287c92bc8d1e4786d8ec4fcacda48ab4aa9a",
+      "bytes": 565
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/first-check.log": {
+      "blob": "daa874d2aec66ebb036362743bdf04d99b504fbc",
+      "bytes": 1225
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/linux-check.log": {
+      "blob": "759c7e8832faba28eac4ec139525d5f70912e9ea",
+      "bytes": 182
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/monitor-tests.log": {
+      "blob": "779782aa1b68d526375dd033c5f2e7ed8aed8ecc",
+      "bytes": 4407
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/process-check.log": {
+      "blob": "3e0d11c4716655417b4d5237d2d2be50fa25feca",
+      "bytes": 1321
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/attempts/win-check.log": {
+      "blob": "4ff5aed65d6904a3b20bb586963c5abf075bdaa7",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/checks.json": {
+      "blob": "ed4f747619cd53bb75bc46119b7dc1eda2a5d4c9",
+      "bytes": 4467
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/cost.json": {
+      "blob": "0f034f54883e529fe41052cc954317160c30485c",
+      "bytes": 77050
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/dependencies.json": {
+      "blob": "34bb28e76bd8606ea5c6c5098e1af76a7ce07b65",
+      "bytes": 6028
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/goal-audit.json": {
+      "blob": "b4c90bf66db0f80785f5439ad6d53b7ea7842cfe",
+      "bytes": 3702
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/index.json": {
+      "blob": "f65da2b7adf70ad1c9fa077759261def819db5ce",
+      "bytes": 7208
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/all-features.log": {
+      "blob": "b9b51be463cea41a2470aa456af66ce72199fe01",
+      "bytes": 93328
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/allocation-msrv.log": {
+      "blob": "088986da5c7e0e31e4f5ed42cb0e85e2652384fb",
+      "bytes": 186
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/allocation-stable.log": {
+      "blob": "088986da5c7e0e31e4f5ed42cb0e85e2652384fb",
+      "bytes": 186
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/clippy.log": {
+      "blob": "1c62df3c0496237a764a42a24f024cc323eda6ec",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/cost.log": {
+      "blob": "aafda6d8d294dc2f575517d486de5344c61ef254",
+      "bytes": 60
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/default.log": {
+      "blob": "c05fe8dd6500f6b50e9e43488403536f9e2f1a14",
+      "bytes": 89256
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/disk-native.log": {
+      "blob": "2badc448180e6c0b531aad94aeb2ddd1b65b1e69",
+      "bytes": 482
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/linux.log": {
+      "blob": "4bf64c79a08f97a002f2d373762747b1f83def6e",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/mach-refs.log": {
+      "blob": "6852864f7dcfafad47ad01d9eefabed8ffc119e3",
+      "bytes": 375
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/msrv.log": {
+      "blob": "b22b52d6efd1e8cdda432fb7c5f1922cc5b1b8c0",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/release.log": {
+      "blob": "c2999e61d8583c8253f5af01cd567e31cb8404da",
+      "bytes": 157
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/logs/windows.log": {
+      "blob": "8b1034a20a13fb911ce79c435acd5b7e369b1070",
+      "bytes": 155
+    },
+    "docs/evaluations/review-monitor-bounds-20261030/semantics.json": {
+      "blob": "1721edccb2c49855c8ee7de045ce1cdea447adc7",
+      "bytes": 624
+    },
+    "docs/evaluations/v0.1.0/0519a4f-file-service-allocation.json": {
+      "blob": "9c3beb695746cea677870567ac8f9a6e6b899b32",
+      "bytes": 36834
+    },
+    "docs/evaluations/v0.1.0/0519a4f-transfer.json": {
+      "blob": "47f53452c13b67b59c5d43a2a947ed6a62867336",
+      "bytes": 489670
+    },
+    "docs/evaluations/v0.1.0/0519a4f-workspace-allocation.json": {
+      "blob": "550619543cc342b408a9e47f922dfefb42659517",
+      "bytes": 44445
+    },
+    "docs/evaluations/v0.1.0/0519a4f-workspace-transfer.json": {
+      "blob": "8b63f0383c600587add7ea86bdf8bef481883837",
+      "bytes": 1669050
+    },
+    "docs/evaluations/v0.1.0/388dad4-openssh-faults.json": {
+      "blob": "d6e04f8c70e28bf4ada45ac63ced005dabb6a21a",
+      "bytes": 1252645
+    },
+    "docs/evaluations/v0.1.0/4d96d7c-file-service-allocation.json": {
+      "blob": "247680cdaaaed86c6e58b4f2d0e5c33b86022c46",
+      "bytes": 33101
+    },
+    "docs/evaluations/v0.1.0/4d96d7c-workspace-allocation.json": {
+      "blob": "d716830a6349e6c97e2bea8f55cec004480c9b0b",
+      "bytes": 45805
+    },
+    "docs/evaluations/v0.1.0/67d3395-auth-cost.json": {
+      "blob": "fcbb84edde4f8fedb6eddd260027593f031cde7a",
+      "bytes": 3706901
+    },
+    "docs/evaluations/v0.1.0/README.md": {
+      "blob": "8b29763496937d80997ad93fb510c5e3756f002c",
+      "bytes": 16902
+    },
+    "docs/evaluations/v0.1.0/b3a0a82-windows-failed.log": {
+      "blob": "7aad8d338332cefe2b27c4619e43465b661131c8",
+      "bytes": 25542
+    },
+    "docs/evaluations/v0.1.0/default-sftp-idle-cost.json": {
+      "blob": "2e6af6988f53ddf260a4dffb193eae32c5701bbf",
+      "bytes": 1437428
+    },
+    "docs/evaluations/v0.1.0/directory-allocation-v2.json": {
+      "blob": "54dcad1c28877e85b7cbe555f9a2f9203d0a645d",
+      "bytes": 20420
+    },
+    "docs/evaluations/v0.1.0/directory-allocation.json": {
+      "blob": "36970346dda91d24a51e1b34a1eede978b563d07",
+      "bytes": 20076
+    },
+    "docs/evaluations/v0.1.0/f32d027-preview-entry.json": {
+      "blob": "5f3452b0050ae03c046d4c266bc483e965dcbc7f",
+      "bytes": 216170
+    },
+    "docs/evaluations/v0.1.0/f32d027-workspace-transfer.json": {
+      "blob": "8e2e46ef9940b62e337381d2584141340b13c67a",
+      "bytes": 74150
+    },
+    "docs/evaluations/v0.1.0/f32d027-workspace.json": {
+      "blob": "1f371d8832a6f43cb2462b35aa522674638381b1",
+      "bytes": 589899
+    },
+    "docs/evaluations/v0.1.0/fe861a4-ci.json": {
+      "blob": "60cc011f36f01a0bd4b40d236b7465987b8c43e7",
+      "bytes": 7990
+    },
+    "docs/evaluations/v0.1.0/fe861a4-native.json": {
+      "blob": "6cebccf0fde1e84e9e9c81b5eed793a022cd13c5",
+      "bytes": 5668
+    },
+    "docs/evaluations/v0.1.0/github-release.json": {
+      "blob": "8dd2e2a38b54c2db845ee9c1594f59ee1cf21490",
+      "bytes": 4061
+    },
+    "docs/evaluations/v0.1.0/native-7a4fae1-failed.log": {
+      "blob": "f99baee344582b80eb69cf17ced929bc4f697f4a",
+      "bytes": 126592
+    },
+    "docs/evaluations/v0.1.0/native-e8c56be-failed.log": {
+      "blob": "59d3695eac7f70c45f20703390e62889b48ce261",
+      "bytes": 176852
+    },
+    "docs/evaluations/v0.1.0/native-gate-workspace-transfer.json": {
+      "blob": "b33a0bf0aebc637305ae0a1c6340637dc76e089b",
+      "bytes": 405491
+    },
+    "docs/evaluations/v0.1.0/native-macos-auto-helper.json": {
+      "blob": "9988f0f7dd265e44a8db9fad5ac51b92cc83269c",
+      "bytes": 1041
+    },
+    "docs/evaluations/v0.1.0/native-macos-auto-helper.png": {
+      "blob": "4473c8ef260a76f038a8010f5032c15e0a2beed5",
+      "bytes": 125117
+    },
+    "docs/evaluations/v0.1.0/native-macos-files.json": {
+      "blob": "7d99dbc9f0858ca735e2f2874c99157ba09c3a3a",
+      "bytes": 1239
+    },
+    "docs/evaluations/v0.1.0/native-macos-transfers.png": {
+      "blob": "c4b7373aa496030f1a92f2760c3bdf2e91c0c8ba",
+      "bytes": 173648
+    },
+    "docs/evaluations/v0.1.0/published-assets.json": {
+      "blob": "cc98a81929b75e136ade6901ffb275ae47e4d363",
+      "bytes": 1915
+    },
+    "docs/evaluations/v0.1.0/soak-30min.json": {
+      "blob": "a6498061a4be9600c0d27b4ce02ca9fbc6e69c76",
+      "bytes": 553355
+    },
+    "docs/evaluations/v0.1.0/tag-ci.json": {
+      "blob": "a639c55d8ee9efbbf173e24f7f890e6aa35f7726",
+      "bytes": 8573
+    },
+    "docs/evaluations/v0.1.0/verify-published-assets.py": {
+      "blob": "da36eafdfdeaba3f26e527fe60e31b2860c09f7b",
+      "bytes": 3343
+    },
+    "docs/evaluations/v0.1.0/workspace-allocation-v3.json": {
+      "blob": "ee2b948aafe7b0340f617f0fbd8cfc89873e8ae9",
+      "bytes": 53841
+    },
+    "docs/evaluations/v0.1.1/README.md": {
+      "blob": "5509c5d3e3e29f6cf19faa9ef9e1c1673abf5ab1",
+      "bytes": 3348
+    },
+    "docs/evaluations/v0.1.1/published-assets.json": {
+      "blob": "57025c01069fea5dab4159052eb30d05a82ec0d2",
+      "bytes": 1788
+    },
+    "docs/evaluations/v0.2.0/README.md": {
+      "blob": "83ab7fd6d936a12995c127de1c029d06e537041c",
+      "bytes": 7344
+    },
+    "docs/evaluations/v0.2.0/conpty-cost.json": {
+      "blob": "e25d14b8d64ed9272d0b06306de848d3ca9e5d0e",
+      "bytes": 341635
+    },
+    "docs/evaluations/v0.2.0/kitty-macos-window.png": {
+      "blob": "0254bd6e8848afb7df8c8b42f123c1605097056b",
+      "bytes": 90252
+    },
+    "docs/evaluations/v0.2.0/kitty-render-cost.json": {
+      "blob": "6d7163cb30f95424bb4f9625a211a4be1f1bf749",
+      "bytes": 435
+    },
+    "docs/evaluations/v0.2.0/published-assets.json": {
+      "blob": "1bdf10331b372c26694fea399205c20ffe7b979f",
+      "bytes": 1024
+    },
+    "docs/evaluations/v0.2.1/README.md": {
+      "blob": "cfa388eb64c9c339e6d57c73b2c00bb33d5f14b6",
+      "bytes": 3499
+    },
+    "docs/evaluations/v0.2.1/picker-evidence.json": {
+      "blob": "72bac2ce3b9451c8a6e3094fcd3d3200abe740ca",
+      "bytes": 661
+    },
+    "docs/evaluations/v0.2.1/published-assets.json": {
+      "blob": "5d11147132fc7500e76e66e509f4cd7de172dcd5",
+      "bytes": 1024
+    },
+    "docs/evaluations/v0.2.2/README.md": {
+      "blob": "d7e50ca5bb684159fed1fb66b20c55b53a98b912",
+      "bytes": 1779
+    },
+    "docs/execution-m1.md": {
+      "blob": "7b69d45a796334e1676bdee968f1f9828d1b5518",
+      "bytes": 6351
+    },
+    "docs/execution-m2.md": {
+      "blob": "ec2ee767e58b9005f2d817be6fc4dfaf7df84c66",
+      "bytes": 6541
+    },
+    "docs/execution-m3.md": {
+      "blob": "c495be24590e744e1a50cb4aa4db29a013682b36",
+      "bytes": 9113
+    },
+    "docs/execution-m4-memory.md": {
+      "blob": "3519d88b4ea0b399011db74734b2dc439f95ebcd",
+      "bytes": 32093
+    },
+    "docs/execution-m4-reflow.md": {
+      "blob": "c89f8033f61f3725e646344314419671250e8461",
+      "bytes": 10263
+    },
+    "docs/execution-m4.md": {
+      "blob": "cc9400703d29cb9e65c988d30b8bf5d46f63bd70",
+      "bytes": 19559
+    },
+    "docs/execution-m5.md": {
+      "blob": "0f50458d7d4b01230940cc3b800522561b1aa034",
+      "bytes": 5441
+    },
+    "docs/execution-m6.md": {
+      "blob": "558effc2b35b4b01077d90f9aec1740e79d6fdfb",
+      "bytes": 65294
+    },
+    "docs/execution-monitor-bounds-20261030.md": {
+      "blob": "47f59544ff0ac02a0c8f612d720a13020bae1989",
+      "bytes": 3337
+    },
+    "docs/execution-plan.md": {
+      "blob": "c4153a0aad348164854b264d80509554dc7293fe",
+      "bytes": 45527
+    },
+    "docs/execution-review-20261029.md": {
+      "blob": "15cf0fe9d31de22b6192ec693b308b79d2fca0aa",
+      "bytes": 5111
+    },
+    "docs/execution-v0.1.0.md": {
+      "blob": "b3de8c643e0b2491e81fe90841e7e91bd8b9031b",
+      "bytes": 3966
+    },
+    "docs/foundations.md": {
+      "blob": "b518b99bfe522c969d0a804b1085627ed2c17aa6",
+      "bytes": 6280
+    },
+    "docs/handoff/source-snapshot.json": {
+      "blob": "274170e7be777c8e3d507d0847b39765b2975efa",
+      "bytes": 32735
+    },
+    "docs/previews/m2-search.png": {
+      "blob": "0289b37367043d2e40e4dbaa327c165b2da03ccd",
+      "bytes": 7040
+    },
+    "docs/previews/m3-notifications.png": {
+      "blob": "1225895c031ef1dab86cbd99ab1ff97df10dd573",
+      "bytes": 11508
+    },
+    "docs/previews/m4-files.png": {
+      "blob": "7ce888d52fdb0d69182e7ae74ce1faf5b03fcb14",
+      "bytes": 33199
+    },
+    "docs/previews/m4-profiles.png": {
+      "blob": "f2ec5cc459ad4e43f30802f99c0d5a76060dfdee",
+      "bytes": 31944
+    },
+    "docs/previews/m4-workspace.png": {
+      "blob": "e965e58970d390debb11a7c4ada2342ecbd0e583",
+      "bytes": 76000
+    },
+    "docs/previews/m5-ssh.png": {
+      "blob": "913e79368e36d74c1cc6b7e97d67d3dd94f4f6f4",
+      "bytes": 24746
+    },
+    "docs/previews/m6-auth-panel.png": {
+      "blob": "6b24cc6f23f5896265c3df32a5ebcaaa03ab7ff7",
+      "bytes": 36718
+    },
+    "docs/previews/m6-auth-workspace.png": {
+      "blob": "8a3d51230a0e591863d7e7eae40ec7a2a2aef339",
+      "bytes": 36315
+    },
+    "docs/previews/m6-sftp-delete-tree.png": {
+      "blob": "9526d42a9a30d393da3d308d6a370055ebe129ab",
+      "bytes": 10129
+    },
+    "docs/previews/m6-sftp-residual.png": {
+      "blob": "069853c37bd97da687b87ba2e583ad617f478c4a",
+      "bytes": 13666
+    },
+    "docs/previews/m6-sftp-resume.png": {
+      "blob": "d1935a589d459beefc52976b2b3014722d66f14a",
+      "bytes": 15785
+    },
+    "docs/previews/m6-sftp-sort.png": {
+      "blob": "93f6b366e52dec0ab44e34e6d2b97c4dca8e6ebd",
+      "bytes": 8576
+    },
+    "docs/previews/m6-sftp-transfer-paths.png": {
+      "blob": "a362ef4617c5a5da2fc7f21a4733a8509443acfe",
+      "bytes": 34367
+    },
+    "docs/previews/m6-sftp-transfer-review.png": {
+      "blob": "4d5455cff2f8c190e131b80f8f054900700c9177",
+      "bytes": 76500
+    },
+    "docs/previews/m6-sftp-upload.png": {
+      "blob": "ebf563e275d35807b82fcf90b499867d858e0cca",
+      "bytes": 10219
+    },
+    "docs/previews/m6-sftp-workspace-auth.png": {
+      "blob": "451f13f4eec45589b9524ec378aba295fec6b9fb",
+      "bytes": 36758
+    },
+    "docs/previews/m7-git-branches.png": {
+      "blob": "3647b4ff3995e690367cb2776bf4feaf82af70e7",
+      "bytes": 8909
+    },
+    "docs/previews/m7-git-confirm.png": {
+      "blob": "a887e3c1fafc850274d7b9badf739ab81e5facea",
+      "bytes": 12197
+    },
+    "docs/previews/m7-git-log.png": {
+      "blob": "7301551c6499db9ba89e65b32bd50b60a6e66da2",
+      "bytes": 7703
+    },
+    "docs/previews/m7-git-resolve.png": {
+      "blob": "588ba6de194aa9313a0a11145c16c56705955a87",
+      "bytes": 9276
+    },
+    "docs/previews/m7-monitor-procs.png": {
+      "blob": "340f13acede4efe1ab4de543f5a0a298834354af",
+      "bytes": 15967
+    },
+    "docs/previews/m7-ssh-forwards-kinds.png": {
+      "blob": "6b6ea07335a1bf3b537b2b3412f9eeda9b72125b",
+      "bytes": 10396
+    },
+    "docs/previews/m7-ssh-forwards.png": {
+      "blob": "428fcb799c84ce5b638c45c802ae2c72397a00e5",
+      "bytes": 8746
+    },
+    "docs/previews/m7-ssh-phase.png": {
+      "blob": "87b5a9fda8a299917edd492bb0845575f5f8d010",
+      "bytes": 8496
+    },
+    "docs/previews/m8-command-marks.png": {
+      "blob": "d8a682e1ffe03d55a6138ff5d18f5c9d7bafe004",
+      "bytes": 3614
+    },
+    "docs/previews/m8-italic.png": {
+      "blob": "61a2b0c7c768ac337aa6b20e1c116ce556b709df",
+      "bytes": 9913
+    },
+    "docs/previews/m8-notice-status.png": {
+      "blob": "d54a169c7d805e5af51d0efbed9d73647266bb43",
+      "bytes": 16849
+    },
+    "docs/previews/m8-ssh-missing.png": {
+      "blob": "b65aa19b633b7fae257575d8297c0b2725d2b30a",
+      "bytes": 11271
+    },
+    "docs/previews/m8-theme-dark.png": {
+      "blob": "ae79bb7c36e2155fe66693903cddd1ea23652225",
+      "bytes": 3956
+    },
+    "docs/previews/m8-theme-light.png": {
+      "blob": "27210adc1ea7e0994ac46248d3c6cc4a91d8ae65",
+      "bytes": 4170
+    },
+    "docs/previews/m8-theme-midnight.png": {
+      "blob": "f84a5d88d767764daaab2e40940a3e91df180e93",
+      "bytes": 3990
+    },
+    "docs/previews/m8-theme-preview.png": {
+      "blob": "3df5aacfcbad1f203faff70e969b44c15e8bfcc1",
+      "bytes": 8017
+    },
+    "docs/previews/m8-tools-status.png": {
+      "blob": "b6fcd55be0486da5b6b3d09b3b1cc06071b439a4",
+      "bytes": 13588
+    },
+    "docs/releases/alpha.6.md": {
+      "blob": "2471b27648020637154146e937de0e55ba15d19d",
+      "bytes": 2930
+    },
+    "docs/releases/sftp-preview.md": {
+      "blob": "3516d4ecfe2039d0f846531ff22030ff985d48cf",
+      "bytes": 2727
+    },
+    "docs/releases/v0.1.0.md": {
+      "blob": "7cf979c1b6d9d58773929728755a6da75a316d41",
+      "bytes": 2619
+    },
+    "docs/releases/v0.1.1.md": {
+      "blob": "5d21955b962fcc6e95ddd51ffae9c6fada1e6476",
+      "bytes": 930
+    },
+    "docs/releases/v0.2.0.md": {
+      "blob": "7790dec81e0b43c0d254b31f734abe5875bb735f",
+      "bytes": 1568
+    },
+    "docs/releases/v0.2.1.md": {
+      "blob": "998f08fa19d8139e08b67a172663cdc7252f9439",
+      "bytes": 1196
+    },
+    "docs/releases/v0.2.2.md": {
+      "blob": "97fd48c93e40506ab42fae52b006f3d527ba5e06",
+      "bytes": 1121
+    },
+    "docs/roadmap.md": {
+      "blob": "0bcad68393c43490e3abbda7cb2f176e6dd65968",
+      "bytes": 94097
+    }
+  }
+}

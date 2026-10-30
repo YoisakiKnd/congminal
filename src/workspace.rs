@@ -3723,7 +3723,10 @@ exec /bin/cat
         app.add_with_profile(None, Some(0));
         wait(&mut app, |a| a.panes[a.loaded].remote.is_some());
         // 远端 shell 用 OSC 7 报告目录后，右栏 Git 页经 ssh 读远端仓库。
-        wait(&mut app, |a| a.git.snapshot.is_some() || a.git.error.is_some());
+        let expected_root = repo.canonicalize().unwrap();
+        wait(&mut app, |a| {
+            a.git.remote.is_some() && a.git.snapshot.as_ref().is_some_and(|snapshot| snapshot.root == expected_root)
+        });
         let root = app.git.snapshot.as_ref().expect("远端快照").root.clone();
         assert_eq!(root, repo.canonicalize().unwrap());
         assert_eq!(app.git.snapshot.as_ref().unwrap().counts.unstaged, 1);
@@ -4022,7 +4025,7 @@ program="/definitely/missing/congminal-shell"
         wait(&mut app, |a| text(a, 2).contains("LAST_PROFILE"));
         app.left_page = LeftPage::Files;
         wait(&mut app, |a| a.local_files.listing.is_some());
-        assert_eq!(app.local_files.listing.as_ref().unwrap().path, std::env::current_dir().unwrap());
+        assert_eq!(app.local_files.listing.as_ref().unwrap().path, PathBuf::from(std::env::var_os("HOME").unwrap()));
     }
     #[test]
     fn local_files_sidebar_navigates_without_terminal_input_and_releases_when_hidden() {

@@ -1,4 +1,0 @@
-Initial cargo check --locked --offline --all-targets --all-features exited101.
-Transcript excerpts: E0425 libc::mach_port_deallocate not found; E0425 libc::host_page_size not found; deprecated libc::mach_host_self warning.
-Resolution: declare the SDK-backed mach_port_deallocate ABI, use sysconf(_SC_PAGESIZE), and scope the pinned Mach ABI deprecation allowance.
-This is a diagnostic note, not a full raw compiler log.

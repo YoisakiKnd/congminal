@@ -114,7 +114,7 @@ pub(super) fn default_working_directory() -> Option<PathBuf> {
 }
 #[cfg(not(windows))]
 pub(super) fn default_working_directory() -> Option<PathBuf> {
-    None
+    std::env::var_os("HOME").filter(|home| home.len() <= 4096 && Path::new(home).is_absolute()).map(PathBuf::from)
 }
 
 impl Default for ShellConfig {
@@ -123,12 +123,13 @@ impl Default for ShellConfig {
     }
 }
 
-#[cfg(all(test, windows))]
-mod windows_directory_tests {
+#[cfg(test)]
+mod startup_directory_tests {
     use super::*;
     #[test]
     fn default_and_explicit_startup_directories_are_distinct() {
-        let home = crate::pty::default_working_directory().expect("Windows user profile");
+        let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+        let home = PathBuf::from(std::env::var_os(key).expect("user home"));
         let (defaults, warnings) = Config::parse("");
         assert!(warnings.is_empty());
         assert_eq!(defaults.shell.working_directory, Some(home.clone()));
@@ -698,12 +699,13 @@ pub fn parse_color(s: &str) -> Option<u32> {
 
 /// "~" 开头的路径换成用户主目录
 fn expand_home(path: &str) -> PathBuf {
-    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" });
-    match (path.strip_prefix('~'), home) {
-        (Some(rest), Some(home)) if rest.is_empty() || rest.starts_with(['/', '\\']) => {
-            PathBuf::from(home).join(rest.trim_start_matches(['/', '\\']))
-        }
-        _ => PathBuf::from(path),
+    if let Some(rest) = path.strip_prefix('~')
+        && (rest.is_empty() || rest.starts_with(['/', '\\']))
+        && let Some(home) = default_working_directory()
+    {
+        home.join(rest.trim_start_matches(['/', '\\']))
+    } else {
+        PathBuf::from(path)
     }
 }
 

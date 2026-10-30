@@ -155,8 +155,8 @@ lines = 10000
 # 不写 program 时：macOS / Linux 用 $SHELL，Windows 优先 PowerShell 7 / Windows PowerShell，最后 %COMSPEC%
 # program = "/bin/zsh"
 # args = ["-l"]
-# 不写时 Windows 使用 %USERPROFILE%，macOS/Linux 继承启动目录。~ 表示用户主目录。
-# Windows 如需继承命令行启动目录，可显式写 working-directory = "."。
+# 不写时三平台均使用用户主目录（Windows 为 %USERPROFILE%，macOS/Linux 为 $HOME）。
+# ~ 表示用户主目录；如需继承命令行启动目录，可显式写 working-directory = "."。
 # working-directory = "~"
 
 [env]

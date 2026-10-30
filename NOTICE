@@ -12,7 +12,7 @@ FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 Corresponding source and build scripts for each binary release are available
 in that release's GitHub source archives and matching tag:
 https://github.com/YoisakiKnd/congminal
-For version 0.2.2: https://github.com/YoisakiKnd/congminal/tree/v0.2.2
+For version 0.2.3: https://github.com/YoisakiKnd/congminal/tree/v0.2.3
 
 Third-party components retain their own licenses:
 - Embedded Terminus Font: Copyright (c) 2010 Dimitar Toshkov Zhekov;

@@ -1,3 +1,0 @@
-{"case": "git::metadata_meter::requests", "exit": 0}
-{"case": "git::metadata_meter::errors", "exit": 0}
-{"case": "monitor::metadata_meter::network", "exit": 0}

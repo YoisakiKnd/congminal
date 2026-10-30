@@ -2,7 +2,7 @@
 
 用 Rust 编写的跨平台终端模拟器，提供多标签、分屏、SSH/SFTP、Git、状态监控和通知。窗口与界面直接使用 Cocoa/AppKit、Win32、X11，终端和侧栏由自有软件渲染器绘制。
 
-当前稳定版 **[v0.2.2](https://github.com/YoisakiKnd/congminal/releases/tag/v0.2.2)**，提供带完整 GPL 许可的 macOS、Windows、Linux 安装包和 SHA256。首个正式版 v0.1.0 的功能与性能验收见 [正式版记录](docs/evaluations/v0.1.0/README.md)。
+当前稳定版 **[v0.2.3](https://github.com/YoisakiKnd/congminal/releases/tag/v0.2.3)**，提供带完整 GPL 许可的 macOS、Windows、Linux 安装包和 SHA256。首个正式版 v0.1.0 的功能与性能验收见 [正式版记录](https://github.com/YoisakiKnd/congminal/blob/v0.2.2/docs/evaluations/v0.1.0/README.md)。
 
 ## 安装和运行
 
@@ -58,7 +58,7 @@ Windows 源码构建需先执行 `python ci/fetch-conpty.py --destination target
 
 启动后即可输入命令。Windows 默认优先本地 PowerShell 7，再 Windows PowerShell，最后 COMSPEC；已有 `[shell].program` 配置仍优先。macOS 的工作区主修饰键是 **Cmd**，Windows/Linux 是 **Ctrl+Shift**。
 
-Windows 默认从用户主目录启动，可用 `[shell] working-directory = "~"` 或其他明确路径配置；若需继承命令行启动目录，设为 `"."`。原生窗口标题固定为 `congminal`，程序上报的标题继续显示在标签页中。
+三平台默认从用户主目录启动，可用 `[shell] working-directory = "~"` 或其他明确路径配置；若需继承命令行启动目录，设为 `"."`。原生窗口标题固定为 `congminal`，程序上报的标题继续显示在标签页中。
 
 | 操作 | 快捷键 |
 | --- | --- |
@@ -129,9 +129,9 @@ SFTP 要求支持 `ForkAfterAuthentication` 和强制 askpass 的 OpenSSH 客户
 
 PTY 队列、历史、字体缓存、图片解压、帧缓冲、任务和目录模型有明确预算与上限；大量输出使用背压，不能准入的输入整笔拒绝并提示。历史行数还受实际行存储额度限制。SFTP 沿用 2 个工作槽、64 等待槽，子池额度为 16 MiB；单目录列表最多 512 条，目录扫描最多 2000 个文件、512 个目录、16 层及 8 GiB 文件总量，每帧最多提交 4 个文件。
 
-Kitty 缓存最多 16 张 / 16 MiB RGBA 容量，单图最多 4 Mi 像素，最多 32 项放置；输入分块累计最多 16 MiB。字符格子保持 20 B。Windows 新后端增加约 1.15 MiB 安装文件，测试机进程树工作集峰值中位数约增加 3.1 MiB；测量范围见 [v0.2.0 图片与性能验收](docs/evaluations/v0.2.0/README.md)。
+Kitty 缓存最多 16 张 / 16 MiB RGBA 容量，单图最多 4 Mi 像素，最多 32 项放置；输入分块累计最多 16 MiB。字符格子保持 20 B。Windows 新后端增加约 1.15 MiB 安装文件，测试机进程树工作集峰值中位数约增加 3.1 MiB；测量范围见 [v0.2.0 图片与性能验收](https://github.com/YoisakiKnd/congminal/blob/v0.2.2/docs/evaluations/v0.2.0/README.md)。
 
-这些额度是受管资源账本，不是整个进程 RSS 的硬上限；系统库、内核资源、线程栈和外部 SSH/编辑器需分别测量。原有功能的完整基线见 [v0.1.0 验收记录](docs/evaluations/v0.1.0/README.md)，历史性能数据保留其原始源码版本，不能直接代表当前发布。
+这些额度是受管资源账本，不是整个进程 RSS 的硬上限；系统库、内核资源、线程栈和外部 SSH/编辑器需分别测量。原有功能的完整基线见 [v0.1.0 验收记录](https://github.com/YoisakiKnd/congminal/blob/v0.2.2/docs/evaluations/v0.1.0/README.md)，历史性能数据保留其原始源码版本，不能直接代表当前发布。
 
 ## 开发与已知限制
 
@@ -146,10 +146,10 @@ cargo test -- --test-threads=1
 - Kitty 当前支持静态图片的直接传输；不支持文件/共享内存传输、动画、相对放置和全部删除模式。每次终端重置前最多登记 256 种不同的图片放置色，超限占位符隐藏。
 - Linux 使用 X11/XIM，尚无原生 Wayland 后端；Windows 输入法与不同 Linux 桌面的覆盖范围仍有限。
 - 字体支持 TrueType 轮廓，不支持 OTF/CFF；复杂文字定位和所有终端扩展并未完整实现。
-- 大型历史重排和字体/emoji 工作均受预算约束；兼容性细节见 [底层说明](docs/foundations.md) 和 [终端查询设计](docs/design-term-queries.md)。
+- 大型历史重排和字体/emoji 工作均受预算约束；兼容性细节见 [底层说明](docs/foundations.md) 和 [终端查询设计](https://github.com/YoisakiKnd/congminal/blob/v0.2.2/docs/design-term-queries.md)。
 - macOS 包未公证；Linux 包的 glibc 下限取决于实际构建系统。
 
-开发资料：[功能计划](docs/roadmap.md)、[发布执行清单](docs/execution-v0.1.0.md)、[交接文档](docs/DEEPSEEK_HANDOFF.md)。
+完整入口见 [文档导航](docs/README.md)。旧计划、交接和测量数据见 [历史归档](docs/archive/README.md)。
 
 ## 许可证
 

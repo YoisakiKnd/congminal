@@ -79,7 +79,7 @@
 | --- | --- | --- |
 | `shell.program` | Unix `$SHELL`；Windows 优先 PowerShell 7，再 Windows PowerShell，最后 `%COMSPEC%` | 本地会话启动的程序 |
 | `shell.args` | 空 | 传给程序的参数 |
-| `shell.working-directory` | Windows 用户主目录；Unix 启动目录 | `~` 表示用户主目录；显式 `.` 继承启动目录。显式配置优先 |
+| `shell.working-directory` | 三平台均为用户主目录 | `~` 表示用户主目录；显式 `.` 继承启动目录。显式配置优先 |
 | `env` | 空 | 额外环境变量，`TERM` 默认 `xterm-256color` |
 
 ### `macos`
@@ -97,7 +97,7 @@
 
 ### `connections`
 
-自由表，每个 `[connections.<id>]` 是一个配置档：`kind`（`local` / `ssh`）、`name`、`group`、`theme`，以及 `host`、`user`、`port`、`identity-file`、`jump`、`forward`、`forward-remote`、`forward-dynamic`、`program` 等 SSH 字段。详见 [配置档说明](execution-m4.md#连接配置档)。
+自由表，每个 `[connections.<id>]` 是一个配置档：`kind`（`local` / `ssh`）、`name`、`group`、`theme`，以及 `host`、`user`、`port`、`identity-file`、`jump`、`forward`、`forward-remote`、`forward-dynamic`、`program` 等 SSH 字段。详见 [配置档说明](https://github.com/YoisakiKnd/congminal/blob/v0.2.2/docs/execution-m4.md#连接配置档)。
 
 ### `sftp`
 

@@ -52,6 +52,10 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo fmt --check
 
+      - name: Maintained documentation links
+        if: runner.os == 'Linux'
+        run: python3 tools/check_docs.py
+
       - name: Verified Microsoft ConPTY runtime
         if: runner.os == 'Windows'
         run: python ci/fetch-conpty.py --verify-signature --destination target/debug/deps --destination target/release
