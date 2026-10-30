@@ -1,10 +1,12 @@
 //! 单个有界源准备槽；上传或手动重试都重新检查，再打开不可变审阅。
 use super::*;
 use crate::resources::SftpInputScope;
+#[cfg(all(test, unix))]
 use std::os::unix::ffi::OsStrExt;
 
 enum SourceVersion {
     Local(service::LocalStamp),
+    Directory,
     Remote(service::Version),
 }
 pub(super) struct Preparation {
@@ -32,7 +34,7 @@ impl Workspace {
         local: &Path,
         remote: &[u8],
     ) -> Result<Ticket, Failure> {
-        self.prepare_transfer_source(local, remote, true, None)
+        self.prepare_transfer_source(local, remote, true, None, true)
     }
     /// 仅准备新请求；不复用旧版本、覆盖同意、认证答案或已传输字节。
     pub(super) fn retry_remote_transfer(&mut self, ticket: Ticket) -> Result<Ticket, Failure> {
@@ -44,12 +46,7 @@ impl Workspace {
         let status = file.status.clone();
         let upload = status.direction() == service::TransferDirection::Upload;
         let (local, remote) = if upload { (status.from(), status.to()) } else { (status.to(), status.from()) };
-        self.prepare_transfer_source(
-            Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
-            remote.bytes(),
-            upload,
-            None,
-        )
+        self.prepare_transfer_source(service::local_path(local.bytes())?, remote.bytes(), upload, None, false)
     }
     /// 续传：复用记录里那次传输的临时文件，其余流程与普通上传一致（仍要过审阅与认证）。
     pub(super) fn resume_remote_transfer(&mut self, ticket: Ticket) -> Result<Ticket, Failure> {
@@ -63,12 +60,13 @@ impl Workspace {
         if status.direction() != service::TransferDirection::Upload {
             return Err(Failure::Invalid);
         }
-        let local = status.to();
+        let local = status.from();
         self.prepare_transfer_source(
-            Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
-            status.from().bytes(),
+            service::local_path(local.bytes())?,
+            status.to().bytes(),
             true,
-            Some(partial.bytes().to_vec()),
+            Some(partial.bytes()),
+            false,
         )
     }
     fn prepare_transfer_source(
@@ -76,7 +74,8 @@ impl Workspace {
         local: &Path,
         remote: &[u8],
         upload: bool,
-        resume: Option<Vec<u8>>,
+        resume: Option<&[u8]>,
+        directory: bool,
     ) -> Result<Ticket, Failure> {
         if self.composing()
             || self.authentication.is_some()
@@ -116,10 +115,20 @@ impl Workspace {
                 _ => Failure::Invalid,
             })
         };
-        let local_value = captured(local.as_os_str().as_bytes())?;
+        let local_value = captured(local.as_os_str().as_encoded_bytes())?;
         let remote_value = captured(remote)?;
         let (ticket, authentication) = if upload {
-            (state.service.inspect_local(owner, profiles.clone(), *profile, state.options.paths(), local)?, None)
+            (
+                state.service.inspect_local_selection(
+                    owner,
+                    profiles.clone(),
+                    *profile,
+                    state.options.paths(),
+                    local,
+                    directory,
+                )?,
+                None,
+            )
         } else {
             let (ticket, authentication) = state.service.inspect_remote(
                 owner,
@@ -132,7 +141,7 @@ impl Workspace {
             (ticket, Some(authentication))
         };
         let resume = match resume {
-            Some(bytes) => Some(captured(&bytes)?),
+            Some(bytes) => Some(captured(bytes)?),
             None => None,
         };
         state.preparation = Some(Preparation {
@@ -190,6 +199,7 @@ impl Workspace {
             match completion.result {
                 Ok(reply) => match reply.data {
                     Ok(service::Output::LocalSource(stamp)) if p.upload => Ok(SourceVersion::Local(stamp)),
+                    Ok(service::Output::LocalSourceDirectory) if p.upload => Ok(SourceVersion::Directory),
                     Ok(service::Output::RemoteVersion(version)) if !p.upload => Ok(SourceVersion::Remote(version)),
                     Err(e) => Err(e),
                     _ => Err(Failure::Protocol),
@@ -216,22 +226,25 @@ impl Workspace {
         if !p.binding.valid(self) || p.binding.owner.session != self.selected {
             return;
         }
-        let result = match p.ready.take().unwrap() {
+        let result = (|| match p.ready.take().unwrap() {
+            Ok(SourceVersion::Directory) => {
+                self.start_remote_upload_plan(service::local_path(p.local.bytes())?, p.remote.bytes())
+            }
             Ok(SourceVersion::Local(stamp)) => self.open_transfer_review(service::TransferSelection::UploadChecked {
-                local: Path::new(std::ffi::OsStr::from_bytes(p.local.bytes())),
+                local: service::local_path(p.local.bytes())?,
                 remote: p.remote.bytes(),
                 stamp,
                 replace: service::Replace::No,
                 resume: p.resume.as_ref().map(|path| path.bytes()),
             }),
             Ok(SourceVersion::Remote(version)) => self.open_transfer_review(service::TransferSelection::Download {
-                local: Path::new(std::ffi::OsStr::from_bytes(p.local.bytes())),
+                local: service::local_path(p.local.bytes())?,
                 remote: p.remote.bytes(),
                 version,
                 replace: service::Replace::No,
             }),
             Err(e) => Err(e),
-        };
+        })();
         if let Err(error) = result {
             p.error = Some(error);
             self.sftp.as_mut().unwrap().preparation = Some(p);
@@ -304,7 +317,7 @@ impl Workspace {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::super::tests::{close, paths, profiles, released, until, workspace};
     use super::*;
@@ -329,6 +342,90 @@ mod tests {
         }
     }
     #[test]
+    fn directory_selection_reaches_preview_only_after_background_inspection() {
+        let parent = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(parent.clone());
+        let folder = Folder::new();
+        std::fs::write(folder.0.join("one"), b"abc").unwrap();
+        let mut app = workspace();
+        app.start_remote_files(paths(), b".").unwrap();
+        app.prepare_remote_upload(&folder.0, b"/target-dir").unwrap();
+        assert!(app.sftp.as_ref().unwrap().preparation.is_some());
+        assert!(app.sftp.as_ref().unwrap().upload_preview.is_none());
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().upload_preview.is_some()
+        });
+        let state = app.sftp.as_ref().unwrap();
+        assert!(state.preparation.is_none() && state.review.is_none());
+        let plan = &state.upload_preview.as_ref().unwrap().plan;
+        assert_eq!(plan.total, 3);
+        assert_eq!(plan.items.len(), 1);
+        close(&mut app);
+        drop(app);
+        released(&parent);
+    }
+    #[test]
+    fn upload_resume_keeps_local_source_remote_destination_and_original_partial_separate() {
+        let parent = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(parent.clone());
+        let folder = Folder::new();
+        let source = folder.0.join("source ;$()");
+        std::fs::write(&source, b"fixture").unwrap();
+        let mut app = workspace();
+        app.start_remote_files(paths(), b".").unwrap();
+        let ticket = app
+            .submit_remote_transfer(service::TransferSelection::Upload {
+                local: &source,
+                remote: b"/remote/target",
+                length: 7,
+                replace: service::Replace::No,
+                resume: None,
+            })
+            .unwrap();
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().files[0].as_ref().unwrap().complete
+        });
+        {
+            let state = app.sftp.as_mut().unwrap();
+            let file = state.files[0].as_mut().unwrap();
+            let pool = state.service.budget();
+            let owner = file.binding.owner;
+            let path = |bytes| PathValue::new(pool, bytes).unwrap();
+            let (status, progress) = service::Status::new(
+                pool,
+                service::Source { session: owner.session, generation: owner.generation },
+                service::TransferDirection::Upload,
+                path(source.as_os_str().as_encoded_bytes()),
+                path(b"/remote/target"),
+                7,
+            )
+            .ok()
+            .unwrap();
+            progress.partial(path(b"/remote/.congminal-kept.part")).unwrap();
+            progress.finish(Some(service::TransferFailure::Connection), Cleanup::Confirmed).unwrap();
+            file.status = status;
+            file.shown = Some(file.status.snapshot());
+        }
+        app.resume_remote_transfer(ticket).unwrap();
+        let preparation = app.sftp.as_ref().unwrap().preparation.as_ref().unwrap();
+        assert_eq!(preparation.local.bytes(), source.as_os_str().as_encoded_bytes());
+        assert_eq!(preparation.remote.bytes(), b"/remote/target");
+        assert_eq!(preparation.resume.as_ref().unwrap().bytes(), b"/remote/.congminal-kept.part");
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().review.is_some()
+        });
+        super::super::review::tests::confirm(&mut app, false);
+        let task = app.sftp.as_ref().unwrap().files.iter().flatten().find(|file| file.ticket != ticket).unwrap();
+        assert_eq!(task.status.from().bytes(), source.as_os_str().as_encoded_bytes());
+        assert_eq!(task.status.to().bytes(), b"/remote/target");
+        close(&mut app);
+        drop(app);
+        released(&parent);
+    }
+    #[test]
     fn retry_lookup_requires_confirmed_cleanup_and_failed_or_old_results_never_reopen_review() {
         fn reply(state: &State, ticket: Ticket, cleanup: Cleanup) -> service::Completion {
             let pool = state.service.budget();
@@ -346,8 +443,9 @@ mod tests {
         let _scope = Scope::enter(parent.clone());
         let mut app = workspace();
         app.start_remote_files(paths(), b".").unwrap();
-        let ticket =
-            app.prepare_transfer_source(Path::new("/tmp/never-created-retry-target"), b"/source", false, None).unwrap();
+        let ticket = app
+            .prepare_transfer_source(Path::new("/tmp/never-created-retry-target"), b"/source", false, None, false)
+            .unwrap();
         let mut state = app.sftp.take().unwrap();
         let result = reply(&state, ticket, Cleanup::Unknown);
         assert!(app.transfer_preparation_result(&mut state, result).is_none());
@@ -364,8 +462,9 @@ mod tests {
         assert!(app.sftp.as_ref().unwrap().review.is_none());
         assert!(app.sftp.as_ref().unwrap().files.iter().all(Option::is_none));
         app.event(Event::Key { key: Key::Escape, mods: Mods::default() });
-        let current =
-            app.prepare_transfer_source(Path::new("/tmp/never-created-retry-other"), b"/other", false, None).unwrap();
+        let current = app
+            .prepare_transfer_source(Path::new("/tmp/never-created-retry-other"), b"/other", false, None, false)
+            .unwrap();
         assert_ne!(current, ticket);
         let mut state = app.sftp.take().unwrap();
         let late = reply(&state, ticket, Cleanup::Confirmed);
@@ -446,7 +545,7 @@ mod tests {
         assert!(super::super::review::tests::overwrite_is_off(&app));
         super::super::review::tests::confirm(&mut app, false);
         let task = app.sftp.as_ref().unwrap().files.iter().flatten().find(|f| f.ticket != ticket).unwrap();
-        assert_eq!(task.status.from().bytes(), source.as_os_str().as_bytes());
+        assert_eq!(task.status.from().bytes(), source.as_os_str().as_encoded_bytes());
         assert_eq!(task.status.to().bytes(), b"/raw-\xff-target");
         assert_eq!(task.status.snapshot().length, 18);
         assert!(app.remote_transfer_status(ticket).is_some(), "old report remains available");
@@ -477,7 +576,7 @@ mod tests {
         super::super::review::tests::confirm(&mut app, false);
         let task = app.sftp.as_ref().unwrap().files.iter().flatten().next().unwrap();
         assert_eq!(task.status.snapshot().length, 7);
-        assert_eq!(task.status.from().bytes(), source.as_os_str().as_bytes());
+        assert_eq!(task.status.from().bytes(), source.as_os_str().as_encoded_bytes());
         close(&mut app);
         drop(app);
         released(&parent);
@@ -505,7 +604,7 @@ mod tests {
         super::super::review::tests::confirm(&mut app, false);
         let file = app.sftp.as_ref().unwrap().files.iter().flatten().next().unwrap();
         assert_eq!(file.status.snapshot().length, 7);
-        assert_eq!(file.status.from().bytes(), second.as_os_str().as_bytes());
+        assert_eq!(file.status.from().bytes(), second.as_os_str().as_encoded_bytes());
         assert_eq!(file.status.to().bytes(), b"/second-target");
         app.prepare_remote_upload(&first, b"/never-start").unwrap();
         app.panes[0].profile = Some((profiles(), 0));

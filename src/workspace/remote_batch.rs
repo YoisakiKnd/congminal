@@ -6,7 +6,6 @@ use super::*;
 use crate::sftp::plan::{self, Plan};
 use std::{
     collections::{HashSet, VecDeque},
-    os::unix::ffi::OsStrExt,
     path::Path,
 };
 
@@ -48,7 +47,7 @@ impl Batch {
         format!("{}/{}", self.submitted, self.total)
     }
 }
-#[cfg(test)]
+#[cfg(all(test, unix))]
 impl Preview {
     /// 合成预览：面板逻辑不依赖真实服务端。
     pub(super) fn for_test(
@@ -114,8 +113,8 @@ impl Workspace {
         if !local.is_absolute() {
             return Err(Failure::Invalid);
         }
-        let local =
-            PathValue::new(state.service.budget(), local.as_os_str().as_bytes()).map_err(|_| Failure::Budget)?;
+        let local = PathValue::new(state.service.budget(), local.as_os_str().as_encoded_bytes())
+            .map_err(|_| Failure::Budget)?;
         let (ticket, authentication) =
             state.service.plan(owner, profiles.clone(), *profile, state.options.paths(), remote, PLAN_TIMEOUT)?;
         state.plan = Some(PlanTask { ticket, binding, authentication, local });
@@ -205,8 +204,8 @@ impl Workspace {
                 continue;
             };
             // 本地父目录先建好，否则提交会因目标目录不存在失败。
-            if let Some(parent) = Path::new(std::ffi::OsStr::from_bytes(&bytes)).parent()
-                && batch.dirs.insert(parent.as_os_str().as_bytes().to_vec())
+            if let Some(parent) = service::local_path(&bytes).ok().and_then(Path::parent)
+                && batch.dirs.insert(parent.as_os_str().as_encoded_bytes().to_vec())
                 && std::fs::create_dir_all(parent).is_err()
             {
                 batch.failed += 1;
@@ -254,7 +253,7 @@ impl Workspace {
             state.options.paths(),
             service::TransferSelection::Download {
                 remote: item.path.bytes(),
-                local: Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
+                local: service::local_path(local.bytes())?,
                 version: item.version,
                 replace: service::Replace::No,
             },

@@ -104,17 +104,28 @@ pub struct Source {
     stamp: Stamp,
     _memory: Lease,
 }
+pub enum Inspection {
+    File(Stamp),
+    Directory,
+}
 impl Source {
     /// 选择阶段只做lstat；不打开数据文件，也不占用进程创建互斥锁。
     pub fn inspect(path: &LocalPath, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Stamp, Error> {
+        match Self::inspect_selection(path, pool, cancel)? {
+            Inspection::File(stamp) => Ok(stamp),
+            Inspection::Directory => Err(Error::FileType),
+        }
+    }
+    pub fn inspect_selection(path: &LocalPath, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Inspection, Error> {
         check(cancel)?;
         if !path.uses(pool) {
             return Err(Error::WrongPool);
         }
         let _work = pool.lease(Kind::Sftp, WORK).map_err(|_| Error::Budget)?;
-        let stamp = Stamp::of(&std::fs::symlink_metadata(path.path())?)?;
+        let metadata = std::fs::symlink_metadata(path.path())?;
+        let result = if metadata.is_dir() { Inspection::Directory } else { Inspection::File(Stamp::of(&metadata)?) };
         check(cancel)?;
-        Ok(stamp)
+        Ok(result)
     }
     pub fn open(path: &LocalPath, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Self, Error> {
         check(cancel)?;

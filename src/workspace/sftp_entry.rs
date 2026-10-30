@@ -53,27 +53,31 @@ impl Workspace {
             return Err(Failure::Invalid);
         }
         // 覆盖 current_exe/path 的有界临时副本；子池建立后另由 Options 拥有。
-        let _memory = crate::resources::current().lease(Kind::Sftp, 4 * 4096 + 1024).map_err(|_| Failure::Budget)?;
+        let _memory = crate::resources::current().lease(Kind::Sftp, 128 * 1024).map_err(|_| Failure::Budget)?;
         let helper = match &self.driver.config.sftp.helper {
             Some(path) => path.clone(),
             None => {
                 let mut path = std::env::current_exe().map_err(|_| Failure::Invalid)?;
-                path.set_file_name("congminal-ssh-helper");
+                path.set_file_name(if cfg!(windows) { "congminal-ssh-helper.exe" } else { "congminal-ssh-helper" });
                 path
             }
         };
         let configuration = self.driver.config.sftp.ssh_config.clone();
+        #[cfg(windows)]
+        let temporary = crate::ssh::auth::ticket::windows::temporary().map_err(|_| Failure::Invalid)?;
+        #[cfg(unix)]
+        let temporary = PathBuf::from("/tmp");
         self.start_remote_files(
             Paths {
                 configuration: configuration.as_deref().map_or(service::Config::System, service::Config::File),
                 helper: &helper,
-                temporary: Path::new("/tmp"),
+                temporary: &temporary,
             },
             b".",
         )
     }
 }
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::super::tests::{close, released, until, workspace};
     use super::*;

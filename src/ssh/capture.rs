@@ -16,6 +16,14 @@ use std::{
 #[path = "capture_windows_wire.rs"]
 mod windows_wire;
 
+/// 必须在已准入的 Stream 命令工厂内调用；复用受限 PATH 搜索，排除隐式 CWD 搜索。
+#[cfg(windows)]
+pub fn resolved_program(program: &OsStr) -> Result<OsString, Error> {
+    use std::os::windows::ffi::OsStringExt;
+    let wide = platform::executable(program)?;
+    Ok(OsString::from_wide(&wide[..wide.len() - 1]))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     Invalid,
@@ -480,6 +488,14 @@ impl Stream {
         cancel: &Cancellation,
         timeout: Duration,
     ) -> Result<Self, Error> {
+        Self::spawn_checked(|| Ok(command()), pool, cancel, timeout)
+    }
+    pub fn spawn_checked(
+        command: impl FnOnce() -> Result<Spec, Error>,
+        pool: &Arc<Budget>,
+        cancel: &Cancellation,
+        timeout: Duration,
+    ) -> Result<Self, Error> {
         if timeout.is_zero() || timeout > Duration::from_secs(30) {
             return Err(Error::Invalid);
         }
@@ -487,7 +503,7 @@ impl Stream {
             return Err(Error::Cancelled);
         }
         let memory = pool.lease(Kind::Sftp, 256 * 1024).map_err(|_| Error::Budget)?;
-        let mut command = command();
+        let mut command = command()?;
         validate(&command)?;
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);

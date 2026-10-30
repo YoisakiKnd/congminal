@@ -195,7 +195,7 @@ fn wide(value: &OsStr) -> Result<Vec<u16>, Error> {
     output.push(0);
     Ok(output)
 }
-fn executable(program: &OsStr) -> Result<Vec<u16>, Error> {
+pub(super) fn executable(program: &OsStr) -> Result<Vec<u16>, Error> {
     let mut path = Path::new(program).to_path_buf();
     match path.extension() {
         Some(extension) if !extension.to_str().is_some_and(|s| s.eq_ignore_ascii_case("exe")) => {

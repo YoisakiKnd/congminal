@@ -51,7 +51,7 @@ impl Batch {
         format!("{}/{}", self.submitted, self.total)
     }
 }
-#[cfg(test)]
+#[cfg(all(test, unix))]
 impl Preview {
     /// 合成预览：面板逻辑不依赖真实目录。
     pub(super) fn for_test(
@@ -453,13 +453,18 @@ fn child(
 }
 /// 本地根目录 + 相对路径。
 fn join(root: &Path, relative: &[u8]) -> Option<PathBuf> {
-    use std::os::unix::ffi::OsStrExt;
     let mut path = root.to_path_buf();
     for part in relative.split(|&b| b == b'/') {
         if part.is_empty() || part == b"." || part == b".." {
             return None;
         }
-        path.push(std::ffi::OsStr::from_bytes(part));
+        let component = service::local_path(part).ok()?;
+        if component.components().count() != 1
+            || !matches!(component.components().next(), Some(std::path::Component::Normal(_)))
+        {
+            return None;
+        }
+        path.push(component);
     }
     Some(path)
 }

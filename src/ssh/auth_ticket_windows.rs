@@ -45,9 +45,33 @@ unsafe extern "system" {
     fn GetNamedPipeServerProcessId(pipe: Handle, pid: *mut u32) -> i32;
     fn ReadFile(file: Handle, data: *mut c_void, size: u32, count: *mut u32, overlapped: *mut c_void) -> i32;
     fn WriteFile(file: Handle, data: *const c_void, size: u32, count: *mut u32, overlapped: *mut c_void) -> i32;
+    fn GetTempPathW(size: u32, buffer: *mut u16) -> u32;
+}
+pub fn temporary() -> io::Result<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    let mut buffer = [0u16; 4097];
+    let size = unsafe { GetTempPathW(buffer.len() as u32, buffer.as_mut_ptr()) } as usize;
+    if size == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if size >= buffer.len() {
+        return Err(invalid());
+    }
+    Ok(PathBuf::from(std::ffi::OsString::from_wide(&buffer[..size])))
 }
 fn would_block() -> io::Error {
     io::ErrorKind::WouldBlock.into()
+}
+fn local_path(path: &Path) -> io::Result<()> {
+    validate_path(path)?;
+    match path.components().next() {
+        Some(std::path::Component::Prefix(prefix))
+            if matches!(prefix.kind(), std::path::Prefix::Disk(_) | std::path::Prefix::VerbatimDisk(_)) =>
+        {
+            Ok(())
+        }
+        _ => Err(invalid()), // 票据和能力值不能落到 UNC 共享或设备命名空间。
+    }
 }
 fn pipe_name(path: &Path) -> io::Result<([u16; 128], u32)> {
     let name = path.parent().and_then(Path::file_name).and_then(|n| n.to_str()).ok_or_else(invalid)?;
@@ -67,7 +91,7 @@ fn pipe_name(path: &Path) -> io::Result<([u16; 128], u32)> {
     Ok((value, pid))
 }
 pub fn read_private(path: &Path) -> io::Result<Ticket> {
-    validate_path(path)?;
+    local_path(path)?;
     if path.file_name().is_none_or(|n| n != "ticket") {
         return Err(invalid());
     }
@@ -276,7 +300,7 @@ impl OwnedTicket {
         Self::create_checked(base, pool, cancel).map_err(|e| e.error)
     }
     pub fn create_checked(base: &Path, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Self, CreateError> {
-        validate_path(base)?;
+        local_path(base)?;
         if base.as_os_str().len() > 3900 {
             return Err(invalid().into());
         }
@@ -368,5 +392,27 @@ impl OwnedTicket {
 impl Drop for OwnedTicket {
     fn drop(&mut self) {
         let _ = self.cleanup();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn windows_pipe_first_instance_is_exclusive_and_wrong_server_pid_is_rejected() {
+        let random = super::super::Capability::generate().unwrap();
+        let pid = std::process::id().checked_add(1).unwrap();
+        let mut name = format!("cgaw-{pid}-");
+        use std::fmt::Write;
+        for byte in &random.bytes()[..16] {
+            write!(name, "{byte:02x}").unwrap();
+        }
+        let path = temporary().unwrap().join(name).join("ticket");
+        let listener = Listener::new(&path).unwrap();
+        assert!(Listener::new(&path).is_err(), "existing named pipe cannot be silently reused");
+        assert_eq!(Stream::connect(&path).err().unwrap().kind(), io::ErrorKind::PermissionDenied);
+        drop(listener);
+        assert!(local_path(Path::new(r"\\host\share\ticket")).is_err());
+        assert!(local_path(Path::new(r"\\.\pipe\ticket")).is_err());
     }
 }

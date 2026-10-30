@@ -112,6 +112,10 @@ pub(crate) fn walk_in(root: &Path, cancel: &Cancellation, pool: &Arc<Budget>) ->
     if root.as_os_str().len() > PATH_BYTES {
         return Err(Error::Budget);
     }
+    #[cfg(windows)]
+    if root.to_str().is_none() {
+        return Err(Error::Local(std::io::ErrorKind::InvalidInput));
+    }
     let memory = pool.lease(Kind::Directory, WORK_BYTES).map_err(|_| Error::Budget)?;
     let metadata = std::fs::symlink_metadata(root)?;
     if !metadata.is_dir() {
@@ -161,6 +165,11 @@ pub(crate) fn walk_in(root: &Path, cancel: &Cancellation, pool: &Arc<Budget>) ->
                 continue;
             };
             let name = entry.file_name();
+            #[cfg(windows)]
+            if name.to_str().is_none() {
+                plan.skipped += 1;
+                continue;
+            }
             if name.len() > PATH_BYTES {
                 plan.truncated = true;
                 continue;
@@ -248,9 +257,41 @@ fn name_bytes(name: &std::ffi::OsStr) -> Vec<u8> {
 
 #[cfg(not(unix))]
 fn name_bytes(name: &std::ffi::OsStr) -> Vec<u8> {
-    name.to_string_lossy().as_bytes().to_vec()
+    // Windows 收集入口已拒绝不能无损表示的名称，不把替换字符当成真实路径。
+    name.as_encoded_bytes().to_vec()
 }
 
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+    #[test]
+    fn native_windows_walk_preserves_unicode_skips_unrepresentable_names_and_returns_credit() {
+        use std::os::windows::ffi::OsStringExt;
+        let random = crate::ssh::auth::wire::Capability::generate().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "cg-walk-{}-{:016x}",
+            std::process::id(),
+            u64::from_le_bytes(random.bytes()[..8].try_into().unwrap())
+        ));
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(root.join("nested")).unwrap();
+        std::fs::write(root.join("文件.txt"), b"data").unwrap();
+        std::fs::write(root.join("nested/inner"), b"abc").unwrap();
+        std::fs::write(root.join(std::ffi::OsString::from_wide(&[0xd800])), b"skipped").unwrap();
+        let pool = Budget::new(8 * 1024 * 1024, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let plan = walk(&root, &Cancellation::default()).unwrap();
+        assert_eq!(plan.items.len(), 2);
+        assert_eq!(plan.total, 7);
+        assert_eq!(plan.skipped, 1);
+        assert!(!plan.truncated && plan.bytes() <= MEMORY);
+        assert!(plan.items.iter().any(|file| file.relative == "文件.txt".as_bytes()));
+        assert!(pool.snapshot().peak <= WORK_BYTES && pool.snapshot().used > 0);
+        drop(plan);
+        assert_eq!(pool.snapshot().used, 0);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;

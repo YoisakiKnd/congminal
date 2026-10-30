@@ -6,7 +6,7 @@
 pub mod git;
 pub mod monitor;
 pub mod profiles;
-#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+#[cfg(any(test, feature = "sftp-preview"))]
 pub mod sftp;
 pub mod ssh;
 pub mod theme;
@@ -41,7 +41,7 @@ pub struct Config {
     pub monitor: monitor::Settings,
     /// 系统 SSH 配置的只读摘要：连接页列出的别名与连接它们用的 ssh 程序。
     pub ssh: ssh::Settings,
-    #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+    #[cfg(any(test, feature = "sftp-preview"))]
     pub sftp: sftp::Settings,
     /// 布局持久化在下次启动生效；默认关闭，不增加单终端的 I/O 或线程。
     pub restore_layout: bool,
@@ -135,7 +135,7 @@ impl Default for Config {
             git: git::Settings::default(),
             monitor: monitor::Settings::default(),
             ssh: ssh::Settings::default(),
-            #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+            #[cfg(any(test, feature = "sftp-preview"))]
             sftp: sftp::Settings::default(),
             restore_layout: false,
             memory: MemoryConfig::default(),
@@ -282,11 +282,11 @@ impl Config {
         config.git = git::read(&mut r);
         config.monitor = monitor::read(&mut r);
         config.ssh = ssh::read(&mut r);
-        #[cfg(any(test, all(feature = "sftp-preview", unix)))]
+        #[cfg(any(test, feature = "sftp-preview"))]
         {
             config.sftp = sftp::read(&mut r);
         }
-        #[cfg(not(any(test, all(feature = "sftp-preview", unix))))]
+        #[cfg(not(any(test, feature = "sftp-preview")))]
         if r.boolean("sftp", "enabled") == Some(true) {
             r.warn("sftp", "enabled", "本构建没有 SFTP 预览入口，请使用 sftp-preview 构建".into());
         }

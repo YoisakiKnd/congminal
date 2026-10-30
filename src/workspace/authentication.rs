@@ -11,11 +11,11 @@ pub(super) struct Overlay {
     renderer_generation: u64,
     _memory: Lease,
 }
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use crate::ssh::auth::{Identity, Owner};
 impl Workspace {
     /// 为新的独立连接捕获代次和配置快照；不能使用字体/渲染 generation 充当连接代次。
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(super) fn prepare_authentication(&mut self) -> Result<(Owner, Identity), auth::Error> {
         if self.composing() {
             return Err(auth::Error::Busy);
@@ -72,7 +72,7 @@ impl Workspace {
         self.restore();
         if let Some(state) = &mut self.sftp {
             state.invalidate_transfer_clicks();
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             state.suspend_transfer_paths();
         }
         self.authentication = Some(overlay);
@@ -277,7 +277,7 @@ fn discard_input(event: Event) -> Option<Event> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::{

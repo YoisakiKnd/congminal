@@ -4,7 +4,7 @@ use crate::ssh::auth::controller::Phase;
 
 impl Workspace {
     /// 内部候选接口；发布入口仍须先提供完整主机/源/目标审阅与覆盖确认。
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     pub(in crate::workspace) fn submit_remote_transfer(
         &mut self,
         selection: service::TransferSelection<'_>,
@@ -82,7 +82,7 @@ impl Workspace {
         self.chrome_dirty = true;
         true
     }
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(in crate::workspace) fn remote_transfer_status(&self, ticket: Ticket) -> Option<&service::Status> {
         self.sftp.as_ref()?.files.iter().flatten().find(|f| f.ticket == ticket).map(|f| &f.status)
     }
@@ -254,7 +254,7 @@ impl Workspace {
                 continue;
             }
             parked.overlay.dirty = true;
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             state.suspend_transfer_paths();
             self.show_authentication(parked.overlay);
             return true;
@@ -269,7 +269,7 @@ impl Workspace {
             .find_map(|f| f.authentication.as_mut()?.take_ready().map(|front| (f.ticket, front)))
         {
             state.invalidate_transfer_clicks();
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             state.suspend_transfer_paths();
             match self.open_authentication(front) {
                 Ok(()) => self.authentication.as_mut().unwrap().task = Some(ticket),

@@ -27,7 +27,7 @@ mod local_directory;
 mod monitor;
 mod mouse;
 mod notifications;
-#[cfg(all(any(test, feature = "sftp-preview"), unix))] // auth-workspace
+#[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
 mod open;
 mod path_text;
 mod platform;
@@ -42,7 +42,7 @@ mod session;
 // 协议接口还供 helper/互操作验收使用，预览主程序只使用其中一部分。
 mod runtime;
 #[cfg_attr(not(test), allow(dead_code))]
-#[cfg(any(test, all(feature = "sftp-preview", unix)))]
+#[cfg(any(test, feature = "sftp-preview"))]
 mod sftp;
 mod shell;
 mod shell_integration;
@@ -1520,7 +1520,7 @@ fn main() {
                 println!(
                     "congminal {}{}",
                     env!("CARGO_PKG_VERSION"),
-                    if cfg!(all(feature = "sftp-preview", unix)) { " (SFTP preview)" } else { "" }
+                    if cfg!(feature = "sftp-preview") { " (SFTP preview)" } else { "" }
                 );
                 return;
             }

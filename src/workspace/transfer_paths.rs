@@ -181,9 +181,8 @@ impl Form {
     fn suggest(&mut self) {
         if matches!(self.choice, Choice::Upload { target: None, .. }) && self.fields[1].text.is_empty() {
             if let Some(local) = &self.local_source {
-                use std::os::unix::ffi::OsStrExt;
                 if let Some(name) =
-                    Path::new(std::ffi::OsStr::from_bytes(local.bytes())).file_name().and_then(|n| n.to_str())
+                    service::local_path(local.bytes()).ok().and_then(Path::file_name).and_then(|n| n.to_str())
                 {
                     self.fields[1].insert(name);
                 }
@@ -602,13 +601,12 @@ impl Workspace {
                         None => directory.child(f.fields[1].text.as_bytes()).map_err(|_| Failure::Invalid),
                     };
                     target.and_then(|t| {
-                        use std::os::unix::ffi::OsStrExt;
-                        let local = f.local_source.as_ref().map_or_else(
-                            || Path::new(&f.fields[0].text),
-                            |p| Path::new(std::ffi::OsStr::from_bytes(p.bytes())),
-                        );
-                        // 本地路径是目录时走批量上传预览，不产生单文件上传。
-                        if std::fs::symlink_metadata(local).is_ok_and(|m| m.is_dir()) {
+                        let local = match &f.local_source {
+                            Some(path) => service::local_path(path.bytes())?,
+                            None => Path::new(&f.fields[0].text),
+                        };
+                        // 根目录可以从语法识别；普通路径的类型只由后台检查后决定。
+                        if local.is_absolute() && local.parent().is_none() {
                             self.start_remote_upload_plan(local, t.bytes())
                         } else {
                             self.prepare_remote_upload(local, t.bytes()).map(|_| ())
@@ -959,7 +957,7 @@ fn line(field: &Field, preedit: &str, columns: usize) -> (Line, usize, Option<Ra
     (out, caret.min(columns.saturating_sub(1)), selected)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) mod tests {
     use super::super::tests::{close, paths, released, until, workspace};
     use super::*;

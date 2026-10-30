@@ -290,7 +290,7 @@ impl Workspace {
         }
         let inspecting = self.sftp.as_ref().unwrap().exit.inspecting;
         if inspecting {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             if self.sftp_review_active() {
                 let _ = self.transfer_review_event(event);
                 return self.sftp_exit_gate(false);
@@ -326,7 +326,7 @@ impl Workspace {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) mod tests {
     use super::super::tests::{paths, released, until, workspace};
     use super::*;

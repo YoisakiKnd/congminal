@@ -94,12 +94,16 @@ impl Authenticated {
         {
             return Err(Self::failed(Self { stream: None, auth: Some(pump), cancel: cancel.clone() }, Error::Invalid));
         }
-        let stream = Stream::spawn(
+        let stream = Stream::spawn_checked(
             || {
                 let ssh = super::command_with_auth(profile, configuration, true);
                 let mut spec = Spec::new(helper);
-                spec.arg("--launch").arg(pump.ticket_path()).arg(ssh.get_program()).args(ssh.get_args());
-                spec
+                #[cfg(windows)]
+                let program = capture::resolved_program(ssh.get_program())?;
+                #[cfg(unix)]
+                let program = ssh.get_program();
+                spec.arg("--launch").arg(pump.ticket_path()).arg(program).args(ssh.get_args());
+                Ok(spec)
             },
             pool,
             cancel,

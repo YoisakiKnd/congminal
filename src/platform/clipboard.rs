@@ -155,7 +155,7 @@ impl PlainPaste {
         &self.text
     }
     /// 认证屏障拒绝未归属普通输入时显式擦除；正常终端文本不承担秘密容器析构成本。
-    #[cfg(any(test, target_os = "macos", all(feature = "sftp-preview", unix)))]
+    #[cfg(any(test, target_os = "macos", feature = "sftp-preview"))]
     pub(crate) fn clear(&mut self) {
         for byte in unsafe { self.text.as_bytes_mut() } {
             unsafe { std::ptr::write_volatile(byte, 0) };

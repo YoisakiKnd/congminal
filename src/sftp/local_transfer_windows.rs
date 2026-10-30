@@ -177,15 +177,31 @@ pub struct Source {
     stamp: Stamp,
     _memory: Lease,
 }
+pub enum Inspection {
+    File(Stamp),
+    Directory,
+}
 impl Source {
     pub fn inspect(path: &LocalPath, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Stamp, Error> {
+        match Self::inspect_selection(path, pool, cancel)? {
+            Inspection::File(stamp) => Ok(stamp),
+            Inspection::Directory => Err(Error::FileType),
+        }
+    }
+    pub fn inspect_selection(path: &LocalPath, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Inspection, Error> {
         check(cancel)?;
         if !path.uses(pool) {
             return Err(Error::WrongPool);
         }
         let _work = pool.lease(Kind::Sftp, WORK).map_err(|_| Error::Budget)?;
-        let mut file = Some(private::open_existing(path.path(), 0x80, 3, false)?);
-        let result = Stamp::of(file.as_ref().unwrap(), false).and_then(|stamp| check(cancel).map(|_| stamp));
+        let mut file = Some(private::open_existing(path.path(), 0x80, 3, true)?);
+        let result = (|| -> Result<Inspection, Error> {
+            let handle = file.as_ref().unwrap();
+            let directory = handle.metadata()?.is_dir();
+            let stamp = Stamp::of(handle, directory)?;
+            check(cancel)?;
+            Ok(if directory { Inspection::Directory } else { Inspection::File(stamp) })
+        })();
         if !closed(&mut file) {
             return Err(Error::Cleanup);
         }

@@ -36,7 +36,7 @@ const CLEANUP_CONFIRM: Duration = Duration::from_secs(10);
 /// 回传会覆盖远端原文件，同样按第二次点击确认。
 const RETURN_CONFIRM: Duration = CLEANUP_CONFIRM;
 
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(test, unix))]
 mod tests {
     use super::super::tests::{close, paths, preview, released, until, workspace};
     use super::*;
@@ -506,17 +506,17 @@ impl State {
         self.tasks.visible
     }
     pub(in crate::workspace) fn transfer_input_active(&self) -> bool {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         {
             self.review.is_some() || self.preparation.is_some() || self.paths_form.is_some()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         {
             false
         }
     }
     pub(super) fn cancel_preparation(&mut self) -> bool {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         if let Some(p) = self.preparation.take() {
             self.service.cancel(p.ticket());
             return true;
@@ -529,11 +529,11 @@ impl State {
         self.tasks.hits = [None; HITS];
     }
     pub(in crate::workspace) fn review_active(&self) -> bool {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         {
             self.review.is_some()
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         {
             false
         }
@@ -593,7 +593,7 @@ impl Workspace {
     }
     pub(in crate::workspace) fn sftp_ui_deadline(&self) -> Option<Instant> {
         let state = self.sftp.as_ref()?;
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         if state.review.as_ref().is_some_and(|r| r.pending()) {
             return Some(Instant::now());
         }
@@ -913,7 +913,7 @@ impl Workspace {
                     }
                 }
                 Action::Retry => {
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
                     if let Some(ticket) = hit.ticket
                         && self.retry_remote_transfer(ticket).is_err()
                     {
@@ -936,7 +936,7 @@ impl Workspace {
                     }
                 }
                 Action::Details => {
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
                     if let Some(ticket) = hit.ticket
                         && self.open_transfer_report(ticket).is_err()
                     {

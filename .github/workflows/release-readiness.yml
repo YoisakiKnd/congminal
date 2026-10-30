@@ -28,15 +28,19 @@ jobs:
       - name: Format
         run: cargo fmt --check
       - name: Clippy
-        run: cargo clippy --all-targets --features ssh-auth-helper -- -D warnings
+        run: cargo clippy --all-targets --features sftp-preview -- -D warnings
       - name: Native private IPC and secret lifecycle
         run: |
-          cargo test --features ssh-auth-helper ssh::auth:: -- --test-threads=1
+          cargo test --features sftp-preview ssh::auth:: -- --test-threads=1
       - name: Native Windows local file ownership
         if: runner.os == 'Windows'
         run: |
-          cargo test --features ssh-auth-helper sftp::local_transfer::tests:: -- --test-threads=1
+          cargo test --features sftp-preview sftp::local_transfer::tests:: -- --test-threads=1
+          cargo test --features sftp-preview sftp::service::windows_tests:: -- --test-threads=1
+          cargo test --features sftp-preview sftp::local_plan::windows_tests:: -- --test-threads=1
       - name: Native ownership rejection before process launch
-        run: cargo test --features ssh-auth-helper source_generation_is_checked_before_process_launch -- --test-threads=1
-      - name: Build bundled helper
-        run: cargo build --release --features ssh-auth-helper --bin congminal-ssh-helper
+        run: cargo test --features sftp-preview source_generation_is_checked_before_process_launch -- --test-threads=1
+      - name: Full native unit suite
+        run: cargo test --features sftp-preview -- --test-threads=1
+      - name: Build application and bundled helper
+        run: cargo build --release --features sftp-preview

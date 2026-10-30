@@ -3,9 +3,9 @@
 pub(crate) use super::client::Source;
 pub use super::executor::{Cleanup, Error as TaskError, Shutdown, Stats, Ticket};
 pub(crate) use super::model::{FileKind, RemotePath as PathValue};
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(crate) use super::transfer::CommitEvent;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub use super::transfer_state::Failure as TransferFailure;
 pub use super::transfer_state::{
     Direction as TransferDirection, End as TransferEnd, Phase as TransferPhase, Publication as TransferPublication,
@@ -19,14 +19,14 @@ use super::{
     operations,
     transfer_state::Snapshot,
 };
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 use super::{
     local_transfer::{self, Download, LocalPath, Source as LocalSource},
     plan, transfer,
     transfer_state::{self, Direction, Progress},
     wire::{Expected, PathOp, Request as WireRequest, Response},
 };
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 pub use super::{
     local_transfer::{Replace, Stamp as LocalStamp},
     transfer::Version,
@@ -62,6 +62,28 @@ pub enum Failure {
     Local,
     Changed,
 }
+/// 本地 DTO 在 Windows 只接受可无损显示的 UTF-8 路径；不使用 lossy 回退或不安全解码。
+pub(crate) fn local_bytes(path: &Path) -> Result<&[u8], Failure> {
+    #[cfg(unix)]
+    {
+        Ok(path.as_os_str().as_encoded_bytes())
+    }
+    #[cfg(windows)]
+    {
+        path.to_str().map(str::as_bytes).ok_or(Failure::Invalid)
+    }
+}
+pub(crate) fn local_path(bytes: &[u8]) -> Result<&Path, Failure> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Ok(Path::new(std::ffi::OsStr::from_bytes(bytes)))
+    }
+    #[cfg(windows)]
+    {
+        std::str::from_utf8(bytes).map(Path::new).map_err(|_| Failure::Invalid)
+    }
+}
 pub enum Output {
     Directory(Listing),
     /// 目录批量传输的影响范围预览。
@@ -72,11 +94,12 @@ pub enum Output {
         state: Snapshot,
         failure: Option<Failure>,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     LocalSource(LocalStamp),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    LocalSourceDirectory,
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     RemoteVersion(Version),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     LocalDirectory(crate::local_directory::Listing),
 }
 impl Output {
@@ -149,25 +172,26 @@ pub struct Paths<'a> {
     pub helper: &'a Path,
     pub temporary: &'a Path,
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+pub(crate) const TEMPORARY_LIMIT: usize = if cfg!(windows) { 3900 } else { 79 };
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 pub enum TransferSelection<'a> {
     Upload { local: &'a Path, remote: &'a [u8], length: u64, replace: Replace, resume: Option<&'a [u8]> },
     UploadChecked { local: &'a Path, remote: &'a [u8], stamp: LocalStamp, replace: Replace, resume: Option<&'a [u8]> },
     Download { remote: &'a [u8], local: &'a Path, version: Version, replace: Replace },
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 pub struct TransferTask {
     pub ticket: Ticket,
     pub authentication: Authentication,
     pub status: Status,
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[derive(Clone)]
 enum TransferKind {
     Upload { length: u64, replace: bool, expected: Option<LocalStamp>, resume: Option<RemotePath> },
     Download { version: Version, replace: Replace },
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 struct FileRequest {
     local: LocalPath,
     remote: RemotePath,
@@ -183,16 +207,19 @@ enum Action {
     Plan {
         path: RemotePath,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     Transfer(FileRequest),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    InspectLocal(LocalPath),
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
+    InspectLocal {
+        path: LocalPath,
+        directory: bool,
+    },
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     LocalDirectory {
         path: RemotePath,
         hidden: bool,
     },
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     InspectRemote {
         path: RemotePath,
         selected: model::Attributes,
@@ -238,12 +265,15 @@ pub struct Service {
 // 每工作器3MiB目录扫描+1MiB最大包+256KiB管道及256KiB身份/协议/文件余量。
 // 输入分类单独受限，不能占用这9MiB；实际IO/旧结果仍受整个16MiB硬准入约束。
 const IO_HEADROOM: usize = executor::ACTIVE * (3 * 1024 * 1024 + super::wire::PACKET_LIMIT + 512 * 1024);
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(test, unix))]
 #[path = "service_prepare_tests.rs"]
 mod prepare_tests;
+#[cfg(all(test, windows))]
+#[path = "service_windows_tests.rs"]
+mod windows_tests;
 impl Service {
     /// 共享原工作池；界面只捕获路径，不启动认证或额外目录线程。
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[allow(clippy::too_many_arguments)]
     pub fn local_directory(
         &self,
@@ -256,11 +286,10 @@ impl Service {
     ) -> Result<Ticket, Failure> {
         self.validate(owner, paths, Duration::from_secs(10))?;
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
-        use std::os::unix::ffi::OsStrExt;
         if !path.is_absolute() {
             return Err(Failure::Invalid);
         }
-        let path = RemotePath::new(self.budget(), path.as_os_str().as_bytes()).map_err(model_failure)?;
+        let path = RemotePath::new(self.budget(), local_bytes(path)?).map_err(model_failure)?;
         let (ticket, publication) = self.submit(
             owner,
             profiles,
@@ -273,7 +302,7 @@ impl Service {
         Ok(ticket)
     }
     /// 排队前只复制路径/已知属性；工作器独立认证后执行LSTAT，不读数据或创建目标。
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[allow(clippy::too_many_arguments)]
     pub fn inspect_remote(
         &self,
@@ -299,7 +328,7 @@ impl Service {
         self.submit(owner, profiles, profile, paths, Action::InspectRemote { path, selected }, Duration::from_secs(10))
     }
     /// 只捕获路径；lstat在同一有界工作池，不打开数据文件、不创建认证或SSH。
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[allow(clippy::too_many_arguments)]
     pub fn inspect_local(
         &self,
@@ -309,11 +338,29 @@ impl Service {
         paths: Paths<'_>,
         local: &Path,
     ) -> Result<Ticket, Failure> {
+        self.inspect_local_selection(owner, profiles, profile, paths, local, false)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn inspect_local_selection(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        local: &Path,
+        directory: bool,
+    ) -> Result<Ticket, Failure> {
         self.validate(owner, paths, Duration::from_secs(10))?;
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
         let local = LocalPath::new(local, self.budget()).map_err(local_failure)?;
-        let (ticket, publication) =
-            self.submit(owner, profiles, profile, paths, Action::InspectLocal(local), Duration::from_secs(10))?;
+        let (ticket, publication) = self.submit(
+            owner,
+            profiles,
+            profile,
+            paths,
+            Action::InspectLocal { path: local, directory },
+            Duration::from_secs(10),
+        )?;
         // 此Action不发布Front；关闭空槽不会取消文件检查，取消始终使用Ticket。
         drop(publication);
         Ok(ticket)
@@ -496,7 +543,7 @@ impl Service {
             || !paths.helper.is_absolute()
             || !paths.temporary.is_absolute()
             || paths.helper.as_os_str().len() > 4096
-            || paths.temporary.as_os_str().len() >= 79
+            || paths.temporary.as_os_str().len() >= TEMPORARY_LIMIT
             || paths.helper.as_os_str().as_encoded_bytes().contains(&0)
             || paths.temporary.as_os_str().as_encoded_bytes().contains(&0)
             || matches!(paths.configuration, Config::File(p) if p.as_os_str().len() > 4096 || p.as_os_str().as_encoded_bytes().contains(&0))
@@ -514,7 +561,7 @@ impl Service {
         }
         Ok(())
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[allow(clippy::too_many_arguments)]
     pub fn transfer(
         &self,
@@ -553,7 +600,7 @@ impl Service {
         Ok((ticket, authentication))
     }
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn prepare_file(
     pool: &Arc<Budget>,
     owner: Owner,
@@ -608,11 +655,12 @@ fn prepare_file(
         (TransferKind::Upload { length, replace, expected, .. }, Some(path)) => {
             let path = RemotePath::new(pool, path).map_err(model_failure)?;
             let name = path.bytes().rsplit(|b| *b == b'/').next().unwrap_or(b"");
-            let parent = |p: &RemotePath| p.parent().ok().flatten().map(|p| p.bytes().to_vec());
+            let resume_parent = path.bytes().iter().rposition(|&b| b == b'/').map(|at| &path.bytes()[..at]);
             if name.len() > 48
                 || !name.starts_with(b".congminal-")
                 || !name.ends_with(b".part")
-                || parent(&path) != parent(&remote)
+                || path.bytes() == remote.bytes()
+                || resume_parent != Some(&remote.bytes()[..parent])
             {
                 return Err(Failure::Invalid);
             }
@@ -693,7 +741,7 @@ fn model_failure(error: model::Error) -> Failure {
         _ => Failure::Invalid,
     }
 }
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(test, unix))]
 #[path = "service_cost.rs"]
 mod cost;
 fn operation_failure(error: operations::Error) -> Failure {
@@ -767,7 +815,7 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
     let memory = match pool.lease(Kind::Sftp, std::mem::size_of::<Reply>() + 128) {
         Ok(memory) => memory,
         Err(_) => {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             if let Action::Transfer(file) = &request.action
                 && file.progress.finish(Some(transfer_state::Failure::Budget), Cleanup::Confirmed).is_err()
             {
@@ -776,30 +824,33 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
             return Outcome { result: Err(executor::Error::Budget), cleanup: Cleanup::Confirmed };
         }
     };
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     if let Action::LocalDirectory { path, hidden } = &request.action {
-        use std::os::unix::ffi::OsStrExt;
-        let result = crate::local_directory::read_path(
-            request.source.session,
-            Path::new(std::ffi::OsStr::from_bytes(path.bytes())),
-            *hidden,
-            pool,
-            cancel,
-        )
-        .map(Output::LocalDirectory)
-        .map_err(|e| match e {
-            crate::local_directory::Error::Budget => Failure::Budget,
-            crate::local_directory::Error::Cancelled => Failure::Cancelled,
-            _ => Failure::Local,
+        let result = local_path(path.bytes()).and_then(|path| {
+            crate::local_directory::read_path(request.source.session, path, *hidden, pool, cancel)
+                .map(Output::LocalDirectory)
+                .map_err(|e| match e {
+                    crate::local_directory::Error::Budget => Failure::Budget,
+                    crate::local_directory::Error::Cancelled => Failure::Cancelled,
+                    _ => Failure::Local,
+                })
         });
         return completed(if cancel.is_cancelled() { Err(Failure::Cancelled) } else { result }, memory);
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    if let Action::InspectLocal(path) = &request.action {
-        let result = LocalSource::inspect(path, pool, cancel).map(Output::LocalSource).map_err(local_failure);
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
+    if let Action::InspectLocal { path, directory } = &request.action {
+        let result = if *directory {
+            LocalSource::inspect_selection(path, pool, cancel).map(|kind| match kind {
+                local_transfer::Inspection::File(stamp) => Output::LocalSource(stamp),
+                local_transfer::Inspection::Directory => Output::LocalSourceDirectory,
+            })
+        } else {
+            LocalSource::inspect(path, pool, cancel).map(Output::LocalSource)
+        }
+        .map_err(local_failure);
         return completed(if cancel.is_cancelled() { Err(Failure::Cancelled) } else { result }, memory);
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     if let Action::Transfer(file) = &request.action {
         if file.progress.begin().is_err() {
             return Outcome { result: Err(executor::Error::Panicked), cleanup: Cleanup::Unknown };
@@ -833,7 +884,7 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
             let mut walker = plan::Walker { channel: &mut channel, cancel };
             plan::walk(&mut walker, path, cancel).map(Output::Plan).map_err(operation_failure)
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         Action::InspectRemote { path, selected } => operations::attributes(&mut channel, path.bytes(), cancel)
             .map_err(operation_failure)
             .and_then(|attrs| checked_remote_version(*selected, attrs))
@@ -858,7 +909,7 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
         Action::Remove { path, directory } => operations::remove(&mut channel, path.bytes(), *directory, cancel)
             .map(|()| Output::Changed)
             .map_err(operation_failure),
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         _ => unreachable!(),
     };
     if channel.into_transport().finish().is_err() {
@@ -867,7 +918,7 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
     // 只读任务自行解释结束时取消；上传/下载不能套用此覆盖。
     completed(if cancel.is_cancelled() { Err(Failure::Cancelled) } else { result }, memory)
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn checked_remote_version(selected: model::Attributes, attrs: model::Attributes) -> Result<Version, Failure> {
     if attrs.permissions.is_none_or(|p| p & 0o170000 != 0o100000) {
         return Err(Failure::Invalid);
@@ -880,7 +931,7 @@ fn checked_remote_version(selected: model::Attributes, attrs: model::Attributes)
     }
     Ok(version)
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn local_failure(error: local_transfer::Error) -> Failure {
     match error {
         local_transfer::Error::Budget => Failure::Budget,
@@ -890,7 +941,7 @@ fn local_failure(error: local_transfer::Error) -> Failure {
         _ => Failure::Local,
     }
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn transferred(
     file: &FileRequest,
     result: Result<(), Failure>,
@@ -916,7 +967,7 @@ fn transferred(
     }
     completed(Ok(Output::Transfer { state: file.progress.snapshot(), failure }), memory)
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn temporary(remote: &RemotePath) -> Result<RemotePath, Failure> {
     let random = auth::wire::Capability::generate().map_err(|_| Failure::Local)?;
     let mut name = [0u8; 48];
@@ -928,7 +979,7 @@ fn temporary(remote: &RemotePath) -> Result<RemotePath, Failure> {
     name[43..].copy_from_slice(b".part");
     remote.parent().map_err(model_failure)?.ok_or(Failure::Invalid)?.child(&name).map_err(model_failure)
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn upload_file(
     mut channel: client::Channel<Authenticated>,
     file: &FileRequest,
@@ -1004,7 +1055,7 @@ fn upload_file(
     }
     transferred(file, result, cleanup, memory)
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn remote_version(
     channel: &mut client::Channel<Authenticated>,
     path: &[u8],
@@ -1026,7 +1077,7 @@ fn remote_version(
         _ => Err(Failure::Protocol),
     }
 }
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 fn download_file(
     mut channel: client::Channel<Authenticated>,
     file: &FileRequest,
@@ -1079,7 +1130,7 @@ fn download_file(
     transferred(file, result, cleanup, memory)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::time::Instant;
@@ -1260,7 +1311,7 @@ mod tests {
         drop(back);
         assert_eq!(pool.snapshot().used, 0);
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     fn transfer_admission_is_metadata_only_and_failed_connection_keeps_funded_report() {
         let parent = Budget::new(32 * 1024 * 1024, 0);
@@ -1349,7 +1400,7 @@ mod tests {
         drop(task.status);
         assert_eq!(parent.snapshot().used, 0);
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     fn directory_upload_and_download_share_one_queue_and_cancelled_waiters_never_start() {
         let parent = Budget::new(32 * 1024 * 1024, 0);
@@ -1423,7 +1474,7 @@ mod tests {
         drop(tasks);
         assert_eq!(parent.snapshot().used, 0);
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     fn queued_input_quota_preserves_full_io_headroom_and_small_submission_under_io_pressure() {
         use std::{
@@ -1618,7 +1669,7 @@ mod tests {
         );
         eprintln!("SFTP_SERVICE_RESULT scenario={scenario} requests={requests} peak={peak} final=0 cleanup=ok");
     }
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[test]
     #[ignore = "真实Service流式上传/下载及故障；仅tools/check_auth_parent.py生成的隔离回环环境"]
     fn isolated_executor_transfers_files_with_publication_reports_and_confirmed_shutdown() {

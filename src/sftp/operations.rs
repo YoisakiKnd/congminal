@@ -76,7 +76,6 @@ pub fn attributes<I: Read + Write>(
 }
 /// 远端建目录；只在服务端确认后返回，失败使独立通道失效。
 /// 写操作目前只由 Unix 服务层与 Unix 互操作测试调用，避免其他平台出现死代码。
-#[cfg(unix)]
 pub fn mkdir<I: Read + Write>(channel: &mut Channel<I>, path: &[u8], cancel: &Cancellation) -> Result<(), Error> {
     status(channel, cancel, |id| Request::Mkdir { id, path, attrs: super::wire::Attributes::default() })
 }
@@ -85,7 +84,6 @@ pub fn mkdir<I: Read + Write>(channel: &mut Channel<I>, path: &[u8], cancel: &Ca
 /// 不能直接用 `status()`：它在任何失败后都会 `abort()` 通道，而这里要把
 /// 「已存在」当成正常结果继续用同一条通道。4 = SSH_FX_FAILURE（OpenSSH 对已存在
 /// 目录的回复），11 = SSH_FX_FILE_ALREADY_EXISTS。其余状态码照常让通道失效。
-#[cfg(unix)]
 fn mkdir_if_missing<I: Read + Write>(
     channel: &mut Channel<I>,
     path: &[u8],
@@ -108,7 +106,6 @@ fn mkdir_if_missing<I: Read + Write>(
     result
 }
 /// 按顺序建一串目录（上传目录时用），已存在的目录跳过。
-#[cfg(unix)]
 pub fn mkdir_all<I: Read + Write>(
     channel: &mut Channel<I>,
     paths: &[Vec<u8>],
@@ -120,7 +117,6 @@ pub fn mkdir_all<I: Read + Write>(
 ///
 /// 和 `mkdir_if_missing` 一样不能直接用 `status()`：它在任何失败后都会 `abort()`
 /// 通道，而这里要把 2 = SSH_FX_NO_SUCH_FILE 当成正常结果继续用同一条通道。
-#[cfg(unix)]
 fn remove_if_present<I: Read + Write>(
     channel: &mut Channel<I>,
     path: &[u8],
@@ -141,7 +137,6 @@ fn remove_if_present<I: Read + Write>(
     result
 }
 /// 递归删除一棵子树：先删文件，再按给定顺序删目录（调用方要按深度从深到浅给出）。
-#[cfg(unix)]
 pub fn remove_all<I: Read + Write>(
     channel: &mut Channel<I>,
     files: &[Vec<u8>],
@@ -154,7 +149,6 @@ pub fn remove_all<I: Read + Write>(
         .and_then(|()| dirs.iter().try_for_each(|path| remove_if_present(channel, path, true, cancel)))
 }
 /// 不替换既有目标：v3 的 RENAME 在目标存在时由服务端拒绝，覆盖需显式删除。
-#[cfg(unix)]
 pub fn rename<I: Read + Write>(
     channel: &mut Channel<I>,
     from: &[u8],
@@ -164,7 +158,6 @@ pub fn rename<I: Read + Write>(
     status(channel, cancel, |id| Request::Rename { id, old: from, new: to, replace: false })
 }
 /// 按类型选择删除文件或空目录；非空目录由服务端拒绝，不做递归。
-#[cfg(unix)]
 pub fn remove<I: Read + Write>(
     channel: &mut Channel<I>,
     path: &[u8],
@@ -174,7 +167,6 @@ pub fn remove<I: Read + Write>(
     let op = if directory { PathOp::Rmdir } else { PathOp::Remove };
     status(channel, cancel, |id| Request::Path { id, op, path })
 }
-#[cfg(unix)]
 fn status<'a, I: Read + Write>(
     channel: &mut Channel<I>,
     cancel: &Cancellation,

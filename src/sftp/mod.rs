@@ -7,7 +7,6 @@ mod connect;
 mod executor;
 #[cfg(all(test, feature = "sftp-libssh2"))]
 mod files;
-#[cfg(unix)]
 pub(crate) mod local_plan;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod local_transfer;
@@ -21,11 +20,9 @@ mod native;
 mod native_wait;
 mod openssh;
 mod operations;
-#[cfg(unix)]
 pub(crate) mod plan;
 #[cfg(all(test, feature = "sftp-libssh2"))]
 mod secret;
-#[cfg(unix)]
 pub(crate) mod service;
 mod transfer;
 mod transfer_state;

@@ -1,6 +1,7 @@
 //! 本地上传源选择；复用 Service 工作池，原名字节不经 UTF-8 往返。
 use super::*;
 use crate::local_directory::{FileKind as LocalKind, Listing};
+#[cfg(all(test, unix))]
 use std::os::unix::ffi::OsStrExt;
 const HITS: usize = 36;
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -57,20 +58,23 @@ impl Workspace {
                 return Err(Failure::Invalid);
             }
             let _scope = SftpInputScope::enter(state.service.budget().clone()).map_err(|_| Failure::Budget)?;
-            let source = f
-                .local_source
-                .as_ref()
-                .map_or_else(|| Path::new(&f.fields[0].text), |p| Path::new(std::ffi::OsStr::from_bytes(p.bytes())));
+            let source = match &f.local_source {
+                Some(path) => service::local_path(path.bytes())?,
+                None => Path::new(&f.fields[0].text),
+            };
+            let root = state.options.temporary.ancestors().last().ok_or(Failure::Invalid)?;
             let directory = if source.is_absolute() {
-                if source.as_os_str().as_bytes().ends_with(b"/") {
+                if source.as_os_str().as_encoded_bytes().ends_with(b"/")
+                    || (cfg!(windows) && source.as_os_str().as_encoded_bytes().ends_with(b"\\"))
+                {
                     source
                 } else {
-                    source.parent().unwrap_or(Path::new("/"))
+                    source.parent().unwrap_or(root)
                 }
             } else {
-                Path::new("/")
+                root
             };
-            let path = PathValue::new(state.service.budget(), directory.as_os_str().as_bytes())
+            let path = PathValue::new(state.service.budget(), directory.as_os_str().as_encoded_bytes())
                 .map_err(|_| Failure::Budget)?;
             let ticket = state.service.local_directory(
                 f.binding.owner,
@@ -145,7 +149,7 @@ impl Workspace {
                         let path = (|| {
                             let _scope =
                                 SftpInputScope::enter(state.service.budget().clone()).map_err(|_| Failure::Budget)?;
-                            PathValue::new(state.service.budget(), l.path.as_os_str().as_bytes())
+                            PathValue::new(state.service.budget(), l.path.as_os_str().as_encoded_bytes())
                                 .map_err(|_| Failure::Budget)
                         })();
                         match path {
@@ -187,7 +191,7 @@ impl Workspace {
                     .and_then(|i| p.listing()?.entries.get(i))
                     .filter(|e| e.kind == LocalKind::File)
                     .ok_or(Failure::Invalid)?;
-                let source = p.directory.child(entry.name.as_bytes()).map_err(|_| Failure::Budget)?;
+                let source = p.directory.child(entry.name.as_encoded_bytes()).map_err(|_| Failure::Budget)?;
                 f.local_source = Some(source);
                 let p = f.picker.take().unwrap();
                 state.service.cancel(p.ticket);
@@ -200,12 +204,18 @@ impl Workspace {
                 return Ok(());
             }
             let target = match action {
-                Action::Up => p.directory.parent().map_err(|_| Failure::Invalid)?,
+                Action::Up => service::local_path(p.directory.bytes())?
+                    .parent()
+                    .map(|parent| {
+                        PathValue::new(state.service.budget(), parent.as_os_str().as_encoded_bytes())
+                            .map_err(|_| Failure::Budget)
+                    })
+                    .transpose()?,
                 Action::Refresh | Action::Hidden => Some(p.directory.clone()),
                 Action::Row(i) => {
                     let entry = p.listing().and_then(|l| l.entries.get(i)).ok_or(Failure::Invalid)?;
                     if entry.kind == LocalKind::Directory {
-                        Some(p.directory.child(entry.name.as_bytes()).map_err(|_| Failure::Budget)?)
+                        Some(p.directory.child(entry.name.as_encoded_bytes()).map_err(|_| Failure::Budget)?)
                     } else {
                         p.selected = Some(i);
                         p.invalidate();
@@ -221,7 +231,7 @@ impl Workspace {
                 f.binding.profiles.clone(),
                 f.binding.profile,
                 state.options.paths(),
-                Path::new(std::ffi::OsStr::from_bytes(path.bytes())),
+                service::local_path(path.bytes())?,
                 hidden,
             )?;
             state.service.cancel(p.ticket);
@@ -419,7 +429,7 @@ impl Workspace {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(in crate::workspace) mod tests {
     use super::super::super::tests::{close, paths, released, until, workspace};
     use super::*;
@@ -596,7 +606,7 @@ pub(in crate::workspace) mod tests {
         assert!(app.sftp.as_ref().unwrap().paths_form.as_ref().unwrap().picker.is_some());
         choose(&mut app, name);
         let f = app.sftp.as_ref().unwrap().paths_form.as_ref().unwrap();
-        assert_eq!(f.local_source.as_ref().unwrap().bytes(), source.as_os_str().as_bytes());
+        assert_eq!(f.local_source.as_ref().unwrap().bytes(), source.as_os_str().as_encoded_bytes());
         assert!(f.picker.is_none() && !f.editable(0));
         assert!(!old.same_source(&app.protected_context().unwrap()));
         assert!(app.sftp.as_ref().unwrap().files.iter().all(Option::is_none));
@@ -669,7 +679,7 @@ pub(in crate::workspace) mod tests {
         assert!(super::super::super::review::tests::overwrite_is_off(&app));
         super::super::super::review::tests::confirm(&mut app, false);
         let file = app.sftp.as_ref().unwrap().files.iter().flatten().next().unwrap();
-        assert_eq!(file.status.from().bytes(), source.as_os_str().as_bytes());
+        assert_eq!(file.status.from().bytes(), source.as_os_str().as_encoded_bytes());
         assert_eq!(file.status.snapshot().length, 7);
         close(&mut app);
         drop(app);

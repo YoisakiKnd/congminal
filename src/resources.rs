@@ -7,7 +7,7 @@ use crate::{
     session::Session,
     tasks::TaskStats,
 };
-#[cfg(all(any(test, feature = "sftp-preview"), unix))]
+#[cfg(any(test, feature = "sftp-preview"))]
 pub(crate) use budget::SftpInputScope;
 pub(crate) use budget::configuration;
 pub use budget::{Budget, Denied, Kind, Lease, Scope, current, initialize};

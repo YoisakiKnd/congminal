@@ -3,7 +3,6 @@ use super::*;
 use crate::{resources::SftpInputScope, ssh::auth::Identity};
 use std::{
     fmt::Write,
-    os::unix::ffi::OsStrExt,
     sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -247,7 +246,7 @@ impl Workspace {
             | service::TransferSelection::UploadChecked { local, remote, .. } => (*local, *remote, true),
             service::TransferSelection::Download { local, remote, .. } => (*local, *remote, false),
         };
-        let raw = local.as_os_str().as_bytes();
+        let raw = local.as_os_str().as_encoded_bytes();
         let slash = remote.iter().rposition(|b| *b == b'/').ok_or(Failure::Invalid)?;
         let name = &remote[slash + 1..];
         if !local.is_absolute()
@@ -264,21 +263,21 @@ impl Workspace {
         }
         let payload = match selection {
             service::TransferSelection::Upload { local, remote, length, resume, .. } => Payload::Upload {
-                local: path_value(state.service.budget(), local.as_os_str().as_bytes())?,
+                local: path_value(state.service.budget(), local.as_os_str().as_encoded_bytes())?,
                 remote: path_value(state.service.budget(), remote)?,
                 length,
                 expected: None,
                 resume: resume.map(|path| path_value(state.service.budget(), path)).transpose()?,
             },
             service::TransferSelection::UploadChecked { local, remote, stamp, resume, .. } => Payload::Upload {
-                local: path_value(state.service.budget(), local.as_os_str().as_bytes())?,
+                local: path_value(state.service.budget(), local.as_os_str().as_encoded_bytes())?,
                 remote: path_value(state.service.budget(), remote)?,
                 length: stamp.length,
                 expected: Some(stamp),
                 resume: resume.map(|path| path_value(state.service.budget(), path)).transpose()?,
             },
             service::TransferSelection::Download { local, remote, version, .. } => Payload::Download {
-                local: path_value(state.service.budget(), local.as_os_str().as_bytes())?,
+                local: path_value(state.service.budget(), local.as_os_str().as_encoded_bytes())?,
                 remote: path_value(state.service.budget(), remote)?,
                 version,
             },
@@ -417,30 +416,42 @@ impl Workspace {
                 }
                 let r = self.sftp.as_mut().unwrap().review.take().unwrap();
                 let replace = if r.overwrite { service::Replace::ExplicitlyApproved } else { service::Replace::No };
-                let selection = match &r.payload {
-                    Payload::Upload { local, remote, expected: Some(stamp), resume, .. } => {
-                        Some(service::TransferSelection::UploadChecked {
-                            local: Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
+                let selection = (|| -> Result<_, Failure> {
+                    Ok(match &r.payload {
+                        Payload::Upload { local, remote, expected: Some(stamp), resume, .. } => {
+                            Some(service::TransferSelection::UploadChecked {
+                                local: service::local_path(local.bytes())?,
+                                remote: remote.bytes(),
+                                stamp: *stamp,
+                                replace,
+                                resume: resume.as_ref().map(|path| path.bytes()),
+                            })
+                        }
+                        Payload::Upload { local, remote, length, resume, .. } => {
+                            Some(service::TransferSelection::Upload {
+                                local: service::local_path(local.bytes())?,
+                                remote: remote.bytes(),
+                                length: *length,
+                                replace,
+                                resume: resume.as_ref().map(|path| path.bytes()),
+                            })
+                        }
+                        Payload::Download { local, remote, version } => Some(service::TransferSelection::Download {
+                            local: service::local_path(local.bytes())?,
                             remote: remote.bytes(),
-                            stamp: *stamp,
+                            version: *version,
                             replace,
-                            resume: resume.as_ref().map(|path| path.bytes()),
-                        })
+                        }),
+                        Payload::Report { .. } => None,
+                    })
+                })();
+                let selection = match selection {
+                    Ok(selection) => selection,
+                    Err(_) => {
+                        self.sftp.as_mut().unwrap().review = Some(r);
+                        self.notice("本地路径无法无损解析，传输未开始");
+                        return;
                     }
-                    Payload::Upload { local, remote, length, resume, .. } => Some(service::TransferSelection::Upload {
-                        local: Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
-                        remote: remote.bytes(),
-                        length: *length,
-                        replace,
-                        resume: resume.as_ref().map(|path| path.bytes()),
-                    }),
-                    Payload::Download { local, remote, version } => Some(service::TransferSelection::Download {
-                        local: Path::new(std::ffi::OsStr::from_bytes(local.bytes())),
-                        remote: remote.bytes(),
-                        version: *version,
-                        replace,
-                    }),
-                    Payload::Report { .. } => None,
                 };
                 if let Some(selection) = selection {
                     match self.submit_remote_transfer(selection) {
@@ -539,7 +550,7 @@ impl Workspace {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 pub(super) mod tests {
     use super::super::tests::{close, paths, released, until, workspace};
     use super::*;

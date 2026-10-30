@@ -255,7 +255,7 @@ impl Workspace {
                     if self.index(ticket.source.session).is_some() {
                         self.select(ticket.source.session);
                     }
-                    #[cfg(any(target_os = "macos", target_os = "linux"))]
+                    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
                     if self.open_transfer_report(ticket).is_err() {
                         self.notice("已定位可用的原会话；传输记录已清除或详情暂不可用");
                     }
@@ -267,7 +267,7 @@ impl Workspace {
     }
 }
 
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(test, unix))]
 pub(super) mod tests {
     use super::super::tests::{close, paths, released, until, workspace};
     use super::*;

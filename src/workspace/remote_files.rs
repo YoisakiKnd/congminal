@@ -31,16 +31,16 @@ const CONFIRM_LABELS: [[&str; 2]; 3] = [["[删除]", "[取消]"], ["删除", "�
 mod entry;
 #[cfg(feature = "sftp-preview")]
 pub(super) use entry::Entry;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[path = "remote_batch.rs"]
 mod batch;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[path = "transfer_paths.rs"]
 mod paths_form;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[path = "transfer_prepare.rs"]
 mod preparation;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[path = "transfer_review.rs"]
 mod review;
 #[path = "transfer_exit.rs"]
@@ -49,12 +49,12 @@ mod transfer_exit;
 mod transfer_list;
 #[path = "transfer_notifications.rs"]
 mod transfer_notifications;
-#[cfg(all(test, any(target_os = "macos", target_os = "linux")))]
+#[cfg(all(test, unix))]
 #[path = "remote_transfer_tests.rs"]
 mod transfer_tests;
 #[path = "remote_transfers.rs"]
 mod transfers;
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[path = "remote_upload.rs"]
 mod upload;
 #[derive(Clone)]
@@ -95,7 +95,7 @@ impl Options {
         if !paths.helper.is_absolute()
             || !paths.temporary.is_absolute()
             || paths.helper.as_os_str().len() > 4096
-            || paths.temporary.as_os_str().len() >= 79
+            || paths.temporary.as_os_str().len() >= service::TEMPORARY_LIMIT
             || [Some(paths.helper), Some(paths.temporary), file]
                 .into_iter()
                 .flatten()
@@ -384,11 +384,11 @@ pub(super) struct State {
     pending: [Option<Pending>; SLOTS],
     files: [Option<FileTask>; SLOTS],
     parked: [Option<Parked>; 2],
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     review: Option<review::Review>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     preparation: Option<preparation::Preparation>,
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     paths_form: Option<paths_form::Form>,
     tasks: transfer_list::List,
     notices: transfer_notifications::Ring,
@@ -444,11 +444,11 @@ impl State {
             pending: std::array::from_fn(|_| None),
             files: std::array::from_fn(|_| None),
             parked: std::array::from_fn(|_| None),
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             review: None,
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             preparation: None,
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             paths_form: None,
             tasks: transfer_list::List::default(),
             notices: transfer_notifications::Ring::default(),
@@ -620,7 +620,7 @@ impl Workspace {
     }
     /// 远程写操作失败进通知中心；取消与超时不走这里。
     /// 清理残留失败时给一句能读懂的原因：Failure 只有变体，没有自带文案。
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     fn cleanup_failure(failure: Failure) -> String {
         let reason = match failure {
             Failure::Remote(code) => return format!("清理残留失败：远端返回 {code}"),
@@ -655,18 +655,18 @@ impl Workspace {
     pub(super) fn sftp_tick(&mut self) {
         let Some(mut state) = self.sftp.take() else { return };
         if state.exiting {
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             if state.exit.inspecting() {
                 self.transfer_review_tick(&mut state);
             }
             self.sftp = Some(state);
             return;
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         self.transfer_review_tick(&mut state);
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         self.transfer_preparation_tick(&mut state);
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         self.transfer_paths_tick(&mut state);
         self.transfer_list_tick(&mut state);
         if state.attempted.as_ref().is_some_and(|(owner, _, _)| *owner != self.selected) {
@@ -700,13 +700,13 @@ impl Workspace {
         let mut refresh: Option<(PathValue, bool)> = None;
         for _ in 0..2 {
             let Some(completion) = state.service.take() else { break };
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             let Some(completion) = self.transfer_paths_result(&mut state, completion) else { continue };
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             let Some(completion) = self.transfer_preparation_result(&mut state, completion) else { continue };
             let Some(completion) = self.delete_plan_result(&mut state, completion) else { continue };
             let Some(completion) = self.plan_result(&mut state, completion) else { continue };
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             let Some(completion) = self.upload_mkdir_result(&mut state, completion) else { continue };
             let Some(completion) = self.remote_transfer_result(&mut state, completion) else { continue };
             if state.mutation.as_ref().is_some_and(|m| m.ticket == completion.ticket) {
@@ -814,7 +814,7 @@ impl Workspace {
             state.cancel_directories(self.authentication.as_ref().and_then(|a| a.task));
             self.cancel_remote_transfers(&mut state);
             state.cancel_preparation();
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             {
                 state.cancel_transfer_paths();
             }
@@ -861,7 +861,7 @@ impl Workspace {
             }
             if let Some((ticket, front)) = front {
                 state.invalidate_transfer_clicks();
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
+                #[cfg(any(target_os = "macos", target_os = "linux", windows))]
                 state.suspend_transfer_paths();
                 match self.open_authentication(front) {
                     Ok(()) => self.authentication.as_mut().unwrap().task = Some(ticket),
@@ -878,7 +878,7 @@ impl Workspace {
             state.error = Some(error);
             self.chrome_dirty = true;
         }
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         self.finish_transfer_preparation();
         // 只在进入新窗格/配置时自动尝试一次；失败后等待明确刷新，避免预算拒绝循环。
         if self.sftp_visible()
@@ -902,11 +902,11 @@ impl Workspace {
         }
     }
     fn remote_path_authentication(&mut self, state: &mut State) -> bool {
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         {
             self.transfer_preparation_authentication(state) || self.transfer_paths_authentication(state)
         }
-        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         {
             let _ = state;
             false
@@ -925,11 +925,11 @@ impl Workspace {
             state.exit.start();
             state.invalidate_transfer_clicks();
             state.cancel_preparation();
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             {
                 state.cancel_transfer_paths();
             }
-            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             {
                 state.review = None;
             }
@@ -1050,7 +1050,7 @@ impl Workspace {
                     self.show_transfer_list();
                     true
                 }
-                #[cfg(any(target_os = "macos", target_os = "linux"))]
+                #[cfg(any(target_os = "macos", target_os = "linux", windows))]
                 3 | 4 => {
                     if self.open_transfer_paths(column == 3).is_err() {
                         self.notice("请选择普通文件或有效目录；属性不全请刷新，额度不足时先清除已结束记录");
@@ -1825,7 +1825,7 @@ impl Workspace {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::resources::{Budget, Scope};
@@ -2600,7 +2600,7 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod real_connection {
     use super::*;
     use crate::platform::protected_input::{InputCommand, InputKind};
