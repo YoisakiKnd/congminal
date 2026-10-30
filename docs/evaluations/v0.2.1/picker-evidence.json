@@ -1,0 +1,30 @@
+{
+  "source_commit": "cb1b17f9b73f7a00dab5366b8de422c9e154367a",
+  "ci_run": 41053101155,
+  "windows_job": 124053770683,
+  "fixture_library": "ratatui-image 11.0.6",
+  "before": {
+    "ci_run": 41051737996,
+    "protocol": "Halfblocks",
+    "cell_width": 8,
+    "cell_height": 16
+  },
+  "after": [
+    {
+      "launch": "direct",
+      "wire_bytes": 88764,
+      "protocol": "Kitty",
+      "cell_width": 8,
+      "cell_height": 16,
+      "rgba_bytes_verified": 65536
+    },
+    {
+      "launch": "PowerShell 7",
+      "wire_bytes": 88882,
+      "protocol": "Kitty",
+      "cell_width": 8,
+      "cell_height": 16,
+      "rgba_bytes_verified": 65536
+    }
+  ]
+}

@@ -2,6 +2,10 @@
 
 用户在 v0.2.0 中运行 NakuruMusic 仍得到半块字符图案。这是实际兼容缺陷；v0.2.0 的低层协议测试不等于真实库自动探测验收。
 
+正式标签 `v0.2.1` 对应 `56190875f7fcf9b3538490af7c0926ad0675696f`；[最终发布 CI](https://github.com/YoisakiKnd/congminal/actions/runs/41053726078) 三平台、MSRV、真实图片库测试和发布作业全部通过。已下载三个正式安装包并核对哈希、来源提交、图标、许可证及 Windows ConPTY 成套文件，见 [资产核验](published-assets.json)。
+
+Scoop `8dbcdfb` 的 [实际安装验证](https://github.com/YoisakiKnd/scoop-bucket/actions/runs/41054619224) 通过；Homebrew `d1b414c` 的 [Apple 芯片/Intel 安装验证](https://github.com/YoisakiKnd/homebrew-tap/actions/runs/41054605784) 通过。两仓库均已同步到 v0.2.1。
+
 ## 复现与原因
 
 NakuruMusic 的顺序是 `Picker::from_query_stdio()`，然后才初始化 crossterm TUI。原生手写测试提前设置 `ENABLE_VIRTUAL_TERMINAL_INPUT`，实际库只关闭行输入、回显与控制字符处理，保留原有 VT 输入位。
@@ -13,6 +17,8 @@ NakuruMusic 的顺序是 `Picker::from_query_stdio()`，然后才初始化 cross
 ## 回归与资源范围
 
 [修复后原生回归](https://github.com/YoisakiKnd/congminal/actions/runs/41053101155) 使用真实 `ratatui-image 11.0.6`，调用自动探测、不强制协议或预设输入模式，再按应用顺序进入 crossterm，发送真实库编码的 128×128 图片。Windows 直接启动及 PowerShell 子进程均通过 Kitty 选择与所有 65536 个 RGBA 字节核对。macOS/Linux 使用相同库与实际 PTY 验证。夹具不访问播放服务或用户账号，因此不声称测试过 Nakuru 登录/播放全流程。
+
+Windows 修复前后的精简记录见 [picker-evidence.json](picker-evidence.json)：字体尺寸同为 8×16，协议从 `Halfblocks` 恢复为 `Kitty`；直接与 PowerShell 启动分别捕获 88764 B / 88882 B 输出，并逐字节验证完整 RGBA 数据。
 
 源码：`tools/fixtures/kitty-interop`；测试：`graphics::native_tests::real_picker_without_forced_console_modes`。图像库与 crossterm 只存在于独立测试工程，不进入 congminal 生产依赖。
 
