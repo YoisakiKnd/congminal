@@ -1,5 +1,5 @@
 //! 已验证目录句柄相对创建；已有目录不改 ACL，拒绝 reparse point 和额外写权限。
-use super::{Error, check, child, child_mode, closed, private};
+use super::{Error, check, child_mode, closed, private};
 use crate::tasks::Cancellation;
 use std::{
     fs::File,
@@ -46,10 +46,12 @@ pub(super) fn parent(root: &Path, destination: &Path, cancel: &Cancellation) -> 
             let Component::Normal(name) = component else {
                 return Err(Error::Invalid);
             };
-            let next = match child(current.as_ref().unwrap(), name, true, &descriptor) {
+            // 树目录只固定身份，不申请 DELETE：后续身份复核以相同 share=读/写重新打开。
+            // DELETE 仅由可删除的私有 staging 目录申请，否则会与该复核打开共享冲突。
+            let next = match child_mode(current.as_ref().unwrap(), name, true, Some(&descriptor), false) {
                 Ok(file) => file,
                 Err(Error::Io(io::ErrorKind::AlreadyExists)) => {
-                    child_mode(current.as_ref().unwrap(), name, true, None)?
+                    child_mode(current.as_ref().unwrap(), name, true, None, false)?
                 }
                 Err(error) => return Err(error),
             };

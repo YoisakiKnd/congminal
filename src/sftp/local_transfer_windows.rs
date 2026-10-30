@@ -313,13 +313,14 @@ fn native(status: i32) -> io::Result<()> {
     if status < 0 { Err(io::Error::from_raw_os_error(unsafe { RtlNtStatusToDosError(status) } as i32)) } else { Ok(()) }
 }
 fn child(parent: &File, name: &OsStr, directory: bool, descriptor: &private::Descriptor) -> Result<File, Error> {
-    child_mode(parent, name, directory, Some(descriptor))
+    child_mode(parent, name, directory, Some(descriptor), true)
 }
 fn child_mode(
     parent: &File,
     name: &OsStr,
     directory: bool,
     descriptor: Option<&private::Descriptor>,
+    delete: bool,
 ) -> Result<File, Error> {
     if !normal(name) {
         return Err(Error::Invalid);
@@ -344,7 +345,7 @@ fn child_mode(
     };
     let mut handle = null_mut();
     let mut status = IoStatus { status: 0, information: 0 };
-    let access = if directory { if descriptor.is_some() { 0x0013_00a0 } else { 0x0012_00a0 } } else { 0xc013_0000 }; // DELETE | READ_CONTROL | SYNCHRONIZE
+    let access = if directory { 0x0012_00a0 | if delete { 0x0001_0000 } else { 0 } } else { 0xc013_0000 }; // DELETE | READ_CONTROL | SYNCHRONIZE
     native(unsafe {
         NtCreateFile(
             &mut handle,

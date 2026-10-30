@@ -7,32 +7,43 @@ version=$(awk -F '"' '/^version = / {print $2; exit}' Cargo.toml)
 short_version=${version%%-*}
 build_version=${version##*.}
 arch=$(uname -m)
-preview=false
-case "${1:-}" in
-  '') ;;
-  --sftp-preview) preview=true ;;
-  *) echo '用法：bash ci/package-macos.sh [--sftp-preview]' >&2; exit 1 ;;
-esac
-flavor=''
+build=true
+for arg in "$@"; do
+  case "$arg" in
+    --universal) arch=universal ;;
+    --no-build) build=false ;;
+    --sftp-preview) ;; # 旧命令兼容：SFTP 已包含在默认正式构建。
+    *) echo '用法：bash ci/package-macos.sh [--universal] [--no-build]' >&2; exit 1 ;;
+  esac
+done
 bundle_id=dev.congminal.app
-release_notes=docs/releases/alpha.6.md
-if $preview; then
-  flavor=-sftp-preview
-  bundle_id=dev.congminal.preview
-  release_notes=docs/releases/sftp-preview.md
-fi
-name="congminal-${version}${flavor}-macos-${arch}"
+release_notes=docs/releases/v0.1.0.md
+name="congminal-${version}-macos-${arch}"
 root="$PWD/target/distributions/$name"
-app="$root/congminal${flavor}.app"
+app="$root/congminal.app"
 [[ ! -e "$root" ]] || { echo "产物目录已存在：$root" >&2; exit 1; }
-if $preview; then
-  cargo build --offline --release --features sftp-preview --bin congminal --bin congminal-ssh-helper
-else
-  cargo build --offline --release --bin congminal
+if $build; then
+  if [ "$arch" = universal ]; then
+    for target in aarch64-apple-darwin x86_64-apple-darwin; do
+      cargo build --offline --locked --release --target "$target" --bins
+    done
+    mkdir -p target/release
+    for bin in congminal congminal-ssh-helper; do
+      lipo -create -output "target/release/$bin" \
+        "target/aarch64-apple-darwin/release/$bin" "target/x86_64-apple-darwin/release/$bin"
+    done
+  else
+    cargo build --offline --locked --release --bins
+  fi
 fi
+for bin in congminal congminal-ssh-helper; do
+  [ -x "target/release/$bin" ] || { echo "缺少可执行文件：$bin" >&2; exit 1; }
+  if [ "$arch" = universal ]; then lipo -verify_arch arm64 x86_64 "target/release/$bin"; fi
+done
+[ "$(target/release/congminal --version)" = "congminal $version" ] || { echo '二进制版本不匹配' >&2; exit 1; }
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp target/release/congminal "$app/Contents/MacOS/congminal-bin"
-if $preview; then cp target/release/congminal-ssh-helper "$app/Contents/MacOS/"; fi
+cp target/release/congminal-ssh-helper "$app/Contents/MacOS/"
 # Finder 的工作目录通常是 /，且不保证有 SHELL；不改动用户配置。
 cat > "$app/Contents/MacOS/congminal" <<'LAUNCHER'
 #!/bin/sh
@@ -49,7 +60,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleExecutable</key><string>congminal</string>
 <key>CFBundleIdentifier</key><string>$bundle_id</string>
 <key>CFBundleName</key><string>congminal</string>
-<key>CFBundleDisplayName</key><string>congminal$flavor</string>
+<key>CFBundleDisplayName</key><string>congminal</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$short_version</string>
 <key>CFBundleVersion</key><string>$build_version</string>
@@ -58,15 +69,17 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 cp "$release_notes" "$root/使用说明.md"
+cp README.md "$root/README.md"
 cp assets/congminal.example.toml "$root/congminal.example.toml"
 cp assets/fonts/LICENSE-Terminus.txt "$root/LICENSE-Terminus.txt"
 cp assets/shell/congminal.zsh assets/shell/congminal.bash "$root/"
-printf '版本：%s%s\n架构：%s\n构建时间（UTC）：%s\n来源提交（包含未提交修改）：%s\nSFTP 预览：%s。无 Rust 第三方运行依赖；预览使用系统 OpenSSH 和附带的按需 helper。\n' \
-  "$version" "$flavor" "$arch" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git rev-parse HEAD)" "$preview" > "$root/BUILD.txt"
+printf '版本：%s\n架构：%s\n构建时间（UTC）：%s\n来源提交：%s\nSFTP：内置，使用系统 OpenSSH 及附带的按需 helper。Unix Rust 运行时依赖为 libc FFI。\n' \
+  "$version" "$arch" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git rev-parse HEAD)" > "$root/BUILD.txt"
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then printf '工作树包含未提交修改\n' >> "$root/BUILD.txt"; fi
 plutil -lint "$app/Contents/Info.plist"
 # 本机临时签名，不是 Apple 开发者签名或公证。
 codesign --force --sign - "$app/Contents/MacOS/congminal-bin"
-if $preview; then codesign --force --sign - "$app/Contents/MacOS/congminal-ssh-helper"; fi
+codesign --force --sign - "$app/Contents/MacOS/congminal-ssh-helper"
 codesign --force --sign - "$app"
 codesign --verify --deep --strict "$app"
 ditto -c -k --sequesterRsrc --keepParent "$root" "$root.zip"

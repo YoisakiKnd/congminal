@@ -29,7 +29,7 @@ def main():
         item = json.loads(line)
         if item.get('reason') == 'compiler-message':
             result['build']['diagnostics'].append(item.get('message', {}).get('rendered', ''))
-        if item.get('reason') == 'compiler-artifact' and item.get('profile', {}).get('test') and item.get('executable'):
+        if item.get('reason') == 'compiler-artifact' and item.get('target', {}).get('name') == 'congminal' and item.get('profile', {}).get('test') and item.get('executable'):
             executable = item['executable']
     try:
         if build.returncode or not executable:

@@ -261,7 +261,7 @@ impl Renderer {
     }
 
     /// 认证测试视图：显式矩形裁剪、有限字符数，并保留零宽组合符号。
-    #[cfg(any(test, feature = "sftp-preview"))]
+    #[cfg(any(test, feature = "sftp"))]
     pub(crate) fn auth_text(
         &mut self,
         frame: &mut Framebuffer,
@@ -271,7 +271,7 @@ impl Renderer {
     ) -> bool {
         self.auth_text_selection(frame, bounds, text, selected.then_some(0..usize::MAX))
     }
-    #[cfg(any(test, feature = "sftp-preview"))]
+    #[cfg(any(test, feature = "sftp"))]
     pub(crate) fn auth_text_selection(
         &mut self,
         frame: &mut Framebuffer,
@@ -343,7 +343,7 @@ impl Renderer {
         }
         true
     }
-    #[cfg(any(test, feature = "sftp-preview"))]
+    #[cfg(any(test, feature = "sftp"))]
     pub(crate) fn auth_caret(&self, frame: &mut Framebuffer, bounds: [usize; 4]) {
         let [x, y, width, height] = clipped_bounds(frame, bounds);
         frame.fill_rect(x, y, width.min(2), height, self.colors.cursor);
@@ -999,13 +999,13 @@ impl Renderer {
 
 /// 把字形贴到屏幕上。普通字形按覆盖率混合文字颜色（抗锯齿的边缘是半透明的）；
 /// 彩色字形（emoji）用自己的颜色，按透明度盖在背景上。只画 `clip` 范围内的像素行。
-#[cfg(any(test, feature = "sftp-preview"))]
+#[cfg(any(test, feature = "sftp"))]
 fn clipped_bounds(frame: &Framebuffer, bounds: [usize; 4]) -> [usize; 4] {
     let [x, y, width, height] = bounds;
     let (x, y) = (x.min(frame.width), y.min(frame.height));
     [x, y, width.min(frame.width - x), height.min(frame.height - y)]
 }
-#[cfg(any(test, feature = "sftp-preview"))]
+#[cfg(any(test, feature = "sftp"))]
 fn blend_auth_glyph(fb: &mut Framebuffer, base: usize, row: usize, glyph: &Glyph, color: u32, bounds: [usize; 4]) {
     let [cx, cy, cw, ch] = bounds;
     let (x, y) = (base as i64 + i64::from(glyph.left), row as i64 + i64::from(glyph.top));

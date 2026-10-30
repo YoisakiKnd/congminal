@@ -35,7 +35,7 @@ padding = 4
 # 若已开始输入/点击则取消迟到的恢复。删除 .workspace 文件即可重置布局。
 restore-layout = false
 
-# SFTP 需 macOS/Linux 的 sftp-preview 构建；普通构建启用会提示不支持。
+# SFTP 已包含在默认三平台构建；精简构建可用 --no-default-features 关闭。
 # 启用只开放 SSH 会话文件页的“连接”按钮，点击前不创建池、工作器或连接。
 # 系统 SSH 配置的只读摘要：连接页会把这里的别名列出来，点一下就按该别名新建连接。
 # 只认 Host 行里不含通配符（* ? !）的单个名字，最多 32 条；Include/Match/ProxyJump 等
@@ -47,18 +47,18 @@ program = "ssh"
 config-file = "~/.ssh/config"
 
 [sftp]
-enabled = false
+enabled = true
 # 默认查找主程序旁的 congminal-ssh-helper；密码/私钥正文不要写入配置。
 # helper = "/absolute/path/congminal-ssh-helper"
 # 不写时沿用系统 SSH 配置；以下设置只影响独立 SFTP，不改变终端 ssh 命令。
 # ssh-config = "/absolute/path/ssh_config"
-# 打开远端文件时用的系统程序（默认 xdg-open / open / cmd）。
+# 打开远端文件时用的系统程序（默认 xdg-open / open / Windows 原生系统接口）。
 # opener = "/usr/bin/xdg-open"
 # 打开远端文件的大小上限（MiB，1–32）：超过这个大小的文件请改用下载。
 # open-max-mib = 4
 
-# 本地只读 Git 面板（右栏 Git 页，Primary+I 打开右栏后点标签）。
-# 只执行 rev-parse/status/symbolic-ref/diff，不改索引、不执行任何写操作。
+# Git 面板（右栏 Git 页，Primary+I 打开右栏后点标签）。
+# 本地支持暂存、取消暂存和提交；写操作需界面明确触发，远程会话仅只读。
 # 面板可见且窗口聚焦时才查询：切换焦点/窗口变化后去抖 0.3 秒，
 # 两次查询至少间隔 refresh-seconds；同仓库的多个窗格复用同一份结果。
 [git]
@@ -89,8 +89,8 @@ alert-memory = 0
 alert-disk = 0
 # 同一条告警的最短间隔（秒），30–3600；避免读数在阈值附近抖动时刷屏。
 alert-seconds = 300
-# 是否列出 CPU 占用最高的 5 个进程。sysinfo 会给每个进程留一个 /proc/<pid>/stat 句柄
-# （上限由 congminal 压到 16 个，超出部分改成每次开关），进程特别多的机器上可以关掉。
+# 是否列出原生采样的前 5 个高 CPU 进程；最多扫描 512 个，超出显示截断。
+# 不维护每进程常驻文件句柄，关闭此项可减少采样工作。
 processes = true
 
 [memory]
@@ -174,7 +174,7 @@ option-as-alt = true
 # 按主机静音：命中这些主机名的通知完全不产生（大小写不敏感，最多 32 个）。
 # 主机名取自 shell 报告的 OSC 7 目录或 SSH 配置档；本地命令、本地 Git 与监控没有主机维度。
 # mute-hosts = ["web-1", "db.example.com"]
-# SFTP 候选入口启用后，控制传输结局通知；不包含文件路径或主机名。
+# SFTP 入口启用后，控制传输结局通知；不包含文件路径或主机名。
 transfers = true
 # Git 写操作与监控采样失败的通知；关掉后对应事件不再进通知中心。
 git = true

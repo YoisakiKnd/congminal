@@ -12,7 +12,7 @@ impl Workspace {
         for (i, text) in [
             "SFTP · 独立文件连接",
             if !enabled {
-                "此配置未启用 SFTP 预览"
+                "此配置未启用 SFTP"
             } else if self.sftp_entry.error.is_some() {
                 "未连接，请检查 helper/配置或额度"
             } else {
@@ -92,6 +92,7 @@ mod tests {
     #[test]
     fn disabled_preview_starts_no_pool_and_ssh_files_never_fall_back_to_local_directory() {
         let mut app = workspace();
+        app.driver.config.sftp.enabled = false;
         show(&mut app);
         assert!(app.sftp_route());
         assert!(app.sftp_entry.hit.is_none());
@@ -101,6 +102,18 @@ mod tests {
         }
         assert!(app.sftp.is_none());
         assert!(!app.local_files.loading && app.local_files.listing.is_none());
+    }
+    #[test]
+    fn default_sftp_entry_is_available_without_starting_workers_or_connections() {
+        let mut app = workspace();
+        assert!(app.driver.config.sftp.enabled);
+        show(&mut app);
+        assert!(app.sftp_entry.hit.is_some());
+        for _ in 0..20 {
+            app.tick();
+        }
+        assert!(app.sftp.is_none());
+        assert!(app.authentication.is_none());
     }
     #[test]
     fn missing_helper_fails_after_explicit_entry_and_joined_close_releases_the_pool() {

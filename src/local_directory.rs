@@ -231,7 +231,7 @@ fn finish_listing(
 }
 
 /// 只能在后台调用；请求和结果保留同一调用方账本。
-#[cfg(any(test, feature = "sftp-preview"))]
+#[cfg(any(test, feature = "sftp"))]
 pub(crate) fn read_path(
     owner: u64,
     path: &Path,

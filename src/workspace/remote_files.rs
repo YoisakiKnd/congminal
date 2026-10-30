@@ -26,10 +26,10 @@ const FORM_LABELS: [[&str; 2]; 3] = [["[确定]", "[取消]"], ["确定", "取�
 /// 批量预览/批次的两档按钮：确认与取消。
 const BATCH_LABELS: [[&str; 2]; 3] = [["[开始]", "[取消]"], ["开始", "取消"], ["开", "取"]];
 const CONFIRM_LABELS: [[&str; 2]; 3] = [["[删除]", "[取消]"], ["删除", "取消"], ["删", "取"]];
-#[cfg(feature = "sftp-preview")]
+#[cfg(feature = "sftp")]
 #[path = "sftp_entry.rs"]
 mod entry;
-#[cfg(feature = "sftp-preview")]
+#[cfg(feature = "sftp")]
 pub(super) use entry::Entry;
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 #[path = "remote_batch.rs"]
@@ -543,7 +543,7 @@ impl State {
 }
 impl Workspace {
     pub(super) fn sftp_route(&self) -> bool {
-        (self.sftp.is_some() || cfg!(feature = "sftp-preview"))
+        (self.sftp.is_some() || cfg!(feature = "sftp"))
             && self.index(self.selected).is_some_and(|i| {
                 self.panes[i]
                     .profile
@@ -1013,7 +1013,7 @@ impl Workspace {
         if !self.sftp_route() {
             return false;
         }
-        #[cfg(feature = "sftp-preview")]
+        #[cfg(feature = "sftp")]
         if self.sftp.is_none() {
             return self.sftp_entry_click(row);
         }
@@ -1693,7 +1693,7 @@ impl Workspace {
         if !self.sftp_route() {
             return false;
         }
-        #[cfg(feature = "sftp-preview")]
+        #[cfg(feature = "sftp")]
         if self.sftp.is_none() {
             return self.sftp_entry_paint(r, h);
         }

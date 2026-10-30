@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/release-*']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -56,7 +56,14 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: 单元测试
-        run: cargo test
+        run: cargo test -- --test-threads=1
+
+      - name: 校验发布版本
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          [ "$GITHUB_REF_NAME" = "v$version" ] || { echo '标签和 Cargo 版本不一致'; exit 1; }
 
       - name: 编译 release
         if: runner.os != 'macOS'
@@ -68,10 +75,12 @@ jobs:
           cargo build --release --target aarch64-apple-darwin
           cargo build --release --target x86_64-apple-darwin
           mkdir -p target/release
-          lipo -create -output target/release/congminal \
-            target/aarch64-apple-darwin/release/congminal \
-            target/x86_64-apple-darwin/release/congminal
-          lipo -info target/release/congminal
+          for bin in congminal congminal-ssh-helper; do
+            lipo -create -output "target/release/$bin" \
+              "target/aarch64-apple-darwin/release/$bin" \
+              "target/x86_64-apple-darwin/release/$bin"
+            lipo -verify_arch arm64 x86_64 "target/release/$bin"
+          done
 
       - name: 冒烟测试
         if: runner.os == 'Linux'
@@ -103,14 +112,26 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           dir="congminal-$version-${{ matrix.name }}"
+          if [ "$RUNNER_OS" = macOS ]; then
+            bash ci/package-macos.sh --no-build --universal
+            cp "target/distributions/$dir.zip" "target/distributions/$dir.zip.sha256" .
+            exit 0
+          fi
           mkdir -p "dist/$dir"
           cp README.md assets/fonts/LICENSE-Terminus.txt assets/congminal.example.toml "dist/$dir/"
+          cp assets/shell/congminal.bash assets/shell/congminal.zsh "dist/$dir/"
+          cp docs/releases/v0.1.0.md "dist/$dir/RELEASE-NOTES.md"
+          printf 'version=%s\ncommit=%s\n' "$version" "$GITHUB_SHA" > "dist/$dir/BUILD.txt"
           if [ "$RUNNER_OS" = Windows ]; then
-            cp target/release/congminal.exe "dist/$dir/"
+            cp target/release/congminal.exe target/release/congminal-ssh-helper.exe "dist/$dir/"
+            [ "$("dist/$dir/congminal.exe" --version)" = "congminal $version" ]
             (cd dist && 7z a "../$dir.zip" "$dir")
+            sha256sum "$dir.zip" > "$dir.zip.sha256"
           else
-            cp target/release/congminal "dist/$dir/"
+            cp target/release/congminal target/release/congminal-ssh-helper "dist/$dir/"
+            [ "$("dist/$dir/congminal" --version)" = "congminal $version" ]
             tar -czf "$dir.tar.gz" -C dist "$dir"
+            sha256sum "$dir.tar.gz" > "$dir.tar.gz.sha256"
           fi
 
       - name: 上传安装包
@@ -120,6 +141,7 @@ jobs:
           path: |
             congminal-*.zip
             congminal-*.tar.gz
+            congminal-*.sha256
 
   # 用 Cargo.toml 里声明的最低版本（rust-version）编译三个平台，防止不小心用了更新的 API
   msrv:
@@ -141,7 +163,7 @@ jobs:
             cargo +"$MSRV" check --all-targets --target "$target"
           done
 
-  # 推送 v 开头的标签时（如 v0.1.0-alpha.1），把三个平台的包发布为预发布版本
+  # 稳定标签发布正式版本，带 '-' 的标签保留预发布状态。
   release:
     needs: [build, msrv]
     if: startsWith(github.ref, 'refs/tags/v')
@@ -149,17 +171,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v7
         with:
           pattern: congminal-*
           merge-multiple: true
 
-      - name: 创建预发布版本
+      - name: 校验安装包并发布
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" congminal-*.zip congminal-*.tar.gz \
+          for manifest in congminal-*.sha256; do sha256sum -c "$manifest"; done
+          options=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then options+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" congminal-*.zip congminal-*.tar.gz congminal-*.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --title "congminal $GITHUB_REF_NAME" \
-            --prerelease \
-            --generate-notes
+            --verify-tag \
+            --notes-file docs/releases/v0.1.0.md \
+            "${options[@]}"

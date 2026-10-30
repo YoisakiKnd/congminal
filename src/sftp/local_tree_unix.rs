@@ -64,6 +64,24 @@ fn check_acl(fd: i32) -> Result<(), Error> {
     }
     result
 }
+fn secure_child(file: &File, _created: bool) -> Result<(), Error> {
+    #[cfg(target_os = "macos")]
+    if _created {
+        let acl = unsafe { sys::acl_init(0) };
+        if acl.is_null() {
+            return Err(Error::Io(io::ErrorKind::OutOfMemory));
+        }
+        let result = unsafe { sys::acl_set_fd_np(file.as_raw_fd(), acl, 0x100) };
+        let error = (result < 0).then(io::Error::last_os_error);
+        if unsafe { sys::acl_free(acl) } < 0 {
+            return Err(Error::Cleanup);
+        }
+        if let Some(error) = error {
+            return Err(error.into());
+        }
+    }
+    secure(file, false)
+}
 pub(super) fn parent(root: &Path, destination: &Path, cancel: &Cancellation) -> Result<File, Error> {
     check(cancel)?;
     if !root.is_absolute() || root.as_os_str().len() > 4096 {
@@ -127,24 +145,7 @@ pub(super) fn parent(root: &Path, destination: &Path, cancel: &Cancellation) -> 
                 return Err(io::Error::last_os_error().into());
             }
             let mut next = Some(unsafe { File::from_raw_fd(fd) });
-            let ready = (|| -> Result<(), Error> {
-                #[cfg(target_os = "macos")]
-                if created {
-                    let acl = unsafe { sys::acl_init(0) };
-                    if acl.is_null() {
-                        return Err(Error::Io(io::ErrorKind::OutOfMemory));
-                    }
-                    let result = unsafe { sys::acl_set_fd_np(fd, acl, 0x100) };
-                    let error = (result < 0).then(io::Error::last_os_error);
-                    if unsafe { sys::acl_free(acl) } < 0 {
-                        return Err(Error::Cleanup);
-                    }
-                    if let Some(error) = error {
-                        return Err(error.into());
-                    }
-                }
-                secure(next.as_ref().unwrap(), false)
-            })();
+            let ready = secure_child(next.as_ref().unwrap(), created);
             if let Err(error) = ready {
                 return Err(if close(&mut next) { error } else { Error::Cleanup });
             }

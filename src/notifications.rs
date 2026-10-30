@@ -80,7 +80,7 @@ pub enum Category {
     SshDisconnected,
     /// SSH 连接失败：认证/主机校验/网络失败，以及重连在准备阶段失败。
     SshFailed,
-    #[cfg(any(test, feature = "sftp-preview"))]
+    #[cfg(any(test, feature = "sftp"))]
     Transfers(TransferCounts),
 }
 impl Category {
@@ -97,7 +97,7 @@ impl Category {
         )
     }
 }
-#[cfg(any(test, feature = "sftp-preview"))]
+#[cfg(any(test, feature = "sftp"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TransferResult {
     Published,
@@ -108,7 +108,7 @@ pub(crate) enum TransferResult {
     Interrupted,
     NotStarted,
 }
-#[cfg(any(test, feature = "sftp-preview"))]
+#[cfg(any(test, feature = "sftp"))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TransferCounts {
     pub published: u16,
@@ -119,7 +119,7 @@ pub struct TransferCounts {
     pub interrupted: u16,
     pub not_started: u16,
 }
-#[cfg(any(test, feature = "sftp-preview"))]
+#[cfg(any(test, feature = "sftp"))]
 impl TransferCounts {
     pub(crate) fn add(&mut self, result: TransferResult) {
         let value = match result {
@@ -173,7 +173,7 @@ impl Notice {
     }
     // 系统通知永远不包含路径、命令、输出或远程主机名。
     fn system_text(self) -> String {
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         if let Category::Transfers(c) = self.category {
             return format!(
                 "SFTP: {} published, {} warnings, {} cancelled, {} failed, {} uncertain, {} interrupted, {} not started",
@@ -210,7 +210,7 @@ impl Notice {
 }
 impl std::fmt::Display for Notice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         if let Category::Transfers(c) = self.category {
             write!(
                 f,

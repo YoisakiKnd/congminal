@@ -6,7 +6,7 @@
 pub mod git;
 pub mod monitor;
 pub mod profiles;
-#[cfg(any(test, feature = "sftp-preview"))]
+#[cfg(any(test, feature = "sftp"))]
 pub mod sftp;
 pub mod ssh;
 pub mod theme;
@@ -41,7 +41,7 @@ pub struct Config {
     pub monitor: monitor::Settings,
     /// 系统 SSH 配置的只读摘要：连接页列出的别名与连接它们用的 ssh 程序。
     pub ssh: ssh::Settings,
-    #[cfg(any(test, feature = "sftp-preview"))]
+    #[cfg(any(test, feature = "sftp"))]
     pub sftp: sftp::Settings,
     /// 布局持久化在下次启动生效；默认关闭，不增加单终端的 I/O 或线程。
     pub restore_layout: bool,
@@ -135,7 +135,7 @@ impl Default for Config {
             git: git::Settings::default(),
             monitor: monitor::Settings::default(),
             ssh: ssh::Settings::default(),
-            #[cfg(any(test, feature = "sftp-preview"))]
+            #[cfg(any(test, feature = "sftp"))]
             sftp: sftp::Settings::default(),
             restore_layout: false,
             memory: MemoryConfig::default(),
@@ -282,13 +282,13 @@ impl Config {
         config.git = git::read(&mut r);
         config.monitor = monitor::read(&mut r);
         config.ssh = ssh::read(&mut r);
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         {
             config.sftp = sftp::read(&mut r);
         }
-        #[cfg(not(any(test, feature = "sftp-preview")))]
+        #[cfg(not(any(test, feature = "sftp")))]
         if r.boolean("sftp", "enabled") == Some(true) {
-            r.warn("sftp", "enabled", "本构建没有 SFTP 预览入口，请使用 sftp-preview 构建".into());
+            r.warn("sftp", "enabled", "本构建未包含 SFTP，请使用默认构建或启用 sftp 特性".into());
         }
 
         if let Some(families) = r.strings("font", "family") {

@@ -3,7 +3,7 @@
 use super::*;
 use crate::render::ViewState;
 use std::hash::{Hash, Hasher};
-#[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+#[cfg(any(test, feature = "sftp"))] // auth-workspace
 mod authentication;
 mod files;
 mod forwards;
@@ -11,7 +11,7 @@ mod git_panel;
 mod layout;
 mod monitor_panel;
 mod remote;
-#[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+#[cfg(any(test, feature = "sftp"))] // auth-workspace
 mod remote_files;
 
 pub const MAX_PANES: usize = 8;
@@ -259,7 +259,7 @@ enum RightPage {
     Monitor,
 }
 struct Pane {
-    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+    #[cfg(any(test, feature = "sftp"))] // auth-workspace
     auth_generation: u64,
     id: u64,
     state: Option<Frozen>,
@@ -304,13 +304,13 @@ pub struct Workspace {
     profiles_offset: usize,
     profiles_scroll: f64,
     ssh: remote::Connector,
-    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+    #[cfg(any(test, feature = "sftp"))] // auth-workspace
     authentication: Option<authentication::Overlay>,
-    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+    #[cfg(any(test, feature = "sftp"))] // auth-workspace
     auth_paste_barrier: bool,
-    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+    #[cfg(any(test, feature = "sftp"))] // auth-workspace
     sftp: Option<remote_files::State>,
-    #[cfg(feature = "sftp-preview")]
+    #[cfg(feature = "sftp")]
     sftp_entry: remote_files::Entry,
     local_files: files::Browser,
     git: git_panel::Panel,
@@ -323,7 +323,7 @@ pub struct Workspace {
     /// 状态页里来自通知中心的行：行号 → 来源，用于点击定位。
     notice_rows: Vec<(usize, crate::notifications::Source)>,
     /// 打开远端文件时启动的系统程序；每帧回收已退出的，数量有上限。
-    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+    #[cfg(any(test, feature = "sftp"))] // auth-workspace
     open_children: Vec<std::process::Child>,
     /// 状态页“清空通知”那一行；没有通知时为 None。
     clear_row: Option<usize>,
@@ -373,7 +373,7 @@ impl Workspace {
             generation: driver.renderer.generation(),
             driver,
             panes: vec![Pane {
-                #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                #[cfg(any(test, feature = "sftp"))] // auth-workspace
                 auth_generation: 0,
                 id: 1,
                 state: None,
@@ -402,13 +402,13 @@ impl Workspace {
             profiles_offset: 0,
             profiles_scroll: 0.0,
             ssh: remote::Connector::default(),
-            #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+            #[cfg(any(test, feature = "sftp"))] // auth-workspace
             authentication: None,
-            #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+            #[cfg(any(test, feature = "sftp"))] // auth-workspace
             auth_paste_barrier: false,
-            #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+            #[cfg(any(test, feature = "sftp"))] // auth-workspace
             sftp: None,
-            #[cfg(feature = "sftp-preview")]
+            #[cfg(feature = "sftp")]
             sftp_entry: remote_files::Entry::default(),
             local_files: files::Browser::default(),
             git: git_panel::Panel::new(),
@@ -417,7 +417,7 @@ impl Workspace {
             forwards_override: None,
             right_page: RightPage::Status,
             notice_rows: Vec::new(),
-            #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+            #[cfg(any(test, feature = "sftp"))] // auth-workspace
             open_children: Vec::new(),
             clear_row: None,
             tools: None,
@@ -604,7 +604,7 @@ impl Workspace {
         for (i, session) in restore.sessions.into_iter().enumerate() {
             let id = i as u64 + 2;
             self.panes.push(Pane {
-                #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                #[cfg(any(test, feature = "sftp"))] // auth-workspace
                 auth_generation: 0,
                 id,
                 state: Some(Frozen::new(session)),
@@ -771,11 +771,11 @@ impl Workspace {
             .min()
     }
     fn terminal_focused(&self) -> bool {
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if self.authentication.is_some() {
             return false;
         }
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         if self.sftp.as_ref().is_some_and(remote_files::State::transfer_input_active) {
             return false;
         }
@@ -998,7 +998,7 @@ impl Workspace {
         let mut state = Frozen::new(session);
         state.framebuffer = canvas;
         self.panes.push(Pane {
-            #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+            #[cfg(any(test, feature = "sftp"))] // auth-workspace
             auth_generation: 0,
             id,
             state: Some(state),
@@ -1086,7 +1086,7 @@ impl Workspace {
         if self.composing() {
             return;
         }
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         self.cancel_authentication();
         if self.panes.len() == 1 {
             self.quit = true;
@@ -1573,9 +1573,9 @@ impl Workspace {
                 );
             }
             if self.left_page == LeftPage::Files {
-                #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                #[cfg(any(test, feature = "sftp"))] // auth-workspace
                 let remote_painted = self.sftp_paint(r, h);
-                #[cfg(not(any(test, feature = "sftp-preview")))]
+                #[cfg(not(any(test, feature = "sftp")))]
                 let remote_painted = false;
                 if !remote_painted {
                     let third = r.w / 3;
@@ -1739,9 +1739,9 @@ impl Workspace {
         }
         if self.right_rect.visible() {
             let r = self.right_rect;
-            #[cfg(any(test, feature = "sftp-preview"))]
+            #[cfg(any(test, feature = "sftp"))]
             let transfer_painted = self.transfer_list_paint(r, h);
-            #[cfg(not(any(test, feature = "sftp-preview")))]
+            #[cfg(not(any(test, feature = "sftp")))]
             let transfer_painted = false;
             if !transfer_painted {
                 self.right_tabs_paint(r, h);
@@ -1765,14 +1765,14 @@ impl Workspace {
     /// 认证覆盖层是否正为这个窗格等待口令或主机密钥确认。
     /// 非预览构建没有覆盖层，恒为 false（只有密钥/agent 认证，没有可观察的“认证中”）。
     fn authenticating_pane(&self, index: usize) -> bool {
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         {
             self.authentication.as_ref().is_some_and(|overlay| {
                 let owner = overlay.controller.owner();
                 owner.session == self.panes[index].id && owner.generation == self.panes[index].auth_generation
             })
         }
-        #[cfg(not(any(test, feature = "sftp-preview")))]
+        #[cfg(not(any(test, feature = "sftp")))]
         {
             let _ = index;
             false
@@ -1907,7 +1907,7 @@ impl Workspace {
                 self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, false);
             }
         }
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         self.transfer_notifications_paint(r, h, rows.len() + 1);
     }
 
@@ -2075,7 +2075,7 @@ impl Workspace {
                     return self.forwards_capture_key(key, mods);
                 }
                 // SFTP 名称输入与删除确认独占键盘：名称和确认键都不能送到远端终端。
-                #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                #[cfg(any(test, feature = "sftp"))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_key(key, mods);
                 }
@@ -2117,7 +2117,7 @@ impl Workspace {
                 if self.left && self.left_page == LeftPage::Connections && self.forwards_capture_text(&text) {
                     return true;
                 }
-                #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                #[cfg(any(test, feature = "sftp"))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_text(&text);
                 }
@@ -2134,7 +2134,7 @@ impl Workspace {
                 if self.left && self.left_page == LeftPage::Connections && self.forwards_capture_preedit(&text) {
                     return true;
                 }
-                #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                #[cfg(any(test, feature = "sftp"))] // auth-workspace
                 if self.left && self.left_page == LeftPage::Files && self.sftp_capturing() {
                     return self.sftp_capture_preedit(&text);
                 }
@@ -2236,7 +2236,7 @@ impl Workspace {
                                 };
                             self.chrome_dirty = true;
                         } else if self.left_page == LeftPage::Files {
-                            #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                            #[cfg(any(test, feature = "sftp"))] // auth-workspace
                             {
                                 // 操作行有七个按钮槽位（含打开）、第一行四个（上级/刷新/隐藏/排序），
                                 // 其余行沿用三列；列号按行换算后交给面板。
@@ -2442,7 +2442,7 @@ impl Workspace {
                         ScrollDelta::Lines(lines) => lines * 3.0,
                         ScrollDelta::Pixels(pixels) => pixels / h as f64,
                     };
-                    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+                    #[cfg(any(test, feature = "sftp"))] // auth-workspace
                     if self.sftp_scroll(lines, (self.left_rect.h / h).saturating_sub(4)) {
                         return true;
                     }
@@ -2476,14 +2476,14 @@ impl Workspace {
     }
 }
 impl App for Workspace {
-    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+    #[cfg(any(test, feature = "sftp"))] // auth-workspace
     fn protected_context(&self) -> Option<crate::platform::InputContext> {
         let context = self.authentication_context();
         #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         let context = context.or_else(|| self.transfer_paths_context());
         context
     }
-    #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+    #[cfg(any(test, feature = "sftp"))] // auth-workspace
     fn protected_input(&mut self, input: crate::platform::ProtectedInput) -> bool {
         #[cfg(any(target_os = "macos", target_os = "linux", windows))]
         if self.authentication.is_none() && self.sftp.as_ref().is_some_and(remote_files::State::paths_active) {
@@ -2500,37 +2500,37 @@ impl App for Workspace {
             }
             return self.capture_exit_gate(false);
         }
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if self.sftp_exiting() || (self.sftp.is_some() && matches!(&event, Event::CloseRequested)) {
             let keep = self.sftp_exit_event(event);
             return self.capture_exit_gate(keep);
         }
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         let event = match self.transfer_paths_event(event) {
             Some(event) => event,
             None => return self.sftp_exit_gate(!self.quit),
         };
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         let event = match self.transfer_preparation_event(event) {
             Some(event) => event,
             None => return self.sftp_exit_gate(!self.quit),
         };
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         let event = match self.transfer_review_event(event) {
             Some(event) => event,
             None => return self.sftp_exit_gate(!self.quit),
         };
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         let event = match self.authentication_event(event) {
             Some(event) => event,
             None => return self.sftp_exit_gate(!self.quit),
         };
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         let event = match self.transfer_list_event(event) {
             Some(event) => event,
             None => return self.sftp_exit_gate(!self.quit),
         };
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         let event = match self.transfer_notifications_event(event) {
             Some(event) => event,
             None => return self.sftp_exit_gate(!self.quit),
@@ -2566,7 +2566,7 @@ impl App for Workspace {
         {
             self.chrome_dirty |= self.local_files.hide();
         }
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         let keep = self.sftp_exit_gate(keep);
         self.capture_exit_gate(keep)
     }
@@ -2575,9 +2575,9 @@ impl App for Workspace {
             return self.capture_exit_gate(false);
         }
         // 打开器进程在这里回收：退出后立刻不再占用进程表，也不新增线程。
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         crate::open::reap(&mut self.open_children);
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         {
             self.sftp_tick();
             if self.sftp_exiting() {
@@ -2585,14 +2585,14 @@ impl App for Workspace {
                 return self.capture_exit_gate(keep);
             }
         }
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         self.authentication_tick();
         self.persistence_tick();
         self.reclaim_history_tick();
         if !self.enabled {
             self.driver.session.set_resize_allowed(true);
             let keep = self.driver.tick() || self.restoring.is_some();
-            #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+            #[cfg(any(test, feature = "sftp"))] // auth-workspace
             let keep = self.sftp_exit_gate(keep);
             return keep;
         }
@@ -2727,9 +2727,9 @@ impl App for Workspace {
             self.notice(&e);
         }
         self.poll_remote();
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         let remote_files = self.sftp_route();
-        #[cfg(not(any(test, feature = "sftp-preview")))]
+        #[cfg(not(any(test, feature = "sftp")))]
         let remote_files = false;
         if !remote_files
             && self.left_page == LeftPage::Files
@@ -2809,16 +2809,16 @@ impl App for Workspace {
             );
         }
         let keep = !self.quit && (self.multiple || !self.panes[0].ended);
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         let keep = self.sftp_exit_gate(keep);
         self.capture_exit_gate(keep)
     }
     fn needs_redraw(&self) -> bool {
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         if self.sftp_exit_dirty() {
             return true;
         }
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if self.authentication.as_ref().is_some_and(|overlay| overlay.dirty)
             && Instant::now() >= self.last_draw + FRAME_INTERVAL
         {
@@ -2830,7 +2830,7 @@ impl App for Workspace {
         self.draw_time().is_some_and(|at| Instant::now() >= at)
     }
     fn draw(&mut self) -> Option<(&Framebuffer, Damage)> {
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         if !self.enabled && self.sftp_exiting() {
             if !self.sftp_exit_dirty() {
                 return None;
@@ -2839,7 +2839,7 @@ impl App for Workspace {
             self.last_draw = Instant::now();
             return Some((&self.driver.framebuffer, Damage { y: 0, height: self.driver.framebuffer.height }));
         }
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if !self.enabled && self.authentication.is_some() {
             return self.authentication_draw_single();
         }
@@ -2886,27 +2886,27 @@ impl App for Workspace {
             top = 0;
             bottom = self.frame.height;
         }
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if self.authentication_paint() {
             top = 0;
             bottom = self.frame.height;
         }
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.transfer_review_paint() {
             top = 0;
             bottom = self.frame.height;
         }
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.transfer_preparation_paint() {
             top = 0;
             bottom = self.frame.height;
         }
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.transfer_paths_paint() {
             top = 0;
             bottom = self.frame.height;
         }
-        #[cfg(any(test, feature = "sftp-preview"))]
+        #[cfg(any(test, feature = "sftp"))]
         if self.sftp_exit_paint(false) {
             top = 0;
             bottom = self.frame.height;
@@ -2933,7 +2933,7 @@ impl App for Workspace {
             return Some(Instant::now() + Duration::from_millis(50));
         }
         let deadline = self.workspace_deadline();
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         let deadline = deadline
             .into_iter()
             .chain(self.authentication.as_ref().and_then(|overlay| {
@@ -2946,16 +2946,16 @@ impl App for Workspace {
                 }
             }))
             .min();
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         let deadline = deadline.into_iter().chain(self.sftp_exit_deadline()).chain(self.sftp_ui_deadline()).min();
         deadline
     }
     fn take_clipboard_request(&mut self) -> Option<ClipboardRequest> {
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if let Some(overlay) = &mut self.authentication {
             return overlay.controller.take_clipboard_request();
         }
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.sftp.as_ref().is_some_and(remote_files::State::paths_active) {
             return self.transfer_paths_clipboard();
         }
@@ -2989,14 +2989,14 @@ impl App for Workspace {
         None
     }
     fn ime_cursor_area(&self) -> (u32, u32, u32, u32) {
-        #[cfg(any(test, feature = "sftp-preview"))] // auth-workspace
+        #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if let Some(overlay) = &self.authentication {
             return overlay
                 .controller
                 .caret()
                 .map_or((0, 0, 0, 0), |r| (r[0] as u32, r[1] as u32, r[2] as u32, r[3] as u32));
         }
-        #[cfg(all(any(test, feature = "sftp-preview"), any(target_os = "macos", target_os = "linux", windows)))]
+        #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.sftp.as_ref().is_some_and(remote_files::State::paths_active) {
             return self
                 .transfer_paths_caret()

@@ -1,4 +1,4 @@
-//! 预览构建的非敏感配置；路径限量验证，不在解析时访问文件系统。
+//! SFTP 的非敏感配置；路径限量验证，不在解析时访问文件系统。
 use super::*;
 /// 打开远端文件的大小上限（默认 4 MiB）：临时下载不允许超过这个值。
 pub const OPEN_MAX_MIB: usize = 4;
@@ -10,7 +10,7 @@ pub struct Settings {
     pub enabled: bool,
     pub helper: Option<PathBuf>,
     pub ssh_config: Option<PathBuf>,
-    /// 打开远端文件时用的系统程序；空表示按平台默认（xdg-open / open / cmd）。
+    /// 打开远端文件时用的系统程序；空表示按平台默认（xdg-open / open / 原生 ShellExecuteExW）。
     pub opener: Option<PathBuf>,
     /// 允许打开（临时下载）的最大字节数。
     pub open_max_bytes: u64,
@@ -18,7 +18,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            enabled: true,
             helper: None,
             ssh_config: None,
             opener: None,
@@ -87,7 +87,7 @@ pub(super) fn read(r: &mut Reader<'_>) -> Settings {
     let open_max_bytes = r
         .integer("sftp", "open-max-mib", 1, OPEN_MAX_MIB_LIMIT as i64)
         .map_or((OPEN_MAX_MIB * 1024 * 1024) as u64, |mib| (mib * 1024 * 1024) as u64);
-    let requested = r.boolean("sftp", "enabled").unwrap_or(false);
+    let requested = r.boolean("sftp", "enabled").unwrap_or(true);
     // 配置路径写错时整体停用，不能静默回落到另一份 SSH 配置或 helper。
     Settings { enabled: requested && paths_ok, helper, ssh_config, opener, open_max_bytes }
 }
