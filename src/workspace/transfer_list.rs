@@ -540,7 +540,7 @@ impl State {
     }
 }
 impl Workspace {
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub(super) fn transfer_test_hit(&self, ticket: Ticket, action: &str) -> Rect {
         let action = match action {
             "select" => Action::Select,

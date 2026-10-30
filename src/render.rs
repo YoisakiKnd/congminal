@@ -16,6 +16,20 @@ mod work;
 const MAX_FRAME_PIXELS: usize = 64 * 1024 * 1024;
 const MAX_WINDOW_SIDE: usize = 16384;
 
+/// 侧栏与页签的有限列裁剪；预扫描至多 256 个显示字符，不为每次重绘创建字符串。
+fn chrome_text(text: &str, cells: usize) -> impl Iterator<Item = char> + '_ {
+    let visible = text.chars().filter(|c| !c.is_control()).take(256);
+    let ellipsis = (cells > 1 && visible.clone().map(char_width).sum::<usize>() > cells).then_some('…');
+    let limit = cells.saturating_sub(usize::from(ellipsis.is_some()));
+    let mut used = 0;
+    visible
+        .take_while(move |c| {
+            used += char_width(*c);
+            used <= limit
+        })
+        .chain(ellipsis)
+}
+
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
@@ -230,9 +244,8 @@ impl Renderer {
         );
         // 放不下时补 `…`：页签标题、侧栏行都是长文本，硬截断会断在半个词上，看起来像画错了。
         let budget = width.saturating_sub(3) / self.fonts.cell_width.max(1);
-        let text: String = text.chars().filter(|c| !c.is_control()).take(256).collect();
         let mut col = x + 3;
-        for c in crate::term::clip_ellipsis(&text, budget).chars() {
+        for c in chrome_text(text, budget) {
             let c = self.chrome_char(c);
             let cells = char_width(c);
             if col + cells * self.fonts.cell_width > x + width {
@@ -1170,6 +1183,16 @@ mod bench {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bounded_chrome_clipping_preserves_unicode_ellipsis_without_heap_strings() {
+        for text in ["", "abc", "中文路径", "a\u{301}bc", "\0\nA\t中文Z", "🙂x", "\u{301}\u{301}"] {
+            let filtered: String = text.chars().filter(|c| !c.is_control()).take(256).collect();
+            for cells in 0..12 {
+                assert_eq!(chrome_text(text, cells).collect::<String>(), crate::term::clip_ellipsis(&filtered, cells));
+            }
+        }
+        assert_eq!(chrome_text(&"x".repeat(300), 300).count(), 256);
+    }
     use crate::vt::Parser;
     /// 粗斜体画出来既不同于单独斜体，也不同于单独粗体。
     #[test]

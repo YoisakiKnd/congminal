@@ -26,7 +26,9 @@ pub(crate) use compose::compose_borrowed;
 pub(crate) use emoji::{sequence_into as emoji_sequence_into, workspace_bytes as emoji_work_bytes};
 pub(crate) use grid::grid_reservation;
 pub use grid::{Cell, Color, Flags, Grid, History, Row};
-pub use width::{char_width, clip, clip_ellipsis, clip_tail, display_width};
+#[cfg(test)]
+pub use width::clip_ellipsis;
+pub use width::{char_width, clip, clip_tail, display_width};
 
 use crate::hash::FnvHashMap;
 use crate::vt::{Params, Perform};

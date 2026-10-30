@@ -595,7 +595,11 @@ mod tests {
             assert_eq!(status.snapshot().publication, publication, "{fault:?}");
             assert_eq!(status.snapshot().end, Some(end), "{fault:?}");
             assert_eq!(result.is_ok(), matches!(fault, Fault::None | Fault::AfterAck), "{fault:?}");
-            assert_eq!(status.partial().unwrap().bytes(), b"/remote.part");
+            if publication == Publication::RemoteAcknowledged {
+                assert!(status.partial().is_none(), "confirmed rename consumed the temporary name");
+            } else {
+                assert_eq!(status.partial().unwrap().bytes(), b"/remote.part");
+            }
             drop((channel, progress, status));
             assert_eq!(pool.snapshot().used, 0);
         }

@@ -46,6 +46,7 @@ pub fn clip(text: &str, width: usize) -> String {
 /// 按显示列裁剪一行文本，截断时在末尾补 `…`，让「被裁掉」看得出来而不是断在半个词上。
 ///
 /// `width` 小于 2 时放不下省略号，退化成直接裁（只有 1 列时干脆返回空串）。
+#[cfg(test)]
 pub fn clip_ellipsis(text: &str, width: usize) -> String {
     if display_width(text) <= width {
         return text.to_string();
