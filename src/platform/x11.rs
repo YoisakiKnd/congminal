@@ -352,6 +352,7 @@ unsafe extern "C" {
 }
 
 pub struct Window {
+    _icon_memory: Option<crate::resources::Lease>,
     display: *mut Display,
     window: XWindow,
     screen: c_int,
@@ -433,6 +434,32 @@ impl Window {
             );
             XDefineCursor(display, window, XCreateFontCursor(display, XC_XTERM));
             let atom = |name: &CStr| XInternAtom(display, name.as_ptr(), 0);
+            // _NET_WM_ICON is CARDINAL[width,height,ARGB...]; Xlib uses native longs for format 32.
+            let icon_memory = crate::resources::current().lease(crate::resources::Kind::Image, 64 * 1024).ok();
+            if icon_memory.is_some() {
+                if let Ok(icon) = crate::image::png::decode(include_bytes!("../../assets/icons/congminal-64.png")) {
+                    let mut pixels = [0 as c_ulong; 64 * 64 + 2];
+                    pixels[0] = 64;
+                    pixels[1] = 64;
+                    for (i, pixel) in icon.rgba().as_chunks::<4>().0.enumerate() {
+                        pixels[i + 2] = ((u32::from(pixel[3]) << 24)
+                            | (u32::from(pixel[0]) << 16)
+                            | (u32::from(pixel[1]) << 8)
+                            | u32::from(pixel[2])) as c_ulong;
+                    }
+                    XChangeProperty(
+                        display,
+                        window,
+                        atom(c"_NET_WM_ICON"),
+                        6,
+                        32,
+                        0,
+                        pixels.as_ptr().cast(),
+                        pixels.len() as c_int,
+                    );
+                }
+            }
+            XChangeProperty(display, window, atom(c"WM_CLASS"), 31, 8, 0, b"congminal\0congminal\0".as_ptr(), 20);
             let atoms = Atoms {
                 clipboard: atom(c"CLIPBOARD"),
                 utf8_string: atom(c"UTF8_STRING"),
@@ -471,6 +498,7 @@ impl Window {
             wake_write.set_nonblocking(true).map_err(|e| e.to_string())?;
 
             Ok(Window {
+                _icon_memory: icon_memory,
                 display,
                 window,
                 screen,

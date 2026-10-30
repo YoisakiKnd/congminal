@@ -238,6 +238,7 @@ pub struct Terminal {
     keyboard_depth: usize,
     // 所有网格缓冲销毁后归还。预留覆盖保留容量，非实际预分配。
     grid_memory: crate::resources::Lease,
+    pub(crate) graphics: crate::graphics::Graphics,
 }
 
 /// OSC 4/10/11/12 查询要回答的颜色。这里放一份值拷贝，终端模块不依赖配置类型；
@@ -251,6 +252,10 @@ pub struct Palette {
 }
 
 impl Terminal {
+    pub(crate) fn graphics_alternate(&self) -> bool {
+        self.alt_active
+    }
+
     fn finish_link_run(&mut self) {
         // 按一段 OSC 属性的结束位置记保守水位，避免在每个普通字符上查链接池。
         let id = self.cursor.template.flags.link_id();
@@ -308,7 +313,9 @@ impl Terminal {
 
     fn with_storage(grid: Grid, alt_grid: Grid, history: History, grid_memory: crate::resources::Lease) -> Terminal {
         let (cols, rows) = (grid.cols(), grid.rows());
+        let graphics = crate::graphics::Graphics::new(grid_memory.budget().clone());
         Terminal {
+            graphics,
             shell: crate::shell::Shell::default(),
             text_epoch: 1,
             text_revision: 0,
@@ -1457,6 +1464,9 @@ impl Terminal {
 
     /// 在主屏和备用屏之间切换
     fn switch_screen(&mut self, to_alt: bool, clear_before_leaving: bool) {
+        if !to_alt {
+            self.graphics.clear_alternate();
+        }
         if to_alt == self.alt_active {
             return;
         }
@@ -1521,10 +1531,12 @@ impl Terminal {
                     }
                 }
                 49 => t.bg = Color::Default,
-                // 下划线颜色：还不支持，但必须把后面的颜色参数吃掉
                 58 => {
-                    extended_color(group, &mut groups);
+                    if let Some(color) = extended_color(group, &mut groups) {
+                        t.underline_color = color;
+                    }
                 }
+                59 => t.underline_color = Color::Default,
                 n @ 90..=97 => t.fg = Color::Indexed((n - 90 + 8) as u8),
                 n @ 100..=107 => t.bg = Color::Indexed((n - 100 + 8) as u8),
                 n => trace(format_args!("未处理的 SGR {n}")),
@@ -1768,6 +1780,26 @@ impl Perform for Terminal {
         if let Some(request) = self.decrqss.take() {
             let reply = self.decrqss_reply(&request);
             self.respond(&reply);
+        }
+    }
+
+    fn apc_start(&mut self) {
+        self.graphics.begin();
+    }
+    fn apc_put(&mut self, byte: u8) {
+        self.graphics.byte(byte);
+    }
+    fn apc_end(&mut self, valid: bool) {
+        let line = self.line_id(0).saturating_add(self.display_offset as u64).saturating_add(self.cursor.row as u64);
+        if let Some(reply) = self.graphics.end(valid, line, self.cursor.col, self.alt_active, self.cell_pixels) {
+            self.respond(reply.bytes());
+            if let Some((rows, columns)) = reply.advance {
+                for _ in 1..rows {
+                    self.linefeed();
+                }
+                self.cursor.col = (self.cursor.col + columns).min(self.cols() - 1);
+                self.cursor.pending_wrap = false;
+            }
         }
     }
 

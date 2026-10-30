@@ -169,6 +169,9 @@ unsafe extern "system" {
     fn BeginPaint(hwnd: Hwnd, paint: *mut PaintStruct) -> Hdc;
     fn EndPaint(hwnd: Hwnd, paint: *const PaintStruct) -> i32;
     fn LoadCursorW(instance: Hinstance, name: usize) -> isize;
+    fn LoadImageW(instance: Hinstance, name: usize, kind: u32, cx: i32, cy: i32, flags: u32) -> isize;
+    fn DestroyIcon(icon: isize) -> i32;
+    fn UnregisterClassW(name: *const u16, instance: Hinstance) -> i32;
     fn GetKeyState(key: i32) -> i16;
     fn SetWindowTextW(hwnd: Hwnd, text: *const u16) -> i32;
     fn SetProcessDPIAware() -> i32;
@@ -266,7 +269,39 @@ fn push(event: Event) {
     QUEUE.with(|q| q.borrow_mut().push_back(event));
 }
 
+struct Icons {
+    big: isize,
+    small: isize,
+    _memory: Option<crate::resources::Lease>,
+}
+impl Icons {
+    fn load(instance: Hinstance) -> Self {
+        let memory = crate::resources::current().lease(crate::resources::Kind::Image, 64 * 1024).ok();
+        if memory.is_none() {
+            return Self { big: 0, small: 0, _memory: None };
+        }
+        Self {
+            big: unsafe { LoadImageW(instance, 1, 1, 64, 64, 0) },
+            small: unsafe { LoadImageW(instance, 1, 1, 32, 32, 0) },
+            _memory: memory,
+        }
+    }
+}
+impl Drop for Icons {
+    fn drop(&mut self) {
+        unsafe {
+            if self.big != 0 {
+                DestroyIcon(self.big);
+            }
+            if self.small != 0 {
+                DestroyIcon(self.small);
+            }
+        }
+    }
+}
+
 pub struct Window {
+    _icons: Icons,
     hwnd: Hwnd,
     scale: f64,
     /// 上次告诉输入法的光标位置
@@ -297,6 +332,7 @@ impl Window {
 
             let instance = GetModuleHandleW(null());
             let class_name = wide("congminal");
+            let icons = Icons::load(instance);
             let class = WndClassExW {
                 size: size_of::<WndClassExW>() as u32,
                 style: 0,
@@ -304,12 +340,12 @@ impl Window {
                 cls_extra: 0,
                 wnd_extra: 0,
                 instance,
-                icon: 0,
+                icon: icons.big,
                 cursor: LoadCursorW(0, IDC_IBEAM),
                 background: 0,
                 menu_name: null(),
                 class_name: class_name.as_ptr(),
-                icon_small: 0,
+                icon_small: icons.small,
             };
             if RegisterClassExW(&class) == 0 {
                 return Err("RegisterClassExW 失败".into());
@@ -335,10 +371,11 @@ impl Window {
                 null_mut(),
             );
             if hwnd == 0 {
+                UnregisterClassW(class_name.as_ptr(), instance);
                 return Err("CreateWindowExW 失败".into());
             }
             ShowWindow(hwnd, SW_SHOW);
-            Ok(Window { hwnd, scale, ime_area: None, alpha: None })
+            Ok(Window { hwnd, scale, ime_area: None, alpha: None, _icons: icons })
         }
     }
 
@@ -562,7 +599,10 @@ impl Window {
 
 impl Drop for Window {
     fn drop(&mut self) {
-        unsafe { DestroyWindow(self.hwnd) };
+        unsafe {
+            DestroyWindow(self.hwnd);
+            UnregisterClassW(wide("congminal").as_ptr(), GetModuleHandleW(null()));
+        };
     }
 }
 

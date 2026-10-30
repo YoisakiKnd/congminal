@@ -9,6 +9,8 @@ use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, co
 use crate::ui::Bar;
 use crate::ui::{Decoration, DecorationKind};
 use std::hash::{Hash, Hasher};
+#[path = "render_graphics.rs"]
+mod graphics;
 #[path = "render_work.rs"]
 mod work;
 
@@ -484,8 +486,16 @@ impl Renderer {
         };
 
         // 哪些行要重画：整体状态变了就全部重画，否则只画"指纹"变了的行
-        let frame_key =
-            hash(&(fb.width, fb.height, rows, cols, term.display_offset(), term.history().len(), default_bg));
+        let frame_key = hash(&(
+            fb.width,
+            fb.height,
+            rows,
+            cols,
+            term.display_offset(),
+            term.history().len(),
+            default_bg,
+            term.graphics.revision,
+        ));
         let indexed = self.work.rows.reserve_capacity(rows).is_some();
         self.work.rows.data.clear();
         if indexed {
@@ -525,11 +535,15 @@ impl Renderer {
             fb.fill_rect(0, top, fb.width, bottom - top, default_bg);
             for r in start..end {
                 self.draw_backgrounds(fb, term, r, &cursor, selection, default_fg, default_bg);
+                self.graphics_row(fb, term, r, true, (top, bottom));
             }
             // 有些字形会伸出格子一两个像素（比如 Maple 的竖线），上下相邻的行也要画，但只画到这一段里面
             for r in start.saturating_sub(1)..(end + 1).min(rows) {
                 let decorations = (start..end).contains(&r);
                 self.draw_glyphs(fb, term, r, &cursor, selection, default_fg, default_bg, (top, bottom), decorations);
+            }
+            for r in start..end {
+                self.graphics_row(fb, term, r, false, (top, bottom));
             }
             if (start..end).contains(&cursor.row) {
                 self.draw_cursor(fb, term, &cursor);
@@ -665,8 +679,12 @@ impl Renderer {
         self.ligatures(line, row, cols, cursor);
         // emoji 组合序列已经整个画好了的格子，到这一列为止不再画字
         let mut drawn_until = 0;
+        let mut previous_image = None;
         for col in 0..cols.min(line.cells.len()) {
             let cell = &line[col];
+            if self.graphics_cell(fb, term, cell, &mut previous_image, (row, col), clip) {
+                continue;
+            }
             if cell.flags.contains(Flags::WIDE_SPACER) || cell.flags.contains(Flags::HIDDEN) {
                 continue;
             }

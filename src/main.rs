@@ -18,6 +18,7 @@ mod action;
 mod config;
 mod font;
 mod git;
+mod graphics;
 mod hash;
 mod image;
 mod input;

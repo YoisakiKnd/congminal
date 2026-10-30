@@ -60,6 +60,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleExecutable</key><string>congminal</string>
 <key>CFBundleIdentifier</key><string>$bundle_id</string>
 <key>CFBundleName</key><string>congminal</string>
+<key>CFBundleIconFile</key><string>congminal.icns</string>
 <key>CFBundleDisplayName</key><string>congminal</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$short_version</string>
@@ -72,6 +73,7 @@ cp "$release_notes" "$root/使用说明.md"
 cp README.md "$root/README.md"
 cp LICENSE NOTICE assets/licenses/LICENSE-libc.txt "$root/"
 cp LICENSE NOTICE assets/licenses/LICENSE-libc.txt assets/fonts/LICENSE-Terminus.txt "$app/Contents/Resources/"
+cp assets/icons/congminal.icns "$app/Contents/Resources/"
 cp assets/congminal.example.toml "$root/congminal.example.toml"
 cp assets/fonts/LICENSE-Terminus.txt "$root/LICENSE-Terminus.txt"
 cp assets/shell/congminal.zsh assets/shell/congminal.bash "$root/"

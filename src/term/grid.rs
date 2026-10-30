@@ -74,11 +74,20 @@ pub struct Cell {
     pub flags: Flags,
     /// 附加在这个字上的组合字符（重音符号等）在 Terminal 组合字符表里的编号，0 表示没有
     pub marks: u32,
+    /// Kitty Unicode placement id; also retained by SGR 58/59.
+    pub underline_color: Color,
 }
 
 impl Default for Cell {
     fn default() -> Cell {
-        Cell { c: ' ', fg: Color::Default, bg: Color::Default, flags: Flags::default(), marks: 0 }
+        Cell {
+            c: ' ',
+            fg: Color::Default,
+            bg: Color::Default,
+            flags: Flags::default(),
+            marks: 0,
+            underline_color: Color::Default,
+        }
     }
 }
 

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=congminal
+Comment=Terminal with Kitty graphics, SSH, SFTP, Git and monitoring
+Exec=congminal
+Icon=congminal
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupWMClass=congminal

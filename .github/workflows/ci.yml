@@ -58,6 +58,9 @@ jobs:
       - name: 单元测试
         run: cargo test -- --test-threads=1
 
+      - name: Kitty graphics through native PTY / ConPTY
+        run: cargo test graphics::native_tests::native_pty_graphics_roundtrip -- --exact --ignored --nocapture --test-threads=1
+
       - name: 校验发布版本
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -137,6 +140,9 @@ jobs:
             sha256sum "$dir.zip" > "$dir.zip.sha256"
           else
             cp target/release/congminal target/release/congminal-ssh-helper "dist/$dir/"
+            cp assets/congminal.desktop "dist/$dir/"
+            cp assets/icons/congminal-256.png "dist/$dir/congminal.png"
+            cp ci/install-linux.sh "dist/$dir/install-linux.sh"
             [ "$("dist/$dir/congminal" --version)" = "congminal $version" ]
             tar -czf "$dir.tar.gz" -C dist "$dir"
             sha256sum "$dir.tar.gz" > "$dir.tar.gz.sha256"

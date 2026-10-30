@@ -16,7 +16,7 @@ pub fn zlib_decompress_limited(data: &[u8], limit: usize) -> Result<Vec<u8>, Str
 }
 
 /// PNG 调用者已准入精确扫描行容量，直接准备一次输出，避免末次扩容的旧新缓冲重叠。
-pub(super) fn zlib_decompress_exact(data: &[u8], size: usize) -> Result<Vec<u8>, String> {
+pub(crate) fn zlib_decompress_exact(data: &[u8], size: usize) -> Result<Vec<u8>, String> {
     decompress(data, size, true)
 }
 

@@ -14,6 +14,9 @@ const MAX_OSC_PARAMS: usize = 16;
 pub trait Perform {
     fn begin_batch(&mut self) {}
     fn osc_overflow(&mut self) {}
+    fn apc_start(&mut self) {}
+    fn apc_put(&mut self, _byte: u8) {}
+    fn apc_end(&mut self, _valid: bool) {}
     /// 打印一个字符
     fn print(&mut self, c: char);
     /// 执行 C0 控制字符（换行、回车、退格……）
@@ -105,6 +108,8 @@ enum State {
     DcsIgnore,
     OscString,
     SosPmApcString,
+    ApcString,
+    ApcEscape,
 }
 
 pub struct Parser {
@@ -174,11 +179,30 @@ impl Parser {
             return;
         }
 
+        if self.state == State::ApcEscape {
+            if b == b'\\' {
+                p.apc_end(true);
+                self.state = State::Ground;
+                return;
+            }
+            p.apc_end(false);
+            self.clear();
+            self.state = State::Escape;
+            self.byte(p, b);
+            return;
+        }
+        if self.state == State::ApcString && b == 0x1b {
+            self.state = State::ApcEscape;
+            return;
+        }
         // "anywhere" 转移：任何状态下遇到这几个字节都会跳转
         match b {
             0x18 | 0x1A => {
                 if self.state == State::OscString {
                     self.osc_overflow = true;
+                }
+                if self.state == State::ApcString {
+                    p.apc_end(false);
                 }
                 self.exit_string_state(p);
                 p.execute(b);
@@ -195,7 +219,7 @@ impl Parser {
         }
 
         // 在非字符串状态里，8 位字节没有意义，直接丢弃
-        if b >= 0x80 && !matches!(self.state, State::OscString | State::DcsPassthrough) {
+        if b >= 0x80 && !matches!(self.state, State::OscString | State::DcsPassthrough | State::ApcString) {
             return;
         }
 
@@ -219,7 +243,11 @@ impl Parser {
                     self.state = State::OscString;
                 }
                 b'P' => self.state = State::DcsEntry,
-                b'X' | b'^' | b'_' => self.state = State::SosPmApcString,
+                b'X' | b'^' => self.state = State::SosPmApcString,
+                b'_' => {
+                    p.apc_start();
+                    self.state = State::ApcString;
+                }
                 0x30..=0x7E => {
                     p.esc_dispatch(self.intermediates(), self.ignoring, b);
                     self.state = State::Ground;
@@ -339,6 +367,8 @@ impl Parser {
                 }
             },
 
+            State::ApcString => p.apc_put(b),
+            State::ApcEscape => unreachable!(),
             State::DcsIgnore | State::SosPmApcString => {}
         }
     }

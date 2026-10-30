@@ -19,6 +19,8 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::ptr::{null, null_mut};
 use std::sync::{Arc, Mutex};
 
+#[path = "windows_shell.rs"]
+mod shell;
 type Handle = *mut c_void;
 
 #[repr(C)]
@@ -192,7 +194,7 @@ impl Pty {
 
             let mut command_line: Vec<u16> = command_line(&command).encode_utf16().chain(Some(0)).collect();
             // 有额外的环境变量时自己拼一个环境块，否则继承当前进程的
-            let environment = (!command.env.is_empty()).then(|| environment_block(command.env));
+            let environment = Some(environment_block(command.env));
             let directory: Option<Vec<u16>> =
                 command.working_directory.as_ref().map(|dir| dir.as_os_str().encode_wide().chain(Some(0)).collect());
             let mut info: ProcessInformation = std::mem::zeroed();
@@ -283,13 +285,13 @@ fn coord(cols: u16, rows: u16) -> Coord {
     Coord { x: cols as i16, y: rows as i16 }
 }
 
-/// 拼出完整的命令行。没指定程序时用 COMSPEC（通常是 cmd.exe）。
+/// 默认优先 PowerShell 7、Windows PowerShell，最后 COMSPEC；显式配置优先。
 ///
 /// Windows 把整条命令行作为一个字符串交给新进程，由它自己切分参数，
 /// 所以含空格或引号的参数要按 C 运行库（CommandLineToArgvW）的规则加引号和转义。
 fn command_line(command: &impl CommandSource) -> String {
     let command = command.view();
-    let fallback = command.program.is_none().then(|| std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()));
+    let fallback = command.program.is_none().then(shell::default_program);
     let program = command.program.or(fallback.as_deref()).unwrap();
     let mut line = String::new();
     for (i, arg) in std::iter::once(program).chain(command.args.iter().map(String::as_str)).enumerate() {
@@ -297,6 +299,13 @@ fn command_line(command: &impl CommandSource) -> String {
             line.push(' ');
         }
         quote_arg(arg, &mut line);
+    }
+    if command.program.is_none()
+        && command.args.is_empty()
+        && (program.to_ascii_lowercase().ends_with("pwsh.exe")
+            || program.to_ascii_lowercase().ends_with("powershell.exe"))
+    {
+        line.push_str(" -NoLogo");
     }
     line
 }
@@ -335,6 +344,12 @@ fn environment_block(extra: &[(String, String)]) -> Vec<u16> {
         .map(|(k, v)| (k.to_string_lossy().into_owned(), v.to_string_lossy().into_owned()))
         .filter(|(k, _)| !extra.iter().any(|(e, _)| e.eq_ignore_ascii_case(k)))
         .collect();
+    for (key, value) in [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "congminal")] {
+        if !extra.iter().any(|(k, _)| k.eq_ignore_ascii_case(key)) {
+            vars.retain(|(k, _)| !k.eq_ignore_ascii_case(key));
+            vars.push((key.into(), value.into()));
+        }
+    }
     vars.extend(extra.iter().cloned());
     vars.sort_by_key(|(k, _)| k.to_uppercase());
     let mut block = Vec::new();

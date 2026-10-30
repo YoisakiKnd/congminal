@@ -13,6 +13,16 @@ pub struct Image {
 }
 
 impl Image {
+    pub(crate) fn allocated_bytes(&self) -> usize {
+        self.rgba.capacity()
+    }
+    pub(crate) fn rgba(&self) -> &[u8] {
+        &self.rgba
+    }
+    pub(crate) fn from_rgba(width: usize, height: usize, rgba: crate::resources::Tracked<Vec<u8>>) -> Self {
+        Self { width, height, rgba: rgba.data, _memory: rgba.memory }
+    }
+
     #[cfg(test)]
     fn test_image(width: usize, height: usize, rgba: Vec<u8>) -> Self {
         let memory = crate::resources::current().lease(crate::resources::Kind::Image, rgba.capacity()).unwrap();
