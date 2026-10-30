@@ -157,6 +157,15 @@ fn platform(cancel: &Cancellation) -> Option<(Ticks, u64, u64)> {
 }
 
 #[cfg(target_os = "macos")]
+const VM_REQUIRED_WORDS: u32 = ((std::mem::offset_of!(libc::vm_statistics64, internal_page_count)
+    + std::mem::size_of::<libc::natural_t>())
+    / std::mem::size_of::<libc::integer_t>()) as u32;
+#[cfg(target_os = "macos")]
+fn complete_vm_prefix(words: u32) -> bool {
+    // libc 可声明新系统追加的字段；旧内核返回较短的成功回复，不能读取未返回的尾部。
+    (VM_REQUIRED_WORDS..=libc::HOST_VM_INFO64_COUNT).contains(&words)
+}
+#[cfg(target_os = "macos")]
 #[allow(deprecated)] // Pinned libc Mach ABI; avoids another runtime dependency.
 fn platform(machine: &mut Option<Machine>, _cancel: &Cancellation) -> Option<(Ticks, u64, u64)> {
     unsafe extern "C" {
@@ -234,14 +243,18 @@ fn platform(machine: &mut Option<Machine>, _cancel: &Cancellation) -> Option<(Ti
         };
         let mut vm: libc::vm_statistics64 = std::mem::zeroed();
         let mut count = libc::HOST_VM_INFO64_COUNT;
-        if libc::host_statistics64(
+        let result = libc::host_statistics64(
             host.0,
             libc::HOST_VM_INFO64,
             (&mut vm as *mut libc::vm_statistics64).cast(),
             &mut count,
-        ) != libc::KERN_SUCCESS
-            || count != libc::HOST_VM_INFO64_COUNT
-        {
+        );
+        if result != libc::KERN_SUCCESS || !complete_vm_prefix(count) {
+            #[cfg(test)]
+            eprintln!(
+                "native VM reply status={result} words={count} required={VM_REQUIRED_WORDS} capacity={}",
+                libc::HOST_VM_INFO64_COUNT
+            );
             return None;
         }
         let pages = u64::from(vm.internal_page_count)
@@ -424,6 +437,16 @@ mod tests {
         let next = source.sample(&cancel).unwrap();
         assert!((0.0..=100.0).contains(&next.cpu));
         assert_eq!(first.total, next.total);
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn vm_statistics_accepts_a_complete_older_reply_and_rejects_missing_fields_or_overflow() {
+        assert!(complete_vm_prefix(VM_REQUIRED_WORDS));
+        // 历史 VM_INFO64 rev1 的 38 个 integer 字段覆盖本程序读取的全部字段。
+        assert!(VM_REQUIRED_WORDS <= 38 && complete_vm_prefix(38));
+        assert!(complete_vm_prefix(libc::HOST_VM_INFO64_COUNT));
+        assert!(!complete_vm_prefix(VM_REQUIRED_WORDS - 1));
+        assert!(!complete_vm_prefix(libc::HOST_VM_INFO64_COUNT + 1));
     }
     #[cfg(target_os = "macos")]
     #[test]
