@@ -180,3 +180,32 @@ fn image_attributes_keep_the_original_cell_size_and_never_retarget_old_indices()
     assert_eq!(g.underline_color(first << 17), Some(crate::term::Color::Rgb(0, 0, 7)));
     assert!(g.underline_color(32767 << 17).is_none());
 }
+
+#[test]
+fn real_ratatui_image_11_wire_reconstructs_exact_rgba_and_row_col_tiles() {
+    let wire = include_bytes!("testdata/ratatui-image-11.0.6.bin");
+    let expected = include_bytes!("testdata/ratatui-image-11.0.6.rgba");
+    let mut t = Terminal::new(80, 24);
+    t.set_cell_pixels(8, 16);
+    let mut parser = Parser::new();
+    for part in wire.chunks(17) {
+        parser.advance(&mut t, part);
+    }
+    let stored = t.graphics.images.iter().flatten().next().expect("actual crate must transmit an image");
+    assert_eq!(stored.image.rgba(), expected);
+    assert_eq!((stored.image.width, stored.image.height), (128, 128));
+    for y in 0..8 {
+        let row = t.visible_row(y);
+        let mut previous = None;
+        for x in 0..16 {
+            let c = &row[x];
+            assert_eq!(c.c, PLACEHOLDER);
+            let point =
+                Placeholder::parse(c.fg, t.graphics.underline_color(c.marks).unwrap(), t.marks(c.marks), previous)
+                    .unwrap();
+            assert_eq!((point.row, point.column), (y, x));
+            assert_eq!(point.image, stored.id);
+            previous = Some(point);
+        }
+    }
+}

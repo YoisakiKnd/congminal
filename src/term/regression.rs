@@ -31,7 +31,8 @@ fn valid(term: &Terminal) {
             if cell.flags.contains(Flags::WIDE_SPACER) {
                 assert!(col > 0 && row.cells[col - 1].flags.contains(Flags::WIDE), "孤立占位格 ({r},{col})");
             }
-            assert!(cell.marks as usize <= term.marks.len());
+            assert!(cell.mark_id() as usize <= term.marks.len());
+            assert!(cell.marks >> 17 <= 256 || cell.marks >> 17 == 32767);
         }
     }
 }

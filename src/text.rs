@@ -30,7 +30,7 @@ pub fn row_end(term: &Terminal, id: u64, row: &Row) -> usize {
     } else {
         row.cells
             .iter()
-            .rposition(|c| c.c != ' ' || c.marks != 0 || c.flags.contains(Flags::WIDE_SPACER))
+            .rposition(|c| c.c != ' ' || c.mark_id() != 0 || c.flags.contains(Flags::WIDE_SPACER))
             .map_or(0, |i| i + 1)
     }
 }
