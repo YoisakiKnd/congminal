@@ -1,6 +1,12 @@
 use ratatui::{buffer::Buffer,layout::{Rect,Size},widgets::Widget};
 use ratatui_image::{picker::{Picker,ProtocolType},Resize};
 fn main() {
+ if std::env::args().nth(1).as_deref()==Some("--probe") {
+  let picker=Picker::from_query_stdio().expect("real picker query failed");
+  println!("\r\nREAL_PICKER protocol={:?} font={:?}\r",picker.protocol_type(),picker.font_size());
+  assert_eq!(picker.protocol_type(),ProtocolType::Kitty,"real library fell back to character blocks");
+  return;
+ }
  let out=std::path::PathBuf::from(std::env::args_os().nth(1).unwrap());
  let image=image::RgbaImage::from_fn(128,128,|x,y|image::Rgba([(x*2)as u8,(y*2)as u8,127,if x<8&&y<8{0}else{255}]));
  std::fs::write(out.with_extension("rgba"),image.as_raw()).unwrap();

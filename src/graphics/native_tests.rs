@@ -132,6 +132,64 @@ fn native_pty_graphics_roundtrip() {
     println!("NATIVE_KITTY_PTY query=OK chunked_rgba=OK unicode_placeholders=OK exit=0");
 }
 
+#[test]
+#[ignore = "requires the separately built real ratatui-image fixture, no user configuration"]
+fn real_picker_without_forced_console_modes() {
+    let probe = std::env::var("CONGMINAL_KITTY_PROBE").expect("fixture binary path");
+    let pool = Budget::new(64 * 1024 * 1024, 0);
+    let _scope = Scope::enter(pool);
+    let (send, recv) = mpsc::sync_channel(16);
+    let sink: EventSink = Arc::new(move |e| send.send(e).is_ok());
+    let command = if std::env::var("CONGMINAL_KITTY_VIA_PWSH").as_deref() == Ok("1") {
+        Command {
+            program: Some("pwsh.exe".into()),
+            args: vec![
+                "-NoLogo".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                "& $env:CONGMINAL_KITTY_PROBE --probe; exit $LASTEXITCODE".into(),
+            ],
+            ..Command::default()
+        }
+    } else {
+        Command { program: Some(probe), args: vec!["--probe".into()], ..Command::default() }
+    };
+    let mut pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+    #[cfg(windows)]
+    assert!(pty.modern_backend());
+    let mut term = Terminal::new(80, 24);
+    term.set_cell_pixels(8, 16);
+    let mut parser = Parser::new();
+    let mut captured = Vec::new();
+    let mut exit = None;
+    let mut eof = false;
+    let deadline = Instant::now() + Duration::from_secs(12);
+    while !(exit.is_some() && eof) && Instant::now() < deadline {
+        match recv.recv_timeout(Duration::from_millis(100)) {
+            Ok(PtyEvent::Data(data)) => {
+                assert!(captured.len() + data.len() < 65536);
+                captured.extend_from_slice(&data);
+                parser.advance(&mut term, &data);
+                let reply = term.take_response();
+                if !reply.is_empty() {
+                    pty.write(&reply).unwrap();
+                }
+            }
+            Ok(PtyEvent::Exit(code)) => exit = Some(code),
+            Ok(PtyEvent::Eof) => eof = true,
+            Ok(PtyEvent::Error(e)) => panic!("{e}"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(e) => panic!("{e}"),
+        }
+    }
+    drop(pty);
+    let captured = String::from_utf8_lossy(&captured);
+    println!("REAL_PICKER_WIRE {captured:?}");
+    assert_eq!(exit, Some(Some(0)), "real picker failed: {captured:?}");
+    assert!(eof);
+    assert!(captured.contains("REAL_PICKER protocol=Kitty"), "{captured:?}");
+}
+
 #[cfg(windows)]
 #[test]
 #[ignore = "isolated native cost child"]

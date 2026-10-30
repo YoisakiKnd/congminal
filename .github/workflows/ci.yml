@@ -62,6 +62,19 @@ jobs:
       - name: Kitty graphics through native PTY / ConPTY
         run: cargo test graphics::native_tests::native_pty_graphics_roundtrip -- --exact --ignored --nocapture --test-threads=1
 
+      - name: Real ratatui-image picker without forced console modes
+        shell: bash
+        run: |
+          cargo build --locked --manifest-path tools/fixtures/kitty-interop/Cargo.toml
+          suffix=""
+          [ "$RUNNER_OS" != Windows ] || suffix=".exe"
+          export CONGMINAL_KITTY_PROBE="$PWD/tools/fixtures/kitty-interop/target/debug/congminal-kitty-interop$suffix"
+          cargo test graphics::native_tests::real_picker_without_forced_console_modes -- --exact --ignored --nocapture --test-threads=1
+          if [ "$RUNNER_OS" = Windows ]; then
+            export CONGMINAL_KITTY_VIA_PWSH=1
+            cargo test graphics::native_tests::real_picker_without_forced_console_modes -- --exact --ignored --nocapture --test-threads=1
+          fi
+
       - name: ConPTY native resource cost
         if: runner.os == 'Windows'
         shell: pwsh
