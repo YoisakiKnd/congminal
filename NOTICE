@@ -1,0 +1,26 @@
+congminal
+Copyright (C) 2026 YoisakiKnd
+
+The original congminal source code is licensed under the GNU General Public
+License, version 3 only (SPDX: GPL-3.0-only). See LICENSE for the complete terms.
+This declaration also covers the original congminal v0.1.0 code.
+
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+Corresponding source and build scripts for each binary release are available
+in that release's GitHub source archives and matching tag:
+https://github.com/YoisakiKnd/congminal
+For version 0.1.1: https://github.com/YoisakiKnd/congminal/tree/v0.1.1
+
+Third-party components retain their own licenses:
+- Embedded Terminus Font: Copyright (c) 2010 Dimitar Toshkov Zhekov;
+  SIL Open Font License 1.1. See LICENSE-Terminus.txt in binary packages or
+  assets/fonts/LICENSE-Terminus.txt in the source tree.
+- libc 0.2.191 (Unix builds): distributed under its MIT license; see
+  LICENSE-libc.txt in binary packages or assets/licenses/LICENSE-libc.txt
+  in the source tree. Source: https://github.com/rust-lang/libc/tree/0.2.191
+- Rust dependencies retain the licenses declared by their respective authors.
+  They are resolved from the checked-in Cargo.lock; their source can be
+  obtained with Cargo. Maple Mono is not bundled with this application.

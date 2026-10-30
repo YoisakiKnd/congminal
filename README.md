@@ -127,4 +127,8 @@ cargo test -- --test-threads=1
 
 开发资料：[功能计划](docs/roadmap.md)、[发布执行清单](docs/execution-v0.1.0.md)、[交接文档](docs/DEEPSEEK_HANDOFF.md)。
 
-`assets/fonts/` 中的 Terminus Font 使用 SIL Open Font License 1.1，见 [字体许可证](assets/fonts/LICENSE-Terminus.txt)。Maple Mono 不随程序分发。其他源码许可请以仓库明确提供的许可文件为准。
+## 许可证
+
+congminal 原创源码采用 **[GNU GPL v3，仅第 3 版（GPL-3.0-only）](LICENSE)**，Copyright © 2026 YoisakiKnd。版权及第三方说明见 [NOTICE](NOTICE)。此声明也覆盖原创 `v0.1.0` 代码。发布源码与构建脚本可从对应 GitHub Release 的源码归档和同名标签取得。
+
+从 `v0.1.1` 起，三平台安装包包含 `LICENSE`、`NOTICE` 及第三方许可。`assets/fonts/` 中的 Terminus Font 继续使用 SIL Open Font License 1.1，见 [字体许可证](assets/fonts/LICENSE-Terminus.txt)；第三方组件保留各自许可，Maple Mono 不随程序分发。

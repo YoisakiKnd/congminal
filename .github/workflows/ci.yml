@@ -126,9 +126,9 @@ jobs:
             exit 0
           fi
           mkdir -p "dist/$dir"
-          cp README.md assets/fonts/LICENSE-Terminus.txt assets/congminal.example.toml "dist/$dir/"
+          cp README.md LICENSE NOTICE assets/licenses/LICENSE-libc.txt assets/fonts/LICENSE-Terminus.txt assets/congminal.example.toml "dist/$dir/"
           cp assets/shell/congminal.bash assets/shell/congminal.zsh "dist/$dir/"
-          cp docs/releases/v0.1.0.md "dist/$dir/RELEASE-NOTES.md"
+          cp "docs/releases/v${version}.md" "dist/$dir/RELEASE-NOTES.md"
           printf 'version=%s\ncommit=%s\n' "$version" "$GITHUB_SHA" > "dist/$dir/BUILD.txt"
           if [ "$RUNNER_OS" = Windows ]; then
             cp target/release/congminal.exe target/release/congminal-ssh-helper.exe "dist/$dir/"
@@ -190,11 +190,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for manifest in congminal-*.sha256; do sha256sum -c "$manifest"; done
+          version="${GITHUB_REF_NAME#v}"
           options=()
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then options+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" congminal-*.zip congminal-*.tar.gz congminal-*.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --title "congminal $GITHUB_REF_NAME" \
             --verify-tag \
-            --notes-file docs/releases/v0.1.0.md \
+            --notes-file "docs/releases/v${version}.md" \
             "${options[@]}"

@@ -17,7 +17,7 @@ for arg in "$@"; do
   esac
 done
 bundle_id=dev.congminal.app
-release_notes=docs/releases/v0.1.0.md
+release_notes="docs/releases/v${version}.md"
 name="congminal-${version}-macos-${arch}"
 root="$PWD/target/distributions/$name"
 app="$root/congminal.app"
@@ -70,6 +70,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 cp "$release_notes" "$root/使用说明.md"
 cp README.md "$root/README.md"
+cp LICENSE NOTICE assets/licenses/LICENSE-libc.txt "$root/"
 cp assets/congminal.example.toml "$root/congminal.example.toml"
 cp assets/fonts/LICENSE-Terminus.txt "$root/LICENSE-Terminus.txt"
 cp assets/shell/congminal.zsh assets/shell/congminal.bash "$root/"
