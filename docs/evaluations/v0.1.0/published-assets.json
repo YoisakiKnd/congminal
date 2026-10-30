@@ -1,0 +1,42 @@
+{
+  "expected_commit": "fe861a467caeb332ff79b1711feaec814253730e",
+  "assets": [
+    {
+      "asset": "congminal-0.1.0-linux-x86_64.tar.gz",
+      "bytes": 7076718,
+      "sha256": "a4463b9f8f6de5024991ae84d4bc4345c6a7c60fe78db18cc6e7cdfcd96e6fa6",
+      "build": "version=0.1.0\ncommit=fe861a467caeb332ff79b1711feaec814253730e\n",
+      "architecture": "ELF x86_64 (main and helper)",
+      "required_files": true
+    },
+    {
+      "asset": "congminal-0.1.0-macos-universal.zip",
+      "bytes": 3589344,
+      "sha256": "0ee8bfd97f5da260ec948260fe082a0dba59ed178eee9ea03598bc2c0d3c9290",
+      "build": "版本：0.1.0\n架构：universal\n构建时间（UTC）：2026-10-30T07:08:49Z\n来源提交：fe861a467caeb332ff79b1711feaec814253730e\nSFTP：内置，使用系统 OpenSSH 及附带的按需 helper。Unix Rust 运行时依赖为 libc FFI。\n",
+      "architecture": "universal arm64+x86_64 (main and helper)",
+      "required_files": true
+    },
+    {
+      "asset": "congminal-0.1.0-windows-x86_64.zip",
+      "bytes": 1517523,
+      "sha256": "439d3458caad93d7a723c68135ce22547f1a366d30969365d076de668c83b9dd",
+      "build": "version=0.1.0\ncommit=fe861a467caeb332ff79b1711feaec814253730e\n",
+      "architecture": "PE x86_64 (main and helper)",
+      "required_files": true
+    }
+  ],
+  "all_checks_passed": true,
+  "native_macos_package_checks": {
+    "native_ditto_extraction": true,
+    "unicode_release_notes_present": true,
+    "codesign_deep_strict": true,
+    "lipo_main_and_helper_arm64_x86_64": true,
+    "launcher_version": "congminal 0.1.0",
+    "scope": "Downloaded published package on macOS arm64. Windows/Linux runtime checks are recorded by native CI; this is not a claim of running those binaries on macOS."
+  },
+  "release_url": "https://github.com/YoisakiKnd/congminal/releases/tag/v0.1.0",
+  "published_at": "2026-10-30T07:10:01Z",
+  "is_draft": false,
+  "is_prerelease": false
+}

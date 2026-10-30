@@ -1,0 +1,213 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-10-30T07:01:28Z",
+  "databaseId": 41017524711,
+  "headBranch": "codex/release-v0.1.0",
+  "headSha": "fe861a467caeb332ff79b1711feaec814253730e",
+  "jobs": [
+    {
+      "conclusion": "success",
+      "name": "Native authentication (macos-latest)",
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@v5"
+        },
+        {
+          "conclusion": "success",
+          "name": "Rust"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Linux link dependencies"
+        },
+        {
+          "conclusion": "success",
+          "name": "Format"
+        },
+        {
+          "conclusion": "success",
+          "name": "Clippy"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native private IPC and secret lifecycle"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Native Windows local file ownership"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native ownership rejection before process launch"
+        },
+        {
+          "conclusion": "success",
+          "name": "Full native unit suite"
+        },
+        {
+          "conclusion": "success",
+          "name": "Build application and bundled helper"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Native Windows OpenSSH, encrypted key and SFTP roundtrip"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Native Linux OpenSSH password and SFTP roundtrip"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v5"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job"
+        }
+      ],
+      "url": "https://github.com/YoisakiKnd/congminal/actions/runs/41017524711/job/123937111284"
+    },
+    {
+      "conclusion": "success",
+      "name": "Native authentication (windows-latest)",
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@v5"
+        },
+        {
+          "conclusion": "success",
+          "name": "Rust"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Linux link dependencies"
+        },
+        {
+          "conclusion": "success",
+          "name": "Format"
+        },
+        {
+          "conclusion": "success",
+          "name": "Clippy"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native private IPC and secret lifecycle"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native Windows local file ownership"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native ownership rejection before process launch"
+        },
+        {
+          "conclusion": "success",
+          "name": "Full native unit suite"
+        },
+        {
+          "conclusion": "success",
+          "name": "Build application and bundled helper"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native Windows OpenSSH, encrypted key and SFTP roundtrip"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Native Linux OpenSSH password and SFTP roundtrip"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v5"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job"
+        }
+      ],
+      "url": "https://github.com/YoisakiKnd/congminal/actions/runs/41017524711/job/123937111542"
+    },
+    {
+      "conclusion": "success",
+      "name": "Native authentication (ubuntu-latest)",
+      "steps": [
+        {
+          "conclusion": "success",
+          "name": "Set up job"
+        },
+        {
+          "conclusion": "success",
+          "name": "Run actions/checkout@v5"
+        },
+        {
+          "conclusion": "success",
+          "name": "Rust"
+        },
+        {
+          "conclusion": "success",
+          "name": "Linux link dependencies"
+        },
+        {
+          "conclusion": "success",
+          "name": "Format"
+        },
+        {
+          "conclusion": "success",
+          "name": "Clippy"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native private IPC and secret lifecycle"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Native Windows local file ownership"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native ownership rejection before process launch"
+        },
+        {
+          "conclusion": "success",
+          "name": "Full native unit suite"
+        },
+        {
+          "conclusion": "success",
+          "name": "Build application and bundled helper"
+        },
+        {
+          "conclusion": "skipped",
+          "name": "Native Windows OpenSSH, encrypted key and SFTP roundtrip"
+        },
+        {
+          "conclusion": "success",
+          "name": "Native Linux OpenSSH password and SFTP roundtrip"
+        },
+        {
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v5"
+        },
+        {
+          "conclusion": "success",
+          "name": "Complete job"
+        }
+      ],
+      "url": "https://github.com/YoisakiKnd/congminal/actions/runs/41017524711/job/123937111660"
+    }
+  ],
+  "status": "completed",
+  "updatedAt": "2026-10-30T07:05:06Z",
+  "url": "https://github.com/YoisakiKnd/congminal/actions/runs/41017524711"
+}

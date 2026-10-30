@@ -1,6 +1,12 @@
-# v0.1.0 发布验收记录（进行中）
+# v0.1.0 发布验收记录
 
-本目录记录新正式版目标的实际检查；不会改写此前已冻结的资源审计。版本尚未发布。
+**[v0.1.0 正式版](https://github.com/YoisakiKnd/congminal/releases/tag/v0.1.0) 已于 2026-10-30 07:10 UTC 发布**，既非草稿也非预发布。标签固定源码 `fe861a467caeb332ff79b1711feaec814253730e`；main 已包含全部实现，后续发布记录提交不改写标签。
+
+最终候选的 [CI 41017524703](https://github.com/YoisakiKnd/congminal/actions/runs/41017524703)、[原生门槛 41017524711](https://github.com/YoisakiKnd/congminal/actions/runs/41017524711)、[main CI 41018010460](https://github.com/YoisakiKnd/congminal/actions/runs/41018010460) 和 [标签发布 CI 41018009760](https://github.com/YoisakiKnd/congminal/actions/runs/41018009760) 全部通过，包含三平台单元/Clippy、四目标 MSRV、真实 Windows 加密密钥/Linux 密码 SFTP、应用启动/退出与默认安装包。
+
+正式 Release 的 3 包 + 3 SHA256 附件已下载复核：清单哈希、来源提交、版本、主程序及 helper 架构、必要文档与可执行位全部匹配。macOS 下载包经系统 ditto 解压、codesign 深度严格校验、两程序通用架构校验，实际 launcher 显示 `congminal 0.1.0`。记录见 `published-assets.json`、`github-release.json`、`tag-ci.json`；`verify-published-assets.py <下载目录> <来源完整提交>` 可复核包内容。ditto ZIP 的 UTF-8 文件名未设 bit 11，复核脚本按原始字节解码，原生解压后的中文说明存在。
+
+本目录保留实际检查和失败修复；此前冻结的资源审计不改写。**以下按时间记录，各段“尚未”“等待”等状态只对应当时检查点，最终结果以上述发布记录为准。** 人工 Windows/Linux 桌面、全部输入法和其他平台长测不因此视为完成。
 
 | 检查点 | 原生结果 | 范围 |
 | --- | --- | --- |
