@@ -373,7 +373,11 @@ impl Session {
             }
             let response = self.term.take_response();
             if !response.is_empty()
-                && let Err(e) = self.write(&response)
+                && let Err(e) = self
+                    .pty
+                    .as_mut()
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::BrokenPipe, "会话已结束"))
+                    .and_then(|pty| pty.respond(&response))
             {
                 error = Some(e.to_string());
             }

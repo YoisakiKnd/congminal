@@ -123,6 +123,9 @@ pub struct Pty {
 }
 
 impl Pty {
+    pub fn respond(&mut self, data: &[u8]) -> io::Result<()> {
+        self.write(data)
+    }
     pub fn spawn(command: &impl CommandSource, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
         let command = command.view();
         let pool = crate::resources::current();

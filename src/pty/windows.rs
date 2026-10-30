@@ -279,6 +279,16 @@ impl Pty {
         self.input.as_ref().unwrap().write(data)
     }
 
+    pub fn respond(&mut self, data: &[u8]) -> io::Result<()> {
+        if !self.console.api.modern || !data.windows(3).any(|s| s == b"\x1b_G") {
+            return self.write(data);
+        }
+        let mut buffer = [0; super::response::ENCODED_LIMIT];
+        let encoded = super::response::encode(data, &mut buffer)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "终端应答超过编码上限"))?;
+        self.write(encoded)
+    }
+
     pub fn resize(&mut self, cols: u16, rows: u16) -> io::Result<()> {
         let console = self.console.handle.lock().unwrap();
         let console = console.as_ref().ok_or(io::ErrorKind::BrokenPipe)?;

@@ -9,6 +9,8 @@
 //! - `Pty::resize` 通知 shell 窗口尺寸变了
 
 pub mod flow;
+#[cfg(any(windows, test))]
+mod response;
 
 use std::path::Path;
 #[cfg(test)]

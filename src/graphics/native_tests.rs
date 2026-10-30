@@ -105,7 +105,7 @@ fn native_pty_graphics_roundtrip() {
                     answered = true;
                 }
                 if !answer.is_empty() {
-                    pty.write(&answer).unwrap();
+                    pty.respond(&answer).unwrap();
                 }
             }
             Ok(PtyEvent::Exit(code)) => exit = Some(code),
@@ -172,7 +172,7 @@ fn real_picker_without_forced_console_modes() {
                 parser.advance(&mut term, &data);
                 let reply = term.take_response();
                 if !reply.is_empty() {
-                    pty.write(&reply).unwrap();
+                    pty.respond(&reply).unwrap();
                 }
             }
             Ok(PtyEvent::Exit(code)) => exit = Some(code),
