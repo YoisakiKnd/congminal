@@ -12,7 +12,7 @@ FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 Corresponding source and build scripts for each binary release are available
 in that release's GitHub source archives and matching tag:
 https://github.com/YoisakiKnd/congminal
-For version 0.1.1: https://github.com/YoisakiKnd/congminal/tree/v0.1.1
+For version 0.2.0: https://github.com/YoisakiKnd/congminal/tree/v0.2.0
 
 Third-party components retain their own licenses:
 - Embedded Terminus Font: Copyright (c) 2010 Dimitar Toshkov Zhekov;
@@ -21,6 +21,10 @@ Third-party components retain their own licenses:
 - libc 0.2.191 (Unix builds): distributed under its MIT license; see
   LICENSE-libc.txt in binary packages or assets/licenses/LICENSE-libc.txt
   in the source tree. Source: https://github.com/rust-lang/libc/tree/0.2.191
+- Microsoft.Windows.Console.ConPTY 1.25.260930003 (Windows packages):
+  Copyright (c) Microsoft Corporation; MIT License. See LICENSE-ConPTY.txt
+  and NOTICE-ConPTY.md in Windows binary packages or assets/licenses/
+  in the source tree. Source: https://github.com/microsoft/terminal
 - Rust dependencies retain the licenses declared by their respective authors.
   They are resolved from the checked-in Cargo.lock; their source can be
   obtained with Cargo. Maple Mono is not bundled with this application.

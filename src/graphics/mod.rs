@@ -154,10 +154,19 @@ impl Graphics {
             self.underline_colors.get(index as usize - 1).copied().flatten()
         }
     }
-    pub fn begin(&mut self) {
+    pub fn expire(&mut self) {
         if self.pending.as_ref().is_some_and(|p| p.started.elapsed() > Duration::from_secs(30)) {
             self.pending = None;
         }
+    }
+    pub fn finish_input(&mut self) {
+        self.pending = None;
+        self.packet = None;
+        self.active = false;
+        self.bad = false;
+    }
+    pub fn begin(&mut self) {
+        self.expire();
         if let Some(packet) = &mut self.packet {
             packet.data.clear();
         }

@@ -2,17 +2,17 @@
 
 用 Rust 编写的跨平台终端模拟器，提供多标签、分屏、SSH/SFTP、Git、状态监控和通知。窗口与界面直接使用 Cocoa/AppKit、Win32、X11，终端和侧栏由自有软件渲染器绘制。
 
-当前稳定版 **[v0.1.1](https://github.com/YoisakiKnd/congminal/releases/tag/v0.1.1)**，提供带完整 GPL 许可的 macOS、Windows、Linux 安装包和 SHA256。首个正式版 v0.1.0 的功能与性能验收见 [正式版记录](docs/evaluations/v0.1.0/README.md)。
+当前稳定版 **[v0.2.0](https://github.com/YoisakiKnd/congminal/releases/tag/v0.2.0)**，提供带完整 GPL 许可的 macOS、Windows、Linux 安装包和 SHA256。首个正式版 v0.1.0 的功能与性能验收见 [正式版记录](docs/evaluations/v0.1.0/README.md)。
 
 ## 安装和运行
 
-从 Releases 下载对应平台的包，解压后保留主程序旁的 `congminal-ssh-helper`（Windows 为 `.exe`）。helper 用于 SFTP 认证；Windows 还用它调用系统文件打开接口。
+从 Releases 下载对应平台的包，解压后保留主程序旁的 `congminal-ssh-helper`（Windows 为 `.exe`）。helper 用于 SFTP 认证；Windows 还用它调用系统文件打开接口。Windows 请完整保留 `conpty.dll`、`x64/OpenConsole.exe` 和对应许可，图片传输需要包内的新版 ConPTY。
 
 | 平台 | 要求与启动方式 |
 | --- | --- |
 | macOS | macOS 11 或更新；通用包支持 Apple 芯片与 Intel。将 `.app` 放到应用程序目录后打开。发布包仅临时签名，尚无 Apple 开发者签名和公证，首次打开需按系统提示允许。 |
-| Windows | Windows 10 1809 或更新，使用 ConPTY；运行 `congminal.exe`。 |
-| Linux | X11，Wayland 桌面通过 XWayland；运行 `./congminal`。CI 包在 Ubuntu 上构建，旧发行版可能不满足其 glibc 要求。 |
+| Windows | Windows 10 1809 或更新；完整解压后运行 `congminal.exe`，附带固定版本的微软 ConPTY。 |
+| Linux | X11，Wayland 桌面通过 XWayland；运行 `./congminal`，或用 `./install-linux.sh` 安装当前用户的桌面入口和图标。CI 包在 Ubuntu 上构建，旧发行版可能不满足其 glibc 要求。 |
 
 通过个人 Homebrew tap 安装（macOS）：
 
@@ -37,6 +37,8 @@ cargo run --release
 cargo install --path . --bins
 ```
 
+Windows 源码构建需先执行 `python ci/fetch-conpty.py --destination target/debug --destination target/release`，再构建运行；发布 CI 额外核验 NuGet 签名。程序不会自行下载运行时。Windows 上用 `cargo install` 时需把上述 DLL 和 `x64` 子目录一并复制到安装目录；缺少时使用系统 ConPTY，旧版可能丢弃图片数据。
+
 默认构建包含 SFTP 和 helper；仅需本地终端时可用 `cargo build --release --no-default-features --bin congminal`。旧 `sftp-preview` 特性保留为 `sftp` 的兼容别名。
 
 本机 macOS 应用包可用 `bash ci/package-macos.sh` 构建，输出到 `target/distributions/`。CI 生成三平台安装包和 SHA256 校验文件。
@@ -44,6 +46,7 @@ cargo install --path . --bins
 ## 功能
 
 - 终端：UTF-8、宽字符、ANSI/VT 转义序列、真彩色、备用屏、回滚、选区、历史搜索、链接及鼠标上报。
+- 图片：三平台支持 Kitty 静态图片的 RGB/RGBA/PNG、分块、zlib、普通放置与 Unicode 占位符，已核对 NakuruMusic 使用的 ratatui-image 11.0.6 输出。
 - 工作区：多标签、横纵分屏、左右侧栏、连接配置档；可选保存和恢复布局，恢复时重新启动 shell。
 - SSH：复用系统 OpenSSH 配置、密钥与 agent，支持别名、跳板和端口转发。终端认证在终端中进行。
 - SFTP：独立文件连接、文件与目录上传/下载、上传断点续传、重命名、创建和删除；目录操作先预览范围。支持临时下载后用系统程序打开，并显式上传编辑结果。
@@ -53,7 +56,7 @@ cargo install --path . --bins
 
 ## 第一次使用
 
-启动后即可输入命令。macOS 的工作区主修饰键是 **Cmd**，Windows/Linux 是 **Ctrl+Shift**。
+启动后即可输入命令。Windows 默认优先本地 PowerShell 7，再 Windows PowerShell，最后 COMSPEC；已有 `[shell].program` 配置仍优先。macOS 的工作区主修饰键是 **Cmd**，Windows/Linux 是 **Ctrl+Shift**。
 
 | 操作 | 快捷键 |
 | --- | --- |
@@ -120,11 +123,13 @@ SFTP 要求支持 `ForkAfterAuthentication` 和强制 askpass 的 OpenSSH 客户
 
 ## 内存、性能与实现
 
-默认 Unix 运行时 Rust 依赖仅为 `libc` 的系统 FFI 定义；Windows 使用直接系统接口。`libssh2-sys` 是可选测试后端，不进入正式默认包。监控不使用 `sysinfo`。引入其他包前评估资源和性能影响，见 [依赖策略](docs/dependency-policy.md)。
+默认 Unix 运行时 Rust 依赖仅为 `libc` 的系统 FFI 定义；Windows 使用直接系统接口，并附带微软 MIT 许可的 ConPTY 1.25.260930003。`libssh2-sys` 是可选测试后端，不进入正式默认包。监控不使用 `sysinfo`。引入其他包前评估资源和性能影响，见 [依赖策略](docs/dependency-policy.md)。
 
 PTY 队列、历史、字体缓存、图片解压、帧缓冲、任务和目录模型有明确预算与上限；大量输出使用背压，不能准入的输入整笔拒绝并提示。历史行数还受实际行存储额度限制。SFTP 沿用 2 个工作槽、64 等待槽，子池额度为 16 MiB；单目录列表最多 512 条，目录扫描最多 2000 个文件、512 个目录、16 层及 8 GiB 文件总量，每帧最多提交 4 个文件。
 
-这些额度是受管资源账本，不是整个进程 RSS 的硬上限；系统库、内核资源、线程栈和外部 SSH/编辑器需分别测量。最新结果和已验证的平台范围见 [v0.1.0 验收记录](docs/evaluations/v0.1.0/README.md)，历史性能数据保留其原始源码版本，不能直接代表当前发布。
+Kitty 缓存最多 16 张 / 16 MiB RGBA 容量，单图最多 4 Mi 像素，最多 32 项放置；输入分块累计最多 16 MiB。字符格子保持 20 B。Windows 新后端增加约 1.15 MiB 安装文件，测试机进程树工作集峰值中位数约增加 3.1 MiB；测量范围见 [v0.2.0 图片与性能验收](docs/evaluations/v0.2.0/README.md)。
+
+这些额度是受管资源账本，不是整个进程 RSS 的硬上限；系统库、内核资源、线程栈和外部 SSH/编辑器需分别测量。原有功能的完整基线见 [v0.1.0 验收记录](docs/evaluations/v0.1.0/README.md)，历史性能数据保留其原始源码版本，不能直接代表当前发布。
 
 ## 开发与已知限制
 
@@ -136,6 +141,7 @@ cargo test -- --test-threads=1
 
 真实 SSH、SFTP 和窗口检查使用隔离夹具，复现工具位于 `tools/`；部分测试带 `ignored` 标记，需要显式准备环境。CI 包含三个平台原生单元回归、应用启动/退出和最低 Rust 版本检查。编译或单元测试通过不等于所有桌面环境和输入法已验收。
 
+- Kitty 当前支持静态图片的直接传输；不支持文件/共享内存传输、动画、相对放置和全部删除模式。每次终端重置前最多登记 256 种不同的图片放置色，超限占位符隐藏。
 - Linux 使用 X11/XIM，尚无原生 Wayland 后端；Windows 输入法与不同 Linux 桌面的覆盖范围仍有限。
 - 字体支持 TrueType 轮廓，不支持 OTF/CFF；复杂文字定位和所有终端扩展并未完整实现。
 - 大型历史重排和字体/emoji 工作均受预算约束；兼容性细节见 [底层说明](docs/foundations.md) 和 [终端查询设计](docs/design-term-queries.md)。
@@ -148,3 +154,5 @@ cargo test -- --test-threads=1
 congminal 原创源码采用 **[GNU GPL v3，仅第 3 版（GPL-3.0-only）](LICENSE)**，Copyright © 2026 YoisakiKnd。版权及第三方说明见 [NOTICE](NOTICE)。此声明也覆盖原创 `v0.1.0` 代码。发布源码与构建脚本可从对应 GitHub Release 的源码归档和同名标签取得。
 
 从 `v0.1.1` 起，三平台安装包包含 `LICENSE`、`NOTICE` 及第三方许可。`assets/fonts/` 中的 Terminus Font 继续使用 SIL Open Font License 1.1，见 [字体许可证](assets/fonts/LICENSE-Terminus.txt)；第三方组件保留各自许可，Maple Mono 不随程序分发。
+
+Windows 包中的微软 ConPTY 保留其 MIT 许可和第三方声明，见 [ConPTY 许可](assets/licenses/LICENSE-ConPTY.txt) 与 [声明](assets/licenses/NOTICE-ConPTY.md)。

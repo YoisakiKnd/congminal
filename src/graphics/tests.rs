@@ -33,6 +33,25 @@ fn chunks_and_invalid_input_release_credit_and_keep_previous_image() {
     assert_eq!(pool.snapshot().used, 0);
 }
 #[test]
+fn incomplete_transfer_expires_and_eof_releases_only_input_storage() {
+    let pool = Budget::new(4 * 1024 * 1024, 0);
+    let _scope = Scope::enter(pool.clone());
+    let mut t = Terminal::new(5, 3);
+    t.set_cell_pixels(1, 1);
+    feed(&mut t, "\x1b_Gq=2,i=42,a=T,U=1,f=32,t=d,s=1,v=1;/wAA/w==\x1b\\");
+    feed(&mut t, "\x1b_Gq=2,i=43,a=t,f=32,t=d,s=2,v=1,m=1;/wAA\x1b\\");
+    let before = pool.snapshot().used;
+    t.graphics.pending.as_mut().unwrap().started -= Duration::from_secs(31);
+    feed(&mut t, "ordinary output");
+    assert!(t.graphics.pending.is_none());
+    assert!(pool.snapshot().used < before);
+    feed(&mut t, "\x1b_Gq=2,i=43,a=t,f=32,t=d,s=2,v=1,m=1;/wAA\x1b\\");
+    t.graphics.finish_input();
+    assert!(t.graphics.pending.is_none());
+    assert!(t.graphics.packet.is_none());
+    assert!(t.graphics.virtual_placement(42, 0).is_some());
+}
+#[test]
 fn fragmented_apc_and_cancel_are_not_terminal_text() {
     let mut t = Terminal::new(12, 3);
     t.set_cell_pixels(1, 1);

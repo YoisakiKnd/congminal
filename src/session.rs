@@ -398,6 +398,9 @@ impl Session {
             self.pending_output.is_some() || self.output.as_ref().is_some_and(|output| !output.is_empty());
         let finished = exited.is_some() && eof && !self.output_pending && !self.resize_pending();
         if finished {
+            self.term.graphics.finish_input();
+        }
+        if finished {
             self.term.finish_session();
             self.sync_since = None;
             self.pty = None;

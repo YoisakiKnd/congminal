@@ -1591,6 +1591,7 @@ impl Perform for Terminal {
         self.cursor.template.flags.set_link(0);
     }
     fn begin_batch(&mut self) {
+        self.graphics.expire();
         self.text_revision = self.text_revision.wrapping_add(1);
     }
     fn print(&mut self, c: char) {
