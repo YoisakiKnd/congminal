@@ -48,6 +48,18 @@ fn graphics_wire_child() {
         assert!(reply.len() < 128);
     }
     assert_eq!(reply, b"\x1b_Gi=31;OK\x1b\\");
+    // The real picker also requires a cell-size response; Kitty OK alone would
+    // still make it fall back to half-blocks, especially through ConPTY.
+    print!("\x1b[c\x1b[16t\x1b]11;?\x07\x1b[5n");
+    std::io::stdout().flush().unwrap();
+    reply.clear();
+    while !reply.ends_with(b"\x1b[0n") {
+        let mut b = [0];
+        std::io::stdin().read_exact(&mut b).unwrap();
+        reply.push(b[0]);
+        assert!(reply.len() < 1024);
+    }
+    assert!(reply.windows(9).any(|s| s == b"\x1b[6;16;8t"), "picker lost cell metrics: {reply:?}");
     print!(
         "\x1b_Gq=2,i=42,a=T,U=1,f=32,t=d,s=2,v=1,m=1;/wAA\x1b\\\x1b_Gq=2,m=0;/wD/AP8=\x1b\\\x1b[38;2;0;0;42m\u{10eeee}\u{305}\u{305}\u{305}\u{10eeee}\x1b[39mGRAPHICS_CHILD_OK"
     );
