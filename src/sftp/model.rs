@@ -2,7 +2,7 @@
 pub(crate) use super::wire::Attributes;
 use super::wire::{self, Names, PATH_LIMIT};
 use crate::{
-    resources::{Budget, Kind, Lease},
+    resources::{Budget, Kind, Lease, Tracked},
     tasks::Cancellation,
 };
 use std::{fmt::Write, sync::Arc};
@@ -83,6 +83,11 @@ struct PathData {
 }
 #[derive(Clone)]
 pub struct RemotePath(Arc<PathData>);
+impl AsRef<[u8]> for RemotePath {
+    fn as_ref(&self) -> &[u8] {
+        self.bytes()
+    }
+}
 impl RemotePath {
     pub(super) fn budget(&self) -> &Arc<Budget> {
         self.0.memory.budget()
@@ -189,6 +194,10 @@ pub struct Listing {
     memory: Lease,
 }
 impl Listing {
+    pub fn into_entries(self) -> Tracked<Vec<Entry>> {
+        let Self { entries, memory, .. } = self;
+        Tracked::new(entries, memory)
+    }
     pub fn bytes(&self) -> usize {
         self.memory.bytes()
     }
@@ -345,6 +354,23 @@ impl Scan {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn moving_a_directory_page_keeps_entries_funded_until_the_last_byte_owner_drops() {
+        let pool = Budget::new(4 * 1024 * 1024, 0);
+        let cancel = Cancellation::default();
+        let root = RemotePath::new(&pool, b"/root").unwrap();
+        let mut scan = Scan::new(1, 1, root, true, Sort::Name).unwrap();
+        scan.push_entry(b"name\xff\n", Attributes { permissions: Some(0o100600), ..Attributes::default() }, &cancel)
+            .unwrap();
+        let listing = scan.finish(true).unwrap();
+        let charged = listing.bytes();
+        let entries = listing.into_entries();
+        assert_eq!(entries[0].name, b"name\xff\n");
+        assert_eq!(pool.snapshot().used, charged);
+        assert_eq!(entries.memory.bytes(), charged);
+        drop(entries);
+        assert_eq!(pool.snapshot().used, 0);
+    }
     /// 排序测试的一行：(名称, 权限位, 大小, mtime)。
     type SortedRow<'a> = (&'a [u8], u32, Option<u64>, Option<u32>);
     /// 带大小与 mtime 的 NAME 页：排序测试需要这两个属性。

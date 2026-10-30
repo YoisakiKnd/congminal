@@ -96,7 +96,15 @@ fn mkdir_if_missing<I: Read + Write>(
             cancel,
         )?;
         match channel.receive(cancel)?.response()? {
-            Response::Status { code: 0 | 4 | 11, .. } => Ok(()),
+            Response::Status { code: 0, .. } => Ok(()),
+            Response::Status { code: 4 | 11, .. } => {
+                let attrs = attributes(channel, path, cancel)?;
+                if attrs.permissions.is_some_and(|mode| mode & 0o170000 == 0o040000) {
+                    Ok(())
+                } else {
+                    Err(Error::Unexpected)
+                }
+            }
             other => Err(remote(other)),
         }
     })();
@@ -106,12 +114,12 @@ fn mkdir_if_missing<I: Read + Write>(
     result
 }
 /// 按顺序建一串目录（上传目录时用），已存在的目录跳过。
-pub fn mkdir_all<I: Read + Write>(
+pub fn mkdir_all<I: Read + Write, P: AsRef<[u8]>>(
     channel: &mut Channel<I>,
-    paths: &[Vec<u8>],
+    paths: &[P],
     cancel: &Cancellation,
 ) -> Result<(), Error> {
-    paths.iter().try_for_each(|path| mkdir_if_missing(channel, path, cancel))
+    paths.iter().try_for_each(|path| mkdir_if_missing(channel, path.as_ref(), cancel))
 }
 /// 删除，但「本来就不存在」不算失败：递归删除时别人可能已经删掉了。
 ///
@@ -137,16 +145,16 @@ fn remove_if_present<I: Read + Write>(
     result
 }
 /// 递归删除一棵子树：先删文件，再按给定顺序删目录（调用方要按深度从深到浅给出）。
-pub fn remove_all<I: Read + Write>(
+pub fn remove_all<I: Read + Write, P: AsRef<[u8]>>(
     channel: &mut Channel<I>,
-    files: &[Vec<u8>],
-    dirs: &[Vec<u8>],
+    files: &[P],
+    dirs: &[P],
     cancel: &Cancellation,
 ) -> Result<(), Error> {
     files
         .iter()
-        .try_for_each(|path| remove_if_present(channel, path, false, cancel))
-        .and_then(|()| dirs.iter().try_for_each(|path| remove_if_present(channel, path, true, cancel)))
+        .try_for_each(|path| remove_if_present(channel, path.as_ref(), false, cancel))
+        .and_then(|()| dirs.iter().try_for_each(|path| remove_if_present(channel, path.as_ref(), true, cancel)))
 }
 /// 不替换既有目标：v3 的 RENAME 在目标存在时由服务端拒绝，覆盖需显式删除。
 pub fn rename<I: Read + Write>(

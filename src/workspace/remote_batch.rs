@@ -4,10 +4,7 @@
 //! 2 活动 / 64 等待的服务队列自然限流，槽位满了就停下等下一帧（不阻塞 UI）。
 use super::*;
 use crate::sftp::plan::{self, Plan};
-use std::{
-    collections::{HashSet, VecDeque},
-    path::Path,
-};
+use std::{collections::VecDeque, path::Path};
 
 /// 预览里最多列出多少条相对路径。
 const PREVIEW_ROWS: usize = 5;
@@ -33,14 +30,15 @@ pub(super) struct Batch {
     items: VecDeque<plan::Item>,
     root: crate::sftp::model::RemotePath,
     local: PathValue,
-    /// 已经建过的本地目录，避免每个文件都 create_dir_all。
-    dirs: HashSet<Vec<u8>>,
     total: usize,
     submitted: usize,
     failed: usize,
     tickets: Vec<Ticket>,
     /// 队列满导致的中断次数，只用于诊断，不参与判断。
     stalled: usize,
+    pub(super) mkdir: Option<Ticket>,
+    _plan_memory: Lease,
+    _memory: Lease,
 }
 impl Batch {
     fn progress(&self) -> String {
@@ -57,8 +55,9 @@ impl Preview {
         items: &[(&[u8], u64)],
     ) -> Self {
         let root = crate::sftp::model::RemotePath::new(budget, root).unwrap();
-        let mut plan =
-            Plan { root: root.clone(), items: Vec::new(), total: 0, directories: 1, skipped: 0, truncated: false };
+        let mut plan = Plan::new(root.clone()).unwrap();
+        plan.directories = 1;
+        plan.directory_paths.push(root.clone());
         for (path, length) in items {
             plan.total += length;
             plan.items.push(plan::Item {
@@ -76,8 +75,12 @@ fn join(root: &PathValue, relative: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let root = root.bytes();
+    let length = root.len().checked_add(relative.len())?.checked_add(1)?;
+    if length > 16 * 1024 {
+        return None;
+    }
     let mut out = Vec::new();
-    out.try_reserve_exact(root.len() + 1 + relative.len()).ok()?;
+    out.try_reserve_exact(length).ok()?;
     out.extend_from_slice(root);
     if !root.ends_with(b"/") {
         out.push(b'/');
@@ -158,31 +161,96 @@ impl Workspace {
     }
     /// 预览确认后开始提交。
     pub(super) fn start_batch(&mut self, state: &mut State) -> bool {
-        let Some(preview) = state.preview.take() else { return false };
-        if preview.plan.items.is_empty() {
-            state.error = Some(Failure::Invalid);
-            self.notice("目录里没有可传输的普通文件");
+        let Ok(_scope) = crate::resources::SftpInputScope::enter(state.service.budget().clone()) else {
+            state.error = Some(Failure::Budget);
             return true;
-        }
+        };
+        let Some(preview) = state.preview.take() else { return false };
         let total = preview.plan.items.len();
+        let funded = (|| -> Result<_, Failure> {
+            let memory = state.service.budget().lease(Kind::Sftp, 512 * 1024).map_err(|_| Failure::Budget)?;
+            let mut tickets = Vec::new();
+            tickets.try_reserve_exact(total).map_err(|_| Failure::Budget)?;
+            Ok((memory, tickets))
+        })();
+        let (memory, tickets) = match funded {
+            Ok(value) => value,
+            Err(error) => {
+                state.error = Some(error);
+                state.preview = Some(preview);
+                return true;
+            }
+        };
+        let prepared = (|| -> Result<Ticket, Failure> {
+            let view = state.view.as_ref().ok_or(Failure::Invalid)?;
+            if !view.binding.valid(self) || view.binding.owner.session != self.selected {
+                return Err(Failure::Invalid);
+            }
+            let _paths_work = state
+                .service
+                .budget()
+                .lease(Kind::Sftp, preview.plan.bytes() + 64 * 1024)
+                .map_err(|_| Failure::Budget)?;
+            let mut directories = Vec::new();
+            directories.try_reserve_exact(preview.plan.directory_paths.len()).map_err(|_| Failure::Budget)?;
+            for path in &preview.plan.directory_paths {
+                let relative = if path.bytes() == preview.plan.root.bytes() {
+                    b".".as_slice()
+                } else {
+                    preview.plan.relative(path)
+                };
+                if relative.is_empty() {
+                    return Err(Failure::Invalid);
+                }
+                directories.push(relative.to_vec());
+            }
+            state.service.local_directories(
+                view.binding.owner,
+                view.binding.profiles.clone(),
+                view.binding.profile,
+                state.options.paths(),
+                service::local_path(preview.local.bytes())?,
+                &directories,
+            )
+        })();
+        let mkdir = match prepared {
+            Ok(ticket) => Some(ticket),
+            Err(error) => {
+                state.error = Some(error);
+                state.preview = Some(preview);
+                return true;
+            }
+        };
         state.batch = Some(Batch {
             items: preview.plan.items.into_iter().collect(),
             root: preview.plan.root,
             local: preview.local,
-            dirs: HashSet::new(),
             total,
             submitted: 0,
             failed: 0,
-            tickets: Vec::new(),
+            tickets,
             stalled: 0,
+            mkdir,
+            _plan_memory: preview.plan.memory,
+            _memory: memory,
         });
         self.chrome_dirty = true;
         true
     }
     /// 每帧把批次往前推：槽位满了就停，等下一帧继续。
     pub(super) fn batch_pump(&mut self, state: &mut State) {
-        loop {
+        if state.batch.is_none() {
+            return;
+        }
+        let Ok(_scope) = crate::resources::SftpInputScope::enter(state.service.budget().clone()) else {
+            state.error = Some(Failure::Budget);
+            return;
+        };
+        for _ in 0..4 {
             let Some(batch) = state.batch.as_mut() else { return };
+            if batch.mkdir.is_some() {
+                return;
+            }
             let Some(item) = batch.items.pop_front() else {
                 let done = batch.submitted;
                 let failed = batch.failed;
@@ -194,7 +262,7 @@ impl Workspace {
                     crate::notifications::Source::Sftp,
                     crate::notifications::Category::SftpWrite,
                     "批量下载",
-                    crate::shell::Outcome::Exit(0),
+                    crate::shell::Outcome::Exit(u8::from(failed > 0)),
                     host.as_deref(),
                 );
                 return;
@@ -203,14 +271,6 @@ impl Workspace {
                 batch.failed += 1;
                 continue;
             };
-            // 本地父目录先建好，否则提交会因目标目录不存在失败。
-            if let Some(parent) = service::local_path(&bytes).ok().and_then(Path::parent)
-                && batch.dirs.insert(parent.as_os_str().as_encoded_bytes().to_vec())
-                && std::fs::create_dir_all(parent).is_err()
-            {
-                batch.failed += 1;
-                continue;
-            }
             let local = match PathValue::new(state.service.budget(), &bytes) {
                 Ok(local) => local,
                 Err(_) => {
@@ -246,7 +306,8 @@ impl Workspace {
         let (profiles, profile) = pane.profile.as_ref().ok_or(Failure::Invalid)?;
         let owner = Owner { session: pane.id, generation: pane.auth_generation.max(1) };
         let slot = state.files.iter().position(Option::is_none).ok_or(Failure::Full)?;
-        let task = state.service.transfer(
+        let root = service::local_path(state.batch.as_ref().ok_or(Failure::Invalid)?.local.bytes())?;
+        let task = state.service.transfer_in_tree(
             owner,
             profiles.clone(),
             *profile,
@@ -257,6 +318,7 @@ impl Workspace {
                 version: item.version,
                 replace: service::Replace::No,
             },
+            root,
             Duration::from_secs(10),
         )?;
         let ticket = task.ticket;
@@ -281,13 +343,47 @@ impl Workspace {
     /// 取消批次：丢掉还没提交的条目并取消已提交的传输。
     pub(super) fn batch_cancel(&mut self, state: &mut State) -> bool {
         let Some(batch) = state.batch.take() else { return false };
-        let tickets = batch.tickets.clone();
-        for ticket in tickets {
-            self.cancel_remote_transfer(ticket);
+        if let Some(ticket) = batch.mkdir {
+            state.service.cancel(ticket);
+        }
+        for ticket in batch.tickets {
+            if state.cancel_file(ticket) {
+                self.finish_remote_authentication(ticket);
+            }
         }
         self.notice("已取消批量下载，未提交的条目不再提交");
         self.chrome_dirty = true;
         true
+    }
+    pub(super) fn batch_directories_result(
+        &mut self,
+        state: &mut State,
+        completion: service::Completion,
+    ) -> Option<service::Completion> {
+        if !state.batch.as_ref().is_some_and(|batch| batch.mkdir == Some(completion.ticket)) {
+            return Some(completion);
+        }
+        let result = if completion.cleanup != Cleanup::Confirmed {
+            Err(Failure::Connection)
+        } else {
+            match completion.result {
+                Ok(reply) => match reply.data {
+                    Ok(service::Output::LocalTreeReady) => Ok(()),
+                    Err(error) => Err(error),
+                    _ => Err(Failure::Protocol),
+                },
+                Err(_) => Err(Failure::Cancelled),
+            }
+        };
+        match result {
+            Ok(()) => state.batch.as_mut().unwrap().mkdir = None,
+            Err(error) => {
+                state.batch = None;
+                state.error = Some(error);
+            }
+        }
+        self.chrome_dirty = true;
+        None
     }
     /// 预览/批次在第二行显示的文本；没有时返回 None。
     pub(super) fn batch_line(&self, state: &State) -> Option<String> {
@@ -356,6 +452,8 @@ impl Workspace {
 }
 /// 条目相对批次根目录的路径。
 fn relative<'a>(root: &crate::sftp::model::RemotePath, path: &'a crate::sftp::model::RemotePath) -> &'a [u8] {
-    let rest = path.bytes().strip_prefix(root.bytes()).unwrap_or(path.bytes());
-    rest.strip_prefix(b"/").unwrap_or(rest)
+    let Some(rest) = path.bytes().strip_prefix(root.bytes()) else {
+        return b"";
+    };
+    if root.bytes().ends_with(b"/") { rest } else { rest.strip_prefix(b"/").unwrap_or(b"") }
 }

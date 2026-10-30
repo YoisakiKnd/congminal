@@ -162,26 +162,49 @@ struct FileTask {
     /// 这条记录是“打开远端文件”的有界临时下载：完成后用系统程序打开，路径可回传。
     open: Option<OpenTarget>,
 }
-/// 打开远端文件的临时路径：`$TMPDIR/congminal-open/<会话>-<序号>-<名字>`。
-///
-/// 名字只保留最后一段并压掉分隔符与控制字符；序号保证同一次运行里不重名，
-/// 因此下载可以用“不覆盖”提交，不会误删用户已有的临时文件。
-fn open_temp_path(session: u64, name: &[u8]) -> Option<PathBuf> {
-    let dir = std::env::temp_dir().join("congminal-open");
-    std::fs::create_dir_all(&dir).ok()?;
+/// 只生成路径；后台在独立私有目录中下载。保留扩展名供系统文件关联使用。
+fn open_temp_path(base: &Path, session: u64, name: &[u8]) -> Option<PathBuf> {
+    if !base.is_absolute() || base.as_os_str().len() > 3900 {
+        return None;
+    }
     let mut local = String::with_capacity(128);
     for ch in String::from_utf8_lossy(name).chars() {
         if local.len() >= 120 {
             break;
         }
-        local.push(if ch == '/' || ch == '\\' || ch.is_control() { '_' } else { ch });
+        local.push(if ch.is_control() || matches!(ch, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
+            '_'
+        } else {
+            ch
+        });
     }
     if local.is_empty() {
         local.push_str("file");
     }
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-    let nonce = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    Some(dir.join(format!("{session}-{nonce}-{local}")))
+    let mut current = NEXT.load(std::sync::atomic::Ordering::Relaxed);
+    let mut nonce = None;
+    for _ in 0..16 {
+        let next = current.checked_add(1)?;
+        match NEXT.compare_exchange_weak(
+            current,
+            next,
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+        ) {
+            Ok(value) => {
+                nonce = Some(value);
+                break;
+            }
+            Err(value) => current = value,
+        }
+    }
+    let nonce = nonce?;
+    let epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos();
+    // 前缀同时避开 Windows 保留设备名；目录权限由本地传输拥有者创建时设置。
+    let file = format!("copy-{}", local.trim_end_matches(['.', ' ']));
+    let path = base.join(format!("congminal-open-{}-{session}-{epoch}-{nonce}", std::process::id())).join(file);
+    if path.as_os_str().len() > 4096 { None } else { Some(path) }
 }
 /// 打开失败的一句话原因（面板只显示一行）。
 fn open_failure(failure: Failure) -> &'static str {
@@ -479,10 +502,18 @@ impl State {
         let mut dismiss = false;
         // 预览与批次随目录视图一起作废：换窗格/换配置档后不再提交。
         self.preview = None;
-        self.batch = None;
+        if let Some(batch) = self.batch.take()
+            && let Some(ticket) = batch.mkdir
+        {
+            self.service.cancel(ticket);
+        }
         self.upload_scan = None;
         self.upload_preview = None;
-        self.upload = None;
+        if let Some(batch) = self.upload.take()
+            && let Some(ticket) = batch.mkdir
+        {
+            self.service.cancel(ticket);
+        }
         self.upload_authentication = None;
         self.delete_preview = None;
         if let Some(task) = self.plan.take() {
@@ -706,6 +737,7 @@ impl Workspace {
             let Some(completion) = self.transfer_preparation_result(&mut state, completion) else { continue };
             let Some(completion) = self.delete_plan_result(&mut state, completion) else { continue };
             let Some(completion) = self.plan_result(&mut state, completion) else { continue };
+            let Some(completion) = self.batch_directories_result(&mut state, completion) else { continue };
             #[cfg(any(target_os = "macos", target_os = "linux", windows))]
             let Some(completion) = self.upload_mkdir_result(&mut state, completion) else { continue };
             let Some(completion) = self.remote_transfer_result(&mut state, completion) else { continue };
@@ -1240,7 +1272,7 @@ impl Workspace {
     }
     /// 打开选中的远端文件：有大小上限的临时下载，完成后交给系统程序。
     ///
-    /// 这里不弹路径表单：临时路径由应用自己生成（`$TMPDIR/congminal-open/<会话>-<名字>`），
+    /// 这里不弹路径表单：临时路径由应用自己生成（独立私有目录），
     /// 用户在完成提示与详情里看到它，改完可用 [上传] 显式回传。
     pub(super) fn sftp_open_selected(&mut self) -> bool {
         if self.composing()
@@ -1255,6 +1287,14 @@ impl Workspace {
         let Some((profiles, profile)) = pane.profile.as_ref() else { return true };
         let generation = pane.auth_generation;
         let Some(state) = self.sftp.as_ref() else { return true };
+        let Ok(_scope) = crate::resources::SftpInputScope::enter(state.service.budget().clone()) else {
+            self.notice("打开请求额度不足");
+            return true;
+        };
+        let Ok(_work) = state.service.budget().lease(Kind::Sftp, 64 * 1024) else {
+            self.notice("打开请求额度不足");
+            return true;
+        };
         let Some(view) = state.view.as_ref().filter(|v| {
             v.binding.owner.session == pane.id
                 && v.binding.owner.generation == generation
@@ -1290,12 +1330,13 @@ impl Workspace {
             self.notice("远端路径过长，无法打开");
             return true;
         };
-        let Some(local) = open_temp_path(pane.id, entry.name.as_slice()) else {
+        let base = state.options.temporary.clone();
+        let Some(local) = open_temp_path(&base, pane.id, entry.name.as_slice()) else {
             self.notice("无法准备临时目录，请检查 TMPDIR 权限");
             return true;
         };
         let remote_bytes = remote.bytes().to_vec();
-        let capacity = std::mem::size_of::<OpenTarget>() + local.as_os_str().len() + remote_bytes.len() + 64;
+        let capacity = std::mem::size_of::<OpenTarget>() + local.capacity() + remote_bytes.capacity() + 64;
         let memory = match self.sftp.as_ref().map(|s| s.service.budget().lease(crate::resources::Kind::Sftp, capacity))
         {
             Some(Ok(lease)) => lease,
@@ -1310,7 +1351,7 @@ impl Workspace {
             version,
             replace: service::Replace::No,
         };
-        match self.submit_remote_transfer(selection) {
+        match self.submit_remote_transfer_at(selection, Some(&base)) {
             Ok(ticket) => {
                 if let Some(state) = self.sftp.as_mut()
                     && let Some(file) = state.files.iter_mut().flatten().find(|f| f.ticket == ticket)
@@ -1403,7 +1444,7 @@ impl Workspace {
             Err(_) => Err(Failure::Cancelled),
         };
         match result {
-            Ok(plan) if plan.items.is_empty() && plan.directories <= 1 => {
+            Ok(plan) if !plan.truncated && plan.skipped == 0 && plan.items.is_empty() && plan.directories <= 1 => {
                 // 空目录：回到原来的 rmdir 确认行。
                 let pool = state.service.budget().clone();
                 match pool.lease(Kind::Sftp, std::mem::size_of::<Confirm>() + host.len() + 128) {
@@ -1488,24 +1529,25 @@ impl Workspace {
     /// 提交递归删除：文件先删，目录按深度从深到浅删。
     fn sftp_delete_tree(&mut self, state: &mut State) {
         let Some(preview) = state.delete_preview.take() else { return };
+        if preview.plan.truncated || preview.plan.skipped > 0 {
+            state.delete_preview = Some(preview);
+            self.notice("目录清单不完整或包含未处理项，不能整体删除");
+            return;
+        }
         let result = (|| -> Result<(), Failure> {
+            let _scope =
+                crate::resources::SftpInputScope::enter(state.service.budget().clone()).map_err(|_| Failure::Budget)?;
             let view = state.view.as_ref().ok_or(Failure::Invalid)?;
             let binding = view.binding.clone();
             let owner = binding.owner;
             let pool = state.service.budget().clone();
             let memory = pool.lease(Kind::Sftp, std::mem::size_of::<Mutation>() + 128).map_err(|_| Failure::Budget)?;
+            // 原始路径副本、两张引用表和排序暂存先准入，再分配；请求拥有自己的表额度。
+            let _work = pool.lease(Kind::Sftp, 2 * preview.plan.bytes() + 128 * 1024).map_err(|_| Failure::Budget)?;
             let files: Vec<Vec<u8>> = preview.plan.items.iter().map(|item| item.path.bytes().to_vec()).collect();
-            let mut dirs: Vec<Vec<u8>> = Vec::with_capacity(preview.plan.directories);
-            // 深度从深到浅：根目录最后删。
-            let mut stack = vec![(preview.plan.root.bytes().to_vec(), 0usize)];
-            let mut collected: Vec<(Vec<u8>, usize)> = Vec::new();
-            while let Some((path, depth)) = stack.pop() {
-                collected.push((path, depth));
-            }
-            collected.sort_by_key(|entry| std::cmp::Reverse(entry.1));
-            for (path, _) in collected {
-                dirs.push(path);
-            }
+            let mut dirs: Vec<Vec<u8>> =
+                preview.plan.directory_paths.iter().map(|path| path.bytes().to_vec()).collect();
+            dirs.sort_unstable_by_key(|path| std::cmp::Reverse(path.iter().filter(|&&b| b == b'/').count()));
             let (ticket, authentication) = state.service.remove_tree(
                 owner,
                 binding.profiles.clone(),
@@ -1963,14 +2005,15 @@ mod tests {
     }
     #[test]
     fn temp_copies_keep_only_the_last_segment_and_never_reuse_a_name() {
-        let first = open_temp_path(7, b"a/b/c\nfile.txt").unwrap();
-        let second = open_temp_path(7, b"a/b/c\nfile.txt").unwrap();
+        let first = open_temp_path(Path::new("/never-created-open-base"), 7, b"a/b/c\nfile.txt").unwrap();
+        let second = open_temp_path(Path::new("/never-created-open-base"), 7, b"a/b/c\nfile.txt").unwrap();
         let name = first.file_name().unwrap().to_string_lossy().into_owned();
-        assert!(name.starts_with("7-"), "{name}");
-        assert!(name.ends_with("-a_b_c_file.txt"), "分隔符与控制字符都要换掉：{name}");
+        assert!(name.starts_with("copy-"), "{name}");
+        assert!(name.ends_with("a_b_c_file.txt"), "分隔符与控制字符都要换掉：{name}");
         assert_ne!(first, second, "同名文件连续打开不能互相覆盖");
-        assert!(first.parent().unwrap().ends_with("congminal-open"));
-        let empty = open_temp_path(1, b"").unwrap();
+        assert!(first.parent().unwrap().file_name().unwrap().to_str().unwrap().starts_with("congminal-open-"));
+        assert!(!first.parent().unwrap().exists(), "UI path generation must not create directories");
+        let empty = open_temp_path(Path::new("/never-created-open-base"), 1, b"").unwrap();
         assert!(empty.file_name().unwrap().to_string_lossy().ends_with("-file"));
     }
 
@@ -2015,6 +2058,78 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn detached_completion_opens_the_file_and_preserves_the_edit_upload_target() {
+        let parent = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(parent.clone());
+        let dir = crate::workspace::layout::TestDir::new();
+        let local = dir.0.join("copy.txt");
+        std::fs::write(&local, b"x").unwrap();
+        let marker = dir.0.join("marker");
+        let opener = dir.0.join("opener.sh");
+        std::fs::write(&opener, format!("#!/bin/sh\nprintf '%s' \"$1\" > {marker:?}\n")).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut app = workspace();
+        app.enable();
+        app.driver.config.sftp.opener = Some(opener);
+        app.start_remote_files(paths(), b"/tmp").unwrap();
+        let ticket = app
+            .submit_remote_transfer(service::TransferSelection::Download {
+                local: &local,
+                remote: b"/remote/document.txt",
+                version: service::Version { length: 1, modified: 0 },
+                replace: service::Replace::No,
+            })
+            .unwrap();
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().files.iter().flatten().any(|file| file.ticket == ticket && file.complete)
+        });
+        let mut state = app.sftp.take().unwrap();
+        let pool = state.service.budget().clone();
+        let file = state.files.iter_mut().flatten().find(|file| file.ticket == ticket).unwrap();
+        let owner = file.binding.owner;
+        let (status, progress) = service::Status::new(
+            &pool,
+            service::Source { session: owner.session, generation: owner.generation },
+            service::TransferDirection::Download,
+            PathValue::new(&pool, b"/remote/document.txt").unwrap(),
+            PathValue::new(&pool, local.as_os_str().as_encoded_bytes()).unwrap(),
+            1,
+        )
+        .ok()
+        .unwrap();
+        progress.begin().unwrap();
+        progress.advance(1).unwrap();
+        progress.verify().unwrap();
+        progress.local_published(true, true).unwrap();
+        progress.finish(None, Cleanup::Confirmed).unwrap();
+        file.status = status;
+        file.open = Some(OpenTarget {
+            local: local.clone(),
+            remote: b"/remote/document.txt".to_vec(),
+            _memory: pool.lease(Kind::Sftp, 4096).unwrap(),
+        });
+        let result = service::Completion::fixture(
+            ticket,
+            Ok(Tracked::new(
+                Ok(service::Output::Transfer { state: file.status.snapshot(), failure: None }),
+                pool.lease(Kind::Sftp, 512).unwrap(),
+            )),
+            Cleanup::Confirmed,
+            pool.lease(Kind::Sftp, 512).unwrap(),
+        );
+        assert!(app.remote_transfer_result(&mut state, result).is_none());
+        until(|| std::fs::read(&marker).is_ok_and(|bytes| bytes == local.as_os_str().as_encoded_bytes()));
+        assert!(state.files.iter().flatten().find(|file| file.ticket == ticket).unwrap().open.is_some());
+        drop(progress);
+        app.sftp = Some(state);
+        close(&mut app);
+        drop((app, pool));
+        released(&parent);
+    }
+    #[cfg(unix)]
+    #[test]
     fn the_configured_opener_gets_the_temp_copy_and_is_reaped() {
         let pool = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
         let _scope = Scope::enter(pool.clone());
@@ -2031,13 +2146,12 @@ mod tests {
         let temp = dir.0.join("temp-copy.txt");
         std::fs::write(&temp, b"edited").unwrap();
         let lease = pool.lease(Kind::Sftp, 256).unwrap();
-        app.launch_open_target(OpenTarget {
-            local: temp.clone(),
-            remote: b"/remote/temp-copy.txt".to_vec(),
-            _memory: lease,
-        });
+        app.launch_open_target(
+            &OpenTarget { local: temp.clone(), remote: b"/remote/temp-copy.txt".to_vec(), _memory: lease },
+            Path::new("/unused-opener-helper"),
+        );
         until(|| std::fs::read_to_string(&marker).is_ok_and(|text| text.trim() == temp.display().to_string()));
-        assert!(app.status.as_deref().unwrap().contains("已打开临时副本"), "{:?}", app.status);
+        assert!(app.status.as_deref().unwrap().contains("已请求打开临时副本"), "{:?}", app.status);
         // 打开器退出后由 tick 回收，不留下子进程。
         until(|| {
             app.tick();
@@ -2323,6 +2437,62 @@ mod tests {
         close(&mut app);
     }
     #[test]
+    fn an_empty_directory_download_creates_the_local_root_before_completing() {
+        let parent = Budget::new(256 * 1024 * 1024, 1024 * 1024 * 1024);
+        let _scope = Scope::enter(parent.clone());
+        let dir = crate::workspace::layout::TestDir::new();
+        let local = dir.0.join("download");
+        let mut app = workspace();
+        app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("empty", true)]);
+        let mut state = app.sftp.take().unwrap();
+        state.preview = Some(batch::Preview::for_test(
+            state.service.budget(),
+            b"/tmp/empty",
+            local.as_os_str().as_encoded_bytes(),
+            &[],
+        ));
+        assert!(app.start_batch(&mut state));
+        assert!(state.batch.as_ref().unwrap().mkdir.is_some());
+        assert!(state.files.iter().all(Option::is_none));
+        app.sftp = Some(state);
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().batch.is_none()
+        });
+        assert!(local.is_dir());
+        assert!(app.sftp.as_ref().unwrap().error.is_none());
+        close(&mut app);
+        drop(app);
+        released(&parent);
+    }
+    #[test]
+    fn a_failed_local_directory_stops_the_batch_before_submitting_any_download() {
+        let dir = crate::workspace::layout::TestDir::new();
+        let local = dir.0.join("file");
+        std::fs::write(&local, b"keep").unwrap();
+        let mut app = workspace();
+        app.start_remote_files(paths(), b"/tmp").unwrap();
+        loaded(&mut app, &[("folder", true)]);
+        let mut state = app.sftp.take().unwrap();
+        state.preview = Some(batch::Preview::for_test(
+            state.service.budget(),
+            b"/tmp/folder",
+            local.as_os_str().as_encoded_bytes(),
+            &[(b"/tmp/folder/file", 1)],
+        ));
+        assert!(app.start_batch(&mut state));
+        app.sftp = Some(state);
+        until(|| {
+            app.tick();
+            app.sftp.as_ref().unwrap().batch.is_none()
+        });
+        assert!(app.sftp.as_ref().unwrap().error.is_some());
+        assert!(app.sftp.as_ref().unwrap().files.iter().all(Option::is_none));
+        assert_eq!(std::fs::read(&local).unwrap(), b"keep");
+        close(&mut app);
+    }
+    #[test]
     fn deleting_a_directory_previews_the_tree_and_needs_a_second_click() {
         let mut app = workspace();
         let _ticket = app.start_remote_files(paths(), b"/tmp").unwrap();
@@ -2332,14 +2502,9 @@ mod tests {
         let pool = state.service.budget().clone();
         let root = crate::sftp::model::RemotePath::new(&pool, b"/tmp/folder").unwrap();
         let sub = root.child(b"sub").unwrap();
-        let mut plan = crate::sftp::plan::Plan {
-            root: root.clone(),
-            items: Vec::new(),
-            total: 0,
-            directories: 2,
-            skipped: 0,
-            truncated: false,
-        };
+        let mut plan = crate::sftp::plan::Plan::new(root.clone()).unwrap();
+        plan.directories = 2;
+        plan.directory_paths.extend([root.clone(), sub.clone()]);
         for (parent, name, size) in [(&root, b"a.txt".as_slice(), 3u64), (&sub, b"b.txt".as_slice(), 5)] {
             plan.items.push(crate::sftp::plan::Item {
                 path: parent.child(name).unwrap(),
@@ -2371,13 +2536,11 @@ mod tests {
         let memory = state.service.budget().lease(Kind::Sftp, 4096).unwrap();
         let root = crate::sftp::model::RemotePath::new(state.service.budget(), b"/tmp/folder").unwrap();
         state.delete_preview = Some(DeletePreview {
-            plan: crate::sftp::plan::Plan {
-                root,
-                items: Vec::new(),
-                total: 0,
-                directories: 1,
-                skipped: 0,
-                truncated: false,
+            plan: {
+                let mut plan = crate::sftp::plan::Plan::new(root).unwrap();
+                plan.directories = 1;
+                plan.directory_paths.push(plan.root.clone());
+                plan
             },
             host: "fixture".into(),
             _memory: memory,
@@ -2420,13 +2583,13 @@ mod tests {
         assert!(state.upload_preview.is_none());
         assert!(state.upload.is_none());
         assert!(state.files.iter().all(Option::is_none));
-        // 再来一次，左半是开始：没有子目录时直接进入提交阶段。
+        // 再来一次，左半是开始：先确认目标根目录存在，再提交文件。
         state.upload_preview =
             Some(upload::Preview::for_test(state.service.budget(), b"/tmp/folder", &local, &[(b"a.txt", 3)]));
         assert!(app.upload_click(&mut state, 0));
         assert!(state.upload_preview.is_none());
         let line = app.upload_line(&state).unwrap();
-        assert!(line.starts_with("正在提交批量上传 0/1"), "{line}");
+        assert!(line.starts_with("建目录 0/1"), "{line}");
         assert_eq!(app.upload_labels(&state), Some(["—", "取消"]));
         // 取消批次后不再提交任何条目。
         assert!(app.upload_click(&mut state, 4));

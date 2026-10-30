@@ -28,24 +28,21 @@ impl Default for Settings {
 }
 impl Settings {
     /// 实际使用的打开程序：配置优先，否则按平台默认。
-    // 打开远端文件的界面代码只在 unix 上编译，其它平台这两个方法没有调用点。
-    #[cfg_attr(not(unix), allow(dead_code))]
     pub fn opener(&self) -> PathBuf {
         self.opener.clone().unwrap_or_else(|| {
             if cfg!(target_os = "macos") {
                 PathBuf::from("open")
             } else if cfg!(windows) {
-                PathBuf::from("cmd")
+                PathBuf::from("congminal-ssh-helper.exe")
             } else {
                 PathBuf::from("xdg-open")
             }
         })
     }
-    /// `cmd` 需要 `/c start` 才能按文件关联打开；其它程序直接把路径当参数。
-    #[cfg_attr(not(unix), allow(dead_code))]
+    /// Windows 默认由附带 helper 调用 ShellExecuteExW；自定义程序直接接收路径。
     pub fn opener_args(&self) -> &'static [&'static str] {
         let default = self.opener.is_none();
-        if default && cfg!(windows) { &["/c", "start", ""] } else { &[] }
+        if default && cfg!(windows) { &["--open-file"] } else { &[] }
     }
 }
 pub(super) fn read(r: &mut Reader<'_>) -> Settings {

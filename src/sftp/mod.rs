@@ -183,6 +183,9 @@ mod interoperability {
         super::operations::mkdir_all(&mut channel, &tree, &cancel).unwrap();
         super::operations::mkdir(&mut channel, &path("a/b/c/d"), &cancel).unwrap();
         assert!(std::fs::metadata(native(&path("a/b/c/d"))).unwrap().is_dir());
+        std::fs::write(server.path.join("regular"), b"kept file").unwrap();
+        assert!(super::operations::mkdir_all(&mut channel, &[path("regular")], &cancel).is_err());
+        assert_eq!(std::fs::read(server.path.join("regular")).unwrap(), b"kept file");
         drop(channel);
     }
     #[cfg(unix)]
@@ -783,6 +786,7 @@ mod interoperability {
         use crate::tasks::Cancellation;
         let mut server = Server::new();
         std::fs::create_dir_all(server.path.join("sub/deeper")).unwrap();
+        std::fs::create_dir(server.path.join("empty")).unwrap();
         std::fs::write(server.path.join("a.txt"), b"abc").unwrap();
         std::fs::write(server.path.join("sub/b.txt"), b"abcde").unwrap();
         std::fs::write(server.path.join("sub/deeper/c.txt"), b"c").unwrap();
@@ -802,7 +806,9 @@ mod interoperability {
         names.sort();
         assert_eq!(names, [b"a.txt".to_vec(), b"sub/b.txt".to_vec(), b"sub/deeper/c.txt".to_vec()]);
         assert_eq!(plan.total, 9);
-        assert_eq!(plan.directories, 3);
+        assert_eq!(plan.directories, 4);
+        assert_eq!(plan.directory_paths.len(), 4);
+        assert!(plan.directory_paths.iter().any(|path| plan.relative(path) == b"empty"));
         assert_eq!(plan.skipped, 1, "符号链接不跟随");
         assert!(!plan.truncated);
         assert!(plan.items.iter().all(|item| item.version.length == item.length));

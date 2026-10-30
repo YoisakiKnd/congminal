@@ -97,6 +97,7 @@ pub enum Output {
     #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     LocalSource(LocalStamp),
     LocalSourceDirectory,
+    LocalTreeReady,
     #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     RemoteVersion(Version),
     #[cfg(any(target_os = "macos", target_os = "linux", windows))]
@@ -194,11 +195,17 @@ enum TransferKind {
 #[cfg(any(target_os = "macos", target_os = "linux", windows))]
 struct FileRequest {
     local: LocalPath,
+    local_root: Option<RemotePath>,
     remote: RemotePath,
     kind: TransferKind,
     progress: Progress,
 }
 enum Action {
+    LocalDirectories {
+        root: RemotePath,
+        directories: Vec<RemotePath>,
+        _memory: crate::resources::Lease,
+    },
     Directory {
         path: RemotePath,
         hidden: bool,
@@ -230,11 +237,13 @@ enum Action {
     /// 批量建目录（上传目录时用）：按给定顺序逐个建，已存在的不算失败。
     MkdirAll {
         paths: Vec<RemotePath>,
+        _memory: crate::resources::Lease,
     },
     /// 递归删除（删除目录时用）：先删文件，再按给定顺序删目录（深度从深到浅）。
     RemoveTree {
         files: Vec<RemotePath>,
         dirs: Vec<RemotePath>,
+        _memory: crate::resources::Lease,
     },
     Rename {
         from: RemotePath,
@@ -272,6 +281,53 @@ mod prepare_tests;
 #[path = "service_windows_tests.rs"]
 mod windows_tests;
 impl Service {
+    #[allow(clippy::too_many_arguments)]
+    pub fn local_directories(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        root: &Path,
+        directories: &[Vec<u8>],
+    ) -> Result<Ticket, Failure> {
+        self.validate(owner, paths, Duration::from_secs(30))?;
+        if !root.is_absolute() || root.as_os_str().len() > 4096 || directories.len() > plan::DIRECTORIES {
+            return Err(Failure::Invalid);
+        }
+        let _scope = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        let memory = self
+            .budget()
+            .lease(Kind::Sftp, directories.len() * std::mem::size_of::<RemotePath>() + 128)
+            .map_err(|_| Failure::Budget)?;
+        let root = RemotePath::new(self.budget(), local_bytes(root)?).map_err(model_failure)?;
+        let mut captured = Vec::new();
+        captured.try_reserve_exact(directories.len()).map_err(|_| Failure::Budget)?;
+        for path in directories {
+            if cfg!(windows) && path.contains(&b'\\') {
+                return Err(Failure::Invalid);
+            }
+            let native = local_path(path)?;
+            if path.len() > 4096
+                || (path != b"."
+                    && (native.components().count() > 16
+                        || native.components().any(|c| !matches!(c, std::path::Component::Normal(_)))))
+            {
+                return Err(Failure::Invalid);
+            }
+            captured.push(RemotePath::new(self.budget(), path).map_err(model_failure)?);
+        }
+        let (ticket, auth) = self.submit(
+            owner,
+            profiles,
+            profile,
+            paths,
+            Action::LocalDirectories { root, directories: captured, _memory: memory },
+            Duration::from_secs(30),
+        )?;
+        drop(auth);
+        Ok(ticket)
+    }
     /// 共享原工作池；界面只捕获路径，不启动认证或额外目录线程。
     #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     #[allow(clippy::too_many_arguments)]
@@ -463,11 +519,16 @@ impl Service {
         if remote.len() > crate::sftp::local_plan::FILES {
             return Err(Failure::Invalid);
         }
-        let mut list = Vec::with_capacity(remote.len());
+        let memory = self
+            .budget()
+            .lease(Kind::Sftp, remote.len() * std::mem::size_of::<RemotePath>() + 128)
+            .map_err(|_| Failure::Budget)?;
+        let mut list = Vec::new();
+        list.try_reserve_exact(remote.len()).map_err(|_| Failure::Budget)?;
         for path in remote {
             list.push(mutation_path(self.budget(), path)?);
         }
-        self.submit(owner, profiles, profile, paths, Action::MkdirAll { paths: list }, timeout)
+        self.submit(owner, profiles, profile, paths, Action::MkdirAll { paths: list, _memory: memory }, timeout)
     }
     /// 递归删除：`files` 是子树里的普通文件，`dirs` 是子目录（含根，深度从深到浅）。
     #[allow(clippy::too_many_arguments)]
@@ -483,18 +544,31 @@ impl Service {
     ) -> Result<(Ticket, Authentication), Failure> {
         self.validate(owner, paths, timeout)?;
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
-        if files.len() + dirs.len() > crate::sftp::local_plan::FILES {
+        if files.len() > super::plan::FILES || dirs.len() > super::plan::DIRECTORIES {
             return Err(Failure::Invalid);
         }
-        let mut file_list = Vec::with_capacity(files.len());
+        let memory = self
+            .budget()
+            .lease(Kind::Sftp, (files.len() + dirs.len()) * std::mem::size_of::<RemotePath>() + 256)
+            .map_err(|_| Failure::Budget)?;
+        let mut file_list = Vec::new();
+        file_list.try_reserve_exact(files.len()).map_err(|_| Failure::Budget)?;
         for path in files {
             file_list.push(mutation_path(self.budget(), path)?);
         }
-        let mut dir_list = Vec::with_capacity(dirs.len());
+        let mut dir_list = Vec::new();
+        dir_list.try_reserve_exact(dirs.len()).map_err(|_| Failure::Budget)?;
         for path in dirs {
             dir_list.push(mutation_path(self.budget(), path)?);
         }
-        self.submit(owner, profiles, profile, paths, Action::RemoveTree { files: file_list, dirs: dir_list }, timeout)
+        self.submit(
+            owner,
+            profiles,
+            profile,
+            paths,
+            Action::RemoveTree { files: file_list, dirs: dir_list, _memory: memory },
+            timeout,
+        )
     }
     /// 重命名：源与目标都必须是绝对路径，目标名称不得为空、`.` 或 `..`；不替换既有目标。
     #[allow(clippy::too_many_arguments)]
@@ -575,6 +649,39 @@ impl Service {
         self.validate(owner, paths, timeout)?;
         let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
         let (file, status) = prepare_file(self.budget(), owner, selection)?;
+        let (ticket, authentication) = self.submit(owner, profiles, profile, paths, Action::Transfer(file), timeout)?;
+        Ok(TransferTask { ticket, authentication, status })
+    }
+    /// 批量下载的本地目录创建也由同一个工作槽负责；调用线程只准入路径。
+    #[allow(clippy::too_many_arguments)]
+    pub fn transfer_in_tree(
+        &self,
+        owner: Owner,
+        profiles: Profiles,
+        profile: usize,
+        paths: Paths<'_>,
+        selection: TransferSelection<'_>,
+        root: &Path,
+        timeout: Duration,
+    ) -> Result<TransferTask, Failure> {
+        self.validate(owner, paths, timeout)?;
+        let TransferSelection::Download { local, .. } = &selection else {
+            return Err(Failure::Invalid);
+        };
+        let relative = local.strip_prefix(root).map_err(|_| Failure::Invalid)?;
+        if !root.is_absolute()
+            || root.as_os_str().len() > 4096
+            || relative.file_name().is_none()
+            || relative.as_os_str().len() > 4096
+            || relative.components().any(|c| !matches!(c, std::path::Component::Normal(_)))
+            || relative.components().count() > 17
+        {
+            return Err(Failure::Invalid);
+        }
+        let _input = SftpInputScope::enter(self.budget().clone()).map_err(|_| Failure::Budget)?;
+        let root = RemotePath::new(self.budget(), local_bytes(root)?).map_err(model_failure)?;
+        let (mut file, status) = prepare_file(self.budget(), owner, selection)?;
+        file.local_root = Some(root);
         let (ticket, authentication) = self.submit(owner, profiles, profile, paths, Action::Transfer(file), timeout)?;
         Ok(TransferTask { ticket, authentication, status })
     }
@@ -675,7 +782,7 @@ fn prepare_file(
     let (status, progress) =
         Status::new(pool, Source { session: owner.session, generation: owner.generation }, direction, from, to, length)
             .map_err(|e| if e == transfer_state::Error::Budget { Failure::Budget } else { Failure::Invalid })?;
-    Ok((FileRequest { local, remote, kind, progress }, status))
+    Ok((FileRequest { local, local_root: None, remote, kind, progress }, status))
 }
 #[allow(clippy::too_many_arguments)]
 fn capture(
@@ -747,6 +854,7 @@ mod cost;
 fn operation_failure(error: operations::Error) -> Failure {
     match error {
         operations::Error::Remote(code) => Failure::Remote(code),
+        operations::Error::Model(model::Error::Budget | model::Error::Allocation) => Failure::Budget,
         operations::Error::Model(_) => Failure::Model,
         operations::Error::Channel(client::Error::Cancelled) => Failure::Cancelled,
         operations::Error::Channel(client::Error::Wire(
@@ -824,6 +932,29 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
             return Outcome { result: Err(executor::Error::Budget), cleanup: Cleanup::Confirmed };
         }
     };
+    if let Action::LocalDirectories { root, directories, .. } = &request.action {
+        let work = match pool.lease(Kind::Sftp, 64 * 1024) {
+            Ok(work) => work,
+            Err(_) => return completed(Err(Failure::Budget), memory),
+        };
+        let result = (|| -> Result<(), local_transfer::Error> {
+            let root = local_path(root.bytes()).map_err(|_| local_transfer::Error::Invalid)?;
+            for relative in directories {
+                let directory = if relative.bytes() == b"." {
+                    root.to_path_buf()
+                } else {
+                    root.join(local_path(relative.bytes()).map_err(|_| local_transfer::Error::Invalid)?)
+                };
+                local_transfer::create_directory(root, &directory, pool, cancel)?;
+            }
+            Ok(())
+        })();
+        drop(work);
+        if matches!(result, Err(local_transfer::Error::Cleanup)) {
+            return Outcome { result: Err(executor::Error::Cleanup), cleanup: Cleanup::Failed };
+        }
+        return completed(result.map(|()| Output::LocalTreeReady).map_err(local_failure), memory);
+    }
     #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     if let Action::LocalDirectory { path, hidden } = &request.action {
         let result = local_path(path.bytes()).and_then(|path| {
@@ -892,17 +1023,12 @@ fn execute(input: Tracked<Request>, pool: &Arc<Budget>, cancel: &Cancellation) -
         Action::Mkdir { path } => {
             operations::mkdir(&mut channel, path.bytes(), cancel).map(|()| Output::Changed).map_err(operation_failure)
         }
-        Action::MkdirAll { paths } => {
-            let paths: Vec<Vec<u8>> = paths.iter().map(|path| path.bytes().to_vec()).collect();
-            operations::mkdir_all(&mut channel, &paths, cancel).map(|()| Output::Changed).map_err(operation_failure)
+        Action::MkdirAll { paths, .. } => {
+            operations::mkdir_all(&mut channel, paths, cancel).map(|()| Output::Changed).map_err(operation_failure)
         }
-        Action::RemoveTree { files, dirs } => {
-            let files: Vec<Vec<u8>> = files.iter().map(|path| path.bytes().to_vec()).collect();
-            let dirs: Vec<Vec<u8>> = dirs.iter().map(|path| path.bytes().to_vec()).collect();
-            operations::remove_all(&mut channel, &files, &dirs, cancel)
-                .map(|()| Output::Changed)
-                .map_err(operation_failure)
-        }
+        Action::RemoveTree { files, dirs, .. } => operations::remove_all(&mut channel, files, dirs, cancel)
+            .map(|()| Output::Changed)
+            .map_err(operation_failure),
         Action::Rename { from, to } => operations::rename(&mut channel, from.bytes(), to.bytes(), cancel)
             .map(|()| Output::Changed)
             .map_err(operation_failure),
@@ -1092,7 +1218,17 @@ fn download_file(
         let cleanup = if channel.into_transport().finish().is_ok() { Cleanup::Confirmed } else { Cleanup::Failed };
         return transferred(file, Err(error), cleanup, memory);
     }
-    let mut output = match Download::create(file.local.clone(), pool, cancel) {
+    let created = match &file.local_root {
+        Some(root) => local_path(root.bytes())
+            .map_err(|_| local_transfer::StartError {
+                error: local_transfer::Error::Invalid,
+                partial: None,
+                cleanup_confirmed: true,
+            })
+            .and_then(|root| Download::create_tree(file.local.clone(), root, pool, cancel)),
+        None => Download::create(file.local.clone(), pool, cancel),
+    };
+    let mut output = match created {
         Ok(output) => output,
         Err(error) => {
             if let Some(partial) = error.partial {

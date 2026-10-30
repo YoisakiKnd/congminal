@@ -308,9 +308,10 @@ impl Workspace {
         let state = self.sftp.as_mut().ok_or(Failure::Invalid)?;
         let file = state.files.iter().flatten().find(|f| f.ticket == ticket).ok_or(Failure::Invalid)?;
         let budget = state.service.budget();
+        let _scope = SftpInputScope::enter(budget.clone()).map_err(|_| Failure::Budget)?;
         // 打开过的记录带上临时副本路径：详情里能完整看到它，便于 [上传] 回传。
         let open = match file.open.as_ref() {
-            Some(target) => Some(path_value(budget, target.local.to_string_lossy().as_bytes())?),
+            Some(target) => Some(path_value(budget, target.local.as_os_str().as_encoded_bytes())?),
             None => None,
         };
         state.review = Some(Review::new(file.binding.clone(), Payload::Report { open }, Some(&file.status), budget)?);

@@ -18,6 +18,14 @@ use std::{
     sync::Arc,
 };
 const WORK: usize = 32 * 1024;
+#[path = "local_tree_unix.rs"]
+mod tree;
+pub fn create_directory(root: &Path, directory: &Path, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<(), Error> {
+    let _work = pool.lease(Kind::Sftp, WORK).map_err(|_| Error::Budget)?;
+    let path = LocalPath::new(&directory.join("_"), pool)?;
+    let mut file = Some(tree::parent(root, path.path(), cancel)?);
+    if close(&mut file) { Ok(()) } else { Err(Error::Cleanup) }
+}
 #[derive(Clone)]
 pub struct LocalPath(RemotePath);
 impl LocalPath {
@@ -206,6 +214,22 @@ pub struct Download {
 }
 impl Download {
     pub fn create(destination: LocalPath, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Self, StartError> {
+        Self::create_checked(destination, None, pool, cancel)
+    }
+    pub fn create_tree(
+        destination: LocalPath,
+        root: &Path,
+        pool: &Arc<Budget>,
+        cancel: &Cancellation,
+    ) -> Result<Self, StartError> {
+        Self::create_checked(destination, Some(root), pool, cancel)
+    }
+    fn create_checked(
+        destination: LocalPath,
+        root: Option<&Path>,
+        pool: &Arc<Budget>,
+        cancel: &Cancellation,
+    ) -> Result<Self, StartError> {
         let fail = |error| StartError { error, partial: None, cleanup_confirmed: true };
         check(cancel).map_err(fail)?;
         if !destination.uses(pool) {
@@ -219,7 +243,13 @@ impl Download {
         name.extend_from_slice(raw_name);
         name.push(0);
         let name = CString::from_vec_with_nul(name).map_err(|_| fail(Error::Invalid))?;
-        let mut parent = Some({
+        let mut parent = Some(if let Some(root) = root {
+            tree::parent(root, destination.path(), cancel).map_err(|error| StartError {
+                error,
+                partial: None,
+                cleanup_confirmed: error != Error::Cleanup,
+            })?
+        } else {
             let _launch = crate::process_launch::guard();
             OpenOptions::new()
                 .read(true)
@@ -486,6 +516,14 @@ mod sys {
         pub fn acl_set_fd_np(fd: c_int, acl: *mut std::ffi::c_void, kind: c_int) -> c_int;
         #[cfg(target_os = "macos")]
         pub fn acl_free(acl: *mut std::ffi::c_void) -> c_int;
+        #[cfg(target_os = "macos")]
+        pub fn acl_get_fd_np(fd: c_int, kind: c_int) -> *mut std::ffi::c_void;
+        #[cfg(target_os = "macos")]
+        pub fn acl_get_entry(acl: *mut std::ffi::c_void, index: c_int, entry: *mut *mut std::ffi::c_void) -> c_int;
+        #[cfg(target_os = "macos")]
+        pub fn acl_get_tag_type(entry: *mut std::ffi::c_void, tag: *mut c_int) -> c_int;
+        #[cfg(target_os = "macos")]
+        pub fn acl_valid(acl: *mut std::ffi::c_void) -> c_int;
     }
     pub const WRONLY: c_int = 1;
     #[cfg(target_os = "linux")]
@@ -547,6 +585,31 @@ mod tests {
     }
     fn path(folder: &Folder, name: &str, pool: &Arc<Budget>) -> LocalPath {
         LocalPath::new(&folder.0.join(name), pool).unwrap()
+    }
+    #[test]
+    fn tree_download_creates_missing_directories_and_rejects_links_and_parent_escape() {
+        let folder = Folder::new();
+        let outside = Folder::new();
+        let pool = Budget::new(512 * 1024, 0);
+        let cancel = Cancellation::default();
+        let root = folder.0.join("new-root");
+        let destination = LocalPath::new(&root.join("one/two/file"), &pool).unwrap();
+        let mut output = Download::create_tree(destination.clone(), &root, &pool, &cancel).unwrap();
+        assert!(!destination.path().exists());
+        output.write_all(b"tree").unwrap();
+        output.sync(4, &cancel).unwrap();
+        assert!(output.commit(Replace::No, &cancel).unwrap().published);
+        output.finish().unwrap();
+        assert_eq!(std::fs::read(destination.path()).unwrap(), b"tree");
+        std::os::unix::fs::symlink(&outside.0, root.join("redirect")).unwrap();
+        let redirected = LocalPath::new(&root.join("redirect/leak"), &pool).unwrap();
+        assert!(Download::create_tree(redirected.clone(), &root, &pool, &cancel).is_err());
+        let escaped = LocalPath::new(&root.join("../escape"), &pool).unwrap();
+        assert!(Download::create_tree(escaped.clone(), &root, &pool, &cancel).is_err());
+        assert_eq!(std::fs::read_dir(&outside.0).unwrap().count(), 0);
+        assert!(!folder.0.join("escape").exists());
+        drop((destination, redirected, escaped));
+        assert_eq!(pool.snapshot().used, 0);
     }
     #[test]
     fn private_stage_streams_larger_than_budget_and_only_publishes_after_verified_sync() {

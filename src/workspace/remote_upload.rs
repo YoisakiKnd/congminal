@@ -45,6 +45,7 @@ pub(super) struct Batch {
     /// 队列满导致的中断次数，只用于诊断，不参与判断。
     stalled: usize,
     _memory: Lease,
+    _control_memory: Lease,
 }
 impl Batch {
     fn progress(&self) -> String {
@@ -149,16 +150,34 @@ impl Workspace {
     }
     /// 预览确认后开始提交：先建远端子目录，建完再传文件。
     pub(super) fn start_upload_batch(&mut self, state: &mut State) -> bool {
-        let Some(preview) = state.upload_preview.take() else { return false };
-        if preview.plan.items.is_empty() {
-            state.error = Some(Failure::Invalid);
-            self.notice("目录里没有可上传的普通文件");
+        let Ok(_scope) = crate::resources::SftpInputScope::enter(state.service.budget().clone()) else {
+            state.error = Some(Failure::Budget);
             return true;
-        }
+        };
+        let Some(preview) = state.upload_preview.take() else { return false };
         let total = preview.plan.items.len();
-        let dirs: VecDeque<Vec<u8>> = preview.plan.directories.into();
+        let control = (|| -> Result<_, Failure> {
+            let memory = state.service.budget().lease(Kind::Sftp, 512 * 1024).map_err(|_| Failure::Budget)?;
+            let mut tickets = Vec::new();
+            tickets.try_reserve_exact(total).map_err(|_| Failure::Budget)?;
+            Ok((memory, tickets))
+        })();
+        let (control_memory, tickets) = match control {
+            Ok(value) => value,
+            Err(error) => {
+                state.upload_preview = Some(preview);
+                state.error = Some(error);
+                return true;
+            }
+        };
+        let mut dirs: VecDeque<Vec<u8>> = preview.plan.directories.into();
+        // 包括目标根目录：新目录与空目录也要实际创建，再开始传文件。
+        if preview.remote.bytes() != b"/" {
+            dirs.push_front(Vec::new());
+        }
         let mut batch = Batch {
             _memory: preview.plan.memory,
+            _control_memory: control_memory,
             items: preview.plan.items.into(),
             local_root: preview.plan.root,
             remote_root: preview.remote,
@@ -167,13 +186,25 @@ impl Workspace {
             total,
             submitted: 0,
             failed: 0,
-            tickets: Vec::new(),
+            tickets,
             stalled: 0,
         };
         if batch.dirs.is_empty() {
             state.upload = Some(batch);
         } else {
             // 目录要按深度从浅到深建；一条票据里由工作线程顺序执行。
+            let bytes = batch
+                .dirs
+                .iter()
+                .map(|relative| batch.remote_root.bytes().len() + 1 + relative.len() + std::mem::size_of::<Vec<u8>>())
+                .sum::<usize>();
+            let _paths_work = match state.service.budget().lease(Kind::Sftp, bytes + 64 * 1024) {
+                Ok(memory) => memory,
+                Err(_) => {
+                    state.error = Some(Failure::Budget);
+                    return true;
+                }
+            };
             let mut paths = Vec::with_capacity(batch.dirs.len());
             for relative in &batch.dirs {
                 match child(&batch.remote_root, relative, state.service.budget()) {
@@ -247,7 +278,14 @@ impl Workspace {
     }
     /// 每帧把批次往前推：槽位满了就停，等下一帧继续。
     pub(super) fn upload_pump(&mut self, state: &mut State) {
-        loop {
+        if state.upload.is_none() {
+            return;
+        }
+        let Ok(_scope) = crate::resources::SftpInputScope::enter(state.service.budget().clone()) else {
+            state.error = Some(Failure::Budget);
+            return;
+        };
+        for _ in 0..4 {
             let Some(batch) = state.upload.as_mut() else { return };
             // 目录还没建好就先等，别让上传因为目标目录不存在失败。
             if batch.mkdir.is_some() {
@@ -264,7 +302,7 @@ impl Workspace {
                     crate::notifications::Source::Sftp,
                     crate::notifications::Category::SftpWrite,
                     "批量上传",
-                    crate::shell::Outcome::Exit(0),
+                    crate::shell::Outcome::Exit(u8::from(failed > 0)),
                     host.as_deref(),
                 );
                 return;
@@ -357,7 +395,9 @@ impl Workspace {
         }
         state.upload_authentication = None;
         for ticket in batch.tickets {
-            self.cancel_remote_transfer(ticket);
+            if state.cancel_file(ticket) {
+                self.finish_remote_authentication(ticket);
+            }
         }
         self.notice("已取消批量上传，未提交的条目不再提交");
         self.chrome_dirty = true;
@@ -444,6 +484,18 @@ fn child(
     relative: &[u8],
     budget: &std::sync::Arc<crate::resources::Budget>,
 ) -> Result<crate::sftp::model::RemotePath, crate::sftp::model::Error> {
+    if relative.is_empty() {
+        return Ok(root.clone());
+    }
+    if root
+        .bytes()
+        .len()
+        .checked_add(relative.len())
+        .and_then(|len| len.checked_add(1))
+        .is_none_or(|len| len > 16 * 1024)
+    {
+        return Err(crate::sftp::model::Error::Path);
+    }
     let mut bytes = root.bytes().to_vec();
     if !bytes.ends_with(b"/") {
         bytes.push(b'/');

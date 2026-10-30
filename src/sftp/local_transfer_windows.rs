@@ -19,6 +19,14 @@ use std::{
     sync::Arc,
 };
 const WORK: usize = 32 * 1024;
+#[path = "local_tree_windows.rs"]
+mod tree;
+pub fn create_directory(root: &Path, directory: &Path, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<(), Error> {
+    let _work = pool.lease(Kind::Sftp, WORK).map_err(|_| Error::Budget)?;
+    let path = LocalPath::new(&directory.join("_"), pool)?;
+    let mut file = Some(tree::parent(root, path.path(), cancel)?);
+    if closed(&mut file) { Ok(()) } else { Err(Error::Cleanup) }
+}
 type Handle = *mut c_void;
 #[derive(Clone)]
 pub struct LocalPath(RemotePath);
@@ -305,6 +313,14 @@ fn native(status: i32) -> io::Result<()> {
     if status < 0 { Err(io::Error::from_raw_os_error(unsafe { RtlNtStatusToDosError(status) } as i32)) } else { Ok(()) }
 }
 fn child(parent: &File, name: &OsStr, directory: bool, descriptor: &private::Descriptor) -> Result<File, Error> {
+    child_mode(parent, name, directory, Some(descriptor))
+}
+fn child_mode(
+    parent: &File,
+    name: &OsStr,
+    directory: bool,
+    descriptor: Option<&private::Descriptor>,
+) -> Result<File, Error> {
     if !normal(name) {
         return Err(Error::Invalid);
     }
@@ -323,12 +339,12 @@ fn child(parent: &File, name: &OsStr, directory: bool, descriptor: &private::Des
         root: parent.as_raw_handle(),
         name: &name,
         attributes: 0x40,
-        descriptor: descriptor.pointer(),
+        descriptor: descriptor.map_or(null_mut(), private::Descriptor::pointer),
         qos: null_mut(),
     };
     let mut handle = null_mut();
     let mut status = IoStatus { status: 0, information: 0 };
-    let access = if directory { 0x0013_00a0 } else { 0xc013_0000 }; // DELETE | READ_CONTROL | SYNCHRONIZE
+    let access = if directory { if descriptor.is_some() { 0x0013_00a0 } else { 0x0012_00a0 } } else { 0xc013_0000 }; // DELETE | READ_CONTROL | SYNCHRONIZE
     native(unsafe {
         NtCreateFile(
             &mut handle,
@@ -338,7 +354,7 @@ fn child(parent: &File, name: &OsStr, directory: bool, descriptor: &private::Des
             null(),
             0,
             if directory { 3 } else { 1 },
-            2,
+            if descriptor.is_some() { 2 } else { 1 },
             0x0020_0020 | if directory { 1 } else { 0x40 },
             null(),
             0,
@@ -367,6 +383,22 @@ pub struct Download {
 }
 impl Download {
     pub fn create(destination: LocalPath, pool: &Arc<Budget>, cancel: &Cancellation) -> Result<Self, StartError> {
+        Self::create_checked(destination, None, pool, cancel)
+    }
+    pub fn create_tree(
+        destination: LocalPath,
+        root: &Path,
+        pool: &Arc<Budget>,
+        cancel: &Cancellation,
+    ) -> Result<Self, StartError> {
+        Self::create_checked(destination, Some(root), pool, cancel)
+    }
+    fn create_checked(
+        destination: LocalPath,
+        root: Option<&Path>,
+        pool: &Arc<Budget>,
+        cancel: &Cancellation,
+    ) -> Result<Self, StartError> {
         let fail = |error| StartError { error, partial: None, cleanup_confirmed: true };
         check(cancel).map_err(fail)?;
         if !destination.uses(pool) {
@@ -374,7 +406,15 @@ impl Download {
         }
         let memory = pool.lease(Kind::Sftp, WORK).map_err(|_| fail(Error::Budget))?;
         let parent_path = destination.path().parent().ok_or_else(|| fail(Error::Invalid))?;
-        let mut parent = Some(private::open_existing(parent_path, 0xa0, 3, true).map_err(|e| fail(e.into()))?);
+        let mut parent = Some(if let Some(root) = root {
+            tree::parent(root, destination.path(), cancel).map_err(|error| StartError {
+                error,
+                partial: None,
+                cleanup_confirmed: error != Error::Cleanup,
+            })?
+        } else {
+            private::open_existing(parent_path, 0xa0, 3, true).map_err(|e| fail(e.into()))?
+        });
         let prepared = (|| -> Result<_, Error> {
             let stamp = Stamp::of(parent.as_ref().unwrap(), true)?;
             let descriptor = private::Descriptor::new()?;
@@ -559,6 +599,36 @@ mod tests {
         fn drop(&mut self) {
             std::fs::remove_dir_all(&self.0).unwrap();
         }
+    }
+    #[test]
+    fn windows_tree_download_creates_private_directories_and_rejects_junctions() {
+        let folder = Folder::new();
+        let outside = Folder::new();
+        let pool = Budget::new(512 * 1024, 0);
+        let cancel = Cancellation::default();
+        let root = folder.0.join("new-root");
+        let destination = LocalPath::new(&root.join("one/two/file"), &pool).unwrap();
+        let mut output = Download::create_tree(destination.clone(), &root, &pool, &cancel).unwrap();
+        output.write_all(b"tree").unwrap();
+        output.sync(4, &cancel).unwrap();
+        assert!(output.commit(Replace::No, &cancel).unwrap().published);
+        output.finish().unwrap();
+        assert_eq!(std::fs::read(destination.path()).unwrap(), b"tree");
+        let junction = root.join("redirect");
+        let status = std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&outside.0)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "isolated junction fixture must be available for the native boundary test");
+        let redirected = LocalPath::new(&junction.join("leak"), &pool).unwrap();
+        assert!(Download::create_tree(redirected.clone(), &root, &pool, &cancel).is_err());
+        assert_eq!(std::fs::read_dir(&outside.0).unwrap().count(), 0);
+        std::fs::remove_dir(junction).unwrap();
+        drop((destination, redirected));
+        assert_eq!(pool.snapshot().used, 0);
     }
     #[test]
     fn windows_local_path_rejects_devices_streams_lossy_names_and_relative_paths() {

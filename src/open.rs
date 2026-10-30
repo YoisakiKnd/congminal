@@ -10,6 +10,7 @@ pub const MAX_CHILDREN: usize = 8;
 
 /// 启动打开器：标准输入/输出/错误都接到空设备，不给终端或管道留句柄。
 pub fn spawn(program: &Path, args: &[&str], path: &Path) -> std::io::Result<Child> {
+    let _launch = crate::process_launch::guard();
     Command::new(program).args(args).arg(path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
 }
 

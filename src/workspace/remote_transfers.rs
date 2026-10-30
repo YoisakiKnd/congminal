@@ -1,6 +1,22 @@
 //! 文件任务跨目录刷新/面板隐藏存活；固定记录保留事实，不自动删除残留文件。
 use super::*;
 use crate::ssh::auth::controller::Phase;
+impl State {
+    pub(super) fn cancel_file(&mut self, ticket: Ticket) -> bool {
+        let Some(file) = self.files.iter_mut().flatten().find(|f| f.ticket == ticket && !f.complete) else {
+            return false;
+        };
+        self.service.cancel(ticket);
+        file.cancelled = true;
+        file.authentication = None;
+        for parked in &mut self.parked {
+            if parked.as_ref().is_some_and(|p| p.ticket == ticket) {
+                *parked = None;
+            }
+        }
+        true
+    }
+}
 
 impl Workspace {
     /// 内部候选接口；发布入口仍须先提供完整主机/源/目标审阅与覆盖确认。
@@ -8,6 +24,13 @@ impl Workspace {
     pub(in crate::workspace) fn submit_remote_transfer(
         &mut self,
         selection: service::TransferSelection<'_>,
+    ) -> Result<Ticket, Failure> {
+        self.submit_remote_transfer_at(selection, None)
+    }
+    pub(super) fn submit_remote_transfer_at(
+        &mut self,
+        selection: service::TransferSelection<'_>,
+        root: Option<&Path>,
     ) -> Result<Ticket, Failure> {
         if self.composing() {
             return Err(Failure::Invalid);
@@ -25,14 +48,26 @@ impl Workspace {
         }
         // 已结束记录也占槽；显式释放前不能无界堆积或自动丢掉提交事实。
         let slot = state.files.iter().position(Option::is_none).ok_or(Failure::Full)?;
-        let task = state.service.transfer(
-            owner,
-            profiles.clone(),
-            *profile,
-            state.options.paths(),
-            selection,
-            Duration::from_secs(10),
-        )?;
+        let task = if let Some(root) = root {
+            state.service.transfer_in_tree(
+                owner,
+                profiles.clone(),
+                *profile,
+                state.options.paths(),
+                selection,
+                root,
+                Duration::from_secs(10),
+            )?
+        } else {
+            state.service.transfer(
+                owner,
+                profiles.clone(),
+                *profile,
+                state.options.paths(),
+                selection,
+                Duration::from_secs(10),
+            )?
+        };
         let ticket = task.ticket;
         state.files[slot] = Some(FileTask {
             ticket,
@@ -54,16 +89,8 @@ impl Workspace {
     }
     pub(in crate::workspace) fn cancel_remote_transfer(&mut self, ticket: Ticket) -> bool {
         let Some(state) = &mut self.sftp else { return false };
-        let Some(file) = state.files.iter_mut().flatten().find(|f| f.ticket == ticket && !f.complete) else {
+        if !state.cancel_file(ticket) {
             return false;
-        };
-        state.service.cancel(ticket);
-        file.cancelled = true;
-        file.authentication = None;
-        for parked in &mut state.parked {
-            if parked.as_ref().is_some_and(|p| p.ticket == ticket) {
-                *parked = None;
-            }
         }
         self.finish_remote_authentication(ticket);
         self.chrome_dirty = true;
@@ -186,30 +213,33 @@ impl Workspace {
         self.finish_remote_authentication(completion.ticket);
         // 打开远端文件：下载成功才启动系统程序，失败只报告，不留半截临时文件当成功。
         if file.failure.is_none()
-            && let Some(target) = file.open.take()
+            && let Some(target) = file.open.as_ref()
         {
-            self.launch_open_target(target);
+            self.launch_open_target(target, &state.options.helper);
         }
         self.chrome_dirty = true;
         None
     }
     /// 用系统程序打开刚下好的临时副本；进程由工作区每帧回收，不新增线程。
-    pub(super) fn launch_open_target(&mut self, target: super::remote_files::OpenTarget) {
+    pub(super) fn launch_open_target(&mut self, target: &super::remote_files::OpenTarget, _helper: &Path) {
+        let Ok(_work) = target._memory.budget().lease(Kind::Sftp, 256 * 1024) else {
+            self.notice("打开器工作额度不足");
+            return;
+        };
         if crate::open::reap(&mut self.open_children) >= crate::open::MAX_CHILDREN {
             self.notice("已经打开太多临时文件（上限 8 个），先关掉一些再打开");
             return;
         }
         let opener = self.driver.config.sftp.opener();
+        #[cfg(windows)]
+        let opener = if self.driver.config.sftp.opener.is_none() { _helper.to_owned() } else { opener };
         let args = self.driver.config.sftp.opener_args();
         match crate::open::spawn(&opener, args, &target.local) {
             Ok(child) => {
                 self.open_children.push(child);
-                let shown = target.local.display();
-                if let Some(state) = self.sftp.as_mut() {
-                    state.tasks.note = Some(format!("已打开临时副本：{shown}"));
-                }
+                let shown = crate::path_text::escape(target.local.as_os_str().as_encoded_bytes(), "");
                 let back = crate::path_text::escape(&target.remote, "");
-                self.notice(&format!("已打开临时副本 {shown}；改完用 [上传] 传回 {back}"));
+                self.notice(&format!("已请求打开临时副本 {shown}；改完用 [上传] 传回 {back}"));
             }
             Err(error) => {
                 let shown = target.local.display();

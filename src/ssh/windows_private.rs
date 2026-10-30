@@ -48,6 +48,7 @@ unsafe extern "system" {
     fn GetSecurityDescriptorDacl(sd: *const c_void, present: *mut i32, acl: *mut *mut Acl, defaulted: *mut i32) -> i32;
     fn GetAce(acl: *const Acl, index: u32, ace: *mut *mut c_void) -> i32;
     fn EqualSid(a: *const c_void, b: *const c_void) -> i32;
+    fn IsWellKnownSid(sid: *const c_void, kind: i32) -> i32;
 }
 #[link(name = "kernel32")]
 unsafe extern "system" {
@@ -193,6 +194,17 @@ pub fn validate(file: &File, directory: bool) -> io::Result<()> {
     validate_acl(file.as_raw_handle())
 }
 pub fn validate_acl(handle: Handle) -> io::Result<()> {
+    inspect_acl(handle, false)
+}
+pub fn validate_tree_directory(file: &File) -> io::Result<()> {
+    let mut attributes = [0u32; 2];
+    checked(unsafe { GetFileInformationByHandleEx(file.as_raw_handle(), 9, attributes.as_mut_ptr().cast(), 8) })?;
+    if attributes[0] & 0x400 != 0 || attributes[0] & 0x10 == 0 {
+        return Err(denied());
+    }
+    inspect_acl(file.as_raw_handle(), true)
+}
+fn inspect_acl(handle: Handle, tree: bool) -> io::Result<()> {
     with_user(|sid| {
         let mut buffer = [0usize; 1024];
         let sd = buffer.as_mut_ptr().cast();
@@ -206,24 +218,46 @@ pub fn validate_acl(handle: Handle) -> io::Result<()> {
         let (mut control, mut revision, mut owner, mut defaulted) = (0, 0, null_mut(), 0);
         checked(unsafe { GetSecurityDescriptorControl(sd, &mut control, &mut revision) })?;
         checked(unsafe { GetSecurityDescriptorOwner(sd, &mut owner, &mut defaulted) })?;
-        if control & 0x1000 == 0 || owner.is_null() || unsafe { EqualSid(owner, sid) } == 0 {
+        let owner_ok = !owner.is_null()
+            && unsafe {
+                EqualSid(owner, sid) != 0
+                    || (tree && (IsWellKnownSid(owner, 22) != 0 || IsWellKnownSid(owner, 26) != 0))
+            };
+        if (!tree && control & 0x1000 == 0) || !owner_ok {
             return Err(denied());
         }
         let (mut present, mut acl) = (0, null_mut());
         checked(unsafe { GetSecurityDescriptorDacl(sd, &mut present, &mut acl, &mut defaulted) })?;
-        if present == 0 || acl.is_null() || unsafe { (*acl).count } != 1 {
+        if present == 0 || acl.is_null() || (!tree && unsafe { (*acl).count } != 1) || unsafe { (*acl).count } > 128 {
             return Err(denied());
         }
-        let mut ace: *mut c_void = null_mut();
-        checked(unsafe { GetAce(acl, 0, &mut ace) })?;
-        // ACCESS_ALLOWED_ACE：Header(4)、Mask(4)、SidStart(4...)。
-        if ace.is_null() || unsafe { *ace.cast::<u8>() } != 0 {
-            return Err(denied());
-        }
-        let mask = unsafe { *ace.cast::<u8>().add(4).cast::<u32>() };
-        let ace_sid = unsafe { ace.cast::<u8>().add(8) }.cast();
-        if mask != 0x001f_01ff || unsafe { EqualSid(ace_sid, sid) } == 0 {
-            return Err(denied());
+        for index in 0..unsafe { (*acl).count } {
+            let mut ace: *mut c_void = null_mut();
+            checked(unsafe { GetAce(acl, u32::from(index), &mut ace) })?;
+            // ACCESS_ALLOWED_ACE：Header(4)、Mask(4)、SidStart(4...)。
+            if ace.is_null() {
+                return Err(denied());
+            }
+            let kind = unsafe { *ace.cast::<u8>() };
+            let flags = unsafe { *ace.cast::<u8>().add(1) };
+            if tree && (flags & 8 != 0 || kind == 1) {
+                continue;
+            }
+            if kind != 0 {
+                return Err(denied());
+            }
+            let mask = unsafe { *ace.cast::<u8>().add(4).cast::<u32>() };
+            let ace_sid = unsafe { ace.cast::<u8>().add(8) }.cast();
+            if tree {
+                let trusted = unsafe {
+                    EqualSid(ace_sid, sid) != 0 || IsWellKnownSid(ace_sid, 22) != 0 || IsWellKnownSid(ace_sid, 26) != 0
+                };
+                if !trusted && mask & 0x500d_0156 != 0 {
+                    return Err(denied());
+                }
+            } else if mask != 0x001f_01ff || unsafe { EqualSid(ace_sid, sid) } == 0 {
+                return Err(denied());
+            }
         }
         Ok(())
     })

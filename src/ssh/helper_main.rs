@@ -4,6 +4,9 @@
 #[allow(dead_code)]
 #[path = "helper_auth.rs"]
 mod auth;
+#[cfg(windows)]
+#[path = "helper_open_windows.rs"]
+mod opener;
 #[allow(dead_code)]
 #[path = "../process_launch.rs"]
 mod process_launch;
@@ -257,6 +260,10 @@ fn main() {
             std::process::exit(2);
         }
         args.push(arg);
+    }
+    #[cfg(windows)]
+    if args.len() == 2 && args[0] == "--open-file" {
+        std::process::exit(opener::open(Path::new(&args[1])).unwrap_or(2));
     }
     let result = if args.len() >= 3 && args[0] == "--launch" {
         launch(&args)
