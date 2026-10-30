@@ -13,7 +13,7 @@ import zipfile
 
 URL = 'https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.4.0.0p1-Preview/OpenSSH-Win64.zip'
 SHA256 = 'b67ff8becd203502190ec42ac7787c24c2cd3325ed7700485fe7a1c83d2a7957'
-CASE = 'sftp::service::native_openssh_tests::native_encrypted_key_directory_roundtrip_cancel_and_join'
+CASE = 'sftp::service::native_openssh_tests::native_authenticated_directory_roundtrip_cancel_and_join'
 
 
 def run(command, **kwargs):
@@ -77,7 +77,7 @@ foreach ($sid in @($OwnerSid, 'S-1-5-18', 'S-1-5-32-544')) {
     $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow')
     $acl.AddAccessRule($rule)
 }
-Set-Acl -LiteralPath $File -AclObject $acl
+[System.IO.File]::SetAccessControl($File, $acl)
 """)
         for name in ['host', 'client', 'authorized_keys']:
             run(['powershell.exe', '-NoProfile', '-File', str(acl_script), str(root / name), identity])
@@ -119,7 +119,7 @@ Set-Acl -LiteralPath $File -AclObject $acl
                 result = subprocess.run([binary, CASE, '--exact', '--ignored', '--nocapture', '--test-threads=1'],
                                         cwd=repository, env=env, capture_output=True, text=True, timeout=120)
                 print(result.stdout + result.stderr)
-                if result.returncode or 'NATIVE_WINDOWS_SFTP' not in result.stderr:
+                if result.returncode or 'NATIVE_SFTP_BACKEND' not in result.stderr:
                     print((root / 'server.log').read_text()[-12000:])
                     raise RuntimeError('native Windows SFTP verification failed')
             finally:

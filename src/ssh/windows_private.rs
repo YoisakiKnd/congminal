@@ -250,7 +250,11 @@ fn inspect_acl(handle: Handle, tree: bool) -> io::Result<()> {
             let ace_sid = unsafe { ace.cast::<u8>().add(8) }.cast();
             if tree {
                 let trusted = unsafe {
-                    EqualSid(ace_sid, sid) != 0 || IsWellKnownSid(ace_sid, 22) != 0 || IsWellKnownSid(ace_sid, 26) != 0
+                    EqualSid(ace_sid, sid) != 0
+                        || IsWellKnownSid(ace_sid, 22) != 0
+                        || IsWellKnownSid(ace_sid, 26) != 0
+                        // OWNER RIGHTS 只向上面已核验的可信目录拥有者授予权限。
+                        || IsWellKnownSid(ace_sid, 71) != 0
                 };
                 if !trusted && mask & 0x500d_0156 != 0 {
                     return Err(denied());

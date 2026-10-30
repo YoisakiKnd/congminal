@@ -1,4 +1,4 @@
-//! 官方 Windows OpenSSH 回环夹具；不使用生产配置或凭据，不代替原生窗口验证。
+//! Windows 密钥 / Linux 密码的真实 OpenSSH 回环夹具；不使用生产配置或凭据，不代替原生窗口验证。
 use super::*;
 use std::time::Instant;
 
@@ -16,7 +16,7 @@ fn wait(
         if let Some(mut result) = service.take() {
             assert_eq!(result.ticket, ticket);
             assert_eq!(result.cleanup, Cleanup::Confirmed);
-            assert!(prompts > 0, "encrypted fixture key must use the real private askpass endpoint");
+            assert!(prompts > 0, "fixture authentication must use the real private askpass endpoint");
             let output = std::mem::replace(&mut result.result, Err(executor::Error::Work));
             drop(result);
             return output;
@@ -49,8 +49,8 @@ fn wait(
 }
 
 #[test]
-#[ignore = "官方 Windows OpenSSH 进程、生成的加密密钥和回环 sshd；由 ci/check-windows-sftp.py 提供环境"]
-fn native_encrypted_key_directory_roundtrip_cancel_and_join() {
+#[ignore = "真实 OpenSSH 密钥或密码及回环 sshd；由 ci/check-windows-sftp.py 或 ci/check-linux-password-sftp.py 提供隔离环境"]
+fn native_authenticated_directory_roundtrip_cancel_and_join() {
     let root = PathBuf::from(std::env::var_os("CONGMINAL_NATIVE_ROOT").unwrap());
     let config = root.join("client.config");
     let helper = PathBuf::from(std::env::var_os("CONGMINAL_NATIVE_HELPER").unwrap());
@@ -139,10 +139,16 @@ fn native_encrypted_key_directory_roundtrip_cancel_and_join() {
     let peak = service.budget().snapshot().peak;
     drop((service, remote, profiles, config_profiles, scope));
     assert_eq!(parent.snapshot().used, 0);
-    assert!(
-        !std::fs::read_dir(root)
-            .unwrap()
-            .any(|entry| { entry.unwrap().file_name().to_string_lossy().starts_with("cgaw-") })
+    assert!(!std::fs::read_dir(root).unwrap().any(|entry| {
+        {
+            let name = entry.unwrap().file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("cgaw-") || name.starts_with("cgap-")
+        }
+    }));
+    eprintln!(
+        "NATIVE_SFTP_BACKEND platform={} bytes={} peak={peak} final=0 joined=1",
+        std::env::consts::OS,
+        bytes.len()
     );
-    eprintln!("NATIVE_WINDOWS_SFTP bytes={} peak={peak} final=0 joined=1", bytes.len());
 }

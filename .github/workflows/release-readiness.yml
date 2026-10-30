@@ -24,7 +24,7 @@ jobs:
         run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
       - name: Linux link dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libx11-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libx11-dev openssh-server
       - name: Format
         run: cargo fmt --check
       - name: Clippy
@@ -47,3 +47,6 @@ jobs:
       - name: Native Windows OpenSSH, encrypted key and SFTP roundtrip
         if: runner.os == 'Windows'
         run: python ci/check-windows-sftp.py
+      - name: Native Linux OpenSSH password and SFTP roundtrip
+        if: runner.os == 'Linux'
+        run: python3 ci/check-linux-password-sftp.py
