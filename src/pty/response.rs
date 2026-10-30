@@ -9,7 +9,7 @@ pub fn encode<'a>(data: &[u8], out: &'a mut [u8; ENCODED_LIMIT]) -> Option<&'a [
     if data.len() > MAX_RESPONSE {
         return None;
     }
-    let mut written = 0;
+    let mut written: usize = 0;
     let mut at = 0;
     while at < data.len() {
         if data[at..].starts_with(b"\x1b_G") {
