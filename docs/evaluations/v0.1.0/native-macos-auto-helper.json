@@ -1,0 +1,14 @@
+{
+  "source_commit": "c13f30b296e42d0ceb3c8497109cd36d77a362c2",
+  "package_build": "版本：0.1.0\n架构：arm64\n构建时间（UTC）：2026-10-30T06:45:56Z\n来源提交：c13f30b296e42d0ceb3c8497109cd36d77a362c2\nSFTP：内置，使用系统 OpenSSH 及附带的按需 helper。Unix Rust 运行时依赖为 libc FFI。\n",
+  "explicit_helper_config": false,
+  "checks": [
+    "Native packaged Cocoa app automatically discovered sibling helper",
+    "CUA protected prompt accepted generated encrypted-key fixture answer",
+    "Directory listing displayed empty and hello.txt",
+    "CUA Cmd+Q closed app; fixture supervisor, app and sshd PIDs absent on subsequent ps check"
+  ],
+  "exit_code_captured": false,
+  "scope": "Automatic helper discovery and native connection/listing/close on macOS arm64; earlier native-macos-files.json records bidirectional byte comparison and explicit exit 0. No additional Windows/Linux manual desktop claim.",
+  "screenshot_sha256": "9cac3f2eea37997f99f92d34a43a70f806ed86f8530b08aa522a03f6b86a4b16"
+}

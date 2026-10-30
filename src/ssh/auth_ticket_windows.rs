@@ -231,7 +231,7 @@ impl Listener {
                 4 | 2 | 1 | 8,
                 3,
                 4096,
-                8192,
+                (super::super::PROMPT_LIMIT + 64) as u32,
                 0,
                 (&descriptor.attributes() as *const Attributes).cast(),
             )
@@ -307,7 +307,8 @@ impl OwnedTicket {
         if cancel.is_cancelled() {
             return Err(io::ErrorKind::Interrupted.into());
         }
-        let memory = pool.lease(Kind::Sftp, 32 * 1024).map_err(|_| io::ErrorKind::OutOfMemory)?;
+        // 3 个管道实例：每个请求缓冲可容纳完整的最大消息，外加响应及端点元数据余量。
+        let memory = pool.lease(Kind::Sftp, 128 * 1024).map_err(|_| io::ErrorKind::OutOfMemory)?;
         let ticket = Ticket::new()?;
         let descriptor = Descriptor::new()?;
         for _ in 0..16 {

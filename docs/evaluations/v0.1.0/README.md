@@ -66,3 +66,7 @@ macOS 复测补齐正常退出：`67d3395` 的 `.app` 在真实 Cocoa 窗口完�
 `388dad4-openssh-faults.json` 的 15 个真实 OpenSSH 场景全部通过，包括密钥/agent、别名和配置展开、32 MiB 流、未知/变更/撤销的主机密钥、错误认证、畸形长度、断连、停滞与超时。对应 `388dad4` 的 [CI 41012377095](https://github.com/YoisakiKnd/congminal/actions/runs/41012377095) 和 [原生门槛 41012377080](https://github.com/YoisakiKnd/congminal/actions/runs/41012377080) 全部通过；后者及正式 CI 均包含 Windows 加密密钥和 Linux 随机密码的真实回环。Windows OWNER RIGHTS 的定义见 [Microsoft WELL_KNOWN_SID_TYPE](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-well_known_sid_type)。
 
 最后边界复核还补了两项：Windows 自动目录下载拒绝把远端文件名中的字面反斜杠解释为本地子目录；Windows helper 自路径发现改用固定 4097 UTF-16 单元的模块名查询，转换前拒绝截断，随后按 4096 字节路径上限验证。不会为了自动查找 helper 而先增长到系统 32K 模块路径。新检查点的原生 CI 结果将在发布前核对。
+
+Windows 最后一次协议边界复核将管道请求缓冲从 8192 B 调为 `PROMPT_LIMIT + 64`（16448 B），保证 16 KiB 最大提示及帧头能够作为单条消息发送，避免非阻塞消息写入因缓冲不足而失败。仍最多 3 个实例，响应缓冲 4096 B；端点准入从 32 KiB 增为 128 KiB，覆盖这批固定缓冲和元数据余量，每个活动认证最多多预留 96 KiB，不新增线程/依赖。Windows 原生回归同时发送最大提示及 1023 字节 Unicode 答案，后续 CI 作为交付依据；这项 Windows 成本变化不冒用 macOS 的 RSS 测量。
+
+`native-macos-auto-helper.json` / `.png` 补证 `c13f30b` 安装包不配置 helper 路径时的自动发现、加密密钥认证和远端目录显示；CUA Cmd+Q 后应用、监督器和隔离 sshd 进程均已退出。本次工具输出未捕获退出码，因此只记录进程退出，原生双向传输及明确 exit 0 仍以此前 `native-macos-files.json` 为准。[该检查点 CI](https://github.com/YoisakiKnd/congminal/actions/runs/41015567138) 与 [原生门槛](https://github.com/YoisakiKnd/congminal/actions/runs/41015567192) 三平台全部通过。

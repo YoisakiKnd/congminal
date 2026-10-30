@@ -41,12 +41,16 @@ fn peer(pump: &Pump, pool: &Arc<Budget>, cancel: &Cancellation, kind: Kind) -> (
     (Stream::connect(pump.ticket_path()).unwrap(), packet)
 }
 #[test]
-fn windows_private_pipe_moves_maximum_answer_waits_for_ack_and_releases_all_credit() {
+fn windows_private_pipe_moves_maximum_prompt_and_answer_waits_for_ack_and_releases_all_credit() {
     let folder = Folder::new();
     let pool = Budget::new(512 * 1024, 0);
     let (mut pump, front, cancel) = setup(&folder, &pool);
     let directory = pump.ticket_path().parent().unwrap().to_owned();
-    let (mut client, packet) = peer(&pump, &pool, &cancel, Kind::Secret);
+    let capability = AuthTicket::read_private(pump.ticket_path()).unwrap();
+    let prompt = "x".repeat(crate::ssh::auth::PROMPT_LIMIT - 3) + "文";
+    let packet = wire::request(&capability.capability, Kind::Secret, prompt.as_bytes(), &pool, &cancel).unwrap();
+    let mut client = Stream::connect(pump.ticket_path()).unwrap();
+    drop(capability);
     client.write_all(packet.bytes()).unwrap();
     drop(packet);
     until(|| {
@@ -54,6 +58,7 @@ fn windows_private_pipe_moves_maximum_answer_waits_for_ack_and_releases_all_cred
         front.snapshot().input.is_some()
     });
     let snapshot = front.snapshot();
+    assert_eq!(snapshot.input.as_ref().unwrap().display(), prompt);
     let ticket = snapshot.input.as_ref().unwrap().ticket();
     let mut secret = front.input(ticket).unwrap();
     secret.insert(0, &"x".repeat(1020)).unwrap();
