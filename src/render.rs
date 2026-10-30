@@ -695,7 +695,7 @@ impl Renderer {
             let room_right = line.cells.get(col + 1).is_some_and(|next| {
                 col + 1 < cols
                     && next.c == ' '
-                    && next.marks == 0
+                    && next.mark_id() == 0
                     && !next.flags.contains(Flags::WIDE_SPACER)
                     && !(cursor.visible && row == cursor.row && col + 1 == cursor.col)
             });
@@ -714,7 +714,7 @@ impl Renderer {
                 let cells = if cell.flags.contains(Flags::WIDE) || roomy { 2 } else { 1 };
                 let bold = cell.flags.contains(Flags::BOLD);
                 // 带组合字符的先合成（e + ◌́ → é），合不进去的符号叠画在上面
-                let (c, rest) = match cell.marks {
+                let (c, rest) = match cell.mark_id() {
                     0 => (cell.c, ""),
                     id => compose_borrowed(cell.c, term.marks(id)),
                 };
@@ -851,7 +851,7 @@ impl Renderer {
             let cell = line.cells.get(col).filter(|_| col < cols);
             let eligible = cell.filter(|cell| {
                 cell.c.is_ascii_graphic()
-                    && cell.marks == 0
+                    && cell.mark_id() == 0
                     && !cell.flags.intersects(Flags::WIDE | Flags::EMOJI | Flags::HIDDEN)
                     && !(cursor.visible && row == cursor.row && col == cursor.col)
             });

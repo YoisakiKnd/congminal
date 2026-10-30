@@ -866,7 +866,7 @@ impl Terminal {
                 return;
             };
             // 前一个字已经带着组合字符（在 emoji 序列中间）时，变体选择符也原样记下，保持序列的顺序
-            if matches!(c, '\u{FE0F}' | '\u{FE0E}') && self.grid[row][col].marks == 0 {
+            if matches!(c, '\u{FE0F}' | '\u{FE0E}') && self.grid[row][col].mark_id() == 0 {
                 let flags = &mut self.grid[row][col].flags;
                 if c == '\u{FE0F}' {
                     flags.insert(Flags::EMOJI);
@@ -935,7 +935,7 @@ impl Terminal {
         if marks.len() <= MAX_MARKS_LEN
             && let Some(id) = self.intern_marks(marks)
         {
-            self.grid[row][col].marks = id;
+            self.grid[row][col].marks = (self.grid[row][col].marks & !0x1ffff) | id;
         }
     }
 
@@ -1401,7 +1401,7 @@ impl Terminal {
 
     /// 组合字符编号对应的字符串
     pub fn marks(&self, id: u32) -> &str {
-        match id {
+        match id & 0x1ffff {
             0 => "",
             id => &self.marks[id as usize - 1],
         }
@@ -1533,10 +1533,10 @@ impl Terminal {
                 49 => t.bg = Color::Default,
                 58 => {
                     if let Some(color) = extended_color(group, &mut groups) {
-                        t.underline_color = color;
+                        t.marks = (self.graphics.underline_index(color) << 17) | (t.marks & 0x1ffff);
                     }
                 }
-                59 => t.underline_color = Color::Default,
+                59 => t.marks &= 0x1ffff,
                 n @ 90..=97 => t.fg = Color::Indexed((n - 90 + 8) as u8),
                 n @ 100..=107 => t.bg = Color::Indexed((n - 100 + 8) as u8),
                 n => trace(format_args!("未处理的 SGR {n}")),

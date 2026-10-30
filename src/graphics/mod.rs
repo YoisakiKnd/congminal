@@ -107,6 +107,7 @@ pub struct Graphics {
     active: bool,
     pub revision: u64,
     next_id: u32,
+    underline_colors: [Option<crate::term::Color>; 256],
 }
 impl Graphics {
     pub fn new(pool: Arc<Budget>) -> Self {
@@ -121,6 +122,36 @@ impl Graphics {
             active: false,
             revision: 0,
             next_id: 1,
+            underline_colors: [None; 256],
+        }
+    }
+    /// Cell.marks low 17 bits remain the mark id; high 15 bits reference this immutable table.
+    /// No slot reuse: history can never be retargeted to a newer placement color.
+    pub fn underline_index(&mut self, color: crate::term::Color) -> u32 {
+        if color == crate::term::Color::Default {
+            return 0;
+        }
+        if self.meta.is_none() {
+            self.meta = self.pool.lease(Kind::Image, std::mem::size_of::<Self>()).ok();
+        }
+        if self.meta.is_none() {
+            return 32767;
+        }
+        if let Some(i) = self.underline_colors.iter().position(|c| *c == Some(color)) {
+            return i as u32 + 1;
+        }
+        if let Some(i) = self.underline_colors.iter().position(Option::is_none) {
+            self.underline_colors[i] = Some(color);
+            return i as u32 + 1;
+        }
+        32767 // Exhaustion hides the placeholder instead of choosing the wrong placement.
+    }
+    pub fn underline_color(&self, marks: u32) -> Option<crate::term::Color> {
+        let index = marks >> 17;
+        if index == 0 {
+            Some(crate::term::Color::Default)
+        } else {
+            self.underline_colors.get(index as usize - 1).copied().flatten()
         }
     }
     pub fn begin(&mut self) {

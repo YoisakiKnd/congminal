@@ -351,10 +351,10 @@ fn environment_block(extra: &[(String, String)]) -> Vec<u16> {
         }
     }
     vars.extend(extra.iter().cloned());
-    vars.sort_by_key(|(k, _)| k.to_uppercase());
+    vars.sort_by(|(a, _), (b, _)| a.chars().flat_map(char::to_uppercase).cmp(b.chars().flat_map(char::to_uppercase)));
     let mut block = Vec::new();
     for (key, value) in vars {
-        block.extend(format!("{key}={value}").encode_utf16());
+        block.extend(key.encode_utf16().chain(Some(b'=' as u16)).chain(value.encode_utf16()));
         block.push(0);
     }
     block.push(0);

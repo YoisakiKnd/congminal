@@ -19,7 +19,10 @@ impl Renderer {
             *previous = None;
             return false;
         }
-        let point = Placeholder::parse(cell.fg, cell.underline_color, term.marks(cell.marks), *previous);
+        let point = term
+            .graphics
+            .underline_color(cell.marks)
+            .and_then(|color| Placeholder::parse(cell.fg, color, term.marks(cell.marks), *previous));
         *previous = point;
         if let Some(point) = point
             && let Some(placement) = term.graphics.virtual_placement(point.image, point.placement)

@@ -65,7 +65,7 @@ pub(crate) fn sequence_into(
     let cell = row.cells.get(col)?;
     // 大多数格子不可能是组合序列的开头，先排除
     let next_is_tone = row.cells.get(col + width(col)).is_some_and(|next| is_skin_tone(next.c));
-    if cell.marks == 0 && !is_regional_indicator(cell.c) && !next_is_tone {
+    if cell.mark_id() == 0 && !is_regional_indicator(cell.c) && !next_is_tone {
         return None;
     }
     let mut end = col;

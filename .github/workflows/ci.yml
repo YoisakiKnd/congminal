@@ -55,11 +55,11 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
-      - name: 单元测试
-        run: cargo test -- --test-threads=1
-
       - name: Kitty graphics through native PTY / ConPTY
         run: cargo test graphics::native_tests::native_pty_graphics_roundtrip -- --exact --ignored --nocapture --test-threads=1
+
+      - name: 单元测试
+        run: cargo test -- --test-threads=1
 
       - name: 校验发布版本
         if: startsWith(github.ref, 'refs/tags/v')

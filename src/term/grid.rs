@@ -74,24 +74,20 @@ pub struct Cell {
     pub flags: Flags,
     /// 附加在这个字上的组合字符（重音符号等）在 Terminal 组合字符表里的编号，0 表示没有
     pub marks: u32,
-    /// Kitty Unicode placement id; also retained by SGR 58/59.
-    pub underline_color: Color,
 }
 
 impl Default for Cell {
     fn default() -> Cell {
-        Cell {
-            c: ' ',
-            fg: Color::Default,
-            bg: Color::Default,
-            flags: Flags::default(),
-            marks: 0,
-            underline_color: Color::Default,
-        }
+        Cell { c: ' ', fg: Color::Default, bg: Color::Default, flags: Flags::default(), marks: 0 }
     }
 }
 
 impl Cell {
+    /// Mark ids use the low 17 bits; high bits are bounded Kitty placement-color indices.
+    pub fn mark_id(&self) -> u32 {
+        self.marks & 0x1ffff
+    }
+
     /// 擦除操作产生的空白格：保留当前背景色（即 xterm 的 BCE，background color erase）
     pub fn blank(template: &Cell) -> Cell {
         Cell { bg: template.bg, ..Cell::default() }

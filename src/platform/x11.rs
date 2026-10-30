@@ -441,7 +441,7 @@ impl Window {
                     let mut pixels = [0 as c_ulong; 64 * 64 + 2];
                     pixels[0] = 64;
                     pixels[1] = 64;
-                    for (i, pixel) in icon.rgba().as_chunks::<4>().0.enumerate() {
+                    for (i, pixel) in icon.rgba().as_chunks::<4>().0.iter().enumerate() {
                         pixels[i + 2] = ((u32::from(pixel[3]) << 24)
                             | (u32::from(pixel[0]) << 16)
                             | (u32::from(pixel[1]) << 8)
