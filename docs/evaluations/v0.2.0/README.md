@@ -4,7 +4,9 @@
 
 正式标签 `v0.2.0` 对应 `4fda9d74952a403ee65e97985765f81e13beca79`，[发布构建](https://github.com/YoisakiKnd/congminal/actions/runs/41046578729) 全部通过。已从正式 Release 重新下载三个安装包，核对六个资产、SHA256、来源提交、二进制架构、许可证、图标资源，以及 Windows DLL/宿主固定哈希；见 [发布包核验](published-assets.json)。本机最终回归为主程序 900 项、helper 21 项通过。
 
-随后在不改变发布实现的前提下追加原生握手回归：除 Kitty 查询外，还必须完成 DA、单格像素大小、背景色与状态查询，避免真实 Picker 因缺失字体尺寸继续回退为色块。该测试位于 `ec6de46`，使用与发布版相同的 PTY/ConPTY 实现。
+随后在不改变发布实现的前提下追加原生握手回归：除 Kitty 查询外，还必须完成 DA、单格像素大小、背景色与状态查询，避免真实 Picker 因缺失字体尺寸继续回退为色块。该测试位于 `ec6de46`，使用与发布版相同的 PTY/ConPTY 实现；[三平台回归](https://github.com/YoisakiKnd/congminal/actions/runs/41046843282) 全部通过。
+
+个人包管理仓库同步到 v0.2.0：Homebrew `17055a9` 的 [Apple 芯片/Intel 安装验证](https://github.com/YoisakiKnd/homebrew-tap/actions/runs/41047478557) 通过，检查图标、通用架构、helper、许可、签名与卸载；Scoop `cc16384` 的 [Windows 安装验证](https://github.com/YoisakiKnd/scoop-bucket/actions/runs/41047490358) 通过，检查 schema、实际安装、CLI/shim、许可、ConPTY 成套文件固定哈希、发布校验和与卸载。Homebrew 测试不绕过未公证应用的首次运行授权。
 
 ## 三平台路径
 
