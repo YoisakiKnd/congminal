@@ -57,7 +57,7 @@ impl Workspace {
         let helper = match &self.driver.config.sftp.helper {
             Some(path) => path.clone(),
             None => {
-                let mut path = std::env::current_exe().map_err(|_| Failure::Invalid)?;
+                let mut path = crate::ssh::executable_path::current().map_err(|_| Failure::Invalid)?;
                 path.set_file_name(if cfg!(windows) { "congminal-ssh-helper.exe" } else { "congminal-ssh-helper" });
                 path
             }

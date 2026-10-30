@@ -4,6 +4,7 @@
 #[allow(dead_code)]
 #[path = "helper_auth.rs"]
 mod auth;
+mod executable_path;
 #[cfg(windows)]
 #[path = "helper_open_windows.rs"]
 mod opener;
@@ -217,7 +218,7 @@ fn launch(args: &[OsString]) -> io::Result<i32> {
     }
     let ticket = Path::new(&args[1]);
     drop(auth::ticket::Ticket::read_private(ticket)?);
-    let helper = std::env::current_exe()?;
+    let helper = executable_path::current()?;
     let mut child = Command::new(&args[2]);
     child
         .args(&args[3..])

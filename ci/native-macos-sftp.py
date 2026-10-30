@@ -66,7 +66,6 @@ def main():
 columns = 120
 rows = 34
 [sftp]
-helper = '{app}/Contents/MacOS/congminal-ssh-helper'
 ssh-config = '{client}'
 [connections.fixture]
 kind = 'ssh'

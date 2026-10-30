@@ -1,4 +1,6 @@
 //! OpenSSH 适配层；认证/主机校验保留在终端，后台仅检查固定的无网络能力请求。
+#[cfg(any(test, feature = "sftp"))]
+pub(crate) mod executable_path;
 // 共用接口同时供独立 helper、协议适配与验收使用。
 #[cfg_attr(not(test), allow(dead_code))]
 #[cfg(any(test, feature = "sftp"))]

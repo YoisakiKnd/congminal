@@ -71,7 +71,8 @@ impl Preview {
 }
 /// 本地目标路径：<根目录>/<相对路径>。
 fn join(root: &PathValue, relative: &[u8]) -> Option<Vec<u8>> {
-    if relative.is_empty() {
+    // 远端 Unix 文件名中的反斜杠不能在 Windows 自动下载时悄悄变成目录分隔符。
+    if relative.is_empty() || (cfg!(windows) && relative.contains(&b'\\')) {
         return None;
     }
     let root = root.bytes();
@@ -456,4 +457,23 @@ fn relative<'a>(root: &crate::sftp::model::RemotePath, path: &'a crate::sftp::mo
         return b"";
     };
     if root.bytes().ends_with(b"/") { rest } else { rest.strip_prefix(b"/").unwrap_or(b"") }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+    #[test]
+    fn automatic_download_keeps_remote_components_literal_or_rejects_unrepresentable_names() {
+        let pool = crate::resources::Budget::new(128 * 1024, 0);
+        let root = PathValue::new(&pool, b"/local").unwrap();
+        assert_eq!(join(&root, b"sub/file").as_deref(), Some(b"/local/sub/file".as_slice()));
+        assert!(join(&root, b"").is_none());
+        if cfg!(windows) {
+            assert!(join(&root, b"literal\\name").is_none());
+        } else {
+            assert_eq!(join(&root, b"literal\\name").as_deref(), Some(b"/local/literal\\name".as_slice()));
+        }
+        drop(root);
+        assert_eq!(pool.snapshot().used, 0);
+    }
 }

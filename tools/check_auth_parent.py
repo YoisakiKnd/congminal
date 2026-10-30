@@ -187,6 +187,7 @@ def main():
         helper = root / 'target/release/congminal-ssh-helper'
         result['executables'] = {str(p.relative_to(root)): {'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in [Path(binary), helper]}
         sample, result['sampler'] = sampler()
+        if args.soak: result['sampler'] = result['sampler'].replace('每 5 ms', '每 1 s')
         with tempfile.TemporaryDirectory(prefix='cgp-', dir='/tmp') as temporary:
             folder = Path(temporary).resolve()
             os.chmod(folder, 0o700)

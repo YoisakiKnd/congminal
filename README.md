@@ -2,7 +2,7 @@
 
 用 Rust 编写的跨平台终端模拟器，提供多标签、分屏、SSH/SFTP、Git、状态监控和通知。窗口与界面直接使用 Cocoa/AppKit、Win32、X11，终端和侧栏由自有软件渲染器绘制。
 
-当前发布目标为 **v0.1.0**；发布过程与实际验收范围见 [正式版记录](docs/evaluations/v0.1.0/README.md)。安装包以 [GitHub Releases](https://github.com/YoisakiKnd/congminal/releases) 中已完成的发布为准。
+版本 **v0.1.0**；发布过程与实际验收范围见 [正式版记录](docs/evaluations/v0.1.0/README.md)。安装包以 [GitHub Releases](https://github.com/YoisakiKnd/congminal/releases) 中已完成的发布为准。
 
 ## 安装和运行
 
