@@ -72,6 +72,8 @@ fn native_pty_graphics_roundtrip() {
         ..Command::default()
     };
     let mut pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+    #[cfg(windows)]
+    assert!(pty.modern_backend(), "CI must test the bundled modern ConPTY, not the system fallback");
     let mut term = Terminal::new(80, 24);
     term.set_cell_pixels(8, 16);
     let mut parser = Parser::new();
@@ -116,4 +118,63 @@ fn native_pty_graphics_roundtrip() {
         "Unicode placeholders/diacritics were lost by the native PTY"
     );
     println!("NATIVE_KITTY_PTY query=OK chunked_rgba=OK unicode_placeholders=OK exit=0");
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore = "isolated native cost child"]
+fn conpty_cost_child() {
+    assert_eq!(std::env::var("CONGMINAL_COST_CHILD").as_deref(), Ok("1"));
+    println!("CONPTY_COST_READY");
+    std::io::stdout().flush().unwrap();
+    std::thread::sleep(Duration::from_secs(2));
+}
+#[cfg(windows)]
+#[test]
+#[ignore = "run in fresh processes for system/bundled A/B sampling"]
+fn conpty_cost_parent() {
+    let system = std::env::var("CONGMINAL_COST_MODE").as_deref() == Ok("system");
+    crate::pty::force_system_backend(system);
+    let (tx, rx) = mpsc::sync_channel(16);
+    let sink: EventSink = Arc::new(move |e| tx.send(e).is_ok());
+    let command = Command {
+        program: Some(std::env::current_exe().unwrap().to_string_lossy().into_owned()),
+        args: vec![
+            "--exact".into(),
+            "graphics::native_tests::conpty_cost_child".into(),
+            "--ignored".into(),
+            "--nocapture".into(),
+        ],
+        env: vec![("CONGMINAL_COST_CHILD".into(), "1".into())],
+        ..Command::default()
+    };
+    let started = Instant::now();
+    let pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+    let modern = pty.modern_backend();
+    assert_eq!(modern, !system);
+    let mut bytes = Vec::new();
+    let mut ready = None;
+    let mut exit = None;
+    let mut eof = false;
+    while !(exit.is_some() && eof) && started.elapsed() < Duration::from_secs(10) {
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(PtyEvent::Data(data)) => {
+                assert!(bytes.len() + data.len() < 8192);
+                bytes.extend(data);
+                if ready.is_none() && bytes.windows(17).any(|b| b == b"CONPTY_COST_READY") {
+                    ready = Some(started.elapsed().as_micros());
+                }
+            }
+            Ok(PtyEvent::Exit(code)) => exit = Some(code),
+            Ok(PtyEvent::Eof) => eof = true,
+            Ok(PtyEvent::Error(e)) => panic!("{e}"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(e) => panic!("{e}"),
+        }
+    }
+    drop(pty);
+    crate::pty::force_system_backend(false);
+    assert_eq!(exit, Some(Some(0)));
+    assert!(eof);
+    println!("CONPTY_COST mode={} ready_us={}", if modern { "bundled" } else { "system" }, ready.expect("child ready"));
 }

@@ -52,11 +52,30 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo fmt --check
 
+      - name: Verified Microsoft ConPTY runtime
+        if: runner.os == 'Windows'
+        run: python ci/fetch-conpty.py --verify-signature --destination target/debug/deps --destination target/release
+
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Kitty graphics through native PTY / ConPTY
         run: cargo test graphics::native_tests::native_pty_graphics_roundtrip -- --exact --ignored --nocapture --test-threads=1
+
+      - name: ConPTY native resource cost
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo test --no-run --message-format=json > target/conpty-tests.json
+          if ($LASTEXITCODE -ne 0) { throw 'Compile cost fixture failed' }
+          python ci/check-conpty-cost.py --metadata target/conpty-tests.json --output evidence/conpty-cost.json
+      - name: Upload ConPTY cost evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: conpty-cost
+          path: evidence/conpty-cost.json
+          if-no-files-found: ignore
 
       - name: 单元测试
         run: cargo test -- --test-threads=1
@@ -135,6 +154,9 @@ jobs:
           printf 'version=%s\ncommit=%s\n' "$version" "$GITHUB_SHA" > "dist/$dir/BUILD.txt"
           if [ "$RUNNER_OS" = Windows ]; then
             cp target/release/congminal.exe target/release/congminal-ssh-helper.exe "dist/$dir/"
+            cp target/release/conpty.dll target/release/LICENSE-ConPTY.txt target/release/NOTICE-ConPTY.md "dist/$dir/"
+            mkdir -p "dist/$dir/x64"
+            cp target/release/x64/OpenConsole.exe "dist/$dir/x64/"
             [ "$("dist/$dir/congminal.exe" --version)" = "congminal $version" ]
             (cd dist && 7z a "../$dir.zip" "$dir")
             sha256sum "$dir.zip" > "$dir.zip.sha256"

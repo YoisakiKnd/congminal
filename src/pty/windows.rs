@@ -19,6 +19,8 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::ptr::{null, null_mut};
 use std::sync::{Arc, Mutex};
 
+#[path = "conpty_runtime.rs"]
+mod backend;
 #[path = "windows_shell.rs"]
 mod shell;
 type Handle = *mut c_void;
@@ -110,14 +112,17 @@ unsafe extern "system" {
 struct SendHandle(Handle);
 unsafe impl Send for SendHandle {}
 
-struct Console(Mutex<Option<SendHandle>>);
+struct Console {
+    handle: Mutex<Option<SendHandle>>,
+    api: backend::Api,
+}
 impl Console {
     fn close(&self) {
         // 只取一次句柄，不持锁等待 ConPTY 排空。读线程必须在关闭期间继续读。
-        let console = self.0.lock().unwrap().take();
+        let console = self.handle.lock().unwrap().take();
         if let Some(console) = console {
             unsafe {
-                ClosePseudoConsole(console.0);
+                (self.api.close)(console.0);
             }
         }
     }
@@ -136,6 +141,7 @@ impl Pty {
         let waiter_permit = crate::runtime::prepare("pty-waiter", &pool)?;
         let writer_permit = crate::runtime::prepare("pty-writer", &pool)?;
         let input_queue = Arc::new(ByteQueue::input(INPUT_LIMIT)?);
+        let api = backend::Api::load()?;
         unsafe {
             // 1. 两根管道
             let (mut input_read, mut input_write) = (null_mut(), null_mut());
@@ -152,7 +158,13 @@ impl Pty {
 
             // 2. 伪控制台
             let mut console = null_mut();
-            let hr = CreatePseudoConsole(coord(cols, rows), input_read, output_write, 0, &mut console);
+            let hr = (api.create)(
+                coord(cols, rows),
+                input_read,
+                output_write,
+                if api.modern { 0x10 } else { 0 },
+                &mut console,
+            );
             // ConPTY 已经复制了自己那一端，我们这边必须关掉，否则 shell 退出后读端收不到 EOF
             CloseHandle(input_read);
             CloseHandle(output_write);
@@ -161,7 +173,8 @@ impl Pty {
             if hr < 0 {
                 return Err(io::Error::other(format!("CreatePseudoConsole 失败：HRESULT {hr:#010x}")));
             }
-            let mut pty = Pty { console: Arc::new(Console(Mutex::new(Some(SendHandle(console))))), input: None };
+            let mut pty =
+                Pty { console: Arc::new(Console { handle: Mutex::new(Some(SendHandle(console))), api }), input: None };
 
             // 3. 属性列表：告诉 CreateProcessW 把这个伪控制台交给子进程
             let mut size = 0;
@@ -254,6 +267,10 @@ impl Pty {
         }
     }
 
+    #[cfg(test)]
+    pub fn modern_backend(&self) -> bool {
+        self.console.api.modern
+    }
     pub fn pending_bytes(&self) -> usize {
         self.input.as_ref().map_or(0, AsyncWriter::pending_bytes)
     }
@@ -263,9 +280,9 @@ impl Pty {
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> io::Result<()> {
-        let console = self.console.0.lock().unwrap();
+        let console = self.console.handle.lock().unwrap();
         let console = console.as_ref().ok_or(io::ErrorKind::BrokenPipe)?;
-        let hr = unsafe { ResizePseudoConsole(console.0, coord(cols, rows)) };
+        let hr = unsafe { (self.console.api.resize)(console.0, coord(cols, rows)) };
         if hr < 0 {
             return Err(io::Error::other(format!("ResizePseudoConsole 失败：HRESULT {hr:#010x}")));
         }
@@ -359,6 +376,11 @@ fn environment_block(extra: &[(String, String)]) -> Vec<u16> {
     }
     block.push(0);
     block
+}
+
+#[cfg(test)]
+pub(crate) fn force_system_backend(value: bool) {
+    backend::force_system(value);
 }
 
 #[cfg(test)]

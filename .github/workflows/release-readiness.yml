@@ -27,6 +27,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libx11-dev openssh-server
       - name: Format
         run: cargo fmt --check
+      - name: Verified Microsoft ConPTY runtime
+        if: runner.os == 'Windows'
+        run: python ci/fetch-conpty.py --verify-signature --destination target/debug/deps --destination target/release
       - name: Clippy
         run: cargo clippy --all-targets --features sftp-preview -- -D warnings
       - name: Native private IPC and secret lifecycle
