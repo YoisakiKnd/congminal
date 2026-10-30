@@ -449,7 +449,6 @@ impl Workspace {
         }
         if self.selected == id {
             self.selected = new_id;
-            self.pending_title = Some(self.panes[index].title.clone());
         }
         if self.capture == Some(id) {
             self.capture = None;

@@ -296,7 +296,9 @@ impl Profiles {
                         Connection::Local(ShellConfig {
                             program: program.map(str::to_owned),
                             args,
-                            working_directory: directory.map(std::path::PathBuf::from),
+                            working_directory: directory
+                                .map(super::expand_home)
+                                .or_else(super::default_working_directory),
                         })
                     }
                     "ssh" => {

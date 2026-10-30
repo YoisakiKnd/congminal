@@ -80,6 +80,8 @@ pub use unix::Pty;
 mod windows;
 #[cfg(windows)]
 pub use windows::Pty;
+#[cfg(windows)]
+pub(crate) use windows::default_working_directory;
 
 #[cfg(all(test, windows))]
 pub(crate) use windows::force_system_backend;

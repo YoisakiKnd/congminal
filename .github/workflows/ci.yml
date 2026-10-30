@@ -117,6 +117,10 @@ jobs:
             lipo "target/release/$bin" -verify_arch arm64 x86_64
           done
 
+      - name: Native Windows startup directory and application caption
+        if: runner.os == 'Windows'
+        run: ci/check-windows-startup.ps1 -Bin target/release/congminal.exe
+
       - name: 原生 Windows OpenSSH 与 SFTP 认证传输
         if: runner.os == 'Windows'
         run: python ci/check-windows-sftp.py

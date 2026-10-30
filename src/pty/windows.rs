@@ -23,6 +23,9 @@ use std::sync::{Arc, Mutex};
 mod backend;
 #[path = "windows_shell.rs"]
 mod shell;
+pub(crate) fn default_working_directory() -> Option<std::path::PathBuf> {
+    shell::home_directory()
+}
 type Handle = *mut c_void;
 
 #[repr(C)]

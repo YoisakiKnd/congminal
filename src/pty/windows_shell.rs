@@ -24,6 +24,9 @@ fn local(path: &Path) -> bool {
         && matches!(path.components().next(),Some(Component::Prefix(p)) if matches!(p.kind(),Prefix::Disk(_)|Prefix::VerbatimDisk(_)))
         && path.as_os_str().encode_wide().count() <= 4096
 }
+pub(super) fn home_directory() -> Option<PathBuf> {
+    environment("USERPROFILE")
+}
 pub(super) fn default_program() -> String {
     let program_files = environment("ProgramFiles").map(|p| p.join("PowerShell/7/pwsh.exe"));
     let scoop = environment("USERPROFILE").map(|p| p.join("scoop/apps/pwsh/current/pwsh.exe"));

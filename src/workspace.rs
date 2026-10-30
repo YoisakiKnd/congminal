@@ -283,7 +283,6 @@ struct RestoreLayout {
 pub struct Workspace {
     driver: Congminal,
     enabled: bool,
-    pending_title: Option<String>,
     panes: Vec<Pane>,
     tabs: Vec<Node>,
     tab_focus: [u64; MAX_PANES],
@@ -369,7 +368,6 @@ impl Workspace {
         let scale = driver.scale;
         let mut app = Self {
             enabled: false,
-            pending_title: None,
             generation: driver.renderer.generation(),
             driver,
             panes: vec![Pane {
@@ -656,7 +654,6 @@ impl Workspace {
             self.history_quotas();
         }
         self.driver.event(Event::Focus(self.terminal_focused()));
-        self.pending_title = Some(self.panes[self.loaded].title.clone());
         self.layout_seen = Some(self.layout_snapshot());
         self.layout_dirty = false;
         self.allow_restore = false;
@@ -804,7 +801,6 @@ impl Workspace {
         self.layout_dirty = true;
         self.load(index);
         self.driver.event(Event::Focus(self.terminal_focused()));
-        self.pending_title = Some(self.panes[index].title.clone());
         self.chrome_dirty = true;
         if old_tab != self.tab || !was_visible {
             self.full = true;
@@ -1022,14 +1018,12 @@ impl Workspace {
         self.selected = id;
         self.load(self.panes.len() - 1);
         self.driver.event(Event::Focus(self.terminal_focused()));
-        self.pending_title = Some(self.panes[self.loaded].title.clone());
         if let Err(e) = self.relayout() {
             self.driver.event(Event::Focus(false));
             self.load(self.index(previous.3).unwrap());
             self.panes.pop();
             (self.tabs, self.tab_focus, self.tab, self.selected, self.multiple, self.next_id) = previous;
             self.driver.event(Event::Focus(self.terminal_focused()));
-            self.pending_title = Some(self.panes[self.loaded].title.clone());
             let _ = self.relayout();
             self.notice(&e);
         } else {
@@ -1115,7 +1109,6 @@ impl Workspace {
         self.capture = None;
         self.drag = None;
         self.driver.event(Event::Focus(self.terminal_focused()));
-        self.pending_title = Some(self.panes[self.loaded].title.clone());
         self.history_quotas();
         if let Err(e) = self.relayout() {
             self.notice(&e);
@@ -2694,9 +2687,6 @@ impl App for Workspace {
                     let title: String = title.chars().filter(|c| !c.is_control()).take(128).collect();
                     if title != self.panes[index].title {
                         self.panes[index].title = title;
-                        if self.panes[index].id == self.selected {
-                            self.pending_title = Some(self.panes[index].title.clone());
-                        }
                         self.chrome_dirty = true;
                     }
                 }
@@ -2918,15 +2908,14 @@ impl App for Workspace {
         (bottom > top).then(|| (&self.frame, Damage { y: top, height: bottom - top }))
     }
     fn take_title(&mut self) -> Option<String> {
-        if !self.enabled {
-            let title = self.driver.take_title();
-            if let Some(title) = &title {
-                self.panes[0].title = title.chars().filter(|c| !c.is_control()).take(128).collect();
-            }
-            title
-        } else {
-            self.pending_title.take()
+        if !self.enabled
+            && let Some(title) = self.driver.take_title()
+        {
+            self.panes[0].title = title.chars().filter(|c| !c.is_control()).take(128).collect();
         }
+        // The native window keeps its initial application name; OSC titles
+        // remain available to tabs/panes without copying them to the caption.
+        None
     }
     fn deadline(&self) -> Option<Instant> {
         if self.capture_closing {
@@ -5651,7 +5640,7 @@ program="/definitely/missing/congminal-shell"
         assert!(text(&app, 3).contains("PANE_THREE"));
         app.event(Event::Text("\x1b]2;第三窗格\x07".into()));
         wait(&mut app, |a| a.panes[a.loaded].title == "第三窗格");
-        assert_eq!(app.take_title().as_deref(), Some("第三窗格"));
+        assert_eq!(app.take_title(), None);
         assert!(app.select(2));
         assert_eq!(app.driver.search.query(), "中文");
         app.action(Action::NewTab);

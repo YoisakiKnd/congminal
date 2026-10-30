@@ -100,12 +100,45 @@ pub struct Colors {
     pub palette: [u32; 256],
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ShellConfig {
     /// None 表示用系统默认的 shell
     pub program: Option<String>,
     pub args: Vec<String>,
     pub working_directory: Option<PathBuf>,
+}
+
+#[cfg(windows)]
+pub(super) fn default_working_directory() -> Option<PathBuf> {
+    crate::pty::default_working_directory()
+}
+#[cfg(not(windows))]
+pub(super) fn default_working_directory() -> Option<PathBuf> {
+    None
+}
+
+impl Default for ShellConfig {
+    fn default() -> Self {
+        Self { program: None, args: Vec::new(), working_directory: default_working_directory() }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod windows_directory_tests {
+    use super::*;
+    #[test]
+    fn default_and_explicit_startup_directories_are_distinct() {
+        let home = crate::pty::default_working_directory().expect("Windows user profile");
+        let (defaults, warnings) = Config::parse("");
+        assert!(warnings.is_empty());
+        assert_eq!(defaults.shell.working_directory, Some(home.clone()));
+        let (explicit, warnings) = Config::parse("[shell]\nworking-directory='.'\n");
+        assert!(warnings.is_empty());
+        assert_eq!(explicit.shell.working_directory.as_deref(), Some(Path::new(".")));
+        let (explicit_home, warnings) = Config::parse("[shell]\nworking-directory='~'\n");
+        assert!(warnings.is_empty());
+        assert_eq!(explicit_home.shell.working_directory, Some(home));
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -445,7 +478,9 @@ impl Config {
         if let Some(args) = r.strings("shell", "args") {
             config.shell.args = args;
         }
-        config.shell.working_directory = r.string("shell", "working-directory").map(|dir| expand_home(&dir));
+        if let Some(dir) = r.string("shell", "working-directory") {
+            config.shell.working_directory = Some(expand_home(&dir));
+        }
 
         if let Some(Value::Table(env)) = root.get("env") {
             for (key, value) in &env.entries {

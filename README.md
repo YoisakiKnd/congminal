@@ -2,7 +2,7 @@
 
 用 Rust 编写的跨平台终端模拟器，提供多标签、分屏、SSH/SFTP、Git、状态监控和通知。窗口与界面直接使用 Cocoa/AppKit、Win32、X11，终端和侧栏由自有软件渲染器绘制。
 
-当前稳定版 **[v0.2.1](https://github.com/YoisakiKnd/congminal/releases/tag/v0.2.1)**，提供带完整 GPL 许可的 macOS、Windows、Linux 安装包和 SHA256。首个正式版 v0.1.0 的功能与性能验收见 [正式版记录](docs/evaluations/v0.1.0/README.md)。
+当前稳定版 **[v0.2.2](https://github.com/YoisakiKnd/congminal/releases/tag/v0.2.2)**，提供带完整 GPL 许可的 macOS、Windows、Linux 安装包和 SHA256。首个正式版 v0.1.0 的功能与性能验收见 [正式版记录](docs/evaluations/v0.1.0/README.md)。
 
 ## 安装和运行
 
@@ -57,6 +57,8 @@ Windows 源码构建需先执行 `python ci/fetch-conpty.py --destination target
 ## 第一次使用
 
 启动后即可输入命令。Windows 默认优先本地 PowerShell 7，再 Windows PowerShell，最后 COMSPEC；已有 `[shell].program` 配置仍优先。macOS 的工作区主修饰键是 **Cmd**，Windows/Linux 是 **Ctrl+Shift**。
+
+Windows 默认从用户主目录启动，可用 `[shell] working-directory = "~"` 或其他明确路径配置；若需继承命令行启动目录，设为 `"."`。原生窗口标题固定为 `congminal`，程序上报的标题继续显示在标签页中。
 
 | 操作 | 快捷键 |
 | --- | --- |
