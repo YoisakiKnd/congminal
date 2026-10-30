@@ -280,6 +280,9 @@ mod native_openssh_tests;
 #[cfg(all(test, unix))]
 #[path = "service_prepare_tests.rs"]
 mod prepare_tests;
+#[cfg(all(test, unix))]
+#[path = "service_soak_tests.rs"]
+mod soak_tests;
 #[cfg(all(test, windows))]
 #[path = "service_windows_tests.rs"]
 mod windows_tests;

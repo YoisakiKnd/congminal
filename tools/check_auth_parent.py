@@ -17,6 +17,7 @@ import time
 from check_auth_helper import environment
 from check_ssh_transport import sampler
 
+SOAK_CASE = 'sftp::service::soak_tests::isolated_repeated_service_lifecycle_keeps_credit_and_handles_bounded'
 ENTRY_CASE = 'workspace::remote_files::entry::tests::isolated_preview_entry_lists_uploads_downloads_and_joins'
 CASE = 'sftp::openssh::authenticated::tests::isolated_authenticated_subsystem_uses_worker_front_and_closes_stage_after_version'
 SERVICE_CASE = 'sftp::service::tests::isolated_executor_authenticates_lists_and_joins_before_releasing_parent_credit'
@@ -45,14 +46,14 @@ def run_case(binary, helper, root, folder, port, name, sample, case=CASE, auth_p
             row = {'ns': time.monotonic_ns() - started, 'tree': sample(process.pid)}
             if server_pid is not None: row['server_tree'] = sample(server_pid)
             samples.append(row)
-            if time.monotonic_ns() - started > 25_000_000_000:
+            if time.monotonic_ns() - started > (1850_000_000_000 if case == SOAK_CASE else 25_000_000_000):
                 timed_out = True
                 os.killpg(process.pid, signal.SIGKILL)
                 break
-            time.sleep(0.005)
+            time.sleep(1 if case == SOAK_CASE else 0.005)
         stdout, stderr = process.communicate(timeout=5)
         log = (stdout + stderr).decode('utf-8', 'replace')
-        tag = 'SFTP_ENTRY_RESULT' if case == ENTRY_CASE else 'SFTP_WORKSPACE_RESULT' if case in [WORKSPACE_CASE,WORKSPACE_TRANSFER_CASE] else 'SFTP_SERVICE_RESULT' if case == SERVICE_CASE else 'SFTP_TRANSFER_RESULT' if case == TRANSFER_CASE else 'AUTH_PARENT_RESULT'
+        tag = 'SFTP_ENTRY_RESULT' if case == ENTRY_CASE else 'SFTP_WORKSPACE_RESULT' if case in [WORKSPACE_CASE,WORKSPACE_TRANSFER_CASE] else 'SFTP_SERVICE_RESULT' if case in [SERVICE_CASE, SOAK_CASE] else 'SFTP_TRANSFER_RESULT' if case == TRANSFER_CASE else 'AUTH_PARENT_RESULT'
         expected_cleanup = 'failed_expected' if case == WORKSPACE_CASE and name == 'cleanup_failure' else 'ok'
         match = re.search(tag + r' scenario=(\w+) requests=(\d+) peak=(\d+) final=0 cleanup=' + expected_cleanup + (r' max_tick_ns=(\d+)' if case in [WORKSPACE_CASE,WORKSPACE_TRANSFER_CASE] else ''), log)
         observed = set().union(*(set(s['tree']) for s in samples)) if samples else set()
@@ -143,6 +144,7 @@ def main():
     mode.add_argument('--workspace-transfer', action='store_true', help='exercise fixed Workspace file records, actual deferred auth/controller parking, directory cancellation, background upload/download and cancel')
     mode.add_argument('--lookup-cost', action='store_true', help='two warmups/mode and five alternating pairs: cached attributes vs fallback LSTAT for the same 32MiB download workflow')
     mode.add_argument('--transfer', action='store_true', help='exercise actual typed upload/download jobs, source guards, atomic commit, cancellation and concurrent directions')
+    mode.add_argument('--soak', action='store_true', help='30-minute repeated real Service/auth/directory/join lifecycle in one parent, OS tree sampled each second')
     args = parser.parse_args()
     if args.lookup_cost: args.workspace_transfer = True
     if args.auth_preview is not None and not args.workspace: parser.error('--auth-preview requires --workspace')
@@ -162,7 +164,9 @@ def main():
         result['scope'] = 'Incremental whole-process workflow cost: same release Workspace fixture/server/generated encrypted key/32MiB content/download verification, software review and background switching; baseline has complete cached directory attributes, fallback removes cached type/time and adds real independent authenticated LSTAT. Input schemas and scenario-folder name lengths differ; not a same-input backend substitution or a 5% adoption gate. Two warmups/mode then five alternating pairs, all raw trials retained. Elapsed spans after Popen through exit/communicate, includes test harness, source-file preparation, existing local cat PTYs, UI/auth/IO/verification/shutdown and observer polling. Client and owned server trees sampled separately; observed CPU lower bounds miss PID edges/short children, summed RSS may double-count shared pages/miss peaks. Observer CPU excluded; no native GUI/input latency, isolated query latency, production idle, weak-network, long-run or other-platform acceptance.'
     if args.preview_entry:
         result['scope'] = 'Opt-in sftp-preview build: Config parsing, visible entry paint/click, deferred singleton Service, actual private helper/OpenSSH authentication, canonical directory, visible local picker/original source bytes, source preparation/full review, upload/download content and joined zero SFTP parent credit. Generated fixture keys/config only; software renderer and supplied focus on local cat PTY, not native window/IME, live SSH terminal or fair performance/whole-process memory/long-run acceptance.'
-    result['case'] = ENTRY_CASE if args.preview_entry else WORKSPACE_TRANSFER_CASE if args.workspace_transfer else WORKSPACE_CASE if args.workspace else SERVICE_CASE if args.service else TRANSFER_CASE if args.transfer else CASE
+    result['case'] = SOAK_CASE if args.soak else ENTRY_CASE if args.preview_entry else WORKSPACE_TRANSFER_CASE if args.workspace_transfer else WORKSPACE_CASE if args.workspace else SERVICE_CASE if args.service else TRANSFER_CASE if args.transfer else CASE
+    if args.soak:
+        result['scope'] = 'One parent process, at least 1800s of repeated real Service creation, encrypted-key private IPC authentication, directory read, confirmed shutdown/join and zero parent SFTP credit per cycle. Generated loopback sshd and credentials, immutable profile precreated. Owned client/helper/ssh OS tree sampled once per second; short-lived children/peaks can be missed. Not GUI, latency or all-platform soak validation.'
     result['tool_sha256'] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     result['manifest_sha256'] = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in ['Cargo.toml', 'Cargo.lock']}
     result['versions'] = {}
@@ -217,6 +221,7 @@ def main():
                 names = ['passphrase', 'maximum', 'bad_passphrase', 'cancel', 'task_cancel', 'host_accept', 'host_decline', 'wait']
                 if args.workspace: names += ['navigation', 'close', 'profile_change', 'cleanup_failure']
                 if args.preview_entry: names = ['entry']
+                if args.soak: names = ['soak']
                 if args.transfer:
                     names = ['upload', 'download', 'upload_existing', 'upload_replace', 'download_existing', 'download_replace', 'upload_cancel', 'download_cancel', 'upload_changed', 'download_changed', 'download_stale', 'bad_auth', 'shutdown', 'concurrent', 'pressure']
                 if args.workspace_transfer: names = ['upload_background','download_background','background_cancel','upload_replace_review','download_replace_review','upload_refuse_review','download_refuse_review','upload_stale_prepare','upload_cancel_before_auth','upload_retry_review','download_retry_review','download_lookup','download_lookup_cancel','download_lookup_form_cancel','download_lookup_stale','download_lookup_symlink']
