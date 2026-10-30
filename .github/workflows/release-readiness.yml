@@ -30,7 +30,12 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --features ssh-auth-helper -- -D warnings
       - name: Native private IPC and secret lifecycle
-        run: cargo test --features ssh-auth-helper ssh::auth:: -- --test-threads=1
+        run: |
+          cargo test --features ssh-auth-helper ssh::auth:: -- --test-threads=1
+      - name: Native Windows local file ownership
+        if: runner.os == 'Windows'
+        run: |
+          cargo test --features ssh-auth-helper sftp::local_transfer::tests:: -- --test-threads=1
       - name: Native ownership rejection before process launch
         run: cargo test --features ssh-auth-helper source_generation_is_checked_before_process_launch -- --test-threads=1
       - name: Build bundled helper

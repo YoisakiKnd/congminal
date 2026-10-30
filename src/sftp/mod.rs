@@ -11,6 +11,9 @@ mod files;
 pub(crate) mod local_plan;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod local_transfer;
+#[cfg(windows)]
+#[path = "local_transfer_windows.rs"]
+mod local_transfer;
 pub(crate) mod model;
 #[cfg(all(test, feature = "sftp-libssh2"))]
 mod native;

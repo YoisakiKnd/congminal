@@ -137,6 +137,9 @@ impl Descriptor {
     pub fn attributes(&self) -> Attributes {
         Attributes { length: std::mem::size_of::<Attributes>() as u32, descriptor: self.0.0, inherit: 0 }
     }
+    pub fn pointer(&self) -> *mut c_void {
+        self.0.0
+    }
     pub fn directory(&self, path: &Path) -> io::Result<()> {
         let path = wide(path)?;
         checked(unsafe { CreateDirectoryW(path.as_ptr(), (&self.attributes() as *const Attributes).cast()) })
