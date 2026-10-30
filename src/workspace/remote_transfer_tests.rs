@@ -447,16 +447,16 @@ fn isolated_workspace_file_task_survives_directory_refresh_and_background_switch
             if scenario == "background_cancel" {
                 app.last_draw = Instant::now() - FRAME_INTERVAL;
                 let _ = app.draw();
-                let r = app.right_rect;
-                let h = app.driver.renderer.cell_size().1;
                 let click = |app: &mut Workspace, x: f64, y: f64| {
                     app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
                     app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
                 };
-                click(&mut app, (r.x + r.w / 2) as f64, (r.y + 4 * h + h / 2) as f64);
+                let row = app.transfer_test_hit(ticket, "select");
+                click(&mut app, (row.x + row.w / 2) as f64, (row.y + row.h / 2) as f64);
                 app.last_draw = Instant::now() - FRAME_INTERVAL;
                 let _ = app.draw();
-                click(&mut app, (r.x + r.w / 6) as f64, (r.y + h + h / 2) as f64);
+                let button = app.transfer_test_hit(ticket, "cancel");
+                click(&mut app, (button.x + button.w / 2) as f64, (button.y + button.h / 2) as f64);
                 assert!(app.sftp.as_ref().unwrap().files[0].as_ref().unwrap().cancelled);
             }
             switched_stream = true;
@@ -522,15 +522,15 @@ fn isolated_workspace_file_task_survives_directory_refresh_and_background_switch
         assert!(app.select(1));
         app.show_transfer_list();
         super::review::tests::draw(&mut app);
-        let r = app.right_rect;
-        let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: f64, y: f64| {
             app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() });
             app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() });
         };
-        click(&mut app, (r.x + r.w / 2) as f64, (r.y + 4 * h + h / 2) as f64);
+        let row = app.transfer_test_hit(ticket, "select");
+        click(&mut app, (row.x + row.w / 2) as f64, (row.y + row.h / 2) as f64);
         super::review::tests::draw(&mut app);
-        click(&mut app, (r.x + 3 * r.w / 4) as f64, (r.y + 2 * h + h / 2) as f64);
+        let button = app.transfer_test_hit(ticket, "retry");
+        click(&mut app, (button.x + button.w / 2) as f64, (button.y + button.h / 2) as f64);
         assert!(app.sftp.as_ref().unwrap().preparation.is_some(), "visible retry starts source inspection");
         assert_eq!(app.sftp.as_ref().unwrap().files.iter().flatten().count(), 1);
         let mut retry_requests = 0;

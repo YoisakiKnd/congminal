@@ -34,7 +34,7 @@ mod file_allocation_probe {
         let mut samples=[Sample::default();7];let mut tasks:[Option<TransferTask>;66]=std::array::from_fn(|_|None);meter::start();
         let mut service=Service::with_work(&parent,notify.clone(),blocked).unwrap();wait(||service.stats().started);samples[0]=sample(&parent,Some(service.budget()),"created");
         let submit=|service:&Service,index:usize|{
-            let selection=if index.is_multiple_of(2){TransferSelection::Upload{local,remote:&raw,length:32*1024*1024,replace:Replace::No}}else{TransferSelection::Download{remote:&raw,local,version:Version{length:32*1024*1024,modified:1},replace:Replace::No}};
+            let selection=if index.is_multiple_of(2){TransferSelection::Upload{local,remote:&raw,length:32*1024*1024,replace:Replace::No,resume:None}}else{TransferSelection::Download{remote:&raw,local,version:Version{length:32*1024*1024,modified:1},replace:Replace::No}};
             service.transfer(owner,profiles.clone(),0,paths,selection,Duration::from_secs(1))
         };
         let mut admitted=0;let mut reason="full";

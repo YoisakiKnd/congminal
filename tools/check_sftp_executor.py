@@ -55,7 +55,7 @@ def allocation(root, args, result):
         result['scope'] = 'Temporary-copy all-thread epoch requested-byte meter, conservative old/new realloc overlap; excludes meter headers/allocator/C/OS internals and actual stacks/RSS. Actual Service transfer Action/Output DTOs, unique fixed 2-worker/64-wait/16MiB executor/new three threads/TLS, anchored parent lifetime. Maximum admitted SSH profile fields, 4096-byte helper/config, exact maximum 16KiB escaped local+remote paths shared by Status, active two funded worker-generated random remote partial candidates, alternating upload/download requests until quota or queue refuses, source cancellation, confirmed joined shutdown, independent status held after Service/auth/input drop, final zero. Root/profile/input buffers/notify/thread global initialization preinitialized. Inputs are separately capped to protect 9MiB IO; after metadata quota refusal, an actual Rust byte buffer fills the remaining IO allowance while two active partial candidates stay funded, then releases. Fake work only creates bounded random path candidates; no file/SSH/endpoint/network/GUI/real streaming allocation or latency proof.'
     with tempfile.TemporaryDirectory(prefix='congminal-executor-allocation-') as temporary:
         copy = Path(temporary)
-        for name in ['src', 'assets']:
+        for name in ['src', 'assets', 'docs']:
             shutil.copytree(root / name, copy / name)
         for name in ['Cargo.toml', 'Cargo.lock']:
             shutil.copy2(root / name, copy / name)

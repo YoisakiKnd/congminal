@@ -66,9 +66,21 @@ def main():
         # Same user only; no user/service/account/firewall changes. Host-key protection also accepts Administrators.
         identity = json.loads(run(['powershell.exe', '-NoProfile', '-Command',
                                   '[Security.Principal.WindowsIdentity]::GetCurrent().User.Value | ConvertTo-Json']).stdout)
+        acl_script = root / 'private-file.ps1'
+        acl_script.write_text("""param([string]$File, [string]$OwnerSid)
+$ErrorActionPreference = 'Stop'
+$acl = New-Object System.Security.AccessControl.FileSecurity
+$acl.SetOwner((New-Object System.Security.Principal.SecurityIdentifier($OwnerSid)))
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($sid in @($OwnerSid, 'S-1-5-18', 'S-1-5-32-544')) {
+    $identity = New-Object System.Security.Principal.SecurityIdentifier($sid)
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow')
+    $acl.AddAccessRule($rule)
+}
+Set-Acl -LiteralPath $File -AclObject $acl
+""")
         for name in ['host', 'client', 'authorized_keys']:
-            run(['icacls.exe', str(root / name), '/inheritance:r', '/grant:r',
-                 '*' + identity + ':F', '*S-1-5-18:F', '*S-1-5-32-544:F'])
+            run(['powershell.exe', '-NoProfile', '-File', str(acl_script), str(root / name), identity])
         with socket.socket() as probe:
             probe.bind(('127.0.0.1', 0))
             port = probe.getsockname()[1]

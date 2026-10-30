@@ -32,7 +32,7 @@ mod allocation_probe {
         app.protected_input(c.command(crate::platform::protected_input::InputCommand::Cancel).unwrap());app.event(late_paths.finish(Some("late path must not type".into())));drop(c);
         {
             let state=app.sftp.as_mut().unwrap();let v=state.view.as_mut().unwrap();
-            let mut scan=crate::sftp::model::Scan::new(v.binding.owner.session,v.binding.owner.generation,v.target.clone(),false).unwrap();
+            let mut scan=crate::sftp::model::Scan::new(v.binding.owner.session,v.binding.owner.generation,v.target.clone(),false,crate::sftp::model::Sort::Name).unwrap();
             scan.push_entry(b"unknown attributes",crate::sftp::model::Attributes::default(),&Cancellation::default()).unwrap();
             let memory=child.lease(Kind::Sftp,std::mem::size_of::<service::Reply>()+128).unwrap();
             v.reply=Some(Tracked::new(Ok(service::Output::Directory(scan.finish(true).unwrap())),memory));v.selected=Some(0);v.error=None;
@@ -51,7 +51,7 @@ mod allocation_probe {
         wait(||{app.tick();app.last_draw=Instant::now()-FRAME_INTERVAL;let _=app.draw();app.sftp.as_ref().unwrap().review.as_ref().is_some_and(|r|!r.pending())});
         let prepare_counts=meter::peek();let prepare_budget=child.snapshot();app.event(Event::Key{key:Key::Escape,mods:Mods::default()});assert!(app.sftp.as_ref().unwrap().files.iter().all(Option::is_none));
         // 真实失败记录启动显式重试；源只读元数据检查完成后重新审阅，不产生文件任务。
-        let old=app.submit_remote_transfer(service::TransferSelection::Upload{local:&metadata_source,remote:b"/never-created-cg-retry-target",length:33554432,replace:service::Replace::No}).unwrap();
+        let old=app.submit_remote_transfer(service::TransferSelection::Upload{local:&metadata_source,remote:b"/never-created-cg-retry-target",length:33554432,replace:service::Replace::No,resume:None}).unwrap();
         wait(||{app.tick();app.sftp.as_ref().unwrap().files.iter().flatten().find(|f|f.ticket==old).unwrap().complete});
         let preparation=app.retry_remote_transfer(old).unwrap();assert_ne!(preparation,old);
         wait(||{app.tick();app.last_draw=Instant::now()-FRAME_INTERVAL;let _=app.draw();app.sftp.as_ref().unwrap().review.as_ref().is_some_and(|r|!r.pending())});
@@ -60,13 +60,13 @@ mod allocation_probe {
         app.event(Event::Key{key:Key::Escape,mods:Mods::default()});assert!(app.forget_remote_transfer(old));
         // 小路径的66条真实文件DTO依次失败并取走结果，固定记录仍保留所有Status/路径。
         for _ in 0..66 {
-            let ticket=app.submit_remote_transfer(service::TransferSelection::Upload{local:Path::new("/never-created-cg-source"),remote:b"/never-created-cg-target",length:1,replace:service::Replace::No}).unwrap();
+            let ticket=app.submit_remote_transfer(service::TransferSelection::Upload{local:Path::new("/never-created-cg-source"),remote:b"/never-created-cg-target",length:1,replace:service::Replace::No,resume:None}).unwrap();
             wait(||{app.tick();app.sftp.as_ref().unwrap().files.iter().flatten().find(|f|f.ticket==ticket).unwrap().complete});
         }
         assert_eq!(app.sftp.as_ref().unwrap().files.iter().flatten().count(),66);
-        assert_eq!(app.submit_remote_transfer(service::TransferSelection::Upload{local:Path::new("/never-created-cg-source"),remote:b"/never-created-cg-target",length:1,replace:service::Replace::No}).err(),Some(Failure::Full));
+        assert_eq!(app.submit_remote_transfer(service::TransferSelection::Upload{local:Path::new("/never-created-cg-source"),remote:b"/never-created-cg-target",length:1,replace:service::Replace::No,resume:None}).err(),Some(Failure::Full));
         let local=Path::new(<std::ffi::OsStr as std::os::unix::ffi::OsStrExt>::from_bytes(&review_raw));
-        app.open_transfer_review(service::TransferSelection::Upload{local,remote:&review_raw,length:1,replace:service::Replace::No}).unwrap();
+        app.open_transfer_review(service::TransferSelection::Upload{local,remote:&review_raw,length:1,replace:service::Replace::No,resume:None}).unwrap();
         wait(||{app.tick();app.last_draw=Instant::now()-FRAME_INTERVAL;let _=app.draw();!app.sftp.as_ref().unwrap().review.as_ref().unwrap().pending()});
         assert!(app.transfer_review_paint());let review_counts=meter::peek();let review_budget=child.snapshot();let before_paint=meter::peek();for _ in 0..200{assert!(app.transfer_review_paint());}let after_paint=meter::peek();assert_eq!(before_paint.allocations,after_paint.allocations);assert_eq!(before_paint.reallocations,after_paint.reallocations);
         app.event(Event::Key{key:Key::Escape,mods:Mods::default()});assert!(!app.sftp_review_active());

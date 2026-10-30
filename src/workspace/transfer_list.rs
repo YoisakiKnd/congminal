@@ -540,6 +540,25 @@ impl State {
     }
 }
 impl Workspace {
+    #[cfg(test)]
+    pub(super) fn transfer_test_hit(&self, ticket: Ticket, action: &str) -> Rect {
+        let action = match action {
+            "select" => Action::Select,
+            "cancel" => Action::Cancel,
+            "retry" => Action::Retry,
+            _ => panic!("unknown transfer test control"),
+        };
+        self.sftp
+            .as_ref()
+            .unwrap()
+            .tasks
+            .hits
+            .iter()
+            .flatten()
+            .find(|hit| hit.ticket == Some(ticket) && hit.action == action)
+            .expect("test must click a currently painted enabled control")
+            .rect
+    }
     pub(super) fn show_transfer_list(&mut self) {
         if self.sftp.is_none() {
             return;

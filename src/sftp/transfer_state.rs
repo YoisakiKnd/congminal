@@ -265,6 +265,16 @@ impl Progress {
             return Err(Error::Invalid);
         }
         s.settle(failure, cleanup);
+        // 原子 rename 已消耗暂存名，或本地发布确认移除了 staging；只在完整清理确认后清掉残留。
+        // 清理失败/未知和未提交的文件继续保留原名，不能在界面当成已消失。
+        if cleanup == Cleanup::Confirmed
+            && matches!(
+                s.publication,
+                Publication::RemoteAcknowledged | Publication::Local { staging_removed: true, .. }
+            )
+        {
+            state.partial = None;
+        }
         self.0.finished.store(true, Ordering::Release);
         Ok(())
     }
@@ -368,11 +378,12 @@ mod tests {
         assert_eq!(progress.remote(CommitEvent::Attempted), Err(Error::Invalid));
         assert_eq!(progress.remote(CommitEvent::Rejected(0)), Err(Error::Invalid));
         progress.remote(CommitEvent::Acknowledged).unwrap();
+        let partial = status.partial().unwrap();
         progress.finish(None, Cleanup::Confirmed).unwrap();
         assert_eq!(progress.advance(100_000), Err(Error::Invalid));
         assert_eq!(progress.finish(Some(Failure::Cancelled), Cleanup::Failed), Err(Error::Invalid));
         assert_eq!(status.snapshot().end, Some(End::Completed));
-        let partial = status.partial().unwrap();
+        assert!(status.partial().is_none(), "acknowledged rename and confirmed cleanup consumed the temporary name");
         let retained = status.clone();
         drop((progress, status, pool));
         assert!(parent.snapshot().used >= 128 * 1024);
@@ -381,6 +392,23 @@ mod tests {
         assert!(parent.snapshot().used >= 128 * 1024);
         drop(partial);
         assert_eq!(parent.snapshot().used, 0);
+    }
+    #[test]
+    fn successful_download_only_clears_the_residual_after_staging_removal_and_confirmed_cleanup() {
+        let pool = Budget::new(128 * 1024, 0);
+        for (removed, cleanup) in [(true, Cleanup::Confirmed), (false, Cleanup::Confirmed), (true, Cleanup::Failed)] {
+            let (status, progress) = pair(&pool, Direction::Download, 0);
+            progress.partial(RemotePath::new(&pool, b"/private-staging/payload.part").unwrap()).unwrap();
+            progress.begin().unwrap();
+            progress.verify().unwrap();
+            progress.local_published(true, removed).unwrap();
+            assert!(status.partial().is_some(), "publication alone does not prove joined cleanup");
+            progress.finish(None, cleanup).unwrap();
+            assert_eq!(status.partial().is_none(), removed && cleanup == Cleanup::Confirmed);
+            assert_eq!(status.snapshot().end, Some(End::Completed));
+            drop((status, progress));
+            assert_eq!(pool.snapshot().used, 0);
+        }
     }
     #[test]
     fn cancellation_and_cleanup_never_erase_acknowledged_or_indeterminate_publication() {
