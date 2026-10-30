@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+  "commit": "4fda9d74952a403ee65e97985765f81e13beca79",
+  "assets": [
+    {
+      "name": "congminal-0.2.0-linux-x86_64.tar.gz",
+      "sha256": "94465c3e84f2af1da32be47eef77ea3753943278dfcf159fc8191f5366d7ad1f",
+      "bytes": 7256698,
+      "checks": [
+        "x86_64 main/helper",
+        "XDG icon and desktop entry",
+        "executable user installer"
+      ]
+    },
+    {
+      "name": "congminal-0.2.0-macos-universal.zip",
+      "sha256": "71fc1862d94fc9f7c80cdad40497cdaa4464a3681be255c17e0e93572c76df88",
+      "bytes": 5597792,
+      "checks": [
+        "arm64 and x86_64 main/helper",
+        "ICNS and bundle version",
+        "GPL/font/libc notices"
+      ]
+    },
+    {
+      "name": "congminal-0.2.0-windows-x86_64.zip",
+      "sha256": "9bc27ec2fd01310c1d4c6031c81d1147eb49c7cfddf6b2210952de43ae1cba56",
+      "bytes": 2286148,
+      "checks": [
+        "paired ConPTY hashes/sizes",
+        "MIT and GPL notices",
+        "helper",
+        "PE icon resources"
+      ]
+    }
+  ]
+}

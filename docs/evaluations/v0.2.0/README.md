@@ -2,6 +2,10 @@
 
 实现基线：`3dce190e8fa6e87eb04bf8ffd6d2dfb06b81a2d4`，随后补输入结束回收、超时回收和本记录。原有 v0.1.0/v0.1.1 证据保留原始版本，不覆盖。
 
+正式标签 `v0.2.0` 对应 `4fda9d74952a403ee65e97985765f81e13beca79`，[发布构建](https://github.com/YoisakiKnd/congminal/actions/runs/41046578729) 全部通过。已从正式 Release 重新下载三个安装包，核对六个资产、SHA256、来源提交、二进制架构、许可证、图标资源，以及 Windows DLL/宿主固定哈希；见 [发布包核验](published-assets.json)。本机最终回归为主程序 900 项、helper 21 项通过。
+
+随后在不改变发布实现的前提下追加原生握手回归：除 Kitty 查询外，还必须完成 DA、单格像素大小、背景色与状态查询，避免真实 Picker 因缺失字体尺寸继续回退为色块。该测试位于 `ec6de46`，使用与发布版相同的 PTY/ConPTY 实现。
+
 ## 三平台路径
 
 [CI 41043921430](https://github.com/YoisakiKnd/congminal/actions/runs/41043921430) 的 macOS、Linux、Windows 原生检查和 Rust 1.88 四目标检查全部通过。[独立认证验收](https://github.com/YoisakiKnd/congminal/actions/runs/41043921379) 的三平台 SSH/SFTP 检查也通过。
