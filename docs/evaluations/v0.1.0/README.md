@@ -70,3 +70,5 @@ macOS 复测补齐正常退出：`67d3395` 的 `.app` 在真实 Cocoa 窗口完�
 Windows 最后一次协议边界复核将管道请求缓冲从 8192 B 调为 `PROMPT_LIMIT + 64`（16448 B），保证 16 KiB 最大提示及帧头能够作为单条消息发送，避免非阻塞消息写入因缓冲不足而失败。仍最多 3 个实例，响应缓冲 4096 B；端点准入从 32 KiB 增为 128 KiB，覆盖这批固定缓冲和元数据余量，每个活动认证最多多预留 96 KiB，不新增线程/依赖。Windows 原生回归同时发送最大提示及 1023 字节 Unicode 答案，后续 CI 作为交付依据；这项 Windows 成本变化不冒用 macOS 的 RSS 测量。
 
 `native-macos-auto-helper.json` / `.png` 补证 `c13f30b` 安装包不配置 helper 路径时的自动发现、加密密钥认证和远端目录显示；CUA Cmd+Q 后应用、监督器和隔离 sshd 进程均已退出。本次工具输出未捕获退出码，因此只记录进程退出，原生双向传输及明确 exit 0 仍以此前 `native-macos-files.json` 为准。[该检查点 CI](https://github.com/YoisakiKnd/congminal/actions/runs/41015567138) 与 [原生门槛](https://github.com/YoisakiKnd/congminal/actions/runs/41015567192) 三平台全部通过。
+
+`b3a0a82` Windows 原生最大 16 KiB 提示、1023 B 答案及 ACK 生命周期通过（49 项认证测试通过），但旧的源身份/清理测试仅给总池 128 KiB，新端点本身就准入 128 KiB，尚未进入目标逻辑便因预算拒绝。两项夹具总池改为 512 KiB，与私有管道夹具一致；生产端点计费及 16 MiB 子池上限未降低，最终仍断言额度归零。初次失败日志保留在 `b3a0a82-windows-failed.log`；Mac/Linux 安装包及四目标 MSRV 已通过，Windows 修正后另跑原生门槛。

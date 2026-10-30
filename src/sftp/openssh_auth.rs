@@ -244,7 +244,8 @@ mod tests {
     use crate::ssh::auth::{Backend, Owner};
     #[test]
     fn source_generation_is_checked_before_process_launch() {
-        let pool = Budget::new(128 * 1024, 0);
+        // Windows 端点本身预留 128 KiB；此夹具验证源身份/清理，而非额度拒绝。
+        let pool = Budget::new(512 * 1024, 0);
         let cancel = Cancellation::default();
         let (back, front) = Backend::new(Owner { session: 10, generation: 2 }, &pool, Arc::new(|| {})).unwrap();
         let pump = Pump::new(&std::env::temp_dir(), back, &pool, &cancel).unwrap();
@@ -274,7 +275,8 @@ mod tests {
     }
     #[test]
     fn failed_endpoint_removal_is_not_hidden_by_invalid_source_or_drop_retry() {
-        let pool = Budget::new(128 * 1024, 0);
+        // Windows 端点本身预留 128 KiB；此夹具验证源身份/清理，而非额度拒绝。
+        let pool = Budget::new(512 * 1024, 0);
         let cancel = Cancellation::default();
         let (back, front) = Backend::new(Owner { session: 10, generation: 2 }, &pool, Arc::new(|| {})).unwrap();
         let pump = Pump::new(&std::env::temp_dir(), back, &pool, &cancel).unwrap();
