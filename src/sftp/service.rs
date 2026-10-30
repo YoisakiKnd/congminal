@@ -274,6 +274,9 @@ pub struct Service {
 // 每工作器3MiB目录扫描+1MiB最大包+256KiB管道及256KiB身份/协议/文件余量。
 // 输入分类单独受限，不能占用这9MiB；实际IO/旧结果仍受整个16MiB硬准入约束。
 const IO_HEADROOM: usize = executor::ACTIVE * (3 * 1024 * 1024 + super::wire::PACKET_LIMIT + 512 * 1024);
+#[cfg(all(test, windows))]
+#[path = "service_native_openssh_tests.rs"]
+mod native_openssh_tests;
 #[cfg(all(test, unix))]
 #[path = "service_prepare_tests.rs"]
 mod prepare_tests;

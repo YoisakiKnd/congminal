@@ -44,3 +44,6 @@ jobs:
         run: cargo test --features sftp-preview -- --test-threads=1
       - name: Build application and bundled helper
         run: cargo build --release --features sftp-preview
+      - name: Native Windows OpenSSH, encrypted key and SFTP roundtrip
+        if: runner.os == 'Windows'
+        run: python ci/check-windows-sftp.py

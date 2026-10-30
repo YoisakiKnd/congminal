@@ -235,7 +235,7 @@ fn isolated_workspace_file_task_survives_directory_refresh_and_background_switch
             }
         }
         assert!(app.sftp_click(selected + 4, 0));
-        assert!(app.sftp_click(3, 1));
+        assert!(app.sftp_click(3, 4));
         super::paths_form::tests::commit(&mut app, target.to_str().unwrap());
         if scenario == "download_lookup_form_cancel" {
             let ticket = super::paths_form::tests::lookup_ticket(&app);
@@ -322,7 +322,7 @@ fn isolated_workspace_file_task_survives_directory_refresh_and_background_switch
         super::paths_form::tests::next(&mut app);
         assert!(app.sftp.as_ref().unwrap().review.is_some());
     } else {
-        assert!(app.sftp_click(3, 0));
+        assert!(app.sftp_click(3, 3));
         super::paths_form::tests::commit(&mut app, source_path.to_str().unwrap());
         let context = app.protected_context().unwrap();
         app.protected_input(context.command(crate::platform::protected_input::InputCommand::NextField(false)).unwrap());

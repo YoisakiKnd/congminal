@@ -38,7 +38,7 @@ if $build; then
 fi
 for bin in congminal congminal-ssh-helper; do
   [ -x "target/release/$bin" ] || { echo "缺少可执行文件：$bin" >&2; exit 1; }
-  if [ "$arch" = universal ]; then lipo -verify_arch arm64 x86_64 "target/release/$bin"; fi
+  if [ "$arch" = universal ]; then lipo "target/release/$bin" -verify_arch arm64 x86_64; fi
 done
 [ "$(target/release/congminal --version)" = "congminal $version" ] || { echo '二进制版本不匹配' >&2; exit 1; }
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"

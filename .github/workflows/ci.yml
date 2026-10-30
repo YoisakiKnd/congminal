@@ -79,7 +79,7 @@ jobs:
             lipo -create -output "target/release/$bin" \
               "target/aarch64-apple-darwin/release/$bin" \
               "target/x86_64-apple-darwin/release/$bin"
-            lipo -verify_arch arm64 x86_64 "target/release/$bin"
+            lipo "target/release/$bin" -verify_arch arm64 x86_64
           done
 
       - name: 冒烟测试
