@@ -297,7 +297,7 @@ impl Profiles {
                             program: program.map(str::to_owned),
                             args,
                             working_directory: directory
-                                .map(super::expand_home)
+                                .map(std::path::PathBuf::from)
                                 .or_else(super::default_working_directory),
                         })
                     }

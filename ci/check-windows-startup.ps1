@@ -13,7 +13,8 @@ param([string]$Report)
 $ErrorActionPreference = 'Stop'
 $Host.UI.RawUI.WindowTitle = 'C:\scoop\shims\pwsh.exe'
 Start-Sleep -Milliseconds 500
-@{cwd=(Get-Location).Path} | ConvertTo-Json -Compress | Set-Content -Encoding utf8 $Report
+@{cwd=(Get-Location).Path} | ConvertTo-Json -Compress | Set-Content -Encoding utf8 ($Report + '.tmp')
+Move-Item -LiteralPath ($Report + '.tmp') -Destination $Report
 Start-Sleep -Seconds 3
 '@ | Set-Content -Encoding utf8 $probe
     $explicitDirectory = Join-Path $root ('cwd with spaces ' + [char]0x4E2D)
