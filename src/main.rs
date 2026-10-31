@@ -31,6 +31,8 @@ mod notifications;
 #[cfg(any(test, feature = "sftp"))] // auth-workspace
 mod open;
 mod path_text;
+#[cfg(test)]
+mod perf_bench;
 mod platform;
 mod process_launch;
 mod pty;

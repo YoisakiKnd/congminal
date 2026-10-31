@@ -9,6 +9,8 @@ license = "GPL-3.0-only"
 repository = "https://github.com/YoisakiKnd/congminal"
 
 [features]
+# 仅测试构建显式启用分配计数，不影响默认测试及外部探针。
+alloc-count = []
 default = ["sftp"]
 # 三平台内置 SFTP；点击连接前不创建工作池、线程或 SSH 连接。
 sftp = ["ssh-auth-helper"]

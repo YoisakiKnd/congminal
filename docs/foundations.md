@@ -50,3 +50,34 @@ Windows 附带固定版本的微软 ConPTY。APC 应答中的 ESC 通过 Win32 U
 原生快照按实际像素容量和拥有者元数据申请共享 Canvas 额度，由 CGDataProvider 回调在系统释放图像时归还，来源帧不会与异步使用的像素混用。差分范围最多八段，超过时合并；macOS 最多保留 16 个局部图层、局部像素合计最多 4 MiB，超限或尺寸变化回到完整底图。系统图层与 GPU 缓存尚非完整账本，不能把准入额度当作 RSS 上限。
 
 M4 本机相同万行 Neovim 4K 缓冲负载、前后各三轮诊断测量中，活动 CPU 中位数由单核 49.47% 到 21.80%，终端 RSS 采样峰值中位数由 270.86 MiB 到 194.69 MiB。修正标准 sRGB 与原生 BGRA 提交，并减少局部变化的整屏上传。同步绘制/提交 P95 从 2.89 ms 到 8.24 ms，未宣称延迟或 FPS 提升：此前数字不含后续 Core Animation 颜色转换。完整本机记录在 `target/evaluations/macos-presentation-optimization-20261031/`，不纳入历史版本证据，也不代表跨机器或外接 4K 实屏验收。
+
+## 性能基准
+
+基准仅通过 `#[cfg(test)]` 挂载，不进入产品 release 构建。默认测试不注册全局分配器；非默认 `alloc-count` feature 仅在测试时注册转发 System 的计数分配器，旧源码注入探针无需修改。
+
+```sh
+cargo test --release --bin congminal perf_bench -- --ignored --nocapture --test-threads=1
+cargo test --release --features alloc-count --bin congminal perf_bench -- --ignored --nocapture --test-threads=1
+python3 ci/perf-compare.py run-1.log run-2.log run-3.log
+```
+
+同一台接通电源的机器、同一命令顺序运行三次取中位数。每个解析/绘制/历史指标使用独立的 1 GiB 根 Budget 和 256 MiB 字体映射额度；指标前后断言拒绝数为零、没有历史回收请求、销毁后 used 回到初值。输入沿用 Queue 额度，Tracked 先申请容量再分配、先销毁 Vec 再释放 Lease；不修改产品资源公式或默认额度。
+
+固定输出为 `metric value unit`；未启用分配统计时输出 `allocs_* skipped (alloc-count disabled)`（累计字节指标同样 skipped），不能将未测量值视为零。计数仅覆盖当前测量线程成功的 alloc/alloc_zeroed/realloc 调用；不含系统分配、RSS、打印、输入生成及预热。
+
+200×60 网格、1 KiB 输入块；ASCII 滚动/不滚动、SGR、CJK 输入各 64 MiB，2027 为 16 MiB，每个解析场景先运行完整输入预热。ASCII 每行 100 字符加 CRLF，不滚动场景每 59 行归位并断言历史为空；滚动场景断言历史填满 10000 行。
+
+绘制使用默认字体、2.0 缩放和满屏彩色 ASCII，各场景独立创建并预热 64 帧。full/one_row/unchanged/scroll_growing/scroll_full 分别测量 1800/25000/60000/3000/3000 帧的平均 draw 微秒数；准备输入不计时。one_row 交替修改中间一格，当前实现 damage 为三行；unchanged 断言没有 damage；两个 scroll 场景分别断言历史未满和已满。不同字体/机器不能直接比较。
+
+`history_bytes_10k` 为写入 10000 行后的 `history().used_bytes()`，其中 9941 行留在历史、59 行仍在屏幕，包含 Row 元数据和 cell 容量，不含索引闲置容量、块余量或 RSS。结构大小用 `size_of::<Cell>()` 和 `size_of::<Row>()` 输出。
+
+比较工具要求三轮 `(最大值−最小值)/中位数 < 5%`，配置不同、字段缺失、重复、非法数值或单位变化均失败；零值及 skipped 单独处理。可加 `--baseline old-1.log old-2.log old-3.log` 检查旧门槛（吞吐至少 90%、帧耗时最多 110%、内存和分配不增加）；各任务的更严格验收另行核对，不能用该通用门槛代替。
+
+```sh
+cargo build --release --bin congminal
+bash ci/rss-sample.sh target/release/congminal target/evaluations/rss-run
+# Windows（需现有发布流程的 ConPTY 文件）
+./ci/rss-sample.ps1 -Binary target/release/congminal.exe -OutputDirectory target/evaluations/rss-run
+```
+
+RSS 脚本需要原生图形会话。独立配置输出顺序数字及 16 MiB 文本，开始门控前采样 rss_start，生成器完成时采样 rss_end，之后等待三秒再以 200 ms 间隔采样五次取 rss_idle 中位数，同时报告 rss_peak。结束标记仅表示生产者写完，不证明终端已排空队列。采样仅含终端主进程；退出后零值不参与。正常和异常路径清理自己启动的进程树及临时目录；原始输出留在 target/evaluations，不纳入版本控制。
