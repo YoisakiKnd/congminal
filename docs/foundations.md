@@ -36,3 +36,11 @@ Windows 附带固定版本的微软 ConPTY。APC 应答中的 ESC 通过 Win32 U
 常规检查为 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 和单线程完整回归。CI 另检查最低 Rust 版本、三平台真实 PTY、真实图片库、原生认证传输和窗口启动/退出。
 
 最新范围见 [当前版本验收](evaluations/v0.2.3/README.md)。历史基准、原始数据与源码快照见 [归档](archive/README.md)；每份结果只代表其记录的提交、机器和负载，不能代替当前版本或所有平台的测量。
+
+## 侧栏绘制检查（2026-10-31）
+
+侧栏样式、引导和监控趋势条共用软件绘制器，不增加字体、纹理缓存、后台线程或动画计时器。引导文字每段最多处理 256 个字符、8 个段落，按可见行绘制；工具探测最多保存 4 项，配置未变时复用探测结果。趋势图直接遍历现有定长采样历史，最多画 48 个桶，不分配图表点集。
+
+本机 macOS arm64 的 release 模式测量：30×24 格侧栏，预热 10 次后重复绘制 1000 次（含页签、按钮、说明和 120 个样本的图表），总计 39.10 ms，平均 39.1 μs/次；跟踪额度从 546607 字节到 546607 字节，工作线程从 0 到 0。命令：`cargo test --release --bin congminal render::chrome::tests::warmed_sidebar_paint_cost_and_resource_stability -- --exact --ignored --nocapture --test-threads=1`。
+
+该数字只覆盖软件绘制，不代表整个窗口、系统合成、完整堆分配或 RSS。主程序 908 项、辅助程序 21 项本机回归通过；Windows GNU、Linux GNU 完成全目标交叉编译检查，不能替代两平台的原生窗口验收。

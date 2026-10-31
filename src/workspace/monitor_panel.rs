@@ -616,26 +616,130 @@ impl Panel {
 impl Workspace {
     /// 画右栏监控页。
     pub(super) fn monitor_paint(&mut self, r: super::Rect, h: usize) {
+        use crate::render::ChromeStyle as Style;
+        if self.monitor.enabled
+            && self.monitor.error.is_none()
+            && let Some(sample) = self.monitor.history.as_ref().and_then(History::last).copied()
+        {
+            self.panel_line(r, h, 1, "刷新监控", Style::Button { enabled: true, primary: false });
+            let title = self
+                .monitor
+                .target
+                .as_ref()
+                .map_or_else(|| "本机监控".to_string(), |target| format!("远程 · {}", target.label()));
+            self.panel_line(r, h, 3, &title, Style::Heading);
+            let raw = sample.raw;
+            if let Some(latency) = self.monitor.latency {
+                self.panel_line(r, h, 4, &format!("往返 {} ms", latency.as_millis()), Style::Muted);
+            }
+            let cpu = if raw.cpu.is_finite() {
+                format!("CPU {:.0}% · {} 核", raw.cpu, raw.cores)
+            } else {
+                "CPU · 暂无读数".to_string()
+            };
+            self.panel_line(r, h, 5, &cpu, Style::Text);
+            let memory = monitor::percent(raw.mem_used, raw.mem_total);
+            let disk = monitor::percent(raw.disk_used, raw.disk_total);
+            for (row, label, percent, used, total) in
+                [(8, "内存", memory, raw.mem_used, raw.mem_total), (12, "磁盘", disk, raw.disk_used, raw.disk_total)]
+            {
+                let label = percent.map_or_else(|| format!("{label} · 暂无读数"), |value| format!("{label} {value}%"));
+                self.panel_line(r, h, row, &label, Style::Text);
+                if total > 0 {
+                    self.panel_line(
+                        r,
+                        h,
+                        row + 1,
+                        &format!("{} / {}", monitor::human(used), monitor::human(total)),
+                        Style::Muted,
+                    );
+                }
+            }
+            let interval = self.monitor.interval();
+            let history = self.monitor.history.as_ref().unwrap();
+            let stale = history.stale(Instant::now(), interval);
+            for (row, metric) in [(6, 0), (10, 1), (14, 2)] {
+                if (row + 1) * h > r.h {
+                    continue;
+                }
+                let values = history.iter().map(|sample| match metric {
+                    0 => sample.raw.cpu,
+                    1 => monitor::percent(sample.raw.mem_used, sample.raw.mem_total).map_or(f32::NAN, f32::from),
+                    _ => monitor::percent(sample.raw.disk_used, sample.raw.disk_total).map_or(f32::NAN, f32::from),
+                });
+                self.driver.renderer.panel_spark(&mut self.frame, [r.x, r.y + row * h, r.w, h], values, history.len());
+            }
+            self.panel_line(r, h, 16, "网络", Style::Heading);
+            match (raw.net_down, raw.net_up) {
+                (Some(down), Some(up)) => {
+                    self.panel_line(r, h, 17, &format!("下载 {}", monitor::rate(down as u64)), Style::Text);
+                    self.panel_line(r, h, 18, &format!("上传 {}", monitor::rate(up as u64)), Style::Text);
+                }
+                _ => self.panel_line(r, h, 17, "暂无网络读数", Style::Muted),
+            }
+            let seconds = Instant::now().saturating_duration_since(sample.at).as_secs();
+            let state = if self.monitor.paused {
+                "已暂停"
+            } else if self.monitor.loading {
+                "采样中"
+            } else {
+                "已更新"
+            };
+            let footer =
+                format!("{} · {} 秒前", if stale && !self.monitor.paused { "数据过期" } else { state }, seconds);
+            self.panel_line(r, h, 20, &footer, Style::Muted);
+            if let Some(mount) = self.monitor.mount.as_deref().filter(|mount| *mount != "/") {
+                let label = format!("磁盘 · {mount}");
+                self.panel_line(r, h, 21, &label, Style::Muted);
+            }
+            if self.monitor.processes_limited && self.monitor.processes.is_empty() {
+                self.panel_line(r, h, 22, "进程采样暂不可用", Style::Muted);
+            }
+            if !self.monitor.processes.is_empty() {
+                self.panel_line(
+                    r,
+                    h,
+                    22,
+                    if self.monitor.processes_limited { "进程 · 部分采样" } else { "进程 · 按 CPU" },
+                    Style::Heading,
+                );
+                for index in 0..self.monitor.processes.len().min((r.h / h).saturating_sub(23)) {
+                    let text = self.monitor.processes[index].line();
+                    self.panel_line(r, h, 23 + index, &text, Style::Muted);
+                }
+            }
+            return;
+        }
         let width = (r.w / self.driver.renderer.cell_size().0.max(1)).max(1);
         let view = self.monitor.view(width);
         let third = r.w / 3;
         for (index, text) in view.buttons.iter().enumerate() {
             let x = r.x + index * third;
-            self.driver.renderer.chrome(&mut self.frame, [x, r.y + h, third, h], text, false);
+            self.driver.renderer.panel(
+                &mut self.frame,
+                [x, r.y + h, third, h],
+                text,
+                crate::render::ChromeStyle::Button { enabled: true, primary: false },
+            );
         }
         for (index, text) in view.headline.iter().enumerate() {
             let y = r.y + (2 + index) * h;
             if y + h > r.y + r.h {
                 break;
             }
-            self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, false);
+            self.driver.renderer.panel(
+                &mut self.frame,
+                [r.x, y, r.w, h],
+                text,
+                if index == 0 { crate::render::ChromeStyle::Heading } else { crate::render::ChromeStyle::Muted },
+            );
         }
         for (index, text) in view.content.iter().enumerate() {
             let y = r.y + (LIST_TOP + view.headline.len() + index) * h;
             if y + h > r.y + r.h {
                 break;
             }
-            self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, false);
+            self.driver.renderer.panel_row(&mut self.frame, [r.x, y, r.w, h], text, false);
         }
     }
 

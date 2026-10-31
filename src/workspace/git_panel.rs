@@ -1335,6 +1335,32 @@ impl Panel {
 
     /// 一帧的文本；界面线程只做绘制，不再触碰 git 状态。
     /// `tier` 是按每槽可用显示列选出的标签档位（0 完整、1 双字、2 单字）。
+    pub(super) fn guide(&self) -> Option<(&str, &str)> {
+        if !self.enabled {
+            return Some(("Git 已停用", "在配置中设置 [git] enabled = true 后，重新读取配置。"));
+        }
+        if self.input.is_some()
+            || self.diff_open
+            || self.resolve.is_some()
+            || self.branches_open
+            || self.log_open
+            || self.snapshot.is_some()
+        {
+            return None;
+        }
+        Some(match &self.error {
+            Some(Error::NotRepository) => {
+                ("在项目中使用 Git", "此目录没有 Git 仓库。\n在项目目录启动会话；启用 Shell 集成后可跟随目录切换。")
+            }
+            Some(Error::ToolMissing) => {
+                ("需要安装 Git", "安装 Git 并加入 PATH，或在 [git] program 指定路径，然后刷新。")
+            }
+            Some(Error::NoRemotePath) => ("等待远程目录", "启用远端 Shell 集成并进入项目目录后刷新。"),
+            Some(error) => ("暂时无法读取仓库", error.message()),
+            None => ("正在查找仓库", "读取当前会话的项目状态，稍后将显示分支和文件变更。"),
+        })
+    }
+
     pub(super) fn view(&self, rows: usize, tier: usize) -> View {
         let tier = tier.min(2);
         let mut headline = Vec::with_capacity(2);
@@ -2162,35 +2188,51 @@ fn inside_root(dir: &Path, root: &Path) -> bool {
 
 impl Workspace {
     pub(super) fn git_paint(&mut self, r: Rect, h: usize) {
-        let rows = (r.h / h).max(1);
-        // 按钮标签按每槽可用的显示列降级：完整 → 双字 → 单字，避免被裁成半个词。
-        let slot = (r.w / self.git.button_count().max(1)).max(1);
-        // 每槽可用显示列：扣掉 `chrome()` 左侧 3 px 内边距与 1 列余量，再按列宽换算。
-        // CJK 字符占 2 列，所以要按标签的实际显示宽度挑档位，不能按字数。
-        let columns = (slot.saturating_sub(4) / self.driver.renderer.cell_size().0.max(1)).max(1);
+        use crate::render::ChromeStyle as Style;
+        if let Some((title, body)) = self.git.guide() {
+            let title = title.to_string();
+            let body = crate::term::clip(body, 256);
+            if self.git.enabled {
+                self.panel_line(r, h, 1, "刷新仓库", Style::Button { enabled: true, primary: false });
+            }
+            self.panel_line(r, h, 3, &title, Style::Heading);
+            self.panel_paragraph(r, h, 5, 8, &body);
+            return;
+        }
+        let toolbar = self.git_toolbar();
+        let top = self.git_list_top();
+        let slot = (r.w / toolbar.columns).max(1);
+        let columns = (slot.saturating_sub(self.driver.renderer.cell_size().0 * 2 / 3)
+            / self.driver.renderer.cell_size().0.max(1))
+        .max(1);
         let tier = (0..3)
             .find(|tier| self.git.labels(*tier).iter().all(|label| crate::term::display_width(label) <= columns))
             .unwrap_or(2);
-        let view = self.git.view(rows.saturating_sub(LIST_TOP), tier);
-        let third = r.w / view.buttons.len().max(1);
+        let view = self.git.view((r.h / h).saturating_sub(top), tier);
         for (index, text) in view.buttons.iter().enumerate() {
-            let x = r.x + index * third;
-            let width = if index + 1 == view.buttons.len() { r.w - index * third } else { third };
-            self.driver.renderer.chrome(&mut self.frame, [x, r.y + h, width, h], text, false);
+            let column = index % toolbar.columns;
+            let row = 1 + index / toolbar.columns;
+            let width = if column + 1 == toolbar.columns { r.w - column * slot } else { slot };
+            if (row + 1) * h <= r.h {
+                self.driver.renderer.panel(
+                    &mut self.frame,
+                    [r.x + column * slot, r.y + row * h, width, h],
+                    text,
+                    Style::Button { enabled: true, primary: false },
+                );
+            }
         }
         for (index, text) in view.headline.iter().enumerate() {
-            let y = r.y + (2 + index) * h;
-            if y + h > r.y + r.h {
-                break;
-            }
-            self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, false);
+            self.panel_line(
+                r,
+                h,
+                toolbar.rows + 1 + index,
+                text,
+                if index == 0 { Style::Heading } else { Style::Muted },
+            );
         }
         for (index, (text, selected)) in view.content.iter().enumerate() {
-            let y = r.y + (LIST_TOP + index) * h;
-            if y + h > r.y + r.h {
-                break;
-            }
-            self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, *selected);
+            self.panel_line(r, h, top + index, text, Style::Row(*selected));
         }
     }
 

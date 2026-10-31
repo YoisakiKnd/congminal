@@ -1,7 +1,7 @@
 //! 窗口工作区。窗格独立拥有 Session/界面/画布；唯一 Renderer 共享字体及字形缓存。
 //! UI 线程逐个借入窗格状态，后台线程从不访问这个借用槽。
 use super::*;
-use crate::render::ViewState;
+use crate::render::{ChromeStyle as Style, ViewState};
 use std::hash::{Hash, Hasher};
 #[cfg(any(test, feature = "sftp"))] // auth-workspace
 mod authentication;
@@ -13,6 +13,7 @@ mod monitor_panel;
 mod remote;
 #[cfg(any(test, feature = "sftp"))] // auth-workspace
 mod remote_files;
+mod sidebar;
 
 pub const MAX_PANES: usize = 8;
 const HISTORY_POOL: usize = 64 * 1024 * 1024;
@@ -327,7 +328,7 @@ pub struct Workspace {
     /// 状态页“清空通知”那一行；没有通知时为 None。
     clear_row: Option<usize>,
     /// 外部程序探测结果与它对应的程序清单；清单变了就重算，条数有上限。
-    tools: Option<(Vec<(String, &'static str)>, crate::tools::Report)>,
+    tools: Option<(u64, crate::tools::Report)>,
     right: bool,
     left_width: usize,
     right_width: usize,
@@ -583,9 +584,9 @@ impl Workspace {
         let left_width = physical(layout.left_width);
         let right_width = physical(layout.right_width);
         let min = self.minimum();
-        let left = if layout.left && self.width >= left_width + min.0 + DIVIDER { left_width + DIVIDER } else { 0 };
-        let right =
-            if layout.right && self.width >= left + right_width + min.0 + DIVIDER { right_width + DIVIDER } else { 0 };
+        let (left, right) = self.sidebar_widths(layout.left, layout.right, left_width, right_width);
+        let left = left + usize::from(left > 0) * DIVIDER;
+        let right = right + usize::from(right > 0) * DIVIDER;
         let (_, h) = self.driver.renderer.cell_size();
         let area =
             Rect { x: left, y: h, w: self.width.saturating_sub(left + right), h: self.height.saturating_sub(2 * h) };
@@ -1163,14 +1164,9 @@ impl Workspace {
     }
     fn center(&self) -> Rect {
         let (_, h) = self.driver.renderer.cell_size();
-        let min = self.minimum().0;
-        let left =
-            if self.left && self.width >= self.left_width + min + DIVIDER { self.left_width + DIVIDER } else { 0 };
-        let right = if self.right && self.width >= left + self.right_width + min + DIVIDER {
-            self.right_width + DIVIDER
-        } else {
-            0
-        };
+        let (left, right) = self.sidebar_widths(self.left, self.right, self.left_width, self.right_width);
+        let left = left + usize::from(left > 0) * DIVIDER;
+        let right = right + usize::from(right > 0) * DIVIDER;
         Rect { x: left, y: h, w: self.width.saturating_sub(left + right), h: self.height.saturating_sub(2 * h) }
     }
     fn relayout(&mut self) -> Result<(), String> {
@@ -1518,8 +1514,9 @@ impl Workspace {
     fn chrome(&mut self) {
         let (cw, h) = self.driver.renderer.cell_size();
         let mut x = 0;
+        self.driver.renderer.panel(&mut self.frame, [0, 0, self.width, h], "", Style::Surface);
         // 页签宽度随窗口增长：只有一个页签时不该被压成 200px 把标题切掉。
-        let tab_width = (self.width / self.tabs.len().max(1)).min((320.0 * self.driver.scale) as usize).max(1);
+        let tab_width = self.tab_width();
         let cells = tab_width.saturating_sub(3) / cw.max(1);
         for i in 0..self.tabs.len() {
             let id = self.tabs[i].first();
@@ -1527,7 +1524,7 @@ impl Workspace {
             // 标题多为 `user@host: ~/path`：保留尾部（目录名）比保留开头有用。
             let title = crate::term::clip_tail(title, cells.saturating_sub(2));
             let text = format!("{} {}", i + 1, title);
-            self.driver.renderer.chrome(&mut self.frame, [x, 0, tab_width, h], &text, i == self.tab);
+            self.driver.renderer.panel(&mut self.frame, [x, 0, tab_width, h], &text, Style::Tab(i == self.tab));
             x += tab_width;
         }
         let status = self.status.clone().unwrap_or_else(|| {
@@ -1547,10 +1544,15 @@ impl Workspace {
                 }
             )
         });
-        self.driver.renderer.chrome(&mut self.frame, [0, self.height.saturating_sub(h), self.width, h], &status, false);
+        self.driver.renderer.panel(
+            &mut self.frame,
+            [0, self.height.saturating_sub(h), self.width, h],
+            &status,
+            Style::Footer,
+        );
         if self.left_rect.visible() {
             let r = self.left_rect;
-            self.driver.renderer.chrome(&mut self.frame, [r.x, r.y, r.w, r.h], "", false);
+            self.driver.renderer.panel(&mut self.frame, [r.x, r.y, r.w, r.h], "", Style::Surface);
             let third = r.w / 3;
             for (i, (page, text)) in
                 [(LeftPage::Sessions, "会话"), (LeftPage::Connections, "连接"), (LeftPage::Files, "文件")]
@@ -1558,11 +1560,11 @@ impl Workspace {
                     .enumerate()
             {
                 let width = if i == 2 { r.w - 2 * third } else { third };
-                self.driver.renderer.chrome(
+                self.driver.renderer.panel(
                     &mut self.frame,
                     [r.x + i * third, r.y, width, h.min(r.h)],
                     if r.h >= h { text } else { "" },
-                    self.left_page == page,
+                    Style::Tab(self.left_page == page),
                 );
             }
             if self.left_page == LeftPage::Files {
@@ -1577,11 +1579,11 @@ impl Workspace {
                         .enumerate()
                     {
                         if r.h >= 2 * h {
-                            self.driver.renderer.chrome(
+                            self.driver.renderer.panel(
                                 &mut self.frame,
                                 [r.x + i * third, r.y + h, third, h],
                                 text,
-                                false,
+                                Style::Button { enabled: true, primary: false },
                             );
                         }
                     }
@@ -1589,7 +1591,7 @@ impl Workspace {
                     let cells = r.w.saturating_sub(3) / cw.max(1);
                     let path = crate::term::clip_tail(self.local_files.path_label().unwrap_or("本地目录"), cells);
                     if r.h >= 3 * h {
-                        self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, r.w, h], &path, false);
+                        self.driver.renderer.panel_row(&mut self.frame, [r.x, r.y + 2 * h, r.w, h], &path, false);
                     }
                     let message = self.local_files.error.map(files::Error::message).unwrap_or_else(|| {
                         if self.local_files.loading {
@@ -1602,7 +1604,7 @@ impl Workspace {
                         }
                     });
                     if r.h >= 4 * h {
-                        self.driver.renderer.chrome(
+                        self.driver.renderer.panel_row(
                             &mut self.frame,
                             [r.x, r.y + 3 * h, r.w, h],
                             message,
@@ -1619,7 +1621,7 @@ impl Workspace {
                             .take((r.h / h).saturating_sub(4))
                         {
                             let y = r.y + (index - self.local_files.offset + 4) * h;
-                            self.driver.renderer.chrome(
+                            self.driver.renderer.panel_row(
                                 &mut self.frame,
                                 [r.x, y, r.w, h],
                                 &entry.label,
@@ -1630,22 +1632,34 @@ impl Workspace {
                 }
             } else if self.left_page == LeftPage::Connections && self.forwards_paint(r, h) {
                 // 转发页接管左栏：按钮行 + 规则列表。
+            } else if self.left_page == LeftPage::Connections && self.connections_empty() {
+                self.connections_guide(r, h);
             } else if self.left_page == LeftPage::Connections {
                 let profiles = &self.driver.config.connections;
                 if profiles.is_empty() && r.h >= 3 * h {
-                    self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, r.w, h], "尚未配置连接", false);
+                    self.driver.renderer.panel_row(&mut self.frame, [r.x, r.y + 2 * h, r.w, h], "尚未配置连接", false);
                 }
                 if r.h >= 2 * h {
                     // 三槽：重连 / 取消 / 转发（转发页编辑当前窗格配置档的 -L 规则）。
                     let slot = (r.w / 3).max(1);
-                    self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + h, slot, h], "重连", false);
-                    self.driver.renderer.chrome(
+                    self.driver.renderer.panel(
+                        &mut self.frame,
+                        [r.x, r.y + h, slot, h],
+                        "重连",
+                        Style::Button { enabled: self.panes[self.loaded].remote.is_some(), primary: false },
+                    );
+                    self.driver.renderer.panel(
                         &mut self.frame,
                         [r.x + slot, r.y + h, slot, h],
                         "取消",
-                        self.ssh.pending(),
+                        Style::Button { enabled: self.ssh.pending(), primary: false },
                     );
-                    self.driver.renderer.chrome(&mut self.frame, [r.x + 2 * slot, r.y + h, slot, h], "转发", false);
+                    self.driver.renderer.panel(
+                        &mut self.frame,
+                        [r.x + 2 * slot, r.y + h, slot, h],
+                        "转发",
+                        Style::Button { enabled: true, primary: false },
+                    );
                 }
                 let visible = (r.h / h).saturating_sub(2);
                 self.profiles_offset = self.profiles_offset.min(profiles.len().saturating_sub(visible));
@@ -1672,7 +1686,7 @@ impl Workspace {
                     if forwards > 0 {
                         text.push_str(&format!(" · 转发 {forwards} 条"));
                     }
-                    self.driver.renderer.chrome(
+                    self.driver.renderer.panel_row(
                         &mut self.frame,
                         [r.x, r.y + (index - self.profiles_offset + 2) * h, r.w, h],
                         &text,
@@ -1689,7 +1703,7 @@ impl Workspace {
                         // 侧栏右缘的分隔线盖住最后一列，留 1 列余量。
                         let columns = (r.w / self.driver.renderer.cell_size().0).saturating_sub(1);
                         let hint = crate::term::clip("缺 ssh 程序 · 见状态页", columns);
-                        self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + last * h, r.w, h], &hint, true);
+                        self.driver.renderer.panel_row(&mut self.frame, [r.x, r.y + last * h, r.w, h], &hint, true);
                     }
                 }
                 // 配置档之后列出 ~/.ssh/config 里的别名：点一下就按这个别名新建连接。
@@ -1698,7 +1712,7 @@ impl Workspace {
                 if !aliases.is_empty() {
                     let rows = (r.h / h).saturating_sub(start);
                     if rows >= 2 {
-                        self.driver.renderer.chrome(
+                        self.driver.renderer.panel_row(
                             &mut self.frame,
                             [r.x, r.y + start * h, r.w, h],
                             "SSH 别名 · 来自 ssh 配置",
@@ -1706,7 +1720,7 @@ impl Workspace {
                         );
                         for (index, alias) in aliases.iter().take(rows - 1).enumerate() {
                             let text = format!("别名 · {alias}");
-                            self.driver.renderer.chrome(
+                            self.driver.renderer.panel_row(
                                 &mut self.frame,
                                 [r.x, r.y + (start + 1 + index) * h, r.w, h],
                                 &text,
@@ -1725,13 +1739,14 @@ impl Workspace {
                     let text = format!("{} {}{}", p.id, title, suffix);
                     let y = r.y + (i + 1) * h;
                     if y + h <= r.y + r.h {
-                        self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], &text, p.id == self.selected);
+                        self.driver.renderer.panel_row(&mut self.frame, [r.x, y, r.w, h], &text, p.id == self.selected);
                     }
                 }
             }
         }
         if self.right_rect.visible() {
             let r = self.right_rect;
+            self.driver.renderer.panel(&mut self.frame, [r.x, r.y, r.w, r.h], "", Style::Surface);
             #[cfg(any(test, feature = "sftp"))]
             let transfer_painted = self.transfer_list_paint(r, h);
             #[cfg(not(any(test, feature = "sftp")))]
@@ -1747,10 +1762,10 @@ impl Workspace {
         }
         for d in &self.dividers {
             let r = d.rect;
-            self.frame.fill_rect(r.x, r.y, r.w, r.h, self.driver.config.colors.selection_background);
+            self.frame.fill_rect(r.x, r.y, r.w, r.h, self.driver.renderer.panel_border());
         }
         for r in [self.left_edge, self.right_edge] {
-            self.frame.fill_rect(r.x, r.y, r.w, r.h, self.driver.config.colors.selection_background);
+            self.frame.fill_rect(r.x, r.y, r.w, r.h, self.driver.renderer.panel_border());
         }
     }
 
@@ -1828,10 +1843,8 @@ impl Workspace {
                 .description_with(self.driver.selected_command, self.driver.config.notifications.hide_context)
                 .to_string(),
         );
-        let stats = crate::resources::current().snapshot();
-        // 还没有任务跑过时 `latest_tasks` 是 0，写成「最新任务 —」，免得看着像有个 0 号任务。
-        let latest = if stats.latest_tasks == 0 { "—".to_string() } else { stats.latest_tasks.to_string() };
-        rows.push(format!("任务 {} 个在跑 · 最新任务 {}", stats.managed_workers, latest));
+        let remote = self.panes.iter().filter(|pane| pane.remote.is_some()).count();
+        rows.push(format!("会话 {} 个 · 远程 {} 个", self.panes.len(), remote));
         let tools = self.tools().summary();
         rows.push(tools);
         if !self.driver.notifications.is_empty() {
@@ -1868,6 +1881,9 @@ impl Workspace {
             programs.push((ssh, "SSH/SFTP"));
         }
         for profile in config.connections.iter() {
+            if programs.len() == crate::tools::MAX_TOOLS {
+                break;
+            }
             if let crate::config::profiles::Connection::Ssh(ssh) = &profile.connection {
                 let program = ssh
                     .program
@@ -1884,24 +1900,70 @@ impl Workspace {
 
     /// 外部程序探测：只在需要时算一次，配置里的程序清单变了再算一次。
     fn tools(&mut self) -> &crate::tools::Report {
-        let programs = self.tool_programs();
-        if self.tools.as_ref().is_none_or(|(key, _)| *key != programs) {
+        let mut stamp = std::collections::hash_map::DefaultHasher::new();
+        self.driver.config.git.program.hash(&mut stamp);
+        self.driver.config.ssh.program.hash(&mut stamp);
+        for profile in self.driver.config.connections.iter() {
+            if let config::profiles::Connection::Ssh(ssh) = &profile.connection {
+                ssh.program.hash(&mut stamp);
+            }
+        }
+        let key = stamp.finish();
+        if self.tools.as_ref().is_none_or(|(old, _)| *old != key) {
+            let programs = self.tool_programs();
             let report = crate::tools::Report::detect(&programs, &crate::tools::Report::search_path());
-            self.tools = Some((programs, report));
+            self.tools = Some((key, report));
         }
         &self.tools.as_ref().unwrap().1
     }
 
     fn status_paint(&mut self, r: Rect, h: usize) {
         let rows = self.status_rows();
+        let mut row = 2;
+        self.panel_line(r, h, 1, "当前会话", Style::Heading);
+        let notices = self.notice_rows.clone();
+        let clear = self.clear_row;
+        self.notice_rows.clear();
+        self.clear_row = None;
         for (i, text) in rows.iter().enumerate() {
-            let y = r.y + (i + 1) * h;
-            if y + h <= r.y + r.h {
-                self.driver.renderer.chrome(&mut self.frame, [r.x, y, r.w, h], text, false);
+            if text.starts_with("外部程序") {
+                row += 1;
+                self.panel_line(r, h, row, "工具环境", Style::Heading);
+                row += 1;
+                // At most four tools; borrow the cached report without rebuilding its key strings.
+                let tools = &self.tools.as_ref().unwrap().1.tools;
+                for tool in tools {
+                    let name = Path::new(&tool.name).file_name().and_then(|name| name.to_str()).unwrap_or(&tool.name);
+                    let text = format!("{} · {}", name, if tool.available() { "就绪" } else { "未安装" });
+                    if (row + 1) * h <= r.h {
+                        self.driver.renderer.panel(&mut self.frame, [r.x, r.y + row * h, r.w, h], &text, Style::Text);
+                    }
+                    row += 1;
+                }
+                row += 1;
+                continue;
+            }
+            let style = if clear == Some(i + 1) {
+                self.clear_row = Some(row);
+                Style::Button { enabled: true, primary: false }
+            } else if let Some((_, source)) = notices.iter().find(|(original, _)| *original == i + 1) {
+                self.notice_rows.push((row, *source));
+                Style::Text
+            } else {
+                Style::Muted
+            };
+            if text.starts_with("Shell 状态未知") || text.starts_with("Shell状态未知") {
+                self.panel_line(r, h, row, "等待 Shell 状态", style);
+                row += 1;
+                self.panel_paragraph(r, h, row, 3, "bash / zsh 支持 Shell 集成，\n可显示命令耗时和工作目录。");
+                row += 3;
+            } else {
+                self.panel_line(r, h, row, text, style);
+                row += 1;
             }
         }
         #[cfg(any(test, feature = "sftp"))]
-        self.transfer_notifications_paint(r, h, rows.len() + 1);
+        self.transfer_notifications_paint(r, h, row);
     }
 
     /// 画右栏三页页签：状态、Git、监控。
@@ -1911,11 +1973,11 @@ impl Workspace {
             [(RightPage::Status, "状态"), (RightPage::Git, "Git"), (RightPage::Monitor, "监控")].into_iter().enumerate()
         {
             let width = if index == 2 { r.w - 2 * third } else { third };
-            self.driver.renderer.chrome(
+            self.driver.renderer.panel(
                 &mut self.frame,
                 [r.x + index * third, r.y, width, h.min(r.h)],
                 text,
-                self.right_page == page,
+                Style::Tab(self.right_page == page),
             );
         }
     }
@@ -1978,7 +2040,21 @@ impl Workspace {
             });
         }
         match self.right_page {
-            RightPage::Git => self.git_click(row, third),
+            RightPage::Git => {
+                let toolbar = self.git_toolbar();
+                if row <= toolbar.rows {
+                    toolbar.index(row, third).is_some_and(|index| {
+                        if self.git.guide().is_some() {
+                            self.tools = None;
+                        }
+                        self.git_click(1, index)
+                    })
+                } else if self.git.guide().is_some() {
+                    false
+                } else {
+                    self.git_click(row - (toolbar.rows - 1), third)
+                }
+            }
             RightPage::Monitor => self.monitor_click(row),
             RightPage::Status => self.notice_click(row),
         }
@@ -2197,8 +2273,7 @@ impl Workspace {
                     }
                     let (_, h) = self.driver.renderer.cell_size();
                     if x >= 0.0 && x < self.width as f64 && y >= 0.0 && y < h as f64 {
-                        let width =
-                            (self.width / self.tabs.len().max(1)).min((200.0 * self.driver.scale) as usize).max(1);
+                        let width = self.tab_width();
                         let tab = (x as usize / width).min(self.tabs.len() - 1);
                         if self.select(self.tab_focus[tab]) {
                             self.drag = Some(Drag::Tab(tab));
@@ -2210,7 +2285,7 @@ impl Workspace {
                         // 第 0 行是三页页签；Git 页按钮行按当帧按钮数等分，其余页按三列。
                         let columns = match (row, self.right_page) {
                             (0, _) => 3,
-                            (1, RightPage::Git) => self.git.button_count(),
+                            (_, RightPage::Git) if row > 0 => self.git_toolbar().columns,
                             _ => 3,
                         };
                         let third =
@@ -2227,6 +2302,9 @@ impl Workspace {
                                     1 => LeftPage::Connections,
                                     _ => LeftPage::Files,
                                 };
+                            self.chrome_dirty = true;
+                        } else if self.left_page == LeftPage::Connections && self.connections_empty() {
+                            self.connections_guide_click(row);
                             self.chrome_dirty = true;
                         } else if self.left_page == LeftPage::Files {
                             #[cfg(any(test, feature = "sftp"))] // auth-workspace
@@ -2337,10 +2415,14 @@ impl Workspace {
                             let ratio = (pos.max(0.0) * 1000.0 / length.max(1) as f64).clamp(150.0, 850.0) as u16;
                             self.tabs[self.tab].ratio(&divider.path, ratio);
                         }
-                        Drag::Left => self.left_width = (x.max(0.0) as usize).clamp(80, (self.width / 2).max(80)),
+                        Drag::Left => {
+                            let min = 16 * self.driver.renderer.cell_size().0.max(1);
+                            self.left_width = (x.max(0.0) as usize).clamp(min, (self.width / 2).max(min));
+                        }
                         Drag::Right => {
+                            let min = 16 * self.driver.renderer.cell_size().0.max(1);
                             self.right_width =
-                                (self.width.saturating_sub(x.max(0.0) as usize)).clamp(80, (self.width / 2).max(80))
+                                (self.width.saturating_sub(x.max(0.0) as usize)).clamp(min, (self.width / 2).max(min))
                         }
                         Drag::Tab(_) => return true,
                     }
@@ -2368,8 +2450,7 @@ impl Workspace {
                         && x.is_finite()
                         && y.is_finite()
                     {
-                        let width =
-                            (self.width / self.tabs.len().max(1)).min((200.0 * self.driver.scale) as usize).max(1);
+                        let width = self.tab_width();
                         let new = (x.max(0.0) as usize / width).min(self.tabs.len() - 1);
                         let tab = self.tabs.remove(old);
                         self.tabs.insert(new, tab);
@@ -2426,7 +2507,7 @@ impl Workspace {
                         ScrollDelta::Pixels(pixels) => pixels / h as f64,
                     };
                     self.chrome_dirty |=
-                        self.git_scroll(lines, (self.right_rect.h / h).saturating_sub(git_panel::LIST_TOP));
+                        self.git_scroll(lines, (self.right_rect.h / h).saturating_sub(self.git_list_top()));
                     return true;
                 }
                 if self.left_page == LeftPage::Files && self.left_rect.contains(x, y) {
@@ -3019,6 +3100,67 @@ mod tests {
     use super::*;
     pub(super) fn workspace() -> Workspace {
         Workspace::new(crate::integration_tests::app("")).unwrap()
+    }
+
+    #[test]
+    fn sidebars_preserve_terminal_space_and_layout_admission_matches_paint() {
+        let mut app = workspace();
+        app.action(Action::ToggleLeftSidebar);
+        app.action(Action::ToggleRightSidebar);
+        let cw = app.driver.renderer.cell_size().0;
+        for cols in [8, 20, 40, 60, 80, 100, 160] {
+            app.width = cols * cw;
+            let center = app.center();
+            assert!(center.x + center.w <= app.width);
+            assert!(center.w >= (40 * cw).min(app.width / 2).max(app.minimum().0.min(app.width)));
+            let (left, right) = app.sidebar_widths(true, true, app.left_width, app.right_width);
+            assert!(left == 0 || left >= 16 * cw);
+            assert!(right == 0 || right >= 16 * cw);
+            assert!(app.layout_fits(&app.layout_snapshot()));
+        }
+        app.width = 80 * cw;
+        let (left, right) = app.sidebar_widths(true, true, app.left_width, app.right_width);
+        assert!(left > 0 && right > 0, "正常窗口同时保留两栏");
+        assert!(app.center().w >= 40 * cw);
+    }
+
+    #[test]
+    fn connection_guide_copies_valid_configuration_without_sending_terminal_input() {
+        let mut app = workspace();
+        app.driver.config.connections = config::profiles::Profiles::default();
+        app.driver.config.ssh.aliases.clear();
+        app.action(Action::ToggleLeftSidebar);
+        app.left_page = LeftPage::Connections;
+        app.height = 700;
+        app.relayout().unwrap();
+        assert!(app.connections_empty());
+        let (config, warnings) = config::Config::parse(sidebar::CONNECTION_EXAMPLE);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(config.connections.len(), 1);
+        let panes = app.panes.len();
+        let epoch = app.driver.copy_epoch;
+        app.connections_guide_click(sidebar::COPY_EXAMPLE_ROW);
+        assert_eq!(app.driver.copy_epoch, epoch + 1);
+        assert!(matches!(app.driver.clipboard_request, Some(ClipboardRequest::Copy(_))));
+        assert_eq!(app.panes.len(), panes);
+        assert!(!app.ssh.pending());
+        app.connections_guide_click(1);
+        assert!(app.driver.config_changed.load(std::sync::atomic::Ordering::Acquire));
+    }
+
+    #[test]
+    fn git_empty_guide_hides_write_controls_and_ignores_body_clicks() {
+        let mut app = workspace();
+        app.git.error = Some(crate::git::Error::NotRepository);
+        assert_eq!(app.git_toolbar().count, 1);
+        assert_eq!(app.git_toolbar().rows, 1);
+        app.right_page = RightPage::Git;
+        assert!(!app.right_click(4, 0));
+        assert!(app.git.write.is_none());
+        app.git.enabled = false;
+        assert_eq!(app.git_toolbar().count, 0);
+        assert!(!app.right_click(1, 0));
+        assert!(!app.git.loading);
     }
 
     #[test]
@@ -4122,6 +4264,20 @@ program="/definitely/missing/congminal-shell"
         std::fs::write(repo.join("new file.txt"), b"x\n").unwrap();
         dir
     }
+    // Accept semantic toolbar indices/list rows; send real pointer events to the wrapped grid.
+    fn git_pointer(app: &Workspace, r: Rect, x: usize, row: usize, h: usize) -> (f64, f64) {
+        let toolbar = app.git_toolbar();
+        let (x, row) = if row == 1 {
+            let count = app.git.button_count().max(1);
+            let index = (x / (r.w / count).max(1)).min(count - 1);
+            ((index % toolbar.columns) * (r.w / toolbar.columns) + 4, 1 + index / toolbar.columns)
+        } else if row >= git_panel::LIST_TOP {
+            (x, row + toolbar.rows - 1)
+        } else {
+            (x, row)
+        };
+        ((r.x + x) as f64, (r.y + row * h + h / 2) as f64)
+    }
     fn git_row(index: usize) -> usize {
         git_panel::LIST_TOP + index
     }
@@ -4185,7 +4341,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4263,7 +4419,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4346,7 +4502,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4471,7 +4627,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4536,7 +4692,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4582,7 +4738,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4633,7 +4789,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4763,7 +4919,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -4845,7 +5001,7 @@ program="/definitely/missing/congminal-shell"
         let r = app.right_rect;
         let h = app.driver.renderer.cell_size().1;
         let click = |app: &mut Workspace, x: usize, row: usize| {
-            let (x, y) = ((r.x + x) as f64, (r.y + row * h + h / 2) as f64);
+            let (x, y) = git_pointer(app, r, x, row, h);
             assert!(app.event(Event::MouseDown { button: MouseButton::Left, x, y, mods: Mods::default() }));
             assert!(app.event(Event::MouseUp { button: MouseButton::Left, x, y, mods: Mods::default() }));
         };
@@ -5285,7 +5441,7 @@ program="/definitely/missing/congminal-shell"
         app.tick();
         // 状态页仍给出会话、任务数与通知，不因切页丢内容。
         let rows = app.status_rows();
-        assert!(rows.iter().any(|row| row.starts_with("任务 ") && row.contains("个在跑")), "{rows:?}");
+        assert!(rows.iter().any(|row| row.starts_with("会话 ") && row.contains("远程 ")), "{rows:?}");
         assert!(app.monitor.paused);
         assert!(app.monitor.task.is_none());
         assert!(app.monitor.deadline().is_none());

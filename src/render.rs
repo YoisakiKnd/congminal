@@ -9,10 +9,13 @@ use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, co
 use crate::ui::Bar;
 use crate::ui::{Decoration, DecorationKind};
 use std::hash::{Hash, Hasher};
+#[path = "render_chrome.rs"]
+mod chrome;
 #[path = "render_graphics.rs"]
 mod graphics;
 #[path = "render_work.rs"]
 mod work;
+pub(crate) use chrome::Style as ChromeStyle;
 
 /// 像素缓冲区。每个像素是 0x00RRGGBB，三个平台都能直接使用这种格式。
 const MAX_FRAME_PIXELS: usize = 64 * 1024 * 1024;

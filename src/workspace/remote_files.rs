@@ -1726,7 +1726,7 @@ impl Workspace {
             }
             for (i, text) in [labels[0], labels[1], hidden, sort_label].into_iter().enumerate() {
                 let text = crate::term::clip(text, per);
-                self.driver.renderer.chrome(&mut self.frame, [r.x + i * slot, r.y + h, slot, h], &text, false);
+                self.driver.renderer.panel_row(&mut self.frame, [r.x + i * slot, r.y + h, slot, h], &text, false);
             }
         }
         if r.h >= 3 * h {
@@ -1734,7 +1734,7 @@ impl Workspace {
             let incomplete = view.and_then(|v| v.listing()).is_some_and(|l| l.incomplete);
             let prefix = if incomplete { (8 * self.driver.renderer.cell_size().0).min(r.w) } else { 0 };
             if incomplete {
-                self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 2 * h, prefix, h], "[不完整]", true);
+                self.driver.renderer.panel_row(&mut self.frame, [r.x, r.y + 2 * h, prefix, h], "[不完整]", true);
             }
             let width = (r.w - prefix) / self.driver.renderer.cell_size().0.max(1);
             let batch = self.delete_line(state).or_else(|| self.upload_line(state)).or_else(|| self.batch_line(state));
@@ -1760,7 +1760,7 @@ impl Workspace {
                     width,
                 ),
             };
-            self.driver.renderer.chrome(&mut self.frame, [r.x + prefix, r.y + 2 * h, r.w - prefix, h], &line, false);
+            self.driver.renderer.panel_row(&mut self.frame, [r.x + prefix, r.y + 2 * h, r.w - prefix, h], &line, false);
         }
         let error = state.error.or_else(|| view.and_then(|v| v.error));
         let message = if state.exiting {
@@ -1796,7 +1796,7 @@ impl Workspace {
                 OPS_SLOTS
             };
             if count == 0 {
-                self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + 3 * h, r.w, h], message, error.is_some());
+                self.driver.renderer.panel_row(&mut self.frame, [r.x, r.y + 3 * h, r.w, h], message, error.is_some());
             } else {
                 let slot = (r.w / count.max(1)).max(1);
                 // 窄面板按每槽可用显示列降级：完整标签 → 双字 → 单字，避免被裁成半个词。
@@ -1822,7 +1822,12 @@ impl Workspace {
                         Some(labels) => labels.get(i).copied().unwrap_or(text),
                         None => text,
                     };
-                    self.driver.renderer.chrome(&mut self.frame, [r.x + i * slot, r.y + 3 * h, slot, h], text, false);
+                    self.driver.renderer.panel_row(
+                        &mut self.frame,
+                        [r.x + i * slot, r.y + 3 * h, slot, h],
+                        text,
+                        false,
+                    );
                 }
             }
         }
@@ -1837,7 +1842,7 @@ impl Workspace {
             };
             for (i, path) in paths.into_iter().enumerate() {
                 let width = r.w / self.driver.renderer.cell_size().0.max(1);
-                self.driver.renderer.chrome(
+                self.driver.renderer.panel_row(
                     &mut self.frame,
                     [r.x, r.y + (4 + i) * h, r.w, h],
                     &crate::term::clip(&path, width),
@@ -1855,7 +1860,7 @@ impl Workspace {
         {
             for (index, entry) in listing.entries.iter().enumerate().skip(view.offset).take((r.h / h).saturating_sub(4))
             {
-                self.driver.renderer.chrome(
+                self.driver.renderer.panel_row(
                     &mut self.frame,
                     [r.x, r.y + (index - view.offset + 4) * h, r.w, h],
                     &entry.label,

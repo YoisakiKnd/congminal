@@ -385,7 +385,7 @@ impl Workspace {
         let slot = (r.w / labels.len()).max(1);
         for (index, label) in labels.iter().enumerate() {
             let selected = matches!((index, &self.forwards), (1, Some(page)) if page.delete_pending.is_some());
-            self.driver.renderer.chrome(&mut self.frame, [r.x + index * slot, r.y + h, slot, h], label, selected);
+            self.driver.renderer.panel_row(&mut self.frame, [r.x + index * slot, r.y + h, slot, h], label, selected);
         }
         let rows = self.forward_rows();
         let rules = self.rules_start().saturating_sub(2);
@@ -393,7 +393,7 @@ impl Workspace {
         for (index, text) in rows.iter().take(visible).enumerate() {
             let selected = index >= rules
                 && self.forwards.as_ref().is_some_and(|page| page.selected == Some(index - rules + page.offset));
-            self.driver.renderer.chrome(&mut self.frame, [r.x, r.y + (index + 2) * h, r.w, h], text, selected);
+            self.driver.renderer.panel_row(&mut self.frame, [r.x, r.y + (index + 2) * h, r.w, h], text, selected);
         }
         true
     }
