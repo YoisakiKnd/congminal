@@ -206,8 +206,8 @@ const XA_CARDINAL: Atom = 6;
 const XA_STRING: Atom = 31;
 const PROP_MODE_REPLACE: c_int = 0;
 const CURRENT_TIME: c_ulong = 0;
-/// 文本输入用的 I 形鼠标指针（X11/cursorfont.h 里的 XC_xterm）
-const XC_XTERM: c_uint = 152;
+/// 工作区默认使用箭头（X11/cursorfont.h 里的 XC_left_ptr）。
+const XC_LEFT_PTR: c_uint = 68;
 
 const SHIFT_MASK: c_uint = 1 << 0;
 const CONTROL_MASK: c_uint = 1 << 2;
@@ -312,6 +312,7 @@ unsafe extern "C" {
     fn XSendEvent(display: *mut Display, window: XWindow, propagate: c_int, mask: c_long, event: *mut XEvent) -> c_int;
     fn XCreateFontCursor(display: *mut Display, shape: c_uint) -> c_ulong;
     fn XDefineCursor(display: *mut Display, window: XWindow, cursor: c_ulong) -> c_int;
+    fn XFreeCursor(display: *mut Display, cursor: c_ulong) -> c_int;
     fn XSetLocaleModifiers(modifiers: *const c_char) -> *mut c_char;
     fn XOpenIM(display: *mut Display, db: *mut c_void, name: *mut c_char, class: *mut c_char) -> Xim;
     fn XCloseIM(im: Xim) -> c_int;
@@ -432,7 +433,12 @@ impl Window {
                     | BUTTON_RELEASE_MASK
                     | POINTER_MOTION_MASK,
             );
-            XDefineCursor(display, window, XCreateFontCursor(display, XC_XTERM));
+            let cursor = XCreateFontCursor(display, XC_LEFT_PTR);
+            if cursor != 0 {
+                XDefineCursor(display, window, cursor);
+                // XDefineCursor 保留服务器引用；不额外持有创建时的资源句柄。
+                XFreeCursor(display, cursor);
+            }
             let atom = |name: &CStr| XInternAtom(display, name.as_ptr(), 0);
             // _NET_WM_ICON is CARDINAL[width,height,ARGB...]; Xlib uses native longs for format 32.
             let icon_memory = crate::resources::current().lease(crate::resources::Kind::Image, 64 * 1024).ok();

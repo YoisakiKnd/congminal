@@ -121,8 +121,8 @@ const PM_REMOVE: u32 = 1;
 /// MsgWaitForMultipleObjects：任何输入或消息到来都醒
 const QS_ALLINPUT: u32 = 0x04FF;
 const INFINITE: u32 = 0xFFFF_FFFF;
-/// 文本输入用的 I 形鼠标指针
-const IDC_IBEAM: usize = 32513;
+/// 工作区默认使用系统箭头指针。
+const IDC_ARROW: usize = 32512;
 const LOGPIXELSX: i32 = 88;
 const DIB_RGB_COLORS: u32 = 0;
 
@@ -341,7 +341,7 @@ impl Window {
                 wnd_extra: 0,
                 instance,
                 icon: icons.big,
-                cursor: LoadCursorW(0, IDC_IBEAM),
+                cursor: LoadCursorW(0, IDC_ARROW),
                 background: 0,
                 menu_name: null(),
                 class_name: class_name.as_ptr(),

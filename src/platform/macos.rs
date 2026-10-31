@@ -984,11 +984,11 @@ extern "C" fn paste(this: Id, _: Sel, _: Id) {
     push_event(Event::PasteRequest);
 }
 
-/// 鼠标指针在视图上时显示 I 形
+/// 默认使用箭头，避免侧栏、按钮与终端都显示成文本编辑区域。
 extern "C" fn reset_cursor_rects(this: Id, _: Sel) {
     unsafe {
         let bounds = rect_property(this, c"bounds");
-        let cursor: Id = msg![class(c"NSCursor"), "IBeamCursor"; Id];
+        let cursor: Id = msg![class(c"NSCursor"), "arrowCursor"; Id];
         msg![this, "addCursorRect:cursor:", bounds => NSRect, cursor => Id; ()];
     }
 }
