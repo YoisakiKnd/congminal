@@ -12,6 +12,10 @@ pub fn char_width(c: char) -> usize {
     if cp < 0x300 {
         return 1;
     }
+    // 基础汉字区间在现有表中连续为双宽；省去常见中文输出的两次二分查表。
+    if (0x4e00..=0x9fff).contains(&cp) {
+        return 2;
+    }
     if in_table(cp, ZERO_WIDTH) {
         0
     } else if in_table(cp, DOUBLE_WIDTH) {
@@ -144,5 +148,18 @@ mod tests {
         assert_eq!(char_width('\u{e0a0}'), 1); // Nerd Font 的 git 分支图标（私用区）
         assert_eq!(char_width('\u{301}'), 0);
         assert_eq!(char_width('\u{200d}'), 0);
+    }
+}
+
+#[cfg(test)]
+mod han_fast_path_tests {
+    use super::*;
+    #[test]
+    fn basic_han_widths_match_the_existing_tables() {
+        for cp in 0x4e00..=0x9fff {
+            assert!(!in_table(cp, ZERO_WIDTH));
+            assert!(in_table(cp, DOUBLE_WIDTH));
+            assert_eq!(char_width(char::from_u32(cp).unwrap()), 2);
+        }
     }
 }

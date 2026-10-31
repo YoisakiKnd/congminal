@@ -19,7 +19,7 @@ UNITS = {
 
 def read(path):
     text = Path(path).read_text(encoding="utf-8")
-    if not any(f"test result: ok. {n} passed" in text for n in (2, 3)):
+    if "test perf_bench::benchmarks ... ok" not in text or "test result: ok" not in text:
         raise ValueError(f"{path}: 缺少基准测试通过的记录")
     result = {}
     for line in text.splitlines():

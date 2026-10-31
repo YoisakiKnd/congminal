@@ -188,8 +188,7 @@ mod tests {
         let pool = Budget::new(required, 0);
         let _scope = Scope::enter(pool.clone());
         let term = Terminal::try_new(80, 24).unwrap();
-        let segment = std::mem::size_of::<Option<(super::super::Cell, super::super::grapheme::Segmenter)>>();
-        assert!(term.grid.allocated_bytes() + term.alt_grid.allocated_bytes() + segment <= required);
+        assert!(term.grid.allocated_bytes() + term.alt_grid.allocated_bytes() <= required);
         assert_eq!(pool.snapshot().used, required);
         drop(term);
         assert_eq!(pool.snapshot().used, 0);

@@ -108,3 +108,27 @@ fn ascii_boundaries_and_graphemes_match_the_old_path() {
     replay(&boundary, 80, 1024);
     assert_eq!(pool.snapshot().used, 0);
 }
+
+#[test]
+fn utf8_runs_preserve_invalid_and_split_sequence_replacements() {
+    let pool = Budget::new(128 * 1024 * 1024, 0);
+    let _scope = Scope::enter(pool.clone());
+    let inputs: &[&[u8]] = &[
+        b"A\x80\xbfB\xc0\xafC\xe0\x80\xafD\xed\xa0\x80E\xf4\x90\x80\x80F",
+        b"\xe4\xb8\xad\x80\xe6\x96\x87\xff\xf0\x9f\x99\x82",
+        b"\xc2\xa9\xe4\xb8\xad\xf0\x9f\x99\x82\xc2\xe4\xb8\xf0\x9f\x99",
+        b"\xe4\x1b[31m\xe6\x96\x87\xe4\xb8\nA\xf0\x9f\rB\x80\x07\xf0\x9f\x99\x82",
+        b"\x1b]0;\xed\xa0\x80\x07\xe4\xb8\xad\x1b[2J\x80\xc0\xaf",
+    ];
+    for input in inputs {
+        // 所有起始偏移配合 1..=4 字节块，覆盖二/三/四字节序列的每一个截断位置。
+        for offset in 0..4 {
+            let mut bytes = vec![b'x'; offset];
+            bytes.extend_from_slice(input);
+            for chunk in [1, 2, 3, 4, 7, 1024] {
+                replay(&bytes, 17, chunk);
+            }
+        }
+    }
+    assert_eq!(pool.snapshot().used, 0);
+}

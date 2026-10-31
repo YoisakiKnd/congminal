@@ -53,11 +53,11 @@ M4 本机相同万行 Neovim 4K 缓冲负载、前后各三轮诊断测量中，
 
 ## ASCII 写入与字素簇状态
 
-VT Ground 且 UTF-8 解码器空闲时合并可打印 ASCII。终端在 IRM、非 ASCII 字符集、前一簇能与当前 ASCII 合并时沿用逐字符入口；批次 revision、行尾 pending_wrap、滚动和宽字碎片清理保持原语义。
+VT Ground 且 UTF-8 解码器空闲时合并可打印 ASCII；连续高位字节用标准库校验最长合法 UTF-8 前缀，直接分发 char，非法或截断后缀沿用原逐字节解码器。终端在 IRM、非 ASCII 字符集、前一簇能与当前 ASCII 合并时沿用逐字符入口；批次 revision、行尾 pending_wrap、滚动和宽字碎片清理保持原语义。
 
 2027 的边界判断保存 Segmenter，先校验实际 Cell 再增量 push；Cell 不匹配时从格子和 marks 迭代重建，不构造临时 String。附加成功后同步推进状态，拒绝附加时保留旧状态；只存在 flags 中的变体选择符不补入分段文本，以保持原有行为。RIS 随终端初始化清空状态。
 
-每终端新增内联缓存 `Option<(Cell, Segmenter)>`，无堆分配。Kind::Grid 的预留在原两屏公式上增加 `S = size_of::<Option<(Cell, Segmenter)>>()` 一次；创建/缩放仍先申请额度，失败保持原网格。缩放的新旧网格预留重叠阶段会保守覆盖两份 S，提交后只保留一份。缓存先于 grid_memory 票据销毁，不新增 Kind 或独立 Lease。
+每终端的内联缓存 `Option<(Cell, Segmenter)>` 不产生堆分配，与 cursor、modes 等内联字段一样不计入额度。Kind::Grid 沿用原两屏的容量预留公式，创建/缩放仍先申请额度，失败保持原网格，不新增 Kind 或 Lease。
 
 ## 性能基准
 
@@ -78,6 +78,8 @@ python3 ci/perf-compare.py run-1.log run-2.log run-3.log
 绘制使用默认字体、2.0 缩放和满屏彩色 ASCII，各场景独立创建并预热 64 帧。full/one_row/unchanged/scroll_growing/scroll_full 分别测量 1800/25000/60000/3000/3000 帧的平均 draw 微秒数；准备输入不计时。one_row 交替修改中间一格，当前实现 damage 为三行；unchanged 断言没有 damage；两个 scroll 场景分别断言历史未满和已满。不同字体/机器不能直接比较。
 
 `history_bytes_10k` 为写入 10000 行后的 `history().used_bytes()`，其中 9941 行留在历史、59 行仍在屏幕，包含 Row 元数据和 cell 容量，不含索引闲置容量、块余量或 RSS。结构大小用 `size_of::<Cell>()` 和 `size_of::<Row>()` 输出。
+
+分配器拒绝/unwind 和 System 调用自检进入常规回归，仅性能 benchmarks 忽略。比较工具检查基准自身的通过标记及测试总体通过状态，不依赖通过测试的数量。
 
 比较工具要求三轮 `(最大值−最小值)/中位数 < 5%`，配置不同、字段缺失、重复、非法数值或单位变化均失败；零值及 skipped 单独处理。可加 `--baseline old-1.log old-2.log old-3.log` 检查旧门槛（吞吐至少 90%、帧耗时最多 110%、内存和分配不增加）；各任务的更严格验收另行核对，不能用该通用门槛代替。
 

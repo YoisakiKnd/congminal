@@ -322,10 +322,11 @@ fn benchmarks() {
         assert_eq!(term.history().len(), 10_000 - (ROWS - 1));
         metric("history_bytes_10k", term.history().used_bytes() as f64, "bytes");
     });
+    // nocapture 会把指标插在框架的名称与 ok 之间；全部断言通过后给比较器明确标记。
+    println!("test perf_bench::benchmarks ... ok");
 }
 
 #[test]
-#[ignore]
 fn denied_input_and_unwinding_restore_state() {
     let budget = Budget::root(4096, 0).unwrap();
     let _scope = Scope::enter(budget.clone());
@@ -345,7 +346,6 @@ fn denied_input_and_unwinding_restore_state() {
 }
 
 #[test]
-#[ignore]
 #[cfg(feature = "alloc-count")]
 fn allocator_counts_system_calls_without_changing_leases() {
     let budget = Budget::root(MIB, 0).unwrap();

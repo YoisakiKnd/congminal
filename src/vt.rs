@@ -5,6 +5,26 @@
 //! 解析器只负责"断句"：把字节流切成可打印字符、C0 控制字符、ESC/CSI/OSC/DCS 序列，
 //! 再交给 [`Perform`] 的实现者解释含义。它不知道光标、颜色这些概念。
 
+// 八个字节同时验证 0x20..=0x7e；有任一非法字节时再逐字节找出准确断点。
+// 合法字节的减 0x20、加 1 都不会跨字节进借位；非法字节必使至少一个高位为 1。
+#[inline(never)]
+fn ascii_run_len(bytes: &[u8]) -> usize {
+    const HIGH: u64 = 0x8080_8080_8080_8080;
+    let mut count = 0;
+    while bytes.len() - count >= 8 {
+        let word = u64::from_ne_bytes(bytes[count..count + 8].try_into().unwrap());
+        let invalid = word | word.wrapping_sub(0x2020_2020_2020_2020) | word.wrapping_add(0x0101_0101_0101_0101);
+        if invalid & HIGH != 0 {
+            break;
+        }
+        count += 8;
+    }
+    while count < bytes.len() && (0x20..=0x7e).contains(&bytes[count]) {
+        count += 1;
+    }
+    count
+}
+
 const MAX_PARAMS: usize = 32;
 const MAX_INTERMEDIATES: usize = 2;
 const MAX_OSC_LEN: usize = 4096;
@@ -165,17 +185,48 @@ impl Parser {
         }
         let mut offset = 0;
         while offset < bytes.len() {
-            if (0x20..=0x7e).contains(&bytes[offset]) && self.state == State::Ground && !self.utf8.in_progress() {
-                let count = bytes[offset..].iter().take_while(|&&b| (0x20..=0x7e).contains(&b)).count();
-                if count > 0 {
+            if self.state == State::Ground && !self.utf8.in_progress() {
+                if (0x20..=0x7e).contains(&bytes[offset]) {
+                    let count = ascii_run_len(&bytes[offset..]);
                     performer.print_ascii(&bytes[offset..offset + count]);
                     offset += count;
                     continue;
                 }
+                if bytes[offset] >= 0x80 {
+                    let count = self.print_utf8(performer, &bytes[offset..]);
+                    offset += count;
+                    continue;
+                }
+            } else if matches!(self.state, State::CsiEntry | State::CsiParam) && (0x30..=0x3b).contains(&bytes[offset])
+            {
+                // 复用原参数累积规则；控制字节、私有标记和结束字节仍走完整状态机。
+                self.param_byte(bytes[offset]);
+                self.state = State::CsiParam;
+                offset += 1;
+                continue;
             }
             self.byte(performer, bytes[offset]);
             offset += 1;
         }
+    }
+
+    // 独立入口避免合法 UTF-8 校验/后缀处理膨胀 ASCII 主循环。
+    #[inline(never)]
+    fn print_utf8<P: Perform>(&mut self, performer: &mut P, bytes: &[u8]) -> usize {
+        let count = 1 + bytes[1..].iter().take_while(|&&b| b >= 0x80).count();
+        let run = &bytes[..count];
+        let valid = match std::str::from_utf8(run) {
+            Ok(text) => text,
+            Err(error) => std::str::from_utf8(&run[..error.valid_up_to()]).unwrap(),
+        };
+        for c in valid.chars() {
+            performer.print(c);
+        }
+        // 后缀整段交回旧解码器，避免反复扫描恶意输入，也保留 reprocess。
+        for &byte in &run[valid.len()..] {
+            self.byte(performer, byte);
+        }
+        count
     }
 
     #[cfg(test)]
@@ -656,5 +707,28 @@ mod tests {
     #[test]
     fn dcs_is_skipped_cleanly() {
         assert_eq!(parse(&[b"\x1bPq#0;2;0;0;0\x1b\\x"]), ["esc [] \\", "print x"]);
+    }
+}
+
+#[cfg(test)]
+mod ascii_run_tests {
+    use super::ascii_run_len;
+    #[test]
+    fn integer_scan_matches_scalar_boundaries_for_every_byte_and_position() {
+        for len in 0..=32 {
+            let mut bytes = [b'a'; 32];
+            assert_eq!(ascii_run_len(&bytes[..len]), len);
+            for at in 0..len {
+                for byte in 0..=255 {
+                    bytes[at] = byte;
+                    let expected = bytes[..len].iter().take_while(|&&b| (0x20..=0x7e).contains(&b)).count();
+                    assert_eq!(ascii_run_len(&bytes[..len]), expected);
+                }
+                bytes[at] = b'a';
+            }
+        }
+        for byte in 0..=255 {
+            assert_eq!(ascii_run_len(&[byte; 32]), if (0x20..=0x7e).contains(&byte) { 32 } else { 0 });
+        }
     }
 }
