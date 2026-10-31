@@ -187,14 +187,14 @@ fn previous(term: &Terminal, mut p: Point) -> Option<Point> {
     }
     p.col = p.col.checked_sub(1)?;
     let row = term.row_by_id(p.line)?;
-    if row.cells[p.col].flags.contains(Flags::WIDE_SPACER) {
+    if row.cell(p.col).flags.contains(Flags::WIDE_SPACER) {
         p.col = p.col.checked_sub(1)?;
     }
     Some(p)
 }
 fn next(term: &Terminal, mut p: Point) -> Option<Point> {
     let row = term.row_by_id(p.line)?;
-    p.col += if row.cells[p.col].flags.contains(Flags::WIDE) { 2 } else { 1 };
+    p.col += if row.cell(p.col).flags.contains(Flags::WIDE) { 2 } else { 1 };
     let end = if row.wrapped { text::row_end(term, p.line, row) } else { row.cells.len() };
     if p.col >= end {
         if !row.wrapped {
@@ -232,7 +232,7 @@ pub fn at(term: &Terminal, mut p: Point) -> Option<Hit> {
     if cell.flags.contains(Flags::WIDE_SPACER) {
         p.col = p.col.checked_sub(1)?;
     }
-    let id = row.cells[p.col].flags.link_id();
+    let id = row.cell(p.col).flags.link_id();
     if id != 0 {
         let url = Url::new(term.link_url(id)?, term.resource_budget())?;
         let (mut first, mut last) = (p, p);
@@ -240,7 +240,7 @@ pub fn at(term: &Terminal, mut p: Point) -> Option<Hit> {
             let Some(prev) = previous(term, first).filter(|p| p.line >= oldest) else {
                 break;
             };
-            let flags = term.row_by_id(prev.line)?.cells[prev.col].flags;
+            let flags = term.row_by_id(prev.line)?.cell(prev.col).flags;
             if flags.link_id() != id || flags.contains(Flags::HIDDEN) {
                 break;
             }
@@ -250,13 +250,13 @@ pub fn at(term: &Terminal, mut p: Point) -> Option<Hit> {
             let Some(after) = next(term, last) else {
                 break;
             };
-            let flags = term.row_by_id(after.line)?.cells[after.col].flags;
+            let flags = term.row_by_id(after.line)?.cell(after.col).flags;
             if flags.link_id() != id || flags.contains(Flags::HIDDEN) {
                 break;
             }
             last = after;
         }
-        if term.row_by_id(last.line)?.cells[last.col].flags.contains(Flags::WIDE) {
+        if term.row_by_id(last.line)?.cell(last.col).flags.contains(Flags::WIDE) {
             last.col += 1;
         }
         return Some(Hit { url, range: (first, last) });
@@ -365,7 +365,7 @@ pub fn at(term: &Terminal, mut p: Point) -> Option<Hit> {
         cursor = next(term, cursor)?;
     }
     let mut url_last = url_last?;
-    if term.row_by_id(url_last.line)?.cells[url_last.col].flags.contains(Flags::WIDE) {
+    if term.row_by_id(url_last.line)?.cell(url_last.col).flags.contains(Flags::WIDE) {
         url_last.col += 1;
     }
     Some(Hit { url: Url::new(url, term.resource_budget())?, range: (url_first?, url_last) })
@@ -455,11 +455,11 @@ mod tests {
         for line in 0..8 {
             let row = term.row_by_id(line).unwrap();
             for col in 0..row.cells.len() {
-                if row.cells[col].flags.contains(Flags::WIDE_SPACER) {
+                if row.cell(col).flags.contains(Flags::WIDE_SPACER) {
                     continue;
                 }
                 let old = text::cell_text(&term, row, col);
-                let expected = !row.cells[col].flags.contains(Flags::HIDDEN)
+                let expected = !row.cell(col).flags.contains(Flags::HIDDEN)
                     && !old
                         .chars()
                         .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '<' | '>' | '"' | '\'' | '`'));

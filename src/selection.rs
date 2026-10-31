@@ -3,7 +3,7 @@
 //! 位置用"稳定行号"（见 `Terminal::line_id`）加列号表示：新内容滚进回滚历史时，
 //! 选中的还是原来那段文字，不会错位。
 
-use crate::term::{Flags, Row, Terminal};
+use crate::term::{Flags, RowView, Terminal};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Point {
@@ -90,8 +90,8 @@ impl Selection {
             let from = if line == start.line { start.col } else { 0 };
             let to = if line == end.line { end.col.min(row.cells.len() - 1) } else { row.cells.len() - 1 };
             let mut text = String::new();
-            let cells = row.cells.get(from..=to).unwrap_or_default();
-            for cell in cells.iter().filter(|cell| !cell.flags.contains(Flags::WIDE_SPACER)) {
+            let cells = row.cells.iter().skip(from).take(to.saturating_sub(from) + 1);
+            for cell in cells.filter(|cell| !cell.flags.contains(Flags::WIDE_SPACER)) {
                 // 组合字符原样跟在后面，复制出来的和程序输出的一样
                 text.push(cell.c);
                 let marks = term.marks(cell.marks);
@@ -118,12 +118,12 @@ fn is_word_char(c: char) -> bool {
     !c.is_whitespace() && !WORD_SEPARATORS.contains(c)
 }
 
-fn cell_char(row: &Row, col: usize) -> char {
+fn cell_char(row: RowView<'_>, col: usize) -> char {
     row.cells.get(col).map_or(' ', |cell| cell.c)
 }
 
 /// 落在宽字符右半边（占位格）时，挪到它的左半边（字本身）
-fn on_glyph(row: &Row, col: usize) -> usize {
+fn on_glyph(row: RowView<'_>, col: usize) -> usize {
     match row.cells.get(col) {
         Some(cell) if cell.flags.contains(Flags::WIDE_SPACER) && col > 0 => col - 1,
         _ => col,
@@ -137,7 +137,7 @@ fn word_start(term: &Terminal, p: Point) -> Point {
         return Point { line: p.line, col };
     }
     while col > 0 {
-        let prev = &row.cells[col - 1];
+        let prev = &row.cell(col - 1);
         // 宽字符的占位格属于它左边那个字
         if !prev.flags.contains(Flags::WIDE_SPACER) && !is_word_char(prev.c) {
             break;
@@ -154,7 +154,7 @@ fn word_end(term: &Terminal, p: Point) -> Point {
         return Point { line: p.line, col };
     }
     while col + 1 < row.cells.len() {
-        let next = &row.cells[col + 1];
+        let next = &row.cell(col + 1);
         if !next.flags.contains(Flags::WIDE_SPACER) && !is_word_char(next.c) {
             break;
         }

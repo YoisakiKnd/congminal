@@ -6079,9 +6079,11 @@ program="/definitely/missing/congminal-shell"
             vt::Parser::new().advance(&mut app.driver.session.term, line.as_bytes());
             let used = app.driver.session.term.history().used_bytes();
             assert!(used <= HISTORY_POOL / MAX_PANES);
+            assert!(app.driver.session.term.history().len() >= 6000 - app.driver.session.term.rows());
             bytes += used;
         }
-        assert!(bytes <= HISTORY_POOL && bytes > HISTORY_POOL / 2);
+        // 相同文本被压缩后不再逼近旧 Cell 容量，仍应完整保留输入并遵守总配额。
+        assert!(bytes > 0 && bytes <= HISTORY_POOL);
         app.restore();
         let old = (app.width, app.height);
         app.event(Event::Resize { width: 16384, height: 16384 });

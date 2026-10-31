@@ -27,7 +27,7 @@ mod width_table;
 pub(crate) use compose::compose_borrowed;
 pub(crate) use emoji::{sequence_into as emoji_sequence_into, workspace_bytes as emoji_work_bytes};
 pub(crate) use grid::grid_reservation;
-pub use grid::{Cell, Color, Flags, Grid, History, Row};
+pub use grid::{Cell, Color, Flags, Grid, History, Row, RowView};
 #[cfg(test)]
 pub use width::clip_ellipsis;
 pub use width::{char_width, clip, clip_tail, display_width};
@@ -451,10 +451,14 @@ impl Terminal {
     }
 
     /// 屏幕上第 i 行现在显示的内容（考虑了往回翻的行数）
-    pub fn visible_row(&self, i: usize) -> &Row {
+    pub fn visible_row(&self, i: usize) -> RowView<'_> {
         // 把历史和屏幕看成一个整体：前面是历史，后面是当前屏幕
         let index = self.history.len() - self.display_offset + i;
-        if index < self.history.len() { self.history.get(index) } else { &self.grid[index - self.history.len()] }
+        if index < self.history.len() {
+            self.history.get(index)
+        } else {
+            RowView::from(&self.grid[index - self.history.len()])
+        }
     }
 
     /// 稳定的行号：不会因为新内容滚进历史而改变（选区用）。屏幕第 i 行（考虑往回翻）对应的编号。
@@ -463,13 +467,13 @@ impl Terminal {
     }
 
     /// 稳定行号对应的行；已经从历史里丢掉的行返回 None
-    pub fn row_by_id(&self, id: u64) -> Option<&Row> {
+    pub fn row_by_id(&self, id: u64) -> Option<RowView<'_>> {
         let index = id.checked_sub(self.history.dropped())? as usize;
         if index < self.history.len() {
             Some(self.history.get(index))
         } else {
             let screen = index - self.history.len();
-            (screen < self.grid.rows()).then(|| &self.grid[screen])
+            (screen < self.grid.rows()).then(|| RowView::from(&self.grid[screen]))
         }
     }
 
@@ -708,7 +712,7 @@ impl Terminal {
         let limit = self.history.byte_limit();
         // 备用屏激活时主屏不在屏幕上，但退出备用屏后要按新宽度显示。体量在同步上限内就现在重排；
         // 更大的历史仍只裁剪（步进作业目前只处理可见屏），等后续把作业扩展到隐藏主屏。
-        let primary_bytes = self.history.used_bytes().saturating_add(self.alt_grid.allocated_bytes());
+        let primary_bytes = self.history.decoded_bytes().saturating_add(self.alt_grid.allocated_bytes());
         let reflow_hidden = cols != self.alt_grid.cols() && primary_bytes <= SYNC_REFLOW_LIMIT;
         if self.alt_active {
             let saved = self.saved[0];
@@ -817,12 +821,57 @@ impl Terminal {
         limit: usize,
         cursor: reflow::CursorPos,
         cols: usize,
+        _reuse: Option<bool>,
+        funding: &mut crate::resources::Lease,
+    ) -> reflow::CursorPos {
+        #[cfg(test)]
+        if history.is_legacy() {
+            return Self::reflow_legacy_rows(history, grid, limit, cursor, cols, _reuse, funding);
+        }
+        let rows = grid.rows();
+        let screen_start = history.len();
+        let (mut all, memory) = history.take_rows().into_parts();
+        funding.absorb_from(memory);
+        all.reserve_exact(grid.rows());
+        all.extend(grid.take_rows().into_iter().map(grid::StoredRow::Raw));
+        let result =
+            reflow::Stream::compact_owned(all, screen_start, cursor, cols, limit, rows, history.limit()).finish();
+        history.discard(result.discarded);
+
+        // 屏幕从原来屏幕第一行的内容开始；光标被挤到屏幕外面时，把上面的行推进历史
+        let (cursor_row, cursor_col) = result.cursor;
+        let mut top = result.screen_top;
+        if cursor_row >= top + rows {
+            top = cursor_row + 1 - rows;
+        }
+        let mut new_rows = result.rows;
+        let mut screen: Vec<Row> = new_rows.drain(top..).take(rows).map(grid::StoredRow::into_row).collect();
+        screen.resize_with(rows, || Row::new(cols));
+        for row in new_rows {
+            history.push_stored_funded(row, funding);
+        }
+        grid.set_rows(screen, cols);
+        reflow::CursorPos {
+            row: history.len() + (cursor_row - top),
+            col: cursor_col,
+            pending_wrap: result.pending_wrap,
+        }
+    }
+
+    #[cfg(test)]
+    fn reflow_legacy_rows(
+        history: &mut History,
+        grid: &mut Grid,
+        limit: usize,
+        cursor: reflow::CursorPos,
+        cols: usize,
         reuse: Option<bool>,
         funding: &mut crate::resources::Lease,
     ) -> reflow::CursorPos {
         let rows = grid.rows();
         let screen_start = history.len();
-        let (mut all, memory) = history.take_rows().into_parts();
+        let (stored, memory) = history.take_rows().into_parts();
+        let mut all: Vec<Row> = stored.into_iter().map(grid::StoredRow::into_row).collect();
         funding.absorb_from(memory);
         all.reserve_exact(grid.rows());
         all.extend(grid.take_rows());
@@ -838,7 +887,7 @@ impl Terminal {
         let mut new_rows = result.rows;
         let mut screen: Vec<Row> = new_rows.drain(top..).take(rows).collect();
         screen.resize_with(rows, || Row::new(cols));
-        history.replace_rows_funded(new_rows, funding);
+        history.replace_legacy_rows_funded(new_rows, funding);
         grid.set_rows(screen, cols);
         reflow::CursorPos {
             row: history.len() + (cursor_row - top),
@@ -1665,6 +1714,8 @@ impl Terminal {
     }
 
     fn reset(&mut self) {
+        #[cfg(test)]
+        let legacy = self.history.is_legacy();
         let default_cursor_shape = self.default_cursor_shape;
         let cell_pixels = self.cell_pixels;
         let scrollback = self.history.limit();
@@ -1687,6 +1738,9 @@ impl Terminal {
         #[cfg(test)]
         {
             self.slow_print = slow_print;
+            if legacy {
+                self.history.use_legacy();
+            }
         }
         self.shell = shell;
         self.text_epoch = epoch;
@@ -2540,7 +2594,7 @@ mod tests {
         assert_eq!(visible(&t), ["2", "3"]);
         // 稳定行号：最旧的那行（"2"）是 1 号
         assert_eq!(t.line_id(0), 1);
-        assert_eq!(t.row_by_id(1).unwrap()[0].c, '2');
+        assert_eq!(t.row_by_id(1).unwrap().cell(0).c, '2');
         assert!(t.row_by_id(0).is_none());
     }
 
@@ -2576,7 +2630,7 @@ mod tests {
         // 不能在事件里扫全部历史；这里的断言锁定“事件里不做重排”这条边界。
         let mut t = run(20, 4, "");
         Parser::new().advance(&mut t, &b"0123456789abcdefghij\r\n".repeat(4000));
-        assert!(t.history.used_bytes() + t.alt_grid.allocated_bytes() > SYNC_REFLOW_LIMIT);
+        assert!(t.history.decoded_bytes() + t.alt_grid.allocated_bytes() > SYNC_REFLOW_LIMIT);
         Parser::new().advance(&mut t, b"\x1b[?1049h\x1b[Happ");
         let started = std::time::Instant::now();
         t.resize(10, 4);

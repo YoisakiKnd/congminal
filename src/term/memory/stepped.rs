@@ -27,8 +27,12 @@ impl Stamp {
     }
 }
 impl reflow::Source for Terminal {
-    fn row(&self, index: usize) -> &Row {
-        if index < self.history.len() { self.history.get(index) } else { &self.grid[index - self.history.len()] }
+    fn row(&self, index: usize) -> crate::term::RowView<'_> {
+        if index < self.history.len() {
+            self.history.get(index)
+        } else {
+            crate::term::RowView::from(&self.grid[index - self.history.len()])
+        }
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -49,15 +53,11 @@ enum Phase {
 pub(crate) struct ResizeJob {
     stamp: Stamp,
     phase: Phase,
-    stream: Option<reflow::Stream>,
-    result: Option<reflow::Reflowed>,
+    stream: Option<reflow::Stream<crate::term::grid::StoredRow>>,
+    result: Option<reflow::Reflowed<crate::term::grid::StoredRow>>,
     screen: VecDeque<Row>,
     alt: Vec<Row>,
     history: History,
-    history_scan: Option<usize>,
-    history_bytes: usize,
-    history_floor: usize,
-    history_compact: bool,
     top: usize,
     cursor: (usize, usize),
     pending_wrap: bool,
@@ -82,7 +82,7 @@ impl ResizeJob {
         assert!(plan.cols != term.cols() && !term.alt_active && plan.growth.bytes() >= plan.target);
         assert_eq!(plan.before, (term.cols(), term.rows(), term.text_epoch, term.text_revision));
         let screen = term.history.len();
-        let stream = reflow::Stream::borrowed(
+        let stream = reflow::Stream::compact_borrowed(
             screen + term.rows(),
             screen,
             reflow::CursorPos {
@@ -93,6 +93,7 @@ impl ResizeJob {
             plan.cols,
             term.history.byte_limit(),
             term.rows(),
+            term.history.limit(),
         );
         let mut history = History::with_budget(term.history.limit(), term.grid_memory.budget().clone());
         history.set_byte_limit(term.history.byte_limit());
@@ -106,10 +107,6 @@ impl ResizeJob {
             screen: VecDeque::new(),
             alt: Vec::new(),
             history,
-            history_scan: None,
-            history_bytes: 0,
-            history_floor: usize::MAX,
-            history_compact: false,
             top: 0,
             cursor: (0, 0),
             pending_wrap: false,
@@ -124,7 +121,7 @@ impl ResizeJob {
     }
     #[cfg(all(test, unix))]
     pub(crate) fn owned_rows(&self) -> usize {
-        self.stream.as_ref().map_or(0, reflow::Stream::retained_rows)
+        self.stream.as_ref().map_or(0, |stream| stream.retained_rows())
             + self.result.as_ref().map_or(0, |r| r.rows.len())
             + self.screen.len()
             + self.alt.len()
@@ -176,8 +173,9 @@ impl ResizeJob {
                 Phase::Screen => {
                     let result = self.result.as_mut().unwrap();
                     if result.rows.len() > self.top {
-                        let row = result.rows.pop_back().unwrap();
-                        work += row.cells.capacity().max(1);
+                        let stored = result.rows.pop_back().unwrap();
+                        work += stored.cols().max(1);
+                        let row = stored.into_row();
                         if result.rows.len() < self.top + self.stamp.shape.1 {
                             self.screen.push_front(row);
                         }
@@ -195,49 +193,11 @@ impl ResizeJob {
                 }
                 Phase::History => {
                     let result = self.result.as_mut().unwrap();
-                    let remaining = self.history_scan.get_or_insert(result.rows.len());
-                    if *remaining > 0 {
-                        // 在同一索引里轮转检查，不另建一份完整历史索引。未访问行在前，
-                        // 已接受行在后；完成一轮后顺序不变，再按预算淘汰最旧前缀。
-                        let row = result.rows.pop_front().unwrap();
-                        let capacity = row.cells.capacity();
-                        let cost = crate::term::grid::row_bytes(capacity);
-                        work += capacity.max(1);
-                        *remaining -= 1;
-                        if self.history.limit() == 0 || cost > self.history.byte_limit() {
-                            self.history.discard(1);
-                        } else {
-                            self.history_bytes += cost;
-                            self.history_floor = self.history_floor.min(capacity);
-                            result.rows.push_back(row);
-                        }
-                    } else if result.rows.len() > self.history.limit() || self.history_bytes > self.history.byte_limit()
-                    {
-                        let row = result.rows.pop_front().unwrap();
-                        work += row.cells.capacity().max(1);
-                        self.history_bytes -= crate::term::grid::row_bytes(row.cells.capacity());
-                        self.history.discard(1);
-                    } else if self.history_compact
-                        || result.rows.capacity() > result.rows.len().saturating_mul(2).max(32)
-                    {
-                        // 紧行数配额可能淘汰绝大多数输出。此时只分片搬迁保留的小后缀，
-                        // 不把巨大的空索引长期挂到历史；正常大历史直接转交原索引。
-                        self.history_compact = true;
-                        if let Some(row) = result.rows.pop_front() {
-                            work += row.cells.capacity().max(1);
-                            self.history.push_funded(row, &mut self.plan._scratch);
-                        } else {
-                            self.result = None;
-                            self.phase = Phase::Shift;
-                        }
+                    if let Some(row) = result.rows.pop_front() {
+                        work += row.cols().max(1);
+                        self.history.push_stored_funded(row, &mut self.plan._scratch);
                     } else {
-                        let result = self.result.take().unwrap();
-                        self.history.adopt_prepared_rows(
-                            result.rows,
-                            self.history_bytes,
-                            self.history_floor,
-                            &mut self.plan._scratch,
-                        );
+                        self.result = None;
                         self.phase = Phase::Shift;
                     }
                 }
@@ -364,7 +324,7 @@ impl ResizeJob {
             } else {
                 if let Some(result) = &mut self.result {
                     if let Some(row) = result.rows.pop_front() {
-                        work += row.cells.capacity().max(1);
+                        work += row.cols().max(1);
                     } else {
                         self.result = None;
                     }
@@ -402,7 +362,11 @@ mod tests {
         vt::Parser,
     };
     fn cells(term: &Terminal) -> Vec<(Vec<crate::term::Cell>, bool)> {
-        term.history.iter().chain(term.grid.iter()).map(|r| (r.cells.clone(), r.wrapped)).collect()
+        term.history
+            .iter()
+            .chain(term.grid.iter().map(crate::term::RowView::from))
+            .map(|r| (r.cells.iter().collect(), r.wrapped))
+            .collect()
     }
     fn job(term: &Terminal, cols: usize, rows: usize) -> ResizeJob {
         ResizeJob::new(term, term.prepare_resize_inner(cols, rows, true).unwrap())
@@ -541,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_history_transfers_the_output_index_with_no_new_admission() {
+    fn prepared_history_moves_compact_rows_with_no_new_admission() {
         let pool = Budget::new(32 * 1024 * 1024, 0);
         let _scope = Scope::enter(pool.clone());
         let mut term = Terminal::new(80, 24);
@@ -552,7 +516,8 @@ mod tests {
         while pending.phase != Phase::History {
             assert!(!pending.step(&mut term, 4096).1);
         }
-        let capacity = pending.result.as_ref().unwrap().rows.capacity();
+        let payload: usize =
+            pending.result.as_ref().unwrap().rows.iter().map(crate::term::grid::StoredRow::payload_bytes).sum();
         let held = pool.lease(crate::resources::Kind::Canvas, 32 * 1024 * 1024 - pool.snapshot().used).unwrap();
         let denied = pool.snapshot().denied;
         let mut turns = 0;
@@ -561,9 +526,8 @@ mod tests {
             turns += 1;
         }
         assert!(turns > 10 && pending.history.len() > 1000);
-        let cell_bytes: usize =
-            pending.history.iter().map(|row| row.cells.capacity() * std::mem::size_of::<crate::term::Cell>()).sum();
-        assert_eq!(pending.history.allocated_bytes() - cell_bytes, capacity * std::mem::size_of::<Row>());
+        assert!(pending.history.allocated_bytes() >= payload);
+        assert!(pending.history.allocated_bytes() <= pending.history.reserved_bytes());
         assert_eq!(cells(&term), before);
         assert_eq!(pool.snapshot().denied, denied);
         finish(&mut pending, &mut term, 4096);
@@ -594,22 +558,21 @@ mod tests {
             }
             // 消费内核会复用更宽的旧 cell 容量，紧配额下保留行数可以不同。
             // 用相同输出和容量对照独立的整表接管，隔离本轮索引交接的语义。
-            let rows = pending
-                .result
-                .as_ref()
-                .unwrap()
-                .rows
-                .iter()
-                .map(|row| {
-                    let mut cells = Vec::with_capacity(row.cells.capacity());
-                    cells.extend_from_slice(&row.cells);
-                    Row { cells, wrapped: row.wrapped }
-                })
-                .collect();
+            let output = &pending.result.as_ref().unwrap().rows;
+            let payload: usize = output.iter().map(crate::term::grid::StoredRow::payload_bytes).sum();
+            let mut funding = crate::resources::current()
+                .lease(
+                    crate::resources::Kind::Reflow,
+                    payload + 6 * (output.len() + 8) * std::mem::size_of::<crate::term::grid::StoredRow>() + 64 * 1024,
+                )
+                .unwrap();
+            let rows: Vec<_> = output.iter().map(crate::term::grid::StoredRow::clone_storage).collect();
             let mut expected = History::with_budget(a.history.limit(), a.grid_memory.budget().clone());
             expected.set_byte_limit(a.history.byte_limit());
             expected.discard(pending.history.dropped() as usize);
-            expected.replace_rows(rows);
+            for row in rows {
+                expected.push_stored_funded(row, &mut funding);
+            }
             while pending.phase == Phase::History {
                 assert!(!pending.step(&mut a, 1 + seed % 71).1);
             }
@@ -621,13 +584,7 @@ mod tests {
             for (a, b) in pending.history.iter().zip(expected.iter()) {
                 assert_eq!((&a.cells, a.wrapped), (&b.cells, b.wrapped), "seed {seed}");
             }
-            let cells: usize =
-                pending.history.iter().map(|row| row.cells.capacity() * std::mem::size_of::<crate::term::Cell>()).sum();
-            assert!(
-                pending.history.allocated_bytes() - cells
-                    <= pending.history.len().saturating_mul(2).max(32) * std::mem::size_of::<Row>(),
-                "seed {seed}"
-            );
+            assert!(pending.history.allocated_bytes() <= pending.history.reserved_bytes(), "seed {seed}");
             finish(&mut pending, &mut a, 1 + seed % 71);
             assert!(a.history.allocated_bytes() <= a.history.reserved_bytes());
         }
@@ -647,18 +604,8 @@ mod tests {
             while pending.phase != Phase::History {
                 assert!(!pending.step(&mut term, 4096).1);
             }
-            if stage > 0 {
-                while pending.history_scan != Some(0) {
-                    assert!(!pending.step(&mut term, 1).1);
-                }
-                assert!(pending.result.as_ref().unwrap().rows.len() > pending.history.limit());
-            }
-            if stage == 2 {
-                while !pending.history_compact {
-                    assert!(!pending.step(&mut term, 1).1);
-                }
-            }
-            for _ in 0..3 {
+            // 编码输出不再整表验证/压缩，取消分别覆盖交接前和交接中的切分点。
+            for _ in 0..stage {
                 assert!(!pending.step(&mut term, 1).1);
             }
             assert!(pending.phase == Phase::History);

@@ -83,7 +83,7 @@ python3 ci/perf-compare.py run-1.log run-2.log run-3.log
 
 绘制使用默认字体、2.0 缩放和满屏彩色 ASCII，各场景独立创建并预热 64 帧。full/one_row/unchanged/scroll_growing/scroll_full 分别测量 1800/25000/60000/3000/3000 帧的平均 draw 微秒数；准备输入不计时。one_row 交替修改中间一格，无垂直溢出字形时只画一行，有溢出时保守扩展到三行；unchanged 断言没有 damage；两个 scroll 场景分别断言历史未满和已满。不同字体/机器不能直接比较。
 
-`history_bytes_10k` 为写入 10000 行后的 `history().used_bytes()`，其中 9941 行留在历史、59 行仍在屏幕，包含 Row 元数据和 cell 容量，不含索引闲置容量、块余量或 RSS。结构大小用 `size_of::<Cell>()` 和 `size_of::<Row>()` 输出。
+`history_bytes_10k` 为写入 10000 行后的 `history().used_bytes()`，其中 9941 行留在历史、59 行仍在屏幕。T4 起包含实际压缩缓冲容量及完整行索引（含闲置槽），不含 64 KiB 票据余量或 RSS；T0–T3 的历史报告保留当时 Row 元数据与 Cell 容量的旧口径。结构大小用 `size_of::<Cell>()` 和 `size_of::<Row>()` 输出。
 
 分配器拒绝/unwind 和 System 调用自检进入常规回归，仅性能 benchmarks 忽略。比较工具检查基准自身的通过标记及测试总体通过状态，不依赖通过测试的数量。
 
@@ -105,3 +105,15 @@ RSS 脚本需要原生图形会话。独立配置输出顺序数字及 16 MiB �
 字形光栅缓存记录垂直溢出，Fonts 保守记录清缓存以来是否见过溢出；首次在局部重画中发现溢出会立即完整重画，避免旧像素。清缓存同步清除此状态，并推进共享缓存 epoch，其他窗格的旧视图下次绘制也会失效。
 
 ASCII 单格字形使用 128×2×2 的非拥有地址表，Kind::CacheIndex 按真实 Vec 容量预留（64 位目标 4096 B）；拒绝时保留已准入字形并退回哈希查找。地址只指向主缓存条目，所有主缓存插入/淘汰前清空表，清缓存先销毁索引再归还额度。CachedGlyph/Cluster 新增的溢出字段由现有 CacheIndex 桶容量公式 sizeof(V) 自动覆盖；像素的 FontRaster 等票据不变。画布平移、颜色并行计算与背景合并不创建像素副本或额外 Lease。
+
+## 紧凑历史与重排容量
+
+活动网格仍使用 Row/Vec<Cell>。历史按物理行保存 UTF-8 文本、每 16 格一个字节偏移、11 B 属性游程（列/fg/bg/样式）及 10 B 稀疏旁表（列/其余 flags/完整 marks）。Color 区分 Default、Indexed、Rgb；旁表保留超链接、WIDE/WIDE_SPACER、EMOJI、mark id 及 Kitty 色位。仅裁去逐字段完全默认的尾空白，原始列宽和 wrapped 保存在内联头部；复杂行可回退 Raw，读取返回按值 Cell 的借用视图，不分配整份解码缓存。
+
+令 S=sizeof(StoredRow)，实际历史占用为 `索引.capacity()*S + Σ(payload.capacity())`；Raw payload 为 Cell 容量乘 sizeof(Cell)。used_bytes 与字节上限都采用此口径。索引增长若超过上限则按原头部淘汰政策复用槽位；小配额也限制初始槽数。Kind::History 仍按 64 KiB 聚合申请，覆盖旧/新索引与编码缓冲重叠，精确申请可作为聚合申请拒绝后的回退；释放数据后才收缩票据。满历史的等容量替换只重写原缓冲，不分配或修改额度。
+
+同步与 UI 分步重排均使用压缩流式结果，保留旧光标、宽字和软换行规则。同步移交压缩输入及票据，分步只读旧输入直到交换；输出先编码，屏幕行才解码，取消/退休分批销毁。同步阈值使用 `decoded_bytes = Σ(row_bytes(原始列宽))`，不能拿压缩字节数当 Cell 数；旧 Raw 算法与旧 History 仅在 cfg(test) 的独立参照入口保留。
+
+宽度变化的 Reflow 工作集模型：D 为历史 decoded_bytes 加原主网格 allocated_bytes，n 为历史行数加原屏幕行数，C 为目标列宽，H 为历史字节上限，L 为历史行数上限，r 为原屏幕行数。令 `possible=(D/sizeof(Cell))/max(C-1,1)+n+1`，`K=min(possible,L+r,H/S+r)`，`R=row_bytes(retained_cols(C))+S`，则额外工作集为 `min(H,K*R)+r*R+6*(K+1)*S+8*R+65536`。索引六份保守覆盖重排结果与历史交接的新旧容量，Raw 行项覆盖当前/备用/屏幕与编码重叠；旧源由原票据覆盖，不展开整个 decoded 上界。高度变化沿用顶部行迁移模型，索引元素改用 S。目标两屏 Grid 仍另留旧/新重叠预留，任何申请失败都在取走源行之前返回。
+
+新增 frame_scrollback_view 使用同一 200×60/2×缩放场景，先填满 10000 行历史，再在偏移 1000 附近交替上下看一行；预热 64 帧，测量 600 帧。它只解码/绘制可见历史；完整输出仍为 metric/value/unit，不用此新场景替换已有滚动基准。比较器允许旧基线没有该新增指标，当前日志则必须包含。

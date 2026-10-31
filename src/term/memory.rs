@@ -30,7 +30,7 @@ impl Terminal {
         // 小网格沿用同步捷径；长历史路径不在事件中扫描所有历史行。
         let stepped = cols != self.cols()
             && !self.alt_active
-            && self.history.used_bytes().saturating_add(self.grid.allocated_bytes()) > super::SYNC_REFLOW_LIMIT;
+            && self.history.decoded_bytes().saturating_add(self.grid.allocated_bytes()) > super::SYNC_REFLOW_LIMIT;
         self.prepare_resize_inner(cols, rows, stepped)
     }
 
@@ -40,54 +40,32 @@ impl Terminal {
         // 备用屏激活时也会重排隐藏的主屏（体量在同步上限内），预留按“要重排”处理。
         let reflowing = cols != self.cols()
             && (!self.alt_active
-                || self.history.used_bytes().saturating_add(self.alt_grid.allocated_bytes())
+                || self.history.decoded_bytes().saturating_add(self.alt_grid.allocated_bytes())
                     <= super::SYNC_REFLOW_LIMIT);
         let target = grid::grid_reservation(cols, rows);
         let pool = self.grid_memory.budget();
         // 旧容量仍存活时预留完整目标容量，覆盖 Vec 重新分配的新旧缓冲峰值。
         let growth = pool.lease(Kind::Grid, if changed { target } else { 0 })?;
-        // 可直接转移的硬行不构造逻辑长行；把检查结果交给重排避免重复扫描。
-        // 失败/取消时此处尚未取走任何一行。
-        let added = if changed && reflowing && !stepped {
-            let history = if cols <= self.history.capacity_floor() {
-                // 所有历史行都已有足够容量，不在每行谓词上串联容量求和。
-                super::reflow::reusable(self.history.iter(), cols).then_some(0usize)
-            } else {
-                super::reflow::reuse_growth(self.history.iter(), cols)
-            };
-            history.and_then(|bytes| {
-                super::reflow::reuse_growth(self.grid.iter(), cols).map(|grid| bytes.saturating_add(grid))
-            })
-        } else {
-            None
-        };
-        let reuse = added.map(|_| true);
+        let reuse = None;
         let scratch = if changed {
-            let indices = (self.history.len() + self.rows()) * std::mem::size_of::<grid::Row>();
+            let indices = (self.history.len() + self.rows()) * std::mem::size_of::<grid::StoredRow>();
             if reflowing {
-                let input = self.history.allocated_bytes().saturating_add(self.grid.allocated_bytes());
+                let input = self.history.decoded_bytes().saturating_add(self.grid.allocated_bytes());
                 let input_cells = input / std::mem::size_of::<grid::Cell>();
-                let possible = input_cells.saturating_mul(2) / cols + self.history.len() + self.rows() + 1;
-                let bounded = self.history.byte_limit() / grid::row_bytes(cols) + self.rows();
-                // 流式路径不再拼接逻辑长行；同步路径转移输入，UI 作业只读旧输入直到交换。
-                // 输出按保留容量计，索引与两个备用缓冲另留重叠余量。
-                if reuse == Some(true) {
-                    // 旧 cell 直接转移；只计增长差额，旧缓冲在 input 内，
-                    // 再留补屏幕空行、单行重新分配峰值以及索引的空间。
-                    let added = added.unwrap().min(bounded.saturating_mul(cols)) * std::mem::size_of::<grid::Cell>();
-                    input
-                        .saturating_add(added)
-                        .saturating_add((self.rows() + 1) * cols * std::mem::size_of::<grid::Cell>())
-                        .saturating_add(indices.saturating_mul(6))
-                } else {
-                    input
-                        .saturating_add(possible.min(bounded).saturating_add(1).saturating_mul(
-                            grid::retained_cols(cols) * std::mem::size_of::<grid::Cell>()
-                                + 6 * std::mem::size_of::<grid::Row>(),
-                        ))
-                        .saturating_add(indices.saturating_mul(4))
-                        .saturating_add(4 * grid::row_bytes(grid::retained_cols(cols)))
-                }
+                let possible = input_cells / cols.saturating_sub(1).max(1) + self.history.len() + self.rows() + 1;
+                // 同步和 UI 均逐行读取压缩源，只有当前/备用/屏幕行保留 Cell。
+                let retained = possible
+                    .min(self.history.limit().saturating_add(self.rows()))
+                    .min(self.history.byte_limit() / std::mem::size_of::<grid::StoredRow>() + self.rows());
+                let row = grid::row_bytes(grid::retained_cols(cols)) + std::mem::size_of::<grid::StoredRow>();
+                self.history
+                    .byte_limit()
+                    .min(retained.saturating_mul(row))
+                    .saturating_add(self.rows().saturating_mul(row))
+                    .saturating_add(
+                        retained.saturating_add(1).saturating_mul(6 * std::mem::size_of::<grid::StoredRow>()),
+                    )
+                    .saturating_add(8 * row + 64 * 1024)
             } else {
                 // 高度变化只需取走顶部行的索引；cell 所有权直接转移。
                 // 备用屏激活时被推入历史的是备用屏顶部行，光标位置取保存的主屏光标
@@ -107,9 +85,7 @@ impl Terminal {
         } else {
             0
         };
-        // 输入历史已持有容量票据；消费重排时将其移到 scratch，不能再次收取整份输入。
-        let scratch =
-            if changed && reflowing { scratch.saturating_sub(self.history.allocated_bytes()) } else { scratch };
+        // 同步路径移交压缩票据，UI 路径保留原拥有者；上式均另覆盖完整输出峰值。
         Ok(ResizePlan {
             cols,
             rows,
@@ -145,8 +121,8 @@ mod tests {
     fn contents(term: &Terminal) -> Vec<(Vec<grid::Cell>, bool)> {
         (0..term.history.len())
             .map(|i| term.history.get(i))
-            .chain((0..term.rows()).map(|i| &term.grid[i]))
-            .map(|row| (row.cells.clone(), row.wrapped))
+            .chain((0..term.rows()).map(|i| crate::term::RowView::from(&term.grid[i])))
+            .map(|row| (row.cells.iter().collect(), row.wrapped))
             .collect()
     }
 
@@ -286,12 +262,13 @@ mod tests {
         let mut term = Terminal::new(80, 24);
         term.set_scrollback_limit(1_000_000);
         Parser::new().advance(&mut term, format!("{}\r\n", "x".repeat(79)).repeat(50000).as_bytes());
-        assert!(term.history.used_bytes() > 63 * MIB);
+        assert!(term.history.decoded_bytes() > 63 * MIB);
+        assert!(term.history.used_bytes() < 10 * MIB);
         let _other = pool.lease(Kind::Queue, 20 * MIB).unwrap();
         for cols in [79, 80, 81, 80, 79, 80] {
             let plan = term.prepare_resize(cols, 24).unwrap();
-            assert!(plan.reuse == Some(true));
-            assert!(pool.snapshot().kinds[6] < 90 * MIB);
+            assert!(plan.reuse.is_none());
+            assert!(pool.snapshot().kinds[6] < 100 * MIB);
             term.commit_resize(plan);
             assert_eq!(term.cols(), cols);
             assert_eq!(pool.snapshot().kinds[6], 0);
@@ -307,7 +284,8 @@ mod tests {
         term.set_scrollback_limit(1_000_000);
         term.set_history_byte_limit(8 * MIB);
         Parser::new().advance(&mut term, &vec![b'x'; 500_000]);
-        assert!(term.history.used_bytes() > 7 * MIB);
+        assert!(term.history.decoded_bytes() > 7 * MIB);
+        assert!(term.history.used_bytes() < 2 * MIB);
         let hold = pool.lease(Kind::Queue, 2 * MIB).unwrap();
         let plan = term.prepare_resize(33, 24).unwrap();
         assert!(plan.reuse.is_none());

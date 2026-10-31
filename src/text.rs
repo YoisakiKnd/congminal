@@ -1,12 +1,12 @@
 //! 终端文本到稳定格子坐标的映射，搜索和链接共用同一套软换行/组合符规则。
 use crate::{
     selection::Point,
-    term::{Flags, Row, Terminal},
+    term::{Flags, RowView, Terminal},
 };
 
 #[cfg(test)] // 保留独立的逐格语义参照，生产链接检测借用基础字符/附加符号。
-pub fn cell_text(term: &Terminal, row: &Row, col: usize) -> String {
-    let cell = &row.cells[col];
+pub fn cell_text(term: &Terminal, row: RowView<'_>, col: usize) -> String {
+    let cell = &row.cell(col);
     if cell.flags.contains(Flags::WIDE_SPACER) {
         return String::new();
     }
@@ -19,9 +19,9 @@ pub fn cell_text(term: &Terminal, row: &Row, col: usize) -> String {
     text
 }
 
-pub fn row_end(term: &Terminal, id: u64, row: &Row) -> usize {
+pub fn row_end(term: &Terminal, id: u64, row: RowView<'_>) -> usize {
     if row.wrapped {
-        let gap = row.cells.last().is_some_and(|c| *c == Default::default())
+        let gap = row.cells.last().is_some_and(|c| c == Default::default())
             && term
                 .row_by_id(id + 1)
                 .and_then(|next| next.cells.first())
@@ -60,7 +60,7 @@ impl Cursor {
             self.end = None;
             return Some(Token::Boundary { soft });
         }
-        let cell = &row.cells[self.point.col];
+        let cell = &row.cell(self.point.col);
         if cell.flags.contains(Flags::WIDE_SPACER) {
             self.point.col += 1;
             return Some(Token::Skip);

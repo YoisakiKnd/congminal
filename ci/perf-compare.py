@@ -13,11 +13,11 @@ UNITS = {
     "alloc_bytes_per_mib_parsed": "bytes/MiB",
     "allocs_per_frame": "allocs/frame", "alloc_bytes_per_frame": "bytes/frame",
     **dict.fromkeys(("parse_ascii_scroll", "parse_ascii_noscroll", "parse_ascii_2027", "parse_sgr", "parse_cjk"), "MiB/s"),
-    **dict.fromkeys(("frame_full", "frame_one_row", "frame_scroll_1line_growing", "frame_scroll_1line_full", "frame_unchanged"), "us/frame"),
+    **dict.fromkeys(("frame_full", "frame_one_row", "frame_scroll_1line_growing", "frame_scroll_1line_full", "frame_unchanged", "frame_scrollback_view"), "us/frame"),
 }
 
 
-def read(path):
+def read(path, legacy=False):
     text = Path(path).read_text(encoding="utf-8")
     if "test perf_bench::benchmarks ... ok" not in text or "test result: ok" not in text:
         raise ValueError(f"{path}: 缺少基准测试通过的记录")
@@ -36,19 +36,21 @@ def read(path):
         if not math.isfinite(value) or value < 0 or (UNITS[name] in ("MiB/s", "us/frame", "pixels") and value == 0):
             raise ValueError(f"{path}: 非法数值：{line}")
         result[name] = value
+    if legacy and "frame_scrollback_view" not in result:
+        result["frame_scrollback_view"] = None
     if result.keys() != UNITS.keys():
         raise ValueError(f"{path}: 缺少指标 {UNITS.keys() - result.keys()}")
     return result
 
 
-def summarize(paths):
-    runs = [read(path) for path in paths]
+def summarize(paths, legacy=False):
+    runs = [read(path, legacy=legacy) for path in paths]
     medians = {}
     failed = False
     for name, unit in UNITS.items():
         values = [run[name] for run in runs]
         if all(value is None for value in values):
-            print(f"{name} skipped (alloc-count disabled)")
+            print(f"{name} skipped (alloc-count disabled)" if name.startswith("alloc") else f"{name} skipped (not recorded)")
             medians[name] = None
             continue
         if any(value is None for value in values):
@@ -71,9 +73,12 @@ def main():
     current, failed = summarize(args.logs)
     if args.baseline:
         print("baseline:")
-        old, unstable = summarize(args.baseline)
+        old, unstable = summarize(args.baseline, legacy=True)
         failed |= unstable
         for name, unit in UNITS.items():
+            if name == "frame_scrollback_view" and old[name] is None:
+                print(f"{name}: no previous sample")
+                continue
             if current[name] is None or old[name] is None:
                 if current[name] != old[name]:
                     raise ValueError(f"{name}: 前后 alloc-count 配置不一致")

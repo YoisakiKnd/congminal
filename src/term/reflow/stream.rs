@@ -1,6 +1,6 @@
 //! 不拼接整条逻辑长行；输入行消费后立即转移/回收，最多保留两个备用缓冲。
 use super::{CursorPos, Reflowed, is_blank};
-use crate::term::grid::{Cell, Flags, Row, retained_cols, row_bytes};
+use crate::term::grid::{Cell, Flags, Row, RowView, StoredRow, retained_cols, row_bytes};
 use std::collections::VecDeque;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -17,33 +17,40 @@ enum Phase {
 
 /// 只读源由调用方持有；作业不保留引用，事件之间仍可绘制/查询旧终端。
 pub(in crate::term) trait Source {
-    fn row(&self, index: usize) -> &Row;
+    fn row(&self, index: usize) -> RowView<'_>;
 }
 
 enum Input {
     Owned(VecDeque<Row>),
+    Packed(VecDeque<StoredRow>),
     View { first: usize, end: usize },
 }
 impl Input {
     fn len(&self) -> usize {
         match self {
             Self::Owned(rows) => rows.len(),
+            Self::Packed(rows) => rows.len(),
             Self::View { first, end } => end - first,
         }
     }
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    fn row<'a>(&'a self, index: usize, source: Option<&'a dyn Source>) -> &'a Row {
+    fn row<'a>(&'a self, index: usize, source: Option<&'a dyn Source>) -> RowView<'a> {
         assert!(index < self.len());
         match self {
-            Self::Owned(rows) => &rows[index],
+            Self::Owned(rows) => RowView::from(&rows[index]),
+            Self::Packed(rows) => rows[index].view(),
             Self::View { first, .. } => source.expect("只读重排源").row(first + index),
         }
     }
     fn discard_front(&mut self) -> Option<Row> {
         match self {
             Self::Owned(rows) => rows.pop_front(),
+            Self::Packed(rows) => {
+                drop(rows.pop_front());
+                None
+            }
             Self::View { first, end } => {
                 assert!(*first < *end);
                 *first += 1;
@@ -54,6 +61,10 @@ impl Input {
     fn discard_back(&mut self) -> Option<Row> {
         match self {
             Self::Owned(rows) => rows.pop_back(),
+            Self::Packed(rows) => {
+                drop(rows.pop_back());
+                None
+            }
             Self::View { first, end } => {
                 assert!(*first < *end);
                 *end -= 1;
@@ -64,9 +75,10 @@ impl Input {
     fn take_front(&mut self, source: Option<&dyn Source>) -> Row {
         match self {
             Self::Owned(rows) => rows.pop_front().unwrap(),
+            Self::Packed(rows) => rows.pop_front().unwrap().into_row(),
             Self::View { first, end } => {
                 assert!(*first < *end);
-                let row = source.expect("只读重排源").row(*first).clone();
+                let row = source.expect("只读重排源").row(*first).decode();
                 *first += 1;
                 row
             }
@@ -74,9 +86,41 @@ impl Input {
     }
 }
 
-pub(in crate::term) struct Stream {
+pub(in crate::term) trait Output {
+    fn store(row: Row) -> (Self, Option<Row>)
+    where
+        Self: Sized;
+    fn view(&self) -> RowView<'_>;
+    fn bytes(&self) -> usize;
+}
+impl Output for Row {
+    fn store(row: Row) -> (Self, Option<Row>) {
+        (row, None)
+    }
+    fn view(&self) -> RowView<'_> {
+        RowView::from(self)
+    }
+    fn bytes(&self) -> usize {
+        row_bytes(self.cells.capacity())
+    }
+}
+impl Output for StoredRow {
+    fn store(row: Row) -> (Self, Option<Row>) {
+        Self::encode(row)
+    }
+    fn view(&self) -> RowView<'_> {
+        self.view()
+    }
+    fn bytes(&self) -> usize {
+        self.bytes()
+    }
+}
+
+pub(in crate::term) struct Stream<R: Output = Row> {
     input: Input,
-    output: VecDeque<Row>,
+    output: VecDeque<R>,
+    compact_bytes: Option<usize>,
+    history_bytes: usize,
     spare: [Option<Vec<Cell>>; 2],
     current: Option<Row>,
     phase: Phase,
@@ -100,7 +144,7 @@ pub(in crate::term) struct Stream {
     col: usize,
 }
 
-impl Stream {
+impl<R: Output> Stream<R> {
     pub(super) fn new(
         rows: Vec<Row>,
         screen_start: usize,
@@ -115,6 +159,8 @@ impl Stream {
         Self {
             input: Input::Owned(rows.into()),
             output: VecDeque::with_capacity(capacity),
+            compact_bytes: None,
+            history_bytes: 0,
             spare: [None, None],
             current: None,
             phase: Phase::Trim,
@@ -167,7 +213,7 @@ impl Stream {
                     } else {
                         let row = self.input.row(self.input.len() - 1, source);
                         work += row.cells.len().max(1);
-                        if row.cells.iter().any(|cell| !is_blank(cell)) {
+                        if row.cells.iter().any(|cell| !is_blank(&cell)) {
                             self.phase = Phase::Analyze;
                         } else {
                             if let Some(row) = self.input.discard_back() {
@@ -317,22 +363,23 @@ impl Stream {
     }
 
     // 连续窄单元格整段复制；宽字符交给下面的双格路径处理，避免逐字符状态机开销。
-    fn copy_narrow(&mut self, work: &mut usize, budget: usize, source: Option<&dyn Source>) -> bool {
+    fn copy_narrow(&mut self, work: &mut usize, budget: usize, source_view: Option<&dyn Source>) -> bool {
         if self.remaining == 0 || self.col == self.cols {
             return false;
         }
         let keep = match self.front_keep {
             Some(keep) => keep,
             None => {
-                *work += self.input.row(0, source).cells.len().max(1);
-                let keep = self.keep(0, source);
+                *work += self.input.row(0, source_view).cells.len().max(1);
+                let keep = self.keep(0, source_view);
                 self.front_keep = Some(keep);
                 keep
             }
         };
         let count = (keep - self.front_col).min(self.cols - self.col).min(budget.max(1));
-        let source = &self.input.row(0, source).cells[self.front_col..self.front_col + count];
-        let count = source.iter().position(|cell| cell.flags.contains(Flags::WIDE)).unwrap_or(count);
+        let source_row = self.input.row(0, source_view);
+        let source = source_row.cells.iter().skip(self.front_col).take(count);
+        let count = source.take_while(|cell| !cell.flags.contains(Flags::WIDE)).count();
         if count == 0 {
             return false;
         }
@@ -345,7 +392,9 @@ impl Stream {
         {
             self.new_cursor = Some((absolute, self.col + offset - self.position));
         }
-        self.current.as_mut().unwrap().cells[self.col..self.col + count].copy_from_slice(&source[..count]);
+        source_row
+            .cells
+            .copy_into(self.front_col, &mut self.current.as_mut().unwrap().cells[self.col..self.col + count]);
         self.front_col += count;
         self.col += count;
         self.position += count;
@@ -371,10 +420,10 @@ impl Stream {
                         .then(|| self.input.row(index + 1, source))
                         .and_then(|next| next.cells.first())
                         .is_some_and(|c| c.flags.contains(Flags::WIDE))
-                        && row.cells.last().is_some_and(is_blank),
+                        && row.cells.last().is_some_and(|cell| is_blank(&cell)),
                 )
         } else {
-            row.cells.iter().rposition(|cell| !is_blank(cell)).map_or(0, |p| p + 1)
+            row.cells.iter().rposition(|cell| !is_blank(&cell)).map_or(0, |p| p + 1)
         }
     }
     fn pop_input(&mut self, source: Option<&dyn Source>) -> Row {
@@ -394,7 +443,7 @@ impl Stream {
                 }
             };
             if self.front_col < keep {
-                let cell = self.input.row(0, source).cells[self.front_col];
+                let cell = self.input.row(0, source).cell(self.front_col);
                 self.front_col += 1;
                 return Some(cell);
             }
@@ -433,18 +482,30 @@ impl Stream {
             self.recycle(row);
             return;
         }
-        if self.output.len() >= self.limit {
-            let old = self.output.pop_front().unwrap();
-            self.recycle(old);
+        let (stored, spare) = R::store(row);
+        if let Some(row) = spare {
+            self.recycle(row);
+        }
+        if self.compact_bytes.is_none() && self.output.len() >= self.limit {
+            self.output.pop_front();
             self.discarded += 1;
         }
         if self.output.len() == self.output.capacity() {
-            // 最后一轮按保留上限截断增长，避免索引翻倍后保留大量永远用不到的槽。
-            let capacity = self.output.capacity().saturating_mul(2).max(4).min(self.limit);
+            let capacity = self.output.capacity().saturating_mul(2).max(4).min(self.limit).max(self.output.len() + 1);
             self.output.reserve_exact(capacity - self.output.len());
             assert!(self.output.capacity() <= capacity);
         }
-        self.output.push_back(row);
+        self.output.push_back(stored);
+        if let Some(bytes) = self.compact_bytes {
+            if self.output.len() > self.screen_rows {
+                self.history_bytes += self.output[self.output.len() - self.screen_rows - 1].bytes();
+            }
+            while self.output.len() > self.screen_rows && (self.history_bytes > bytes || self.output.len() > self.limit)
+            {
+                self.history_bytes -= self.output.pop_front().unwrap().bytes();
+                self.discarded += 1;
+            }
+        }
     }
     fn next_line(&mut self) {
         self.phase = Phase::Analyze;
@@ -466,9 +527,10 @@ impl Stream {
         assert!(matches!(self.input, Input::View { .. }));
         let mut work = 0;
         while work < budget.max(1) {
-            let row = self.current.take().or_else(|| self.output.pop_front());
-            if let Some(row) = row {
+            if let Some(row) = self.current.take() {
                 work += row.cells.capacity().max(1);
+            } else if let Some(row) = self.output.pop_front() {
+                work += row.view().cells.len().max(1);
             } else if let Some(cells) = self.spare.iter_mut().find_map(Option::take) {
                 work += cells.capacity().max(1);
             } else {
@@ -477,10 +539,10 @@ impl Stream {
         }
         false
     }
-    pub(in crate::term) fn finish(mut self) -> Reflowed {
+    pub(in crate::term) fn finish(mut self) -> Reflowed<R> {
         while !self.step(16384) {}
         if self.output.is_empty() {
-            self.output.push_back(Row::new(self.cols));
+            self.output.push_back(R::store(Row::new(self.cols)).0);
         }
         let (row, col) = self.new_cursor.unwrap_or((self.absolute_output() - 1, 0));
         let row = row.saturating_sub(self.discarded);
@@ -491,6 +553,36 @@ impl Stream {
             pending_wrap: col >= self.cols,
             screen_top: self.new_screen.unwrap_or(self.discarded).saturating_sub(self.discarded).min(row),
         }
+    }
+}
+
+impl Stream<StoredRow> {
+    pub(in crate::term) fn compact_owned(
+        rows: Vec<StoredRow>,
+        screen: usize,
+        cursor: CursorPos,
+        cols: usize,
+        bytes: usize,
+        screen_rows: usize,
+        history_limit: usize,
+    ) -> Self {
+        let mut stream = Self::compact_borrowed(rows.len(), screen, cursor, cols, bytes, screen_rows, history_limit);
+        stream.input = Input::Packed(rows.into());
+        stream
+    }
+    pub(in crate::term) fn compact_borrowed(
+        count: usize,
+        screen: usize,
+        cursor: CursorPos,
+        cols: usize,
+        bytes: usize,
+        screen_rows: usize,
+        history_limit: usize,
+    ) -> Self {
+        let mut stream = Self::borrowed(count, screen, cursor, cols, bytes, screen_rows);
+        stream.limit = history_limit.min(bytes / std::mem::size_of::<StoredRow>()).saturating_add(screen_rows).max(1);
+        stream.compact_bytes = Some(bytes);
+        stream
     }
 }
 
@@ -512,7 +604,7 @@ mod tests {
             row.cells[31].flags = Flags::WIDE_SPACER;
         }
         rows.last_mut().unwrap().wrapped = false;
-        let mut stream = Stream::new(
+        let mut stream = Stream::<Row>::new(
             rows,
             count - 24,
             CursorPos { row: count - 1, col: 100, pending_wrap: false },
@@ -552,8 +644,8 @@ mod tests {
     fn borrowed_output_index_growth_stops_at_the_retention_limit() {
         struct View(Vec<Row>);
         impl Source for View {
-            fn row(&self, index: usize) -> &Row {
-                &self.0[index]
+            fn row(&self, index: usize) -> RowView<'_> {
+                RowView::from(&self.0[index])
             }
         }
         for (cols, history_rows, screen_rows) in [(1, 0, 1), (7, 10, 3), (33, 65, 8), (4096, 10, 3)] {
@@ -563,7 +655,7 @@ mod tests {
                 row.wrapped = true;
             }
             source.0.last_mut().unwrap().wrapped = false;
-            let mut stream = Stream::borrowed(
+            let mut stream = Stream::<Row>::borrowed(
                 200,
                 200 - screen_rows,
                 CursorPos { row: 199, col: 79, pending_wrap: false },
@@ -589,8 +681,14 @@ mod tests {
         }
         rows.last_mut().unwrap().wrapped = false;
         let original: HashSet<_> = rows.iter().map(|row| row.cells.as_ptr()).collect();
-        let mut stream =
-            Stream::new(rows, 4980, CursorPos { row: 4999, col: 64, pending_wrap: false }, 63, 64 * 1024 * 1024, 20);
+        let mut stream = Stream::<Row>::new(
+            rows,
+            4980,
+            CursorPos { row: 4999, col: 64, pending_wrap: false },
+            63,
+            64 * 1024 * 1024,
+            20,
+        );
         let mut steps = 0;
         while !stream.step(4096) {
             assert!(stream.spare.iter().filter(|slot| slot.is_some()).count() <= 2);
@@ -612,7 +710,8 @@ mod tests {
             row.wrapped = true;
         }
         rows.last_mut().unwrap().wrapped = false;
-        let mut stream = Stream::new(rows, 0, CursorPos { row: 0, col: 0, pending_wrap: false }, 1, 1024 * 1024, 10000);
+        let mut stream =
+            Stream::<Row>::new(rows, 0, CursorPos { row: 0, col: 0, pending_wrap: false }, 1, 1024 * 1024, 10000);
         // 屏幕本来有一万行，仍需保留光标后这一屏；输入长行会生成八十万行。
         while !stream.step(1024) {}
         let result = stream.finish();

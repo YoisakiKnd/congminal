@@ -168,20 +168,28 @@ fn sgr_underline_selects_virtual_placement_and_inherited_row_survives_scroll() {
         "\x1b_Ga=t,i=42,f=32,s=1,v=1,q=2;/wAA/w==\x1b\\\x1b_Ga=p,U=1,i=42,p=7,c=4,r=2,q=2\x1b\\\x1b[38;5;42;58;5;7m\u{10eeee}\u{305}\u{305}\u{305}\u{10eeee}\r\n\r\n",
     );
     let row = t.visible_row(0);
-    let point =
-        Placeholder::parse(row[0].fg, t.graphics.underline_color(row[0].marks).unwrap(), t.marks(row[0].marks), None);
+    let point = Placeholder::parse(
+        row.cell(0).fg,
+        t.graphics.underline_color(row.cell(0).marks).unwrap(),
+        t.marks(row.cell(0).marks),
+        None,
+    );
     // The first image row has moved into history. Text ownership, not a second cell grid, retains it.
     assert!(point.is_none());
     t.scroll_display(1);
     let row = t.visible_row(0);
-    let a =
-        Placeholder::parse(row[0].fg, t.graphics.underline_color(row[0].marks).unwrap(), t.marks(row[0].marks), None)
-            .unwrap();
+    let a = Placeholder::parse(
+        row.cell(0).fg,
+        t.graphics.underline_color(row.cell(0).marks).unwrap(),
+        t.marks(row.cell(0).marks),
+        None,
+    )
+    .unwrap();
     assert_eq!(a.placement, 7);
     let b = Placeholder::parse(
-        row[1].fg,
-        t.graphics.underline_color(row[1].marks).unwrap(),
-        t.marks(row[1].marks),
+        row.cell(1).fg,
+        t.graphics.underline_color(row.cell(1).marks).unwrap(),
+        t.marks(row.cell(1).marks),
         Some(a),
     )
     .unwrap();
@@ -217,7 +225,7 @@ fn real_ratatui_image_11_wire_reconstructs_exact_rgba_and_row_col_tiles() {
         let row = t.visible_row(y);
         let mut previous = None;
         for x in 0..16 {
-            let c = &row[x];
+            let c = &row.cell(x);
             assert_eq!(c.c, PLACEHOLDER);
             let point =
                 Placeholder::parse(c.fg, t.graphics.underline_color(c.marks).unwrap(), t.marks(c.marks), previous)

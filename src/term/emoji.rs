@@ -4,7 +4,7 @@
 //! shell 按单个字符算宽度，所以这些序列在屏幕上占的格子比一个 emoji 多（👨‍👩‍👧 占 6 格）。
 //! 格子保持不变（光标位置才能和 shell 对上），显示时把整个序列交给 emoji 字体合成一个字形，画在开头两格。
 
-use super::{Flags, Row, Terminal};
+use super::{Flags, RowView, Terminal};
 
 pub fn is_regional_indicator(c: char) -> bool {
     matches!(c, '\u{1F1E6}'..='\u{1F1FF}')
@@ -49,7 +49,13 @@ fn extends_chars(chars: impl DoubleEndedIterator<Item = char> + Clone, c: char) 
 
 /// 从 `col` 开始的 emoji 组合序列：(整个序列, 序列后面的第一列)。不是组合序列时返回 None。
 #[cfg(test)]
-pub fn sequence_at(term: &Terminal, row: &Row, col: usize, cols: usize) -> Option<(String, usize)> {
+pub fn sequence_at<'a>(
+    term: &Terminal,
+    row: impl Into<RowView<'a>>,
+    col: usize,
+    cols: usize,
+) -> Option<(String, usize)> {
+    let row = row.into();
     let mut sequence = String::with_capacity(workspace_bytes(cols));
     let end = sequence_into(term, row, col, cols, &mut sequence)?;
     Some((sequence, end))
@@ -61,15 +67,16 @@ pub(crate) fn workspace_bytes(cols: usize) -> usize {
 }
 
 /// 仅使用调用者已准入的容量；不足时返回None，不扩容。
-pub(crate) fn sequence_into(
+pub(crate) fn sequence_into<'a>(
     term: &Terminal,
-    row: &Row,
+    row: impl Into<RowView<'a>>,
     col: usize,
     cols: usize,
     sequence: &mut String,
 ) -> Option<usize> {
+    let row = row.into();
     sequence.clear();
-    let width = |col: usize| if row.cells[col].flags.contains(Flags::WIDE) { 2 } else { 1 };
+    let width = |col: usize| if row.cell(col).flags.contains(Flags::WIDE) { 2 } else { 1 };
     let cell = row.cells.get(col)?;
     // 大多数格子不可能是组合序列的开头，先排除
     let next_is_tone = row.cells.get(col + width(col)).is_some_and(|next| is_skin_tone(next.c));
@@ -78,7 +85,7 @@ pub(crate) fn sequence_into(
     }
     let mut end = col;
     loop {
-        let cell = &row.cells[end];
+        let cell = &row.cell(end);
         let marks = term.marks(cell.marks);
         let variation = cell.flags.contains(Flags::EMOJI) && !marks.starts_with('\u{FE0F}');
         let extra = cell.c.len_utf8() + marks.len() + if variation { 3 } else { 0 };

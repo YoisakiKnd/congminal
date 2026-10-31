@@ -9,7 +9,7 @@ pub(super) fn same(fast: &Terminal, slow: &Terminal) {
     for (a, b) in [(&fast.grid, &slow.grid), (&fast.alt_grid, &slow.alt_grid)] {
         assert_eq!((a.cols(), a.rows()), (b.cols(), b.rows()));
         for (a, b) in a.iter().zip(b.iter()) {
-            row_same(a, b);
+            row_same(a.into(), b.into());
         }
     }
     assert_eq!(fast.history.len(), slow.history.len());
@@ -53,13 +53,13 @@ pub(super) fn same(fast: &Terminal, slow: &Terminal) {
             break;
         }
     }
-    for a in fast.grid.iter().chain(fast.history.iter()) {
-        for c in &a.cells {
+    for a in fast.grid.iter().map(RowView::from).chain(fast.history.iter()) {
+        for c in a.cells.iter() {
             assert_eq!(fast.link_url(c.flags.link_id()), slow.link_url(c.flags.link_id()));
         }
     }
 }
-fn row_same(a: &Row, b: &Row) {
+fn row_same(a: RowView<'_>, b: RowView<'_>) {
     assert_eq!(a.wrapped, b.wrapped);
     assert_eq!(a.cells, b.cells);
 }

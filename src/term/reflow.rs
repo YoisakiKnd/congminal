@@ -6,11 +6,13 @@
 mod stream;
 pub(super) use stream::{Source, Stream};
 
-use super::grid::{Cell, Flags, Row, row_bytes};
+use super::grid::{Cell, Row};
+#[cfg(test)]
+use super::grid::{Flags, row_bytes};
 use std::collections::VecDeque;
 
-pub struct Reflowed {
-    pub rows: VecDeque<Row>,
+pub struct Reflowed<R = Row> {
+    pub rows: VecDeque<R>,
     pub discarded: usize,
     /// 光标在新行列表里的 (行, 列)
     pub cursor: (usize, usize),
@@ -34,6 +36,7 @@ pub fn reflow(rows: Vec<Row>, screen_start: usize, cursor: CursorPos, cols: usiz
     reflow_with_hint(rows, screen_start, cursor, cols, byte_limit, None)
 }
 
+#[cfg(test)]
 pub fn reuse_growth<'a>(mut rows: impl Iterator<Item = &'a Row>, cols: usize) -> Option<usize> {
     rows.try_fold(0usize, |added, row| {
         (!row.wrapped && row.cells.iter().skip(cols).all(is_blank))
@@ -41,10 +44,12 @@ pub fn reuse_growth<'a>(mut rows: impl Iterator<Item = &'a Row>, cols: usize) ->
     })
 }
 
+#[cfg(test)]
 pub fn reusable<'a>(mut rows: impl Iterator<Item = &'a Row>, cols: usize) -> bool {
     rows.all(|row| !row.wrapped && row.cells.iter().skip(cols).all(is_blank))
 }
 
+#[cfg(test)]
 pub fn reflow_with_hint(
     mut rows: Vec<Row>,
     screen_start: usize,
@@ -94,7 +99,7 @@ pub fn reflow_with_hint(
         };
     }
 
-    stream::Stream::new(rows, screen_start, cursor, cols, byte_limit, screen_rows).finish()
+    stream::Stream::<Row>::new(rows, screen_start, cursor, cols, byte_limit, screen_rows).finish()
 }
 
 // 测试原有有界索引语义；生产路径由流式引擎负责回收。
@@ -169,13 +174,13 @@ mod differential_tests {
     fn compare_hint(rows: &[Row], screen: usize, cursor: CursorPos, cols: usize, limit: usize, plain: &Reflowed) {
         struct Borrowed<'a>(&'a [Row]);
         impl Source for Borrowed<'_> {
-            fn row(&self, index: usize) -> &Row {
-                &self.0[index]
+            fn row(&self, index: usize) -> crate::term::RowView<'_> {
+                crate::term::RowView::from(&self.0[index])
             }
         }
         let source = Borrowed(rows);
         let mut borrowed =
-            Stream::borrowed(rows.len(), screen, cursor, cols, limit, rows.len().saturating_sub(screen).max(1));
+            Stream::<Row>::borrowed(rows.len(), screen, cursor, cols, limit, rows.len().saturating_sub(screen).max(1));
         while !borrowed.step_with(17, Some(&source)) {}
         let result = borrowed.finish();
         assert_eq!(
@@ -199,7 +204,7 @@ mod differential_tests {
         }
         // 绕开整体硬行捷径，直接验证步进内核及不同切分点的相同结果。
         for budget in [1, 17, 4096] {
-            let mut stream = stream::Stream::new(
+            let mut stream = stream::Stream::<Row>::new(
                 rows.to_vec(),
                 screen,
                 cursor,

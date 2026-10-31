@@ -290,15 +290,31 @@ fn benchmarks() {
     isolated(|| parse("parse_ascii_2027", ASCII, 16 * MIB, false, true));
     isolated(|| parse("parse_sgr", SGR, 64 * MIB, false, false));
     isolated(|| parse("parse_cjk", CJK, 64 * MIB, false, false));
-    for name in
-        ["frame_full", "frame_one_row", "frame_unchanged", "frame_scroll_1line_growing", "frame_scroll_1line_full"]
-    {
+    for name in [
+        "frame_full",
+        "frame_one_row",
+        "frame_unchanged",
+        "frame_scroll_1line_growing",
+        "frame_scroll_1line_full",
+        "frame_scrollback_view",
+    ] {
         isolated(|| {
             let mut scene = Scene::new();
             match name {
                 "frame_full" => frames(name, &mut scene, 1800, |s, _| s.renderer.invalidate()),
                 "frame_one_row" => frames(name, &mut scene, 25_000, Scene::change),
                 "frame_unchanged" => frames(name, &mut scene, 60_000, |_, _| {}),
+                "frame_scrollback_view" => {
+                    scene.parser.advance(&mut scene.term, b"\x1b[60;1H");
+                    while scene.term.history().len() < 10_000 {
+                        scene.parser.advance(&mut scene.term, ASCII);
+                    }
+                    scene.term.scroll_display(1000);
+                    frames(name, &mut scene, 600, |s, i| {
+                        s.term.scroll_display(if i.is_multiple_of(2) { 1 } else { -1 })
+                    });
+                    assert!((999..=1001).contains(&scene.term.display_offset()));
+                }
                 _ => {
                     scene.parser.advance(&mut scene.term, b"\x1b[60;1H");
                     if name == "frame_scroll_1line_full" {

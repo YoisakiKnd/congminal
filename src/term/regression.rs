@@ -7,7 +7,11 @@ fn snapshot(term: &mut Terminal) -> String {
     let response = term.take_response();
     let rows: Vec<_> = (0..term.history.len() + term.rows())
         .map(|i| {
-            let row = if i < term.history.len() { term.history.get(i) } else { &term.grid[i - term.history.len()] };
+            let row = if i < term.history.len() {
+                term.history.get(i)
+            } else {
+                super::RowView::from(&term.grid[i - term.history.len()])
+            };
             let cells: Vec<_> = row.cells.iter().map(|c| (c.c, c.fg, c.bg, c.flags, term.marks(c.marks))).collect();
             (cells, row.wrapped)
         })
@@ -97,7 +101,8 @@ fn widening_history_obeys_memory_budget_and_keeps_cursor() {
     parser.advance(&mut term, b"tail");
     term.resize(1000, 4);
     valid(&term);
-    assert!(term.history.len() <= grid::HISTORY_BYTES / grid::row_bytes(1000));
+    assert!(term.history.used_bytes() <= term.history.reserved_bytes());
+    assert!(term.history.reserved_bytes() <= grid::HISTORY_BYTES + 64 * 1024);
     let (row, col) = term.cursor_position();
     assert_eq!(col, 4);
     assert_eq!(term.grid[row].cells[..4].iter().map(|c| c.c).collect::<String>(), "tail");

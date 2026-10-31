@@ -4,7 +4,9 @@ use crate::config::{Colors, Config};
 use crate::font::{Fonts, Glyph, Pixels};
 use crate::hash::Fnv;
 use crate::selection::Point;
-use crate::term::{Cell, Color, CursorShape, Flags, Row, Terminal, char_width, compose_borrowed, emoji_sequence_into};
+use crate::term::{
+    Cell, Color, CursorShape, Flags, RowView, Terminal, char_width, compose_borrowed, emoji_sequence_into,
+};
 #[cfg(test)]
 use crate::ui::Bar;
 use crate::ui::{Decoration, DecorationKind};
@@ -679,7 +681,7 @@ impl Renderer {
     fn row_key(&self, term: &Terminal, row: usize, cursor: &Cursor, selection: Option<(Point, Point)>) -> u64 {
         let mut hasher = Fnv::default();
         let line = term.visible_row(row);
-        line.cells[..term.cols().min(line.cells.len())].hash(&mut hasher);
+        line.hash_cells(term.cols(), &mut hasher);
         // 历史长度只影响回看时的滚动条；放在行装饰指纹，不再让正常输出的整帧失效。
         if term.display_offset() != 0 {
             term.history().len().hash(&mut hasher);
@@ -734,7 +736,7 @@ impl Renderer {
             fb.fill_rect(x, y, (end - start) * self.fonts.cell_width, self.fonts.cell_height, color);
         };
         for col in 0..term.cols().min(line.cells.len()) {
-            let cell = &line[col];
+            let cell = &line.cell(col);
             if cell.flags.contains(Flags::WIDE_SPACER) {
                 continue;
             }
@@ -801,7 +803,7 @@ impl Renderer {
         let mut drawn_until = 0;
         let mut previous_image = None;
         for col in 0..cols.min(line.cells.len()) {
-            let cell = &line[col];
+            let cell = &line.cell(col);
             if self.graphics_cell(fb, term, cell, &mut previous_image, (row, col), clip) {
                 continue;
             }
@@ -956,7 +958,7 @@ impl Renderer {
 
     /// 这一行里要按连字画的格子：第几列换成哪个字形。
     /// 按"连续的 ASCII 符号和字母"分段（空格、粗细变化、光标处断开），每段交给字体做替换。
-    fn ligatures(&mut self, line: &Row, row: usize, cols: usize, cursor: &Cursor) {
+    fn ligatures(&mut self, line: RowView<'_>, row: usize, cols: usize, cursor: &Cursor) {
         self.work.ligatures.data.clear();
         self.work.word.data.clear();
         if !self.work.ligatures_ready {

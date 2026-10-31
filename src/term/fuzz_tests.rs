@@ -146,9 +146,9 @@ fn shrinking_the_height_while_the_alt_screen_is_active_reserves_the_pushed_rows(
         parser.advance(&mut term, format!("line {line} ........................................\r\n").as_bytes());
     }
     assert!(
-        term.history().used_bytes() + term.grid().allocated_bytes() > SYNC_REFLOW_LIMIT,
+        term.history().decoded_bytes() + term.grid().allocated_bytes() > SYNC_REFLOW_LIMIT,
         "历史要超过同步重排上限：{}",
-        term.history().used_bytes()
+        term.history().decoded_bytes()
     );
     // 进备用屏并把光标留在底部，然后只减高度（宽度不变）。
     parser.advance(&mut term, b"\x1b[?1049h\x1b[24;1Halt screen");

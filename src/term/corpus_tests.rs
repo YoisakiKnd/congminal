@@ -32,7 +32,7 @@ const CORPORA: [Corpus; 4] = [
 /// 把当前可见屏的文字收进缓冲区（只收可见行，避免为测试另开通道）。
 fn visible_text(term: &Terminal, out: &mut String) {
     for row in 0..term.rows() {
-        for cell in &term.visible_row(row).cells {
+        for cell in term.visible_row(row).cells.iter() {
             out.push(cell.c);
         }
         out.push('\n');
