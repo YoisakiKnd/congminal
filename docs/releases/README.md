@@ -10,4 +10,4 @@
 | [v0.1.1](v0.1.1.md) | GPL 许可与正式安装包 |
 | [v0.1.0](v0.1.0.md) | 首个正式版 |
 
-最新验证范围见 [v0.2.3 验收](../evaluations/v0.2.3/README.md)，旧评估与预览记录见 [历史归档](../archive/README.md)。
+最新验证范围见 [v0.2.4 验收](../evaluations/v0.2.4/README.md)，旧评估与预览记录见 [历史归档](../archive/README.md)。
