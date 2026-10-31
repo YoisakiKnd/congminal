@@ -732,7 +732,7 @@ pub(super) mod fixture_tests {
         let Pixels::Color(pixels) = &glyph.pixels else { unreachable!() };
         assert_eq!(pixels[0], 0xff7f0080);
         assert_eq!(pool.snapshot().kinds[10], pixels.capacity() * 4);
-        crate::font::cache_glyph(&mut fonts.indexed, (1, false), Some(glyph), 0);
+        crate::font::cache_glyph(&mut fonts.indexed, (1, false), Some(glyph), 0, fonts.cell_height);
         assert_eq!(pool.snapshot().kinds[10], 0);
         assert_eq!(pool.snapshot().kinds[11], 0);
         assert!(fonts.indexed_glyph(1, false).is_some());
@@ -755,6 +755,7 @@ pub(super) mod fixture_tests {
         fonts.clusters.insert(
             key,
             Cluster {
+                overflow: false,
                 text: "different".into(),
                 cells: 2,
                 glyph: Some(Glyph { left: 0, top: 0, width: 1, height: 1, pixels: Pixels::Alpha(vec![255]) }),

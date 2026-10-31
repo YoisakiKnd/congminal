@@ -256,8 +256,11 @@ fn frames(name: &str, scene: &mut Scene, frames: usize, mut prepare: impl FnMut(
         } else {
             assert!(damage.is_some(), "变化的帧必须产生 damage");
             if name == "frame_one_row" {
-                // 现有绘制器为字形越格保留上下邻行；只修改中间一行。
-                assert_eq!(damage.unwrap().height, 3 * scene.renderer.cell_size().1, "单行变化应包含上下邻行");
+                // 只修改中间一行；只有实际见过垂直溢出字形时才需要扩展邻行。
+                assert!(
+                    (scene.renderer.cell_size().1..=3 * scene.renderer.cell_size().1).contains(&damage.unwrap().height),
+                    "单行变化只在字形溢出时扩邻行"
+                );
             }
         }
         if i >= 64 {

@@ -61,6 +61,20 @@ pub struct Glyph {
     pub pixels: Pixels,
 }
 
+struct CachedGlyph {
+    glyph: Option<Glyph>,
+    overflow: bool,
+}
+fn glyph_overflow(glyph: &Glyph, height: usize) -> bool {
+    glyph.top < 0 || i64::from(glyph.top) + glyph.height as i64 > height as i64
+}
+fn ascii_index() -> crate::resources::Tracked<Vec<usize>> {
+    crate::resources::Tracked::new(
+        Vec::new(),
+        crate::resources::current().lease(crate::resources::Kind::CacheIndex, 0).unwrap(),
+    )
+}
+
 fn glyph_cost(glyph: &Option<Glyph>) -> usize {
     128 + glyph.as_ref().map_or(0, |glyph| match &glyph.pixels {
         Pixels::Alpha(pixels) => pixels.capacity(),
@@ -81,23 +95,25 @@ struct Cluster {
     text: String,
     cells: usize,
     glyph: Option<Glyph>,
+    overflow: bool,
 }
 struct Shape {
     text: String,
     changes: Vec<(usize, u16)>,
 }
 fn cache_glyph<K: Eq + std::hash::Hash + Copy>(
-    cache: &mut Cache<K, Option<Glyph>>,
+    cache: &mut Cache<K, CachedGlyph>,
     key: K,
     glyph: Option<GlyphBuild>,
     key_cost: usize,
+    height: usize,
 ) {
     if let Some(glyph) = glyph {
-        let value = glyph.map(Some);
-        let cost = glyph_cost(&value.data) + key_cost;
+        let value = glyph.map(|glyph| CachedGlyph { overflow: glyph_overflow(&glyph, height), glyph: Some(glyph) });
+        let cost = glyph_cost(&value.glyph) + key_cost;
         cache.insert_tracked(key, value, cost);
     } else {
-        cache.insert(key, None, 128 + key_cost);
+        cache.insert(key, CachedGlyph { glyph: None, overflow: false }, 128 + key_cost);
     }
 }
 
@@ -109,14 +125,18 @@ pub struct Fonts {
     /// 需要告诉用户的问题（比如指定的字体找不到）
     warnings: Warnings,
     source: Source,
-    /// 键：(字符, 粗体, emoji 样式, 可以占几格)
-    cache: Cache<(char, bool, bool, bool, u8), Option<Glyph>>,
+    // 非拥有地址仅指向 cache 条目；任何 cache 写入/清空前必须清空此索引。
+    ascii: crate::resources::Tracked<Vec<usize>>,
+    ascii_attempted: bool,
+    overflow: bool,
+    /// 键：(字符, 粗体, 斜体, emoji 样式, 可以占几格)
+    cache: Cache<(char, bool, bool, bool, u8), CachedGlyph>,
     /// 组合字符（重音符号等）的字形，键：(字符, 粗体, 基础字符占几格)
-    marks: Cache<(char, bool, u8), Option<Glyph>>,
+    marks: Cache<(char, bool, u8), CachedGlyph>,
     /// 连字替换的结果（[常规, 粗体]），键：一段文字，值：(第几个字, 换成的字形编号)
     shapes: [Cache<u64, Shape>; 2],
     /// 按字形编号取的主字体字形（连字替换出来的），键：(字形编号, 粗体)
-    indexed: Cache<(u16, bool), Option<Glyph>>,
+    indexed: Cache<(u16, bool), CachedGlyph>,
     /// emoji 组合序列合成的字形，键：(整个序列, 占几格)
     clusters: Cache<u64, Cluster>,
 }
@@ -184,6 +204,10 @@ enum Fallback {
 
 impl Fonts {
     pub fn clear_caches(&mut self) {
+        drop(std::mem::take(&mut self.ascii.data));
+        self.ascii.memory.resize(0).unwrap();
+        self.ascii_attempted = false;
+        self.overflow = false;
         self.cache.clear();
         self.marks.clear();
         self.indexed.clear();
@@ -193,7 +217,8 @@ impl Fonts {
         }
     }
     pub fn cache_bytes(&self) -> usize {
-        self.cache.used_bytes()
+        self.ascii.memory.bytes()
+            + self.cache.used_bytes()
             + self.marks.used_bytes()
             + self.indexed.used_bytes()
             + self.clusters.used_bytes()
@@ -289,6 +314,9 @@ impl Fonts {
             description: metadata::Text::Static("内置 Terminus 点阵字体"),
             warnings,
             source: Source::Bitmap { top: (cell_height as i32 - regular.height as i32) / 2, regular, bold },
+            ascii: ascii_index(),
+            ascii_attempted: false,
+            overflow: false,
             cache: Cache::new(16 * 1024 * 1024, 8192),
             marks: Cache::new(4 * 1024 * 1024, 2048),
             shapes: [Cache::new(1024 * 1024, 2048), Cache::new(1024 * 1024, 2048)],
@@ -380,6 +408,9 @@ impl Fonts {
                 }),
                 memory,
             )),
+            ascii: ascii_index(),
+            ascii_attempted: false,
+            overflow: false,
             cache: Cache::new(16 * 1024 * 1024, 8192),
             marks: Cache::new(4 * 1024 * 1024, 2048),
             shapes: [Cache::new(1024 * 1024, 2048), Cache::new(1024 * 1024, 2048)],
@@ -391,8 +422,20 @@ impl Fonts {
     /// `emoji`：这个字要求彩色 emoji 样式（后面跟了 U+FE0F）。
     /// `cells`：可以占几格。字形在这么宽的范围里水平居中，彩色字形还会按它限制大小。
     pub fn glyph(&mut self, c: char, bold: bool, italic: bool, emoji: bool, cells: usize) -> Option<&Glyph> {
+        let index = (c.is_ascii() && !emoji && cells == 1)
+            .then_some(c as usize * 4 + usize::from(bold) * 2 + usize::from(italic));
+        if let Some(index) = index
+            && let Some(&address) = self.ascii.get(index)
+            && address != 0
+        {
+            return self.glyph_at(address);
+        }
         let key = (c, bold, italic, emoji, cells as u8);
-        if !self.cache.contains_key(&key) {
+        let address = if let Some(value) = self.cache.get(&key) {
+            value as *const CachedGlyph as usize
+        } else {
+            // HashMap 可在插入、淘汰、重分配时移动条目；先清地址，再进行任何写操作。
+            self.ascii.data.fill(0);
             let glyph = match &mut self.source {
                 Source::Bitmap { regular, bold: bold_font, top } => {
                     let mut glyph = bitmap_glyph(if bold { bold_font } else { regular }, c, *top);
@@ -406,9 +449,44 @@ impl Fonts {
                 }
                 Source::Outline(outline) => outline.data.glyph(c, bold, italic, emoji, cells * self.cell_width),
             };
-            cache_glyph(&mut self.cache, key, glyph, 0);
+            cache_glyph(&mut self.cache, key, glyph, 0, self.cell_height);
+            self.cache.get(&key)? as *const CachedGlyph as usize
+        };
+        if let Some(index) = index {
+            if !self.ascii_attempted {
+                self.ascii_attempted = true;
+                if self.ascii.reserve_capacity(128 * 4).is_some() {
+                    self.ascii.data.resize(128 * 4, 0);
+                }
+            }
+            if let Some(slot) = self.ascii.data.get_mut(index) {
+                *slot = address;
+            }
         }
-        self.cache.get(&key).and_then(Option::as_ref)
+        self.glyph_at(address)
+    }
+
+    fn glyph_at(&mut self, address: usize) -> Option<&Glyph> {
+        // 地址来自当前 cache；唯一写入口在写前清空 ascii，clear_caches 则先释放 ascii。
+        // 返回借用绑定 &mut Fonts，调用方持有字形期间不能修改缓存；移动 Fonts 不移动 HashMap 的堆条目。
+        let entry = unsafe { &*(address as *const CachedGlyph) };
+        self.overflow |= entry.overflow;
+        entry.glyph.as_ref()
+    }
+    pub(crate) fn has_vertical_overflow(&self) -> bool {
+        self.overflow
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject_overflow_glyph(&mut self, c: char) {
+        self.ascii.data.fill(0);
+        let height = self.cell_height + 2;
+        let memory = self.cache.owner().lease(crate::resources::Kind::FontRaster, height).unwrap();
+        let glyph = crate::resources::Tracked::new(
+            Glyph { left: 0, top: -1, width: 1, height, pixels: Pixels::Alpha(vec![255; height]) },
+            memory,
+        );
+        cache_glyph(&mut self.cache, (c, false, false, false, 1), Some(glyph), 0, self.cell_height);
     }
 
     /// 字体里是否有这个字的字形（主字体、后备字体都算）。界面图标据此决定要不要回退成 ASCII；
@@ -514,9 +592,11 @@ impl Fonts {
                 }
                 Source::Bitmap { .. } => None,
             };
-            cache_glyph(&mut self.indexed, key, glyph, 0);
+            cache_glyph(&mut self.indexed, key, glyph, 0, self.cell_height);
         }
-        self.indexed.get(&key).and_then(Option::as_ref)
+        let entry = self.indexed.get(&key)?;
+        self.overflow |= entry.overflow;
+        entry.glyph.as_ref()
     }
 
     /// emoji 组合序列（👨‍👩‍👧、🇨🇳、👍🏽、1️⃣……）合成的一个字形。`cells`：占几格。
@@ -537,18 +617,25 @@ impl Fonts {
             };
             let value = if let Some(mut glyph) = glyph {
                 glyph.memory.resize(glyph.memory.bytes() + sequence.len()).ok()?;
-                glyph.map(|glyph| Cluster { text: sequence.to_string(), cells, glyph: Some(glyph) })
+                glyph.map(|glyph| Cluster {
+                    overflow: glyph_overflow(&glyph, self.cell_height),
+                    text: sequence.to_string(),
+                    cells,
+                    glyph: Some(glyph),
+                })
             } else {
                 let memory = self.clusters.owner().lease(crate::resources::Kind::FontOutline, sequence.len()).ok()?;
-                crate::resources::Tracked::new(Cluster { text: sequence.to_string(), cells, glyph: None }, memory)
+                crate::resources::Tracked::new(
+                    Cluster { text: sequence.to_string(), cells, glyph: None, overflow: false },
+                    memory,
+                )
             };
             let cost = glyph_cost(&value.glyph) + 2 * sequence.len();
             self.clusters.insert_tracked(key, value, cost);
         }
-        self.clusters
-            .get(&key)
-            .filter(|entry| entry.text == sequence && entry.cells == cells)
-            .and_then(|entry| entry.glyph.as_ref())
+        let entry = self.clusters.get(&key).filter(|entry| entry.text == sequence && entry.cells == cells)?;
+        self.overflow |= entry.overflow;
+        entry.glyph.as_ref()
     }
 
     /// 叠在基础字符上的组合字符（比如 U+0301 重音符号）。`cells`：基础字符占几格。
@@ -563,9 +650,11 @@ impl Fonts {
                 }
                 Source::Outline(outline) => outline.data.mark_glyph(c, bold, cells * self.cell_width, self.cell_width),
             };
-            cache_glyph(&mut self.marks, key, glyph, 0);
+            cache_glyph(&mut self.marks, key, glyph, 0, self.cell_height);
         }
-        self.marks.get(&key).and_then(Option::as_ref)
+        let entry = self.marks.get(&key)?;
+        self.overflow |= entry.overflow;
+        entry.glyph.as_ref()
     }
 }
 
@@ -1199,5 +1288,63 @@ mod tests {
             }
             std::fs::write(out, ppm).unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod optimization_tests {
+    use super::*;
+    use crate::resources::{Budget, Kind, Scope};
+    #[test]
+    fn ascii_addresses_invalidate_on_eviction_clear_and_reclaim_their_credit() {
+        let pool = Budget::root(512 * 1024 * 1024, 256 * 1024 * 1024).unwrap();
+        let _scope = Scope::enter(pool.clone());
+        let initial = pool.snapshot().used;
+        {
+            let config = crate::config::Config::default();
+            let mut fonts = Fonts::load(&config.font, 1.0, false);
+            fonts.cache = Cache::new(16 * 1024 * 1024, 1);
+            for _ in 0..16 {
+                assert!(fonts.glyph('a', false, false, false, 1).is_some());
+                assert_ne!(fonts.ascii[b'a' as usize * 4], 0);
+                assert!(fonts.glyph('b', false, false, false, 1).is_some());
+                assert_eq!(fonts.ascii[b'a' as usize * 4], 0);
+                assert_eq!(fonts.cached_glyphs(), 1);
+            }
+            assert_eq!(fonts.ascii.memory.bytes(), 128 * 4 * std::mem::size_of::<usize>());
+            fonts.clear_caches();
+            assert_eq!(fonts.ascii.memory.bytes(), 0);
+            assert_eq!(fonts.cache_bytes(), 0);
+            assert!(fonts.glyph('a', true, true, false, 1).is_some());
+            assert_ne!(fonts.ascii[b'a' as usize * 4 + 3], 0);
+        }
+        assert_eq!(pool.snapshot().used, initial);
+    }
+
+    #[test]
+    fn denied_ascii_index_keeps_the_admitted_glyph_and_does_not_retry_on_hits() {
+        let pool = Budget::root(512 * 1024 * 1024, 256 * 1024 * 1024).unwrap();
+        let _scope = Scope::enter(pool.clone());
+        let config = crate::config::Config::default();
+        let mut fonts = Fonts::load(&config.font, 1.0, false);
+        let regular = psf::Font::parse(TERMINUS_16).unwrap();
+        let bold = psf::Font::parse(TERMINUS_BOLD_16).unwrap();
+        fonts.cell_width = regular.width;
+        fonts.cell_height = regular.height;
+        fonts.source = Source::Bitmap { regular, bold, top: 0 };
+        fonts.ascii_attempted = true;
+        let base = pool.snapshot().used;
+        assert!(fonts.glyph('a', false, false, false, 1).is_some());
+        let cost = pool.snapshot().used - base;
+        fonts.clear_caches();
+        let hold = pool.lease(Kind::Canvas, pool.snapshot().limit - pool.snapshot().used - cost).unwrap();
+        let denied = pool.snapshot().denied;
+        assert!(fonts.glyph('a', false, false, false, 1).is_some());
+        assert!(fonts.ascii.is_empty());
+        assert!(pool.snapshot().denied > denied);
+        let denied = pool.snapshot().denied;
+        assert!(fonts.glyph('a', false, false, false, 1).is_some());
+        assert_eq!(pool.snapshot().denied, denied);
+        drop(hold);
     }
 }

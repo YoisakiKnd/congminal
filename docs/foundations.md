@@ -81,7 +81,7 @@ python3 ci/perf-compare.py run-1.log run-2.log run-3.log
 
 200×60 网格、1 KiB 输入块；ASCII 滚动/不滚动、SGR、CJK 输入各 64 MiB，2027 为 16 MiB，每个解析场景先运行完整输入预热。ASCII 每行 100 字符加 CRLF，不滚动场景每 59 行归位并断言历史为空；滚动场景断言历史填满 10000 行。
 
-绘制使用默认字体、2.0 缩放和满屏彩色 ASCII，各场景独立创建并预热 64 帧。full/one_row/unchanged/scroll_growing/scroll_full 分别测量 1800/25000/60000/3000/3000 帧的平均 draw 微秒数；准备输入不计时。one_row 交替修改中间一格，当前实现 damage 为三行；unchanged 断言没有 damage；两个 scroll 场景分别断言历史未满和已满。不同字体/机器不能直接比较。
+绘制使用默认字体、2.0 缩放和满屏彩色 ASCII，各场景独立创建并预热 64 帧。full/one_row/unchanged/scroll_growing/scroll_full 分别测量 1800/25000/60000/3000/3000 帧的平均 draw 微秒数；准备输入不计时。one_row 交替修改中间一格，无垂直溢出字形时只画一行，有溢出时保守扩展到三行；unchanged 断言没有 damage；两个 scroll 场景分别断言历史未满和已满。不同字体/机器不能直接比较。
 
 `history_bytes_10k` 为写入 10000 行后的 `history().used_bytes()`，其中 9941 行留在历史、59 行仍在屏幕，包含 Row 元数据和 cell 容量，不含索引闲置容量、块余量或 RSS。结构大小用 `size_of::<Cell>()` 和 `size_of::<Row>()` 输出。
 
@@ -97,3 +97,11 @@ bash ci/rss-sample.sh target/release/congminal target/evaluations/rss-run
 ```
 
 RSS 脚本需要原生图形会话。独立配置输出顺序数字及 16 MiB 文本，开始门控前采样 rss_start，生成器完成时采样 rss_end，之后等待三秒再以 200 ms 间隔采样五次取 rss_idle 中位数，同时报告 rss_peak。结束标记仅表示生产者写完，不证明终端已排空队列。采样仅含终端主进程；退出后零值不参与。正常和异常路径清理自己启动的进程树及临时目录；原始输出留在 target/evaluations，不纳入版本控制。
+
+## 渲染滚动与字形索引
+
+在底部视图、完整滚动区、没有图片放置和滚动条、画布尺寸不变时，使用顶行 line_id 的正向差值平移整块像素及行指纹；顶部与新尾行重新绘制，Damage 覆盖整个平移画布。历史长度不再进入全帧键；历史视图的滚动条几何仍进入行装饰键，变化时整屏绘制。图片 revision、字体缓存 epoch 和显示偏移变化仍强制重画。
+
+字形光栅缓存记录垂直溢出，Fonts 保守记录清缓存以来是否见过溢出；首次在局部重画中发现溢出会立即完整重画，避免旧像素。清缓存同步清除此状态，并推进共享缓存 epoch，其他窗格的旧视图下次绘制也会失效。
+
+ASCII 单格字形使用 128×2×2 的非拥有地址表，Kind::CacheIndex 按真实 Vec 容量预留（64 位目标 4096 B）；拒绝时保留已准入字形并退回哈希查找。地址只指向主缓存条目，所有主缓存插入/淘汰前清空表，清缓存先销毁索引再归还额度。CachedGlyph/Cluster 新增的溢出字段由现有 CacheIndex 桶容量公式 sizeof(V) 自动覆盖；像素的 FontRaster 等票据不变。画布平移、颜色并行计算与背景合并不创建像素副本或额外 Lease。

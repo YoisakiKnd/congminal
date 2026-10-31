@@ -490,6 +490,10 @@ impl Terminal {
         }
     }
 
+    pub(crate) fn full_scroll_region(&self) -> bool {
+        self.scroll_top == 0 && self.scroll_bottom + 1 == self.rows()
+    }
+
     pub fn modes(&self) -> &Modes {
         &self.modes
     }

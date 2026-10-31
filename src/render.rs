@@ -124,6 +124,8 @@ pub struct Renderer {
     work: work::Work,
     /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
     last_frame: u64,
+    last_top: Option<u64>,
+    cache_epoch: u64,
     ui: crate::ui::State,
     /// 命令行标记：在提示行左侧画一条结果色条（成功绿、失败红、中断黄）
     command_marks: bool,
@@ -135,11 +137,12 @@ pub struct Renderer {
 pub struct ViewState {
     rows: crate::resources::Tracked<Vec<u64>>,
     frame: u64,
+    top: Option<u64>,
     ui: crate::ui::State,
 }
 impl Default for ViewState {
     fn default() -> Self {
-        Self { rows: work::buffer(), frame: 0, ui: crate::ui::State::default() }
+        Self { rows: work::buffer(), frame: 0, top: None, ui: crate::ui::State::default() }
     }
 }
 
@@ -249,6 +252,8 @@ fn hash<T: Hash>(value: &T) -> u64 {
 impl Renderer {
     pub fn reclaim_caches(&mut self) {
         self.fonts.clear_caches();
+        self.cache_epoch = self.cache_epoch.wrapping_add(1);
+        self.last_top = None;
         work::release(&mut self.last_rows);
         self.work.release();
         self.ui.release();
@@ -268,6 +273,8 @@ impl Renderer {
             last_rows: work::buffer(),
             work: work::Work::default(),
             last_frame: 0,
+            last_top: None,
+            cache_epoch: 0,
             ui: crate::ui::State::default(),
             command_marks: config.command_marks,
             icons: std::collections::HashMap::new(),
@@ -283,6 +290,7 @@ impl Renderer {
     pub fn swap_view(&mut self, view: &mut ViewState) {
         std::mem::swap(&mut self.last_rows, &mut view.rows);
         std::mem::swap(&mut self.last_frame, &mut view.frame);
+        std::mem::swap(&mut self.last_top, &mut view.top);
         std::mem::swap(&mut self.ui, &mut view.ui);
     }
     pub fn chrome(&mut self, frame: &mut Framebuffer, bounds: [usize; 4], text: &str, selected: bool) {
@@ -491,6 +499,7 @@ impl Renderer {
     /// 下次整屏重画（比如窗口被遮挡后重新露出来，屏幕上的内容已经不可信了）
     pub fn invalidate(&mut self) {
         self.last_rows.data.clear();
+        self.last_top = None;
     }
 
     /// 画一帧。只重画和上一帧不一样的行，返回变化的区域；什么都没变时返回 None。
@@ -542,7 +551,9 @@ impl Renderer {
             rows,
             cols,
             term.display_offset(),
-            term.history().len(),
+            term.full_scroll_region(),
+            term.text_stamp().0,
+            (self.generation, self.cache_epoch),
             default_bg,
             term.graphics.revision,
         ));
@@ -556,13 +567,44 @@ impl Renderer {
         }
         // 旧/新指纹逐项比较，无需额外changed/dirty数组；笔画越格时仍重画相邻行。
         // 指纹申请失败则不分配地整屏重画，不能把新像素配上旧指纹而误跳过下一帧。
-        let full = !indexed || frame_key != self.last_frame || self.last_rows.len() != rows;
+        let mut full = !indexed || frame_key != self.last_frame || self.last_rows.len() != rows;
+        let top_line = term.line_id(0);
+        let mut shifted = false;
+        if !full
+            && let Some(old) = self.last_top
+            && top_line != old
+        {
+            let shift = top_line.checked_sub(old).and_then(|k| usize::try_from(k).ok());
+            let fits = fb.width >= cols.saturating_mul(self.fonts.cell_width).saturating_add(2 * self.padding)
+                && fb.height >= rows.saturating_mul(self.fonts.cell_height).saturating_add(2 * self.padding);
+            if at_bottom
+                && term.full_scroll_region()
+                && term.graphics.placements().next().is_none()
+                && fits
+                && let Some(k) = shift.filter(|&k| k > 0 && k < rows)
+            {
+                let dy = k * self.fonts.cell_height;
+                fb.pixels.copy_within(dy * fb.width..fb.height * fb.width, 0);
+                self.last_rows.data.copy_within(k..rows, 0);
+                // 上边距不能保留被丢弃行的笔画；新露出的尾部也必须重画。
+                self.last_rows.data[0] = self.work.rows[0] ^ 1;
+                for r in rows - k..rows {
+                    self.last_rows.data[r] = self.work.rows[r] ^ 1;
+                }
+                shifted = true;
+            } else {
+                full = true;
+            }
+        }
         if !full && self.work.rows.data == self.last_rows.data {
             return None;
         }
+        // 回看时滚动条横跨所有行，避免局部清背景擦掉它；静止帧仍已在上面直接返回。
+        full |= !at_bottom;
+        let had_overflow = self.fonts.has_vertical_overflow();
         self.work.text(cols);
 
-        let mut damage = Damage::default();
+        let mut damage = if shifted { Damage::new(0, fb.height) } else { Damage::default() };
         let mut row = 0;
         while row < rows {
             if !self.dirty_row(row, rows, full) {
@@ -588,7 +630,8 @@ impl Renderer {
                 self.graphics_row(fb, term, r, true, (top, bottom));
             }
             // 有些字形会伸出格子一两个像素（比如 Maple 的竖线），上下相邻的行也要画，但只画到这一段里面
-            for r in start.saturating_sub(1)..(end + 1).min(rows) {
+            let neighbors = usize::from(self.fonts.has_vertical_overflow());
+            for r in start.saturating_sub(neighbors)..(end + neighbors).min(rows) {
                 let decorations = (start..end).contains(&r);
                 self.draw_glyphs(fb, term, r, &cursor, selection, default_fg, default_bg, (top, bottom), decorations);
             }
@@ -613,14 +656,23 @@ impl Renderer {
         if indexed {
             std::mem::swap(&mut self.last_rows, &mut self.work.rows);
             self.last_frame = frame_key;
+            self.last_top = Some(top_line);
         } else {
             self.last_rows.data.clear();
             self.last_frame = 0;
+            self.last_top = None;
+        }
+        if !full && !had_overflow && self.fonts.has_vertical_overflow() {
+            // 新溢出字形首次出现时原脏区还没扩邻行，立即补一帧完整绘制清掉边界旧像素。
+            self.invalidate();
+            return self.draw(term, preedit, selection, focused, cursor_on, fb);
         }
         (damage.height > 0).then_some(damage)
     }
     fn dirty_row(&self, row: usize, rows: usize, full: bool) -> bool {
-        full || (row.saturating_sub(1)..(row + 2).min(rows)).any(|i| self.work.rows[i] != self.last_rows[i])
+        let neighbors = usize::from(self.fonts.has_vertical_overflow());
+        full || (row.saturating_sub(neighbors)..(row + 1 + neighbors).min(rows))
+            .any(|i| self.work.rows[i] != self.last_rows[i])
     }
 
     /// 一行的"指纹"：内容、光标、选区、输入法文字。指纹没变的行不用重画。
@@ -628,6 +680,10 @@ impl Renderer {
         let mut hasher = Fnv::default();
         let line = term.visible_row(row);
         line.cells[..term.cols().min(line.cells.len())].hash(&mut hasher);
+        // 历史长度只影响回看时的滚动条；放在行装饰指纹，不再让正常输出的整帧失效。
+        if term.display_offset() != 0 {
+            term.history().len().hash(&mut hasher);
+        }
         if cursor.visible && row == cursor.row {
             (cursor.col, cursor.shape, cursor.focused, cursor.preedit).hash(&mut hasher);
         }
@@ -650,8 +706,10 @@ impl Renderer {
                 (range, decoration.kind).hash(&mut hasher);
             }
         }
-        if row + 1 == term.rows() {
-            self.ui.bar().hash(&mut hasher);
+        if row + 1 == term.rows()
+            && let Some(bar) = self.ui.bar()
+        {
+            bar.hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -669,18 +727,33 @@ impl Renderer {
     ) {
         let line = term.visible_row(row);
         let id = term.line_id(row);
-        // 历史里的行可能是窗口变窄之前存进去的，比现在宽
+        // 合并同色且相邻的背景，宽字仍连同占位格一起绘制。
+        let mut run: Option<(usize, usize, u32)> = None;
+        let paint = |fb: &mut Framebuffer, (start, end, color): (usize, usize, u32)| {
+            let (x, y) = self.cell_origin(row, start);
+            fb.fill_rect(x, y, (end - start) * self.fonts.cell_width, self.fonts.cell_height, color);
+        };
         for col in 0..term.cols().min(line.cells.len()) {
             let cell = &line[col];
             if cell.flags.contains(Flags::WIDE_SPACER) {
-                continue; // 宽字符的背景由它左边的本体一起画
+                continue;
             }
             let (_, bg) =
                 self.colors(cell, cursor.blocks(row, col), selected(selection, id, col), default_fg, default_bg);
-            if bg != default_bg {
-                let (x, y) = self.cell_origin(row, col);
-                fb.fill_rect(x, y, self.cell_span(cell), self.fonts.cell_height, bg);
+            if let Some((start, end, color)) = run {
+                if bg != default_bg && color == bg && end == col {
+                    run = Some((start, col + self.cell_span(cell) / self.fonts.cell_width, color));
+                    continue;
+                }
+                paint(fb, (start, end, color));
+                run = None;
             }
+            if bg != default_bg {
+                run = Some((col, col + self.cell_span(cell) / self.fonts.cell_width, bg));
+            }
+        }
+        if let Some(run) = run {
+            paint(fb, run);
         }
         for decoration in &self.ui.decorations.data {
             if decoration.kind == DecorationKind::Link {
@@ -1156,26 +1229,25 @@ fn over(src: u32, dst: u32) -> u32 {
     let a = src >> 24;
     match a {
         0 => dst,
-        255 => src & 0xFFFFFF,
+        255 => src & 0xffffff,
         _ => {
-            let channel = |shift: u32| {
-                let s = (src >> shift) & 0xFF;
-                let d = (dst >> shift) & 0xFF;
-                (s + div255(d * (255 - a))).min(255) << shift
-            };
-            channel(16) | channel(8) | channel(0)
+            let rb = div255_rb((dst & 0x00ff00ff) * (255 - a)) + (src & 0x00ff00ff);
+            let g = ((src >> 8) & 255) + div255(((dst >> 8) & 255) * (255 - a));
+            ((rb >> 16).min(255) << 16) | (g.min(255) << 8) | (rb & 0xffff).min(255)
         }
     }
 }
+// 两个 16 位槽独立四舍五入；加权和最多 65025，偏置和修正不会串槽。
+fn div255_rb(value: u32) -> u32 {
+    let value = value + 0x00800080;
+    ((value + ((value >> 8) & 0x00ff00ff)) >> 8) & 0x00ff00ff
+}
 
-/// a/255 的 src 加上 (1 - a/255) 的 dst，逐个颜色通道计算
+/// a/255 的 src 加上 (1 - a/255) 的 dst，RB 两个通道并行。
 fn mix(src: u32, dst: u32, a: u32) -> u32 {
-    let channel = |shift: u32| {
-        let s = (src >> shift) & 0xFF;
-        let d = (dst >> shift) & 0xFF;
-        div255(s * a + d * (255 - a)) << shift
-    };
-    channel(16) | channel(8) | channel(0)
+    let rb = div255_rb((src & 0x00ff00ff) * a + (dst & 0x00ff00ff) * (255 - a));
+    let g = div255(((src >> 8) & 255) * a + ((dst >> 8) & 255) * (255 - a));
+    rb | (g << 8)
 }
 
 fn rgb(r: u8, g: u8, b: u8) -> u32 {
@@ -1713,5 +1785,242 @@ mod boundary_tests {
         let unfocused = hash(&frame.pixels);
         assert!(renderer.draw(&term, "", None, false, false, &mut frame).is_some());
         assert_ne!(hash(&frame.pixels), unfocused);
+    }
+}
+
+#[cfg(test)]
+mod optimization_tests {
+    use super::*;
+    use crate::{
+        resources::{Budget, Scope},
+        vt::Parser,
+    };
+
+    fn same_pixels(a: &Framebuffer, b: &Framebuffer) {
+        if let Some(at) = a.pixels.iter().zip(&b.pixels).position(|(a, b)| a != b) {
+            panic!("像素 ({},{}) 不一致", at % a.width, at / a.width);
+        }
+    }
+    fn draw_pair(
+        renderer: &mut Renderer,
+        reference: &mut Renderer,
+        term: &Terminal,
+        frame: &mut Framebuffer,
+        fresh: &mut Framebuffer,
+        old: &mut Framebuffer,
+        selection: Option<(Point, Point)>,
+    ) {
+        old.pixels.copy_from_slice(&frame.pixels);
+        let damage = renderer.draw(term, "", selection, true, true, frame);
+        reference.invalidate();
+        reference.draw(term, "", selection, true, true, fresh);
+        same_pixels(frame, fresh);
+        for y in 0..frame.height {
+            let range = y * frame.width..(y + 1) * frame.width;
+            if old.pixels[range.clone()] != frame.pixels[range] {
+                assert!(
+                    damage.is_some_and(|d| d.bands().iter().any(|b| b.y <= y && y < b.y + b.height)),
+                    "第 {y} 行未纳入 damage"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn translated_scroll_matches_full_for_rows_overlays_and_glyph_overflow() {
+        let pool = Budget::root(512 * 1024 * 1024, 256 * 1024 * 1024).unwrap();
+        let _scope = Scope::enter(pool.clone());
+        let initial = pool.snapshot().used;
+        for k in [1, 7] {
+            for limit in [4, 1000] {
+                for decorated in [false, true] {
+                    for overflow in [false, true] {
+                        let mut config = Config::default();
+                        config.command_marks = true;
+                        let (mut renderer, mut reference) = (Renderer::new(&config, 1.0), Renderer::new(&config, 1.0));
+                        let mut term = Terminal::new(24, 8);
+                        term.set_scrollback_limit(limit);
+                        let mut parser = Parser::new();
+                        for _ in 0..8 {
+                            parser.advance(&mut term, b"\x1b[8;1H\r\n");
+                        }
+                        for row in 0..8 {
+                            parser.advance(
+                                &mut term,
+                                format!("\x1b[{};1H\x1b[{}mrow{} 中 gy\x1b[0m", row + 1, 41 + row % 3, row).as_bytes(),
+                            );
+                        }
+                        parser.advance(
+                            &mut term,
+                            b"\x1b[2;1H\x1b]133;A\x07prompt\x1b]133;B\x07cmd\x1b]133;C\x07out\x1b]133;D;0\x07\x1b[8;1H",
+                        );
+                        let base = term.line_id(0);
+                        let selection =
+                            decorated.then_some((Point { line: base + 1, col: 1 }, Point { line: base + 5, col: 8 }));
+                        if decorated {
+                            let decorations = vec![
+                                Decoration {
+                                    range: (Point { line: base + 2, col: 1 }, Point { line: base + 5, col: 7 }),
+                                    kind: DecorationKind::Match,
+                                },
+                                Decoration {
+                                    range: (Point { line: base + 3, col: 2 }, Point { line: base + 3, col: 5 }),
+                                    kind: DecorationKind::Current,
+                                },
+                            ];
+                            let bar = Some(Bar::link("查找 status"));
+                            renderer.set_ui(decorations.clone(), bar.clone());
+                            reference.set_ui(decorations, bar);
+                        }
+                        if overflow {
+                            renderer.fonts.inject_overflow_glyph('~');
+                            reference.fonts.inject_overflow_glyph('~');
+                            parser.advance(&mut term, b"\x1b[4;3H~\x1b[8;1H");
+                        }
+                        let (w, h) = renderer.pixel_size(24, 8);
+                        let (mut frame, mut fresh, mut old) = (
+                            Framebuffer::new(w as usize, h as usize),
+                            Framebuffer::new(w as usize, h as usize),
+                            Framebuffer::new(w as usize, h as usize),
+                        );
+                        draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, selection);
+                        parser.advance(&mut term, format!("\x1b[{k}S\x1b[8;1Hnew 中").as_bytes());
+                        assert_eq!(term.line_id(0), base + k as u64);
+                        draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, selection);
+                    }
+                }
+            }
+        }
+        assert_eq!(pool.snapshot().used, initial);
+    }
+
+    #[test]
+    fn first_overflow_and_cache_reclaim_leave_no_stale_pixels() {
+        let config = Config::default();
+        let (mut renderer, mut reference) = (Renderer::new(&config, 1.0), Renderer::new(&config, 1.0));
+        let mut term = Terminal::new(16, 6);
+        let mut parser = Parser::new();
+        parser.advance(&mut term, b"first\r\nsecond\r\nthird\x1b[?25l");
+        let (w, h) = renderer.pixel_size(16, 6);
+        let (mut frame, mut fresh, mut old) = (
+            Framebuffer::new(w as usize, h as usize),
+            Framebuffer::new(w as usize, h as usize),
+            Framebuffer::new(w as usize, h as usize),
+        );
+        draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, None);
+        renderer.fonts.inject_overflow_glyph('~');
+        reference.fonts.inject_overflow_glyph('~');
+        parser.advance(&mut term, b"\x1b[3;2H~");
+        draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, None);
+        assert!(renderer.fonts.has_vertical_overflow());
+        renderer.reclaim_caches();
+        reference.reclaim_caches();
+        assert!(!renderer.fonts.has_vertical_overflow());
+        draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, None);
+    }
+
+    #[test]
+    fn unsafe_scroll_cases_and_smaller_canvases_match_full_redraw() {
+        for case in 0..5 {
+            let config = Config::default();
+            let (mut renderer, mut reference) = (Renderer::new(&config, 1.0), Renderer::new(&config, 1.0));
+            let mut term = Terminal::new(16, 6);
+            let mut parser = Parser::new();
+            for _ in 0..12 {
+                parser.advance(&mut term, "line 中\r\n".as_bytes());
+            }
+            if case == 0 {
+                parser.advance(&mut term, b"\x1b[1;4r");
+            }
+            if case == 1 {
+                term.scroll_display(2);
+            }
+            if case == 2 {
+                let (cw, ch) = renderer.cell_size();
+                term.set_cell_pixels(cw as u32, ch as u32);
+                parser.advance(&mut term, b"\x1b[3;2H\x1b_Ga=T,f=32,s=1,v=1,i=7;AAAA/w==\x1b\\");
+                assert!(term.graphics.placements().next().is_some());
+            }
+            let (w, h) = renderer.pixel_size(16, 6);
+            let (w, h) = if case == 3 { (w - 3, h - 3) } else { (w, h) };
+            let (mut frame, mut fresh, mut old) = (
+                Framebuffer::new(w as usize, h as usize),
+                Framebuffer::new(w as usize, h as usize),
+                Framebuffer::new(w as usize, h as usize),
+            );
+            draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, None);
+            parser.advance(&mut term, if case == 4 { b"\x1b[6S" } else { b"\x1b[S" });
+            draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, None);
+            term.graphics.revision = term.graphics.revision.wrapping_add(1);
+            draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, None);
+        }
+    }
+
+    #[test]
+    fn scroll_identity_moves_with_each_view_and_reclaim_invalidates_all_views() {
+        let config = Config::default();
+        let (mut renderer, mut reference) = (Renderer::new(&config, 1.0), Renderer::new(&config, 1.0));
+        let mut terms = [Terminal::new(16, 6), Terminal::new(16, 6)];
+        let mut parsers = [Parser::new(), Parser::new()];
+        let mut views = [ViewState::default(), ViewState::default()];
+        let (w, h) = renderer.pixel_size(16, 6);
+        let mut frames = [Framebuffer::new(w as usize, h as usize), Framebuffer::new(w as usize, h as usize)];
+        let (mut fresh, mut old) = (Framebuffer::new(w as usize, h as usize), Framebuffer::new(w as usize, h as usize));
+        for i in 0..2 {
+            for _ in 0..7 + i * 9 {
+                parsers[i].advance(&mut terms[i], b"\x1b[6;1H\r\n");
+            }
+            for row in 1..=6 {
+                parsers[i].advance(&mut terms[i], format!("\x1b[{row};1Hpane{i} row{row} 中").as_bytes());
+            }
+            renderer.swap_view(&mut views[i]);
+            draw_pair(&mut renderer, &mut reference, &terms[i], &mut frames[i], &mut fresh, &mut old, None);
+            renderer.swap_view(&mut views[i]);
+            assert_eq!(views[i].top, Some(terms[i].line_id(0)));
+        }
+        for i in [0, 1, 0, 1] {
+            parsers[i].advance(&mut terms[i], b"\x1b[S");
+            renderer.swap_view(&mut views[i]);
+            draw_pair(&mut renderer, &mut reference, &terms[i], &mut frames[i], &mut fresh, &mut old, None);
+            renderer.swap_view(&mut views[i]);
+        }
+        renderer.reclaim_caches();
+        reference.reclaim_caches();
+        for i in 0..2 {
+            renderer.swap_view(&mut views[i]);
+            draw_pair(&mut renderer, &mut reference, &terms[i], &mut frames[i], &mut fresh, &mut old, None);
+            renderer.swap_view(&mut views[i]);
+        }
+    }
+
+    #[test]
+    fn parallel_color_channels_match_scalar_on_a_million_inputs() {
+        let scalar_mix = |src: u32, dst: u32, a: u32| {
+            let channel = |s: u32| div255(((src >> s) & 255) * a + ((dst >> s) & 255) * (255 - a)) << s;
+            channel(16) | channel(8) | channel(0)
+        };
+        let scalar_over = |src: u32, dst: u32| match src >> 24 {
+            0 => dst,
+            255 => src & 0xffffff,
+            a => {
+                let channel = |s: u32| (((src >> s) & 255) + div255(((dst >> s) & 255) * (255 - a))).min(255) << s;
+                channel(16) | channel(8) | channel(0)
+            }
+        };
+        for low in 0..=65025 {
+            assert_eq!(div255_rb((low << 16) | (65025 - low)), (div255(low) << 16) | div255(65025 - low));
+        }
+        let mut seed = 0x12345678u32;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            seed
+        };
+        for _ in 0..1_000_000 {
+            let (src, dst, a) = (next(), next(), next() & 255);
+            assert_eq!(mix(src, dst, a), scalar_mix(src, dst, a));
+            assert_eq!(over(src, dst), scalar_over(src, dst));
+        }
     }
 }
