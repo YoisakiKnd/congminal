@@ -377,3 +377,39 @@ fn grapheme_boundary_checks_do_not_allocate() {
         assert_eq!(count.finish(), (0, 0));
     });
 }
+
+#[test]
+fn pty_read_path_allocations() {
+    // 独立衡量读缓冲到输出队列的交接，不混入系统 I/O、后台线程或解析开销。
+    for size in [crate::pty::flow::READ_CHUNK, 4095] {
+        isolated(|| {
+            let queue =
+                std::sync::Arc::new(crate::pty::flow::ByteQueue::output(crate::pty::flow::OUTPUT_LIMIT).unwrap());
+            let mut buffer = crate::pty::flow::ReadBuffer::new(Some(queue.clone()));
+            buffer.bytes_mut().fill(b'x');
+            for _ in 0..64 {
+                assert!(queue.push(buffer.packet(size)));
+                queue.recycle(black_box(queue.pop().unwrap()));
+            }
+            let count = Counter::start();
+            for _ in 0..4096 {
+                assert!(queue.push(buffer.packet(size)));
+                let data = queue.pop().unwrap();
+                assert_eq!(data.len(), size);
+                queue.recycle(black_box(data));
+            }
+            let (allocs, _) = count.finish();
+            #[cfg(feature = "alloc-count")]
+            assert_eq!(allocs, 0, "预热后持续读取不能重新分配缓冲");
+            allocation_metric(
+                if size == crate::pty::flow::READ_CHUNK {
+                    "allocs_per_mib_pty_read_16k"
+                } else {
+                    "allocs_per_mib_pty_read_4k"
+                },
+                allocs as f64 / (4096 * size) as f64 * MIB as f64,
+                "allocs/MiB",
+            );
+        });
+    }
+}

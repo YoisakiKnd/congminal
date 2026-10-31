@@ -9,7 +9,7 @@
 
 #[cfg(test)]
 use super::Command;
-use super::flow::{AsyncWriter, ByteQueue, INPUT_LIMIT, READ_CHUNK};
+use super::flow::{AsyncWriter, ByteQueue, INPUT_LIMIT, ReadBuffer};
 use super::{CommandSource, EventSink, PtyEvent};
 use std::ffi::{CStr, CString, c_char, c_int, c_ulong, c_ushort};
 use std::fs::File;
@@ -126,7 +126,26 @@ impl Pty {
     pub fn respond(&mut self, data: &[u8]) -> io::Result<()> {
         self.write(data)
     }
+    #[cfg(test)]
     pub fn spawn(command: &impl CommandSource, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+        Self::spawn_inner(command, cols, rows, sink, None)
+    }
+    pub(crate) fn spawn_with_output(
+        command: &impl CommandSource,
+        cols: u16,
+        rows: u16,
+        sink: EventSink,
+        output: Arc<ByteQueue>,
+    ) -> io::Result<Pty> {
+        Self::spawn_inner(command, cols, rows, sink, Some(output))
+    }
+    fn spawn_inner(
+        command: &impl CommandSource,
+        cols: u16,
+        rows: u16,
+        sink: EventSink,
+        output_queue: Option<Arc<ByteQueue>>,
+    ) -> io::Result<Pty> {
         let command = command.view();
         let pool = crate::resources::current();
         let waiter = crate::runtime::prepare("pty-waiter", &pool)?;
@@ -296,16 +315,16 @@ impl Pty {
         })?);
         let mut reader = pty.master.try_clone()?;
         reader_permit.spawn(move || {
-            let mut buf = vec![0u8; READ_CHUNK];
+            let mut buf = ReadBuffer::new(output_queue);
             let mut poll_fds = [
                 PollFd { fd: reader.as_raw_fd(), events: 1, revents: 0 },
                 PollFd { fd: exit_read.as_raw_fd(), events: 1, revents: 0 },
             ];
             loop {
-                match reader.read(&mut buf) {
+                match reader.read(buf.bytes_mut()) {
                     Ok(0) => break,
                     Ok(n) => {
-                        if !sink(PtyEvent::Data(buf[..n].to_vec())) {
+                        if !sink(PtyEvent::Data(buf.packet(n))) {
                             break;
                         }
                     }
@@ -520,7 +539,7 @@ mod tests {
 
     #[test]
     fn real_pty_preserves_output_across_backpressure_and_exit() {
-        let output = Arc::new(ByteQueue::new(OUTPUT_LIMIT));
+        let output = Arc::new(ByteQueue::output(OUTPUT_LIMIT).unwrap());
         let pending = output.clone();
         let (send, receive) = mpsc::channel();
         let sink: EventSink = Arc::new(move |event| match event {
@@ -532,7 +551,7 @@ mod tests {
             args: vec!["-c".into(), "head -c 2097152 /dev/zero; printf tail; exit 7".into()],
             ..Default::default()
         };
-        let _pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+        let _pty = Pty::spawn_with_output(&command, 80, 24, sink, output.clone()).unwrap();
         // 先让读线程触及背压，再开始消费。整个测试仍有明确超时。
         std::thread::sleep(Duration::from_millis(30));
         let until = Instant::now() + Duration::from_secs(10);
@@ -540,7 +559,8 @@ mod tests {
         let mut bytes = Vec::new();
         while Instant::now() < until {
             while let Some(data) = output.pop() {
-                bytes.extend(data);
+                bytes.extend_from_slice(&data);
+                output.recycle(data);
             }
             while let Ok(event) = receive.try_recv() {
                 match event {

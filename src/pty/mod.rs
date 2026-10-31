@@ -4,7 +4,7 @@
 //! - Windows：ConPTY（`CreatePseudoConsole`，需要 Windows 10 1809 及以上）
 //!
 //! 两边对外的接口一致：
-//! - `Pty::spawn(command, cols, rows, sink)` 启动 shell，后台线程把读到的输出通过 `sink` 回调送出
+//! - `Pty::spawn_with_output(command, cols, rows, sink, output)` 共享输出缓冲池并启动 shell，后台线程把读到的输出通过 `sink` 回调送出
 //! - `Pty::write` 把键盘输入写给 shell
 //! - `Pty::resize` 通知 shell 窗口尺寸变了
 

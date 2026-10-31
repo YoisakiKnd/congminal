@@ -180,7 +180,7 @@ impl Session {
         };
         // 网格准入先于任何子进程创建；失败时已有队列也随作用域回收。
         let mut term = Terminal::try_new(cols, rows).map_err(|e| format!("终端网格准入失败：{e}"))?;
-        let pty = Pty::spawn(&command, term.cols() as u16, term.rows() as u16, sink)
+        let pty = Pty::spawn_with_output(&command, term.cols() as u16, term.rows() as u16, sink, output.clone())
             .map_err(|e| format!("启动 shell 失败：{e}"))?;
         term.set_default_cursor_shape(config.cursor_shape);
         term.set_palette(crate::palette_from(config));
@@ -369,7 +369,10 @@ impl Session {
             self.output_bytes = self.output_bytes.saturating_add((end - *offset) as u64);
             *offset = end;
             if end == data.len() {
-                self.pending_output = None;
+                let (data, _) = self.pending_output.take().unwrap();
+                if let Some(output) = &self.output {
+                    output.recycle(data);
+                }
             }
             let response = self.term.take_response();
             if !response.is_empty()
@@ -423,7 +426,7 @@ impl Session {
     pub fn resource_bytes(&self) -> (usize, usize) {
         (
             self.pty.as_ref().map_or(0, Pty::pending_bytes),
-            self.output.as_ref().map_or(0, |output| output.bytes())
+            self.output.as_ref().map_or(0, |output| output.retained_bytes())
                 + self.pending_output.as_ref().map_or(0, |(data, _)| data.capacity()),
         )
     }

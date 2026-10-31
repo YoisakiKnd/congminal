@@ -9,7 +9,7 @@
 
 #[cfg(test)]
 use super::Command;
-use super::flow::{AsyncWriter, ByteQueue, INPUT_LIMIT, READ_CHUNK};
+use super::flow::{AsyncWriter, ByteQueue, INPUT_LIMIT, ReadBuffer};
 use super::{CommandSource, EventSink, PtyEvent};
 use std::ffi::c_void;
 use std::fs::File;
@@ -137,7 +137,26 @@ pub struct Pty {
 }
 
 impl Pty {
+    #[cfg(test)]
     pub fn spawn(command: &impl CommandSource, cols: u16, rows: u16, sink: EventSink) -> io::Result<Pty> {
+        Self::spawn_inner(command, cols, rows, sink, None)
+    }
+    pub(crate) fn spawn_with_output(
+        command: &impl CommandSource,
+        cols: u16,
+        rows: u16,
+        sink: EventSink,
+        output: Arc<ByteQueue>,
+    ) -> io::Result<Pty> {
+        Self::spawn_inner(command, cols, rows, sink, Some(output))
+    }
+    fn spawn_inner(
+        command: &impl CommandSource,
+        cols: u16,
+        rows: u16,
+        sink: EventSink,
+        output_queue: Option<Arc<ByteQueue>>,
+    ) -> io::Result<Pty> {
         let command = command.view();
         let pool = crate::resources::current();
         let reader_permit = crate::runtime::prepare("pty-reader", &pool)?;
@@ -237,11 +256,11 @@ impl Pty {
             let data_sink = sink.clone();
             let mut output = output;
             reader_permit.spawn(move || {
-                let mut buf = vec![0u8; READ_CHUNK];
+                let mut buf = ReadBuffer::new(output_queue);
                 let mut forward = true;
-                while let Ok(n @ 1..) = output.read(&mut buf) {
+                while let Ok(n @ 1..) = output.read(buf.bytes_mut()) {
                     if forward {
-                        forward = data_sink(PtyEvent::Data(buf[..n].to_vec()));
+                        forward = data_sink(PtyEvent::Data(buf.packet(n)));
                     }
                     // UI 关闭后继续排空 ConPTY 的关闭消息，避免 ClosePseudoConsole 等待读端。
                 }

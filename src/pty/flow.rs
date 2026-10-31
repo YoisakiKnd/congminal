@@ -10,10 +10,13 @@ pub const OUTPUT_LIMIT: usize = 1024 * 1024;
 pub const INPUT_LIMIT: usize = 8 * 1024 * 1024;
 pub const READ_CHUNK: usize = 16 * 1024;
 const MAX_CHUNKS: usize = 1024;
+const FREE_BUFFERS: usize = 4;
+const MIN_RECYCLE: usize = 2048;
 
 #[derive(Default)]
 struct State {
     chunks: VecDeque<Vec<u8>>,
+    free: [Option<Vec<u8>>; FREE_BUFFERS],
     bytes: usize,
     closed: bool,
     error: Option<(io::ErrorKind, String)>,
@@ -24,6 +27,7 @@ pub struct ByteQueue {
     changed: Condvar,
     limit: usize,
     max_chunk: usize,
+    reusable: bool,
     memory: Arc<crate::resources::Lease>,
 }
 
@@ -36,8 +40,8 @@ impl ByteQueue {
         Self::reserve(limit, limit, 0)
     }
     pub fn output(limit: usize) -> io::Result<Self> {
-        // 读线程缓冲、等待 push 的块及解析中的块同时存在；都计入容量预留。
-        Self::reserve(limit, READ_CHUNK.min(limit), 3 * READ_CHUNK)
+        // 读线程、等待 push、解析中的三块，另加四块空闲池；统一按最大容量预留。
+        Self::reserve(limit, READ_CHUNK.min(limit), (3 + FREE_BUFFERS) * READ_CHUNK)
     }
     fn reserve(limit: usize, max_chunk: usize, held: usize) -> io::Result<Self> {
         let bytes = limit
@@ -47,13 +51,53 @@ impl ByteQueue {
         let memory = Arc::new(
             crate::resources::current().lease(crate::resources::Kind::Queue, bytes).map_err(io::Error::other)?,
         );
-        Ok(Self { state: Mutex::new(State::default()), changed: Condvar::new(), limit, max_chunk, memory })
+        Ok(Self {
+            state: Mutex::new(State::default()),
+            changed: Condvar::new(),
+            limit,
+            max_chunk,
+            reusable: held != 0,
+            memory,
+        })
     }
     pub fn reservation(&self) -> Arc<crate::resources::Lease> {
         self.memory.clone()
     }
     pub fn session_reservation() -> usize {
-        INPUT_LIMIT + OUTPUT_LIMIT + 3 * READ_CHUNK + 4 * MAX_CHUNKS * std::mem::size_of::<Vec<u8>>()
+        INPUT_LIMIT + OUTPUT_LIMIT + (3 + FREE_BUFFERS) * READ_CHUNK + 4 * MAX_CHUNKS * std::mem::size_of::<Vec<u8>>()
+    }
+
+    // 先归还不合适的旧缓冲再分配；大小类合计最多四块，仍由队列整体票据保护。
+    fn read_buffer(&self, capacity: usize) -> Vec<u8> {
+        assert!(self.reusable && (MIN_RECYCLE..=READ_CHUNK).contains(&capacity) && capacity.is_power_of_two());
+        let mut state = self.state.lock().unwrap();
+        if let Some(slot) = state.free.iter_mut().find(|slot| slot.as_ref().is_some_and(|v| v.capacity() == capacity)) {
+            return slot.take().unwrap();
+        }
+        let evicted = if state.free.iter().all(Option::is_some) { state.free[0].take() } else { None };
+        drop(state);
+        drop(evicted);
+        Vec::with_capacity(capacity)
+    }
+
+    /// 解析完成后归还；小块仍按实际长度计费，不把交互式读取放大成 16 KiB。
+    pub fn recycle(&self, mut data: Vec<u8>) {
+        let capacity = data.capacity();
+        if !self.reusable || !(MIN_RECYCLE..=READ_CHUNK).contains(&capacity) || !capacity.is_power_of_two() {
+            return;
+        }
+        data.clear();
+        let mut state = self.state.lock().unwrap();
+        if !state.closed
+            && let Some(slot) = state.free.iter_mut().find(|slot| slot.is_none())
+        {
+            *slot = Some(data);
+        }
+    }
+
+    pub fn retained_bytes(&self) -> usize {
+        let state = self.state.lock().unwrap();
+        state.bytes + state.free.iter().flatten().map(Vec::capacity).sum::<usize>()
     }
 
     /// 仅供 PTY 读线程：队列满时停止读取，让操作系统向子进程施加背压。
@@ -141,8 +185,43 @@ impl ByteQueue {
         let mut state = self.state.lock().unwrap();
         state.closed = true;
         state.chunks.clear();
+        state.free = Default::default();
         state.bytes = 0;
         self.changed.notify_all();
+    }
+}
+
+/// 读线程拥有的初始化缓冲；数据先销毁，再释放保护池/预留的 Arc。
+pub(crate) struct ReadBuffer {
+    data: Vec<u8>,
+    pool: Option<Arc<ByteQueue>>,
+}
+impl ReadBuffer {
+    pub(crate) fn new(pool: Option<Arc<ByteQueue>>) -> Self {
+        let mut data = pool.as_ref().map_or_else(|| Vec::with_capacity(READ_CHUNK), |q| q.read_buffer(READ_CHUNK));
+        data.resize(READ_CHUNK, 0);
+        Self { data, pool }
+    }
+    pub(crate) fn bytes_mut(&mut self) -> &mut [u8] {
+        &mut self.data
+    }
+    pub(crate) fn packet(&mut self, len: usize) -> Vec<u8> {
+        assert!(len <= self.data.len());
+        let Some(pool) = &self.pool else {
+            return self.data[..len].to_vec();
+        };
+        if len < MIN_RECYCLE {
+            return self.data[..len].to_vec();
+        }
+        let mut data = pool.read_buffer(len.next_power_of_two());
+        if len > READ_CHUNK / 2 {
+            data.resize(READ_CHUNK, 0);
+            std::mem::swap(&mut data, &mut self.data);
+            data.truncate(len);
+        } else {
+            data.extend_from_slice(&self.data[..len]);
+        }
+        data
     }
 }
 
@@ -238,6 +317,99 @@ impl Drop for AsyncWriter {
 mod tests {
     use super::*;
     use std::sync::mpsc;
+    #[test]
+    fn output_pool_is_bounded_cleared_on_close_and_keeps_its_lease() {
+        let pool = crate::resources::Budget::new(2 * OUTPUT_LIMIT, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let queue = Arc::new(ByteQueue::output(OUTPUT_LIMIT).unwrap());
+        let buffers: [_; 5] = std::array::from_fn(|_| queue.read_buffer(READ_CHUNK));
+        for buffer in buffers {
+            queue.recycle(buffer);
+        }
+        assert_eq!(queue.retained_bytes(), FREE_BUFFERS * READ_CHUNK);
+        let buffer = queue.read_buffer(4096);
+        queue.recycle(buffer);
+        assert_eq!(queue.retained_bytes(), (FREE_BUFFERS - 1) * READ_CHUNK + 4096);
+        let buffer = queue.read_buffer(READ_CHUNK);
+        assert!(buffer.is_empty());
+        assert_eq!(queue.retained_bytes(), (FREE_BUFFERS - 2) * READ_CHUNK + 4096);
+        queue.recycle(buffer);
+        let reader = ReadBuffer::new(Some(queue.clone()));
+        queue.close();
+        assert_eq!(queue.retained_bytes(), 0);
+        queue.recycle(queue.read_buffer(READ_CHUNK));
+        assert_eq!(queue.retained_bytes(), 0, "关闭后的迟到缓冲不能重新入池");
+        drop(queue);
+        assert!(pool.snapshot().used > 0, "读线程仍拥有数据和整体票据");
+        drop(reader);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
+    #[test]
+    fn different_size_classes_survive_until_the_pool_is_full() {
+        let queue = ByteQueue::output(OUTPUT_LIMIT).unwrap();
+        let small = queue.read_buffer(2048);
+        let address = small.as_ptr();
+        queue.recycle(small);
+        queue.recycle(queue.read_buffer(4096));
+        assert_eq!(queue.retained_bytes(), 2048 + 4096);
+        let small = queue.read_buffer(2048);
+        assert_eq!(small.as_ptr(), address);
+        drop(small);
+    }
+
+    #[test]
+    fn read_packets_preserve_bytes_and_small_reads_keep_length_billing() {
+        let pool = crate::resources::Budget::new(2 * OUTPUT_LIMIT, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let queue = Arc::new(ByteQueue::output(OUTPUT_LIMIT).unwrap());
+        let mut reader = ReadBuffer::new(Some(queue.clone()));
+        for (i, size) in [2047, 2048, 4095, 4096, 8192, 8193, READ_CHUNK].into_iter().enumerate() {
+            reader.bytes_mut()[..size].fill(i as u8);
+            let packet = reader.packet(size);
+            assert_eq!(packet.len(), size);
+            assert!(packet.iter().all(|&b| b == i as u8));
+            assert!(packet.capacity() < 2 * size);
+            queue.recycle(packet);
+        }
+        for _ in 0..128 {
+            reader.bytes_mut()[..32].fill(b'x');
+            let packet = reader.packet(32);
+            assert_eq!(packet.capacity(), 32);
+            assert!(queue.push(packet));
+        }
+        assert_eq!(queue.bytes(), 128 * 32, "小读取不能在 64 块时就触发 1 MiB 背压");
+        while let Some(packet) = queue.pop() {
+            assert_eq!(packet, [b'x'; 32]);
+            queue.recycle(packet);
+        }
+        drop(reader);
+        drop(queue);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
+    #[test]
+    fn session_preflight_covers_both_queues_and_refusal_returns_no_credit_early() {
+        let required = ByteQueue::session_reservation();
+        let pool = crate::resources::Budget::new(required - 1, 0);
+        let scope = crate::resources::Scope::enter(pool.clone());
+        let input = ByteQueue::input(INPUT_LIMIT).unwrap();
+        let before = pool.snapshot().used;
+        assert!(ByteQueue::output(OUTPUT_LIMIT).is_err());
+        assert_eq!(pool.snapshot().used, before);
+        drop(input);
+        assert_eq!(pool.snapshot().used, 0);
+        drop(scope);
+        let pool = crate::resources::Budget::new(required, 0);
+        let _scope = crate::resources::Scope::enter(pool.clone());
+        let input = ByteQueue::input(INPUT_LIMIT).unwrap();
+        let output = ByteQueue::output(OUTPUT_LIMIT).unwrap();
+        assert_eq!(pool.snapshot().used, required);
+        drop(output);
+        drop(input);
+        assert_eq!(pool.snapshot().used, 0);
+    }
+
     #[test]
     fn failed_control_publication_closes_queue_and_running_writer_retires() {
         let pool = crate::resources::Budget::new(16 * 1024 * 1024, 0);
