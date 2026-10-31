@@ -44,3 +44,9 @@ Windows 附带固定版本的微软 ConPTY。APC 应答中的 ESC 通过 Win32 U
 本机 macOS arm64 的 release 模式测量：30×24 格侧栏，预热 10 次后重复绘制 1000 次（含页签、按钮、说明和 120 个样本的图表），总计 39.10 ms，平均 39.1 μs/次；跟踪额度从 546607 字节到 546607 字节，工作线程从 0 到 0。命令：`cargo test --release --bin congminal render::chrome::tests::warmed_sidebar_paint_cost_and_resource_stability -- --exact --ignored --nocapture --test-threads=1`。
 
 该数字只覆盖软件绘制，不代表整个窗口、系统合成、完整堆分配或 RSS。主程序 908 项、辅助程序 21 项本机回归通过；Windows GNU、Linux GNU 完成全目标交叉编译检查，不能替代两平台的原生窗口验收。
+
+## macOS 原生像素提交
+
+原生快照按实际像素容量和拥有者元数据申请共享 Canvas 额度，由 CGDataProvider 回调在系统释放图像时归还，来源帧不会与异步使用的像素混用。差分范围最多八段，超过时合并；macOS 最多保留 16 个局部图层、局部像素合计最多 4 MiB，超限或尺寸变化回到完整底图。系统图层与 GPU 缓存尚非完整账本，不能把准入额度当作 RSS 上限。
+
+M4 本机相同万行 Neovim 4K 缓冲负载、前后各三轮诊断测量中，活动 CPU 中位数由单核 49.47% 到 21.80%，终端 RSS 采样峰值中位数由 270.86 MiB 到 194.69 MiB。修正标准 sRGB 与原生 BGRA 提交，并减少局部变化的整屏上传。同步绘制/提交 P95 从 2.89 ms 到 8.24 ms，未宣称延迟或 FPS 提升：此前数字不含后续 Core Animation 颜色转换。完整本机记录在 `target/evaluations/macos-presentation-optimization-20261031/`，不纳入历史版本证据，也不代表跨机器或外接 4K 实屏验收。

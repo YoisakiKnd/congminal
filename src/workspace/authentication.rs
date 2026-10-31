@@ -236,7 +236,7 @@ impl Workspace {
             self.authentication_error(error);
         }
         self.last_draw = Instant::now();
-        Some((&self.driver.framebuffer, Damage { y: 0, height: self.driver.framebuffer.height }))
+        Some((&self.driver.framebuffer, Damage::new(0, self.driver.framebuffer.height)))
     }
     pub(super) fn authentication_paint(&mut self) -> bool {
         let Some(overlay) = &mut self.authentication else { return false };

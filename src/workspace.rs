@@ -2908,7 +2908,7 @@ impl App for Workspace {
             }
             self.sftp_exit_paint(true);
             self.last_draw = Instant::now();
-            return Some((&self.driver.framebuffer, Damage { y: 0, height: self.driver.framebuffer.height }));
+            return Some((&self.driver.framebuffer, Damage::new(0, self.driver.framebuffer.height)));
         }
         #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if !self.enabled && self.authentication.is_some() {
@@ -2919,6 +2919,8 @@ impl App for Workspace {
         }
         let full = self.full;
         let chrome = self.chrome_dirty;
+        let mut regions = Damage::default();
+        let mut all = full || chrome;
         let mut top = self.height;
         let mut bottom = 0;
         if full {
@@ -2947,6 +2949,15 @@ impl App for Workspace {
                         self.frame.pixels[dst..dst + width].copy_from_slice(&source.pixels[src..src + width]);
                     }
                 }
+                if full {
+                    regions.add(rect.y + start, end.saturating_sub(start));
+                } else if let Some(damage) = damage {
+                    for band in damage.bands() {
+                        let top = band.y.min(rect.h).min(source.height);
+                        let bottom = band.y.saturating_add(band.height).min(rect.h).min(source.height);
+                        regions.add(rect.y + top, bottom.saturating_sub(top));
+                    }
+                }
                 top = top.min(rect.y + start);
                 bottom = bottom.max((rect.y + end).min(self.frame.height));
             }
@@ -2954,31 +2965,37 @@ impl App for Workspace {
         self.restore();
         if chrome || full {
             self.chrome();
+            all = true;
             top = 0;
             bottom = self.frame.height;
         }
         #[cfg(any(test, feature = "sftp"))] // auth-workspace
         if self.authentication_paint() {
+            all = true;
             top = 0;
             bottom = self.frame.height;
         }
         #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.transfer_review_paint() {
+            all = true;
             top = 0;
             bottom = self.frame.height;
         }
         #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.transfer_preparation_paint() {
+            all = true;
             top = 0;
             bottom = self.frame.height;
         }
         #[cfg(all(any(test, feature = "sftp"), any(target_os = "macos", target_os = "linux", windows)))]
         if self.transfer_paths_paint() {
+            all = true;
             top = 0;
             bottom = self.frame.height;
         }
         #[cfg(any(test, feature = "sftp"))]
         if self.sftp_exit_paint(false) {
+            all = true;
             top = 0;
             bottom = self.frame.height;
         }
@@ -2986,7 +3003,7 @@ impl App for Workspace {
         self.full = false;
         self.last_draw = Instant::now();
         // `then_some` 会先算出实参：bottom < top 时 `bottom - top` 会下溢，所以用惰性版本。
-        (bottom > top).then(|| (&self.frame, Damage { y: top, height: bottom - top }))
+        (bottom > top).then(|| (&self.frame, if all { Damage::new(top, bottom - top) } else { regions }))
     }
     fn take_title(&mut self) -> Option<String> {
         if !self.enabled

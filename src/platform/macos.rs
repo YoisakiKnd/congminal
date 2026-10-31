@@ -13,7 +13,7 @@
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::config::OptionAsAlt;
 use crate::input::{Key, Keypad, Mods};
-use crate::render::Framebuffer;
+use crate::render::{Damage, Framebuffer};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::ffi::{CStr, c_char, c_void};
@@ -85,17 +85,17 @@ unsafe extern "C" {
     static NSDefaultRunLoopMode: Id;
 }
 
-#[link(name = "CoreFoundation", kind = "framework")]
-unsafe extern "C" {
-    fn CFDataCreate(allocator: *const c_void, bytes: *const u8, length: isize) -> *const c_void;
-    fn CFRelease(object: *const c_void);
-}
-
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
-    fn CGColorSpaceCreateDeviceRGB() -> *mut c_void;
+    static kCGColorSpaceSRGB: *const c_void;
+    fn CGColorSpaceCreateWithName(name: *const c_void) -> *mut c_void;
     fn CGColorSpaceRelease(space: *mut c_void);
-    fn CGDataProviderCreateWithCFData(data: *const c_void) -> *mut c_void;
+    fn CGDataProviderCreateWithData(
+        info: *mut c_void,
+        data: *const c_void,
+        size: usize,
+        release: extern "C" fn(*mut c_void, *const c_void, usize),
+    ) -> *mut c_void;
     fn CGDataProviderRelease(provider: *mut c_void);
     fn CGImageCreate(
         width: usize,
@@ -125,6 +125,8 @@ macro_rules! msg {
 unsafe fn class(name: &CStr) -> Id {
     unsafe { objc_getClass(name.as_ptr()) }
 }
+
+mod presentation;
 
 unsafe fn nsstring(s: &str) -> Id {
     const UTF8: usize = 4;
@@ -259,6 +261,7 @@ pub struct Window {
     focused: bool,
     /// 已经设过的窗口 alpha，只在变化时才发消息。
     alpha: Option<f64>,
+    presentation: presentation::State,
 }
 
 /// 跨线程唤醒：往主线程的事件队列里塞一个自定义事件
@@ -319,6 +322,8 @@ impl Window {
             }
             msg![window, "setReleasedWhenClosed:", 0i8 => i8; ()];
             msg![window, "setTitle:", nsstring(title) => Id; ()];
+            let color: Id = msg![class(c"NSColorSpace"), "sRGBColorSpace"; Id];
+            msg![window, "setColorSpace:", color => Id; ()];
             msg![window, "center"; ()];
 
             // 换成我们自己的视图（能接收输入法），并让它由 CALayer 支撑，之后直接设置图层内容
@@ -352,11 +357,12 @@ impl Window {
                 app,
                 window,
                 view,
-                color_space: CGColorSpaceCreateDeviceRGB(),
+                color_space: CGColorSpaceCreateWithName(kCGColorSpaceSRGB),
                 width,
                 height,
                 focused: true,
                 alpha: None,
+                presentation: presentation::State::default(),
             })
         }
     }
@@ -531,11 +537,10 @@ impl Window {
             if let Some(opacity) = app.window_opacity() {
                 self.apply_opacity(opacity);
             }
-            // 图层的内容只能整张替换，所以变化的区域用不上，送整张图
             if app.needs_redraw()
-                && let Some((fb, _)) = app.draw()
+                && let Some((fb, damage)) = app.draw()
             {
-                self.present(fb);
+                self.present(fb, damage);
             }
             if let Some(request) = app.take_clipboard_request() {
                 let pasteboard: Id = msg![class(c"NSPasteboard"), "generalPasteboard"; Id];
@@ -608,38 +613,6 @@ impl Window {
             }
         }
     }
-
-    fn present(&self, fb: &Framebuffer) {
-        if fb.width == 0 || fb.height == 0 {
-            return;
-        }
-        // 小端序 + 跳过最高字节：内存里的 u32 0x00RRGGBB 正好被解读成 RGB
-        const BYTE_ORDER_32_LITTLE: u32 = 2 << 12;
-        const ALPHA_NONE_SKIP_FIRST: u32 = 6;
-        unsafe {
-            // 复制一份像素给 CoreGraphics，因为图层可能在我们修改缓冲区之后才去读它
-            let data = CFDataCreate(std::ptr::null(), fb.pixels.as_ptr().cast(), (fb.pixels.len() * 4) as isize);
-            let provider = CGDataProviderCreateWithCFData(data);
-            let image = CGImageCreate(
-                fb.width,
-                fb.height,
-                8,
-                32,
-                fb.width * 4,
-                self.color_space,
-                BYTE_ORDER_32_LITTLE | ALPHA_NONE_SKIP_FIRST,
-                provider,
-                std::ptr::null(),
-                false,
-                0,
-            );
-            let layer: Id = msg![self.view, "layer"; Id];
-            msg![layer, "setContents:", image => *mut c_void; ()];
-            CGImageRelease(image);
-            CGDataProviderRelease(provider);
-            CFRelease(data);
-        }
-    }
 }
 
 impl Drop for Window {
@@ -648,6 +621,7 @@ impl Drop for Window {
             protected_window::reset(self.view);
             msg![self.app, "setDelegate:", NIL => Id; ()];
             msg![self.window,"setDelegate:",NIL=>Id;()];
+            self.clear_patches();
             CGColorSpaceRelease(self.color_space);
             msg![self.window, "close"; ()];
             msg![self.window, "release"; ()];

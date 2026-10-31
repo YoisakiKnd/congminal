@@ -143,12 +143,59 @@ impl Default for ViewState {
     }
 }
 
-/// 这一帧变化了的区域：从第 y 行像素开始的 height 行（整个宽度）。macOS 的图层只能整张替换，用不到它。
-#[derive(Clone, Copy, Debug)]
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+/// Bounding range for all backends, plus up to eight separate bands for partial presentation.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Band {
+    pub y: usize,
+    pub height: usize,
+}
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Damage {
     pub y: usize,
     pub height: usize,
+    bands: [Band; 8],
+    count: usize,
+}
+impl Damage {
+    pub fn new(y: usize, height: usize) -> Self {
+        let mut damage = Self::default();
+        damage.add(y, height);
+        damage
+    }
+    pub fn bands(&self) -> &[Band] {
+        &self.bands[..self.count]
+    }
+    pub fn add(&mut self, y: usize, height: usize) {
+        if height == 0 {
+            return;
+        }
+        let end = y.saturating_add(height);
+        let top = if self.count == 0 { y } else { self.y.min(y) };
+        let bottom = if self.count == 0 { end } else { self.y.saturating_add(self.height).max(end) };
+        self.y = top;
+        self.height = bottom.saturating_sub(top);
+        let mut range = Band { y, height };
+        let mut n = 0;
+        for i in 0..self.count {
+            let old = self.bands[i];
+            if old.y <= range.y.saturating_add(range.height) && range.y <= old.y.saturating_add(old.height) {
+                let bottom = old.y.saturating_add(old.height).max(range.y.saturating_add(range.height));
+                range.y = range.y.min(old.y);
+                range.height = bottom.saturating_sub(range.y);
+            } else {
+                self.bands[n] = old;
+                n += 1;
+            }
+        }
+        if n == 8 {
+            self.bands[0] = Band { y: self.y, height: self.height };
+            self.count = 1;
+            return;
+        }
+        self.bands[n] = range;
+        self.count = n + 1;
+        self.bands[..self.count].sort_unstable_by_key(|r| r.y);
+    }
 }
 
 /// 画光标需要的信息
@@ -515,7 +562,7 @@ impl Renderer {
         }
         self.work.text(cols);
 
-        let mut damage: Option<(usize, usize)> = None;
+        let mut damage = Damage::default();
         let mut row = 0;
         while row < rows {
             if !self.dirty_row(row, rows, full) {
@@ -558,10 +605,7 @@ impl Renderer {
             if end == rows {
                 self.draw_bar(fb, term);
             }
-            damage = Some(match damage {
-                Some((t, b)) => (t.min(top), b.max(bottom)),
-                None => (top, bottom),
-            });
+            damage.add(top, bottom - top);
         }
         if !at_bottom && full {
             self.draw_scrollbar(fb, term);
@@ -573,7 +617,7 @@ impl Renderer {
             self.last_rows.data.clear();
             self.last_frame = 0;
         }
-        damage.map(|(top, bottom)| Damage { y: top, height: bottom - top })
+        (damage.height > 0).then_some(damage)
     }
     fn dirty_row(&self, row: usize, rows: usize, full: bool) -> bool {
         full || (row.saturating_sub(1)..(row + 2).min(rows)).any(|i| self.work.rows[i] != self.last_rows[i])
@@ -1626,6 +1670,25 @@ mod boundary_tests {
         // 关掉标记：同样的画面不再有色条
         let (frame, index, colors) = render_with("0", false);
         assert_ne!(frame.pixels[index], colors.palette[2]);
+    }
+
+    #[test]
+    fn separated_damage_keeps_cursor_and_status_updates_apart_and_caps_fragmentation() {
+        let mut damage = Damage::new(40, 80);
+        damage.add(2000, 120);
+        assert_eq!((damage.y, damage.height), (40, 2080));
+        assert_eq!(damage.bands().len(), 2);
+        assert_eq!(damage.bands().iter().map(|b| b.height).sum::<usize>(), 200);
+        damage.add(100, 100);
+        assert!(damage.bands().iter().any(|b| b.y == 40 && b.height == 160));
+        let mut fragmented = Damage::default();
+        for n in 0..9 {
+            fragmented.add(n * 100, 10);
+        }
+        assert_eq!(fragmented.bands().len(), 1);
+        assert_eq!((fragmented.y, fragmented.height), (0, 810));
+        fragmented.add(2000, 0);
+        assert_eq!(fragmented.height, 810);
     }
 
     #[test]

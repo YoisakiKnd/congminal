@@ -924,7 +924,12 @@ impl Congminal {
 
     /// 光标该不该闪烁：配置打开、窗口有焦点、且没有搜索/通知浮层抢走光标。
     fn cursor_blinking(&self) -> bool {
-        self.config.cursor_blink && self.focus.active && !self.search.active && !self.notifications.open
+        self.config.cursor_blink
+            && self.focus.active
+            && self.session.term.modes().cursor_visible
+            && self.session.term.display_offset() == 0
+            && !self.search.active
+            && !self.notifications.open
     }
 
     /// 这一帧光标亮不亮。不闪烁时恒为亮。
@@ -2266,6 +2271,22 @@ mod integration_tests {
         app.focus.active = false;
         assert!(app.cursor_on());
         assert!(app.blink_deadline().is_none());
+    }
+
+    #[test]
+    fn hidden_cursor_and_scrollback_do_not_schedule_blink_redraws() {
+        let mut app = app("");
+        app.config.cursor_blink = true;
+        assert!(app.blink_deadline().is_some());
+        vt::Parser::new().advance(&mut app.session.term, b"\x1b[?25l");
+        assert!(app.blink_deadline().is_none());
+        vt::Parser::new().advance(&mut app.session.term, b"\x1b[?25h");
+        assert!(app.blink_deadline().is_some());
+        vt::Parser::new().advance(&mut app.session.term, &b"line\r\n".repeat(50));
+        app.session.term.scroll_display(1);
+        assert!(app.blink_deadline().is_none());
+        app.session.term.scroll_display(-1);
+        assert!(app.blink_deadline().is_some());
     }
 
     #[test]
