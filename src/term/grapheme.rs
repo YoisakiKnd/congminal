@@ -141,6 +141,11 @@ impl Segmenter {
         Self { prev: Prop::Other, started: false, emoji: 0, ri: 0, conjunct: 0 }
     }
 
+    /// 可打印 ASCII 都是 Other，且没有 emoji/Indic/RI 前缀。
+    pub(super) fn ascii() -> Self {
+        Self { started: true, ..Self::new() }
+    }
+
     /// 把 `c` 接进当前簇；返回 `false` 表示这里是断点（`c` 属于新的簇）。
     pub fn push(&mut self, c: char) -> bool {
         let next = prop(c);
@@ -215,8 +220,8 @@ impl Segmenter {
 
 /// 把 `sequence` 当成一个已经成形的簇，判断 `c` 是否继续它（`true` = 不断开）。
 ///
-/// 终端每写一个字符都要问一次，序列本身很短（基础字符 + 少量附加字符），重放成本可以忽略；
-/// 好处是不必在终端里维护一份需要随光标移动失效的分段状态。
+/// 只供测试保留旧的整簇重放算法，与增量状态差分比对。
+#[cfg(test)]
 pub fn extends(sequence: &str, c: char) -> bool {
     let mut segmenter = Segmenter::new();
     for ch in sequence.chars() {

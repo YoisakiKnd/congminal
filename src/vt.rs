@@ -19,6 +19,12 @@ pub trait Perform {
     fn apc_end(&mut self, _valid: bool) {}
     /// 打印一个字符
     fn print(&mut self, c: char);
+    /// 连续的可打印 ASCII；默认保持逐字符回调的语义。
+    fn print_ascii(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.print(byte as char);
+        }
+    }
     /// 执行 C0 控制字符（换行、回车、退格……）
     fn execute(&mut self, byte: u8);
     /// `ESC [ 参数 中间字节 结束字节`，例如 `ESC [ 1 ; 2 H`
@@ -157,8 +163,28 @@ impl Parser {
         if !bytes.is_empty() {
             performer.begin_batch();
         }
-        for &b in bytes {
-            self.byte(performer, b);
+        let mut offset = 0;
+        while offset < bytes.len() {
+            if (0x20..=0x7e).contains(&bytes[offset]) && self.state == State::Ground && !self.utf8.in_progress() {
+                let count = bytes[offset..].iter().take_while(|&&b| (0x20..=0x7e).contains(&b)).count();
+                if count > 0 {
+                    performer.print_ascii(&bytes[offset..offset + count]);
+                    offset += count;
+                    continue;
+                }
+            }
+            self.byte(performer, bytes[offset]);
+            offset += 1;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn advance_slow<P: Perform>(&mut self, performer: &mut P, bytes: &[u8]) {
+        if !bytes.is_empty() {
+            performer.begin_batch();
+        }
+        for &byte in bytes {
+            self.byte(performer, byte);
         }
     }
 

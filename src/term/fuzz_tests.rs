@@ -89,6 +89,9 @@ fn random_byte_streams_never_panic_and_keep_the_response_buffer_bounded() {
         let mut rng = Rng::new(seed);
         let mut term = Terminal::try_new(80, 24).expect("终端额度");
         let mut parser = Parser::new();
+        let mut slow = Terminal::try_new(80, 24).expect("慢路径额度");
+        slow.slow_print = true;
+        let mut slow_parser = Parser::new();
         let mut bytes = Vec::new();
         for round in 0..64 {
             bytes.clear();
@@ -100,6 +103,8 @@ fn random_byte_streams_never_panic_and_keep_the_response_buffer_bounded() {
             while offset < bytes.len() {
                 let end = (offset + 1 + rng.below(32)).min(bytes.len());
                 parser.advance(&mut term, &bytes[offset..end]);
+                slow_parser.advance_slow(&mut slow, &bytes[offset..end]);
+                super::ascii_tests::same(&term, &slow);
                 offset = end;
                 assert!(term.response.len() <= Terminal::RESPONSE_LIMIT, "应答缓冲超过上限：seed {seed} round {round}");
             }
@@ -113,6 +118,8 @@ fn random_byte_streams_never_panic_and_keep_the_response_buffer_bounded() {
                 assert!(plan.is_ok(), "缩放工作集预留失败：seed {seed} round {round}");
                 // 与会话完全相同的两步：先准入，再用同一份计划提交。
                 term.commit_resize(plan.unwrap());
+                slow.commit_resize(slow.prepare_ui_resize(cols, rows).unwrap());
+                super::ascii_tests::same(&term, &slow);
                 assert_eq!(term.cols(), cols);
                 assert_eq!(term.rows(), rows);
             }
@@ -120,6 +127,8 @@ fn random_byte_streams_never_panic_and_keep_the_response_buffer_bounded() {
         // 会话结束时额度全部归还：解析器与终端都不该留下租约。
         drop(parser);
         drop(term);
+        drop(slow_parser);
+        drop(slow);
         assert_eq!(pool.snapshot().used, 0, "seed {seed} 结束后额度未归还");
     }
 }

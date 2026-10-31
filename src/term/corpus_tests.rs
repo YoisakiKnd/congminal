@@ -118,3 +118,15 @@ fn replaying_into_a_resized_terminal_stays_consistent() {
         assert_eq!(pool.snapshot().used, 0, "{}: 额度未归还", corpus.name);
     }
 }
+
+#[test]
+fn corpus_ascii_fast_and_slow_paths_match_after_every_chunk() {
+    let pool = Budget::new(128 * 1024 * 1024, 0);
+    let _scope = Scope::enter(pool.clone());
+    for corpus in &CORPORA {
+        for chunk in [17, 1024] {
+            super::ascii_tests::replay(corpus.bytes, 80, chunk);
+        }
+    }
+    assert_eq!(pool.snapshot().used, 0);
+}

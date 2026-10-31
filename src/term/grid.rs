@@ -179,6 +179,7 @@ pub fn grid_reservation(cols: usize, rows: usize) -> usize {
     // 各留一行余量，覆盖滚动时空行已准备好、旧屏幕行尚未转入历史的重叠。
     2 * ((rows + 1) * retained_cols(cols) * std::mem::size_of::<Cell>()
         + rows.saturating_mul(2).max(32) * std::mem::size_of::<Row>())
+        + std::mem::size_of::<Option<(Cell, super::grapheme::Segmenter)>>()
 }
 
 impl Grid {

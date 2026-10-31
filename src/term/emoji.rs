@@ -32,11 +32,19 @@ pub fn is_pictographic(c: char) -> bool {
 
 /// 这个字符能不能接在 `sequence` 后面，组成同一个 emoji
 pub fn extends(sequence: &str, c: char) -> bool {
-    let last = sequence.chars().rev().find(|&c| c != '\u{FE0F}');
-    let regional = sequence.chars().filter(|&c| is_regional_indicator(c)).count();
-    (sequence.ends_with('\u{200D}') && is_pictographic(c))
+    extends_chars(sequence.chars(), c)
+}
+
+pub(super) fn extends_parts(base: char, marks: &str, c: char) -> bool {
+    extends_chars(std::iter::once(base).chain(marks.chars()), c)
+}
+
+fn extends_chars(chars: impl DoubleEndedIterator<Item = char> + Clone, c: char) -> bool {
+    let last = chars.clone().rev().find(|&c| c != '\u{FE0F}');
+    let regional = chars.clone().filter(|&c| is_regional_indicator(c)).count();
+    (chars.clone().next_back() == Some('\u{200D}') && is_pictographic(c))
         || (is_skin_tone(c) && last.is_some_and(is_pictographic))
-        || (is_regional_indicator(c) && regional == 1 && sequence.chars().count() == 1)
+        || (is_regional_indicator(c) && regional == 1 && chars.count() == 1)
 }
 
 /// 从 `col` 开始的 emoji 组合序列：(整个序列, 序列后面的第一列)。不是组合序列时返回 None。

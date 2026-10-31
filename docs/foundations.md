@@ -51,6 +51,14 @@ Windows 附带固定版本的微软 ConPTY。APC 应答中的 ESC 通过 Win32 U
 
 M4 本机相同万行 Neovim 4K 缓冲负载、前后各三轮诊断测量中，活动 CPU 中位数由单核 49.47% 到 21.80%，终端 RSS 采样峰值中位数由 270.86 MiB 到 194.69 MiB。修正标准 sRGB 与原生 BGRA 提交，并减少局部变化的整屏上传。同步绘制/提交 P95 从 2.89 ms 到 8.24 ms，未宣称延迟或 FPS 提升：此前数字不含后续 Core Animation 颜色转换。完整本机记录在 `target/evaluations/macos-presentation-optimization-20261031/`，不纳入历史版本证据，也不代表跨机器或外接 4K 实屏验收。
 
+## ASCII 写入与字素簇状态
+
+VT Ground 且 UTF-8 解码器空闲时合并可打印 ASCII。终端在 IRM、非 ASCII 字符集、前一簇能与当前 ASCII 合并时沿用逐字符入口；批次 revision、行尾 pending_wrap、滚动和宽字碎片清理保持原语义。
+
+2027 的边界判断保存 Segmenter，先校验实际 Cell 再增量 push；Cell 不匹配时从格子和 marks 迭代重建，不构造临时 String。附加成功后同步推进状态，拒绝附加时保留旧状态；只存在 flags 中的变体选择符不补入分段文本，以保持原有行为。RIS 随终端初始化清空状态。
+
+每终端新增内联缓存 `Option<(Cell, Segmenter)>`，无堆分配。Kind::Grid 的预留在原两屏公式上增加 `S = size_of::<Option<(Cell, Segmenter)>>()` 一次；创建/缩放仍先申请额度，失败保持原网格。缩放的新旧网格预留重叠阶段会保守覆盖两份 S，提交后只保留一份。缓存先于 grid_memory 票据销毁，不新增 Kind 或独立 Lease。
+
 ## 性能基准
 
 基准仅通过 `#[cfg(test)]` 挂载，不进入产品 release 构建。默认测试不注册全局分配器；非默认 `alloc-count` feature 仅在测试时注册转发 System 的计数分配器，旧源码注入探针无需修改。

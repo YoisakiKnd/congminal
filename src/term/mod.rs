@@ -13,6 +13,8 @@ mod grid;
 mod memory;
 pub(crate) use memory::{ResizeJob, ResizePlan};
 #[cfg(test)]
+mod ascii_tests;
+#[cfg(test)]
 mod corpus_tests;
 #[cfg(test)]
 mod fuzz_tests;
@@ -216,6 +218,10 @@ pub struct Terminal {
     last_char: char,
     /// 最近写入字符的格子，变体选择符、组合字符要附加到它上面
     last_glyph: Option<(usize, usize)>,
+    /// 以实际格子内容校验缓存；移动、擦除、重排后不能沿用过期的分段状态。
+    last_segment: Option<(Cell, grapheme::Segmenter)>,
+    #[cfg(test)]
+    slow_print: bool,
     /// 组合字符表：格子里只存编号，相同的组合只存一份
     marks: Vec<String>,
     mark_ids: FnvHashMap<String, u32>,
@@ -335,6 +341,9 @@ impl Terminal {
             active_charset: 0,
             last_char: ' ',
             last_glyph: None,
+            last_segment: None,
+            #[cfg(test)]
+            slow_print: false,
             marks: Vec::new(),
             mark_ids: FnvHashMap::default(),
             cursor_shape: None,
@@ -847,12 +856,10 @@ impl Terminal {
             && let Some((row, col)) = self.last_glyph
             && self.cursor_follows(row, col)
         {
-            let cell = &self.grid[row][col];
-            let mut sequence = String::from(cell.c);
-            sequence.push_str(self.marks(cell.marks));
-            if grapheme::extends(&sequence, c) {
+            let (joins, emoji) = self.extends_last_glyph(row, col, c);
+            if joins {
                 self.attach_mark(row, col, c);
-                if emoji::extends(&sequence, c) {
+                if emoji {
                     self.widen_last_glyph();
                 }
                 return;
@@ -926,6 +933,107 @@ impl Terminal {
         }
         self.last_char = c;
         self.last_glyph = Some((row, col));
+        if self.modes.grapheme_clusters {
+            self.remember_glyph(row, col);
+        }
+    }
+
+    fn remember_glyph(&mut self, row: usize, col: usize) {
+        let cell = self.grid[row][col];
+        let mut state = if (' '..='~').contains(&cell.c) {
+            grapheme::Segmenter::ascii()
+        } else {
+            let mut state = grapheme::Segmenter::new();
+            state.push(cell.c);
+            state
+        };
+        for c in self.marks(cell.marks).chars() {
+            state.push(c);
+        }
+        self.last_segment = Some((cell, state));
+    }
+
+    /// 状态只描述格子中实际保留的簇；附加失败、覆盖或擦除后按格子重建，不分配字符串。
+    fn extends_last_glyph(&mut self, row: usize, col: usize, c: char) -> (bool, bool) {
+        let cell = self.grid[row][col];
+        #[cfg(test)]
+        if self.slow_print {
+            let mut sequence = String::from(cell.c);
+            sequence.push_str(self.marks(cell.marks));
+            return (grapheme::extends(&sequence, c), emoji::extends(&sequence, c));
+        }
+        let mut state = match self.last_segment {
+            Some((previous, state)) if previous == cell => state,
+            _ => {
+                let mut state = grapheme::Segmenter::new();
+                state.push(cell.c);
+                for c in self.marks(cell.marks).chars() {
+                    state.push(c);
+                }
+                state
+            }
+        };
+        self.last_segment = Some((cell, state));
+        let joins = state.push(c);
+        (joins, joins && emoji::extends_parts(cell.c, self.marks(cell.marks), c))
+    }
+
+    /// 按行批量覆盖；保留逐字符清除宽字另一半的顺序，越界处仍走原来的滚动入口。
+    fn print_ascii_run(&mut self, mut bytes: &[u8]) {
+        if self.modes.insert || self.charsets[self.active_charset] != Charset::Ascii {
+            for &byte in bytes {
+                self.print_char(byte as char);
+            }
+            return;
+        }
+        if self.modes.grapheme_clusters
+            && let Some((row, col)) = self.last_glyph
+            && self.cursor_follows(row, col)
+            && self.extends_last_glyph(row, col, bytes[0] as char).0
+        {
+            self.print_char(bytes[0] as char);
+            bytes = &bytes[1..];
+        }
+        while !bytes.is_empty() {
+            if self.cursor.pending_wrap && self.modes.autowrap {
+                self.wrap_line();
+            }
+            let cols = self.cols();
+            let (row, start) = (self.cursor.row, self.cursor.col);
+            let count = bytes.len().min(cols - start);
+            let template = self.cursor.template;
+            let cells = &mut self.grid[row].cells;
+            for (offset, &byte) in bytes[..count].iter().enumerate() {
+                let col = start + offset;
+                let flags = cells[col].flags;
+                if flags.intersects(Flags::WIDE | Flags::WIDE_SPACER) {
+                    let neighbor = if flags.contains(Flags::WIDE) {
+                        col + 1
+                    } else if col > 0 {
+                        col - 1
+                    } else {
+                        cols
+                    };
+                    if neighbor < cols {
+                        cells[neighbor] = Cell::blank(&cells[neighbor]);
+                    }
+                }
+                cells[col] = Cell { c: byte as char, ..template };
+            }
+            let end = start + count;
+            if end < cols {
+                self.cursor.col = end;
+            } else {
+                self.cursor.col = cols - 1;
+                self.cursor.pending_wrap = self.modes.autowrap;
+            }
+            self.last_char = bytes[count - 1] as char;
+            self.last_glyph = Some((row, end - 1));
+            if self.modes.grapheme_clusters {
+                self.remember_glyph(row, end - 1);
+            }
+            bytes = &bytes[count..];
+        }
     }
 
     /// 把零宽字符附加到 (row, col) 的字上
@@ -935,7 +1043,15 @@ impl Terminal {
         if marks.len() <= MAX_MARKS_LEN
             && let Some(id) = self.intern_marks(marks)
         {
-            self.grid[row][col].marks = (self.grid[row][col].marks & !0x1ffff) | id;
+            let before = self.grid[row][col];
+            self.grid[row][col].marks = (before.marks & !0x1ffff) | id;
+            self.last_segment = self.last_segment.and_then(|(cell, mut state)| {
+                if cell != before {
+                    return None;
+                }
+                state.push(c);
+                Some((self.grid[row][col], state))
+            });
         }
     }
 
@@ -1561,7 +1677,13 @@ impl Terminal {
         let history = History::with_budget(scrollback, self.grid_memory.budget().clone());
         let empty = self.grid_memory.budget().lease(crate::resources::Kind::Grid, 0).unwrap();
         let memory = std::mem::replace(&mut self.grid_memory, empty);
+        #[cfg(test)]
+        let slow_print = self.slow_print;
         *self = Self::with_storage(grid, alt, history, memory);
+        #[cfg(test)]
+        {
+            self.slow_print = slow_print;
+        }
         self.shell = shell;
         self.text_epoch = epoch;
         self.default_cursor_shape = default_cursor_shape;
@@ -1596,6 +1718,11 @@ impl Perform for Terminal {
     }
     fn print(&mut self, c: char) {
         self.print_char(c);
+    }
+    fn print_ascii(&mut self, bytes: &[u8]) {
+        if !bytes.is_empty() {
+            self.print_ascii_run(bytes);
+        }
     }
 
     fn execute(&mut self, byte: u8) {

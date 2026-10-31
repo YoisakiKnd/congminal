@@ -360,3 +360,20 @@ fn allocator_counts_system_calls_without_changing_leases() {
     drop(memory);
     assert_eq!(budget.snapshot().used, before);
 }
+
+#[test]
+#[cfg(feature = "alloc-count")]
+fn grapheme_boundary_checks_do_not_allocate() {
+    isolated(|| {
+        let mut term = terminal();
+        let mut parser = Parser::new();
+        parser.advance(&mut term, b"\x1b[?2027ha");
+        let count = Counter::start();
+        parser.advance(&mut term, b"ASCII batch");
+        // 单字符入口也不能为了判断字素簇边界构造 String。
+        for c in "single characters".chars() {
+            crate::vt::Perform::print(&mut term, c);
+        }
+        assert_eq!(count.finish(), (0, 0));
+    });
+}
