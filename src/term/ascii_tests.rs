@@ -6,6 +6,11 @@ use crate::{
 };
 
 pub(super) fn same(fast: &Terminal, slow: &Terminal) {
+    #[cfg(debug_assertions)]
+    {
+        fast.validate_grids();
+        slow.validate_grids();
+    }
     for (a, b) in [(&fast.grid, &slow.grid), (&fast.alt_grid, &slow.alt_grid)] {
         assert_eq!((a.cols(), a.rows()), (b.cols(), b.rows()));
         for (a, b) in a.iter().zip(b.iter()) {

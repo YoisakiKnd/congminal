@@ -11,6 +11,7 @@ pub struct History {
     byte_limit: usize,
     decoded: usize,
     dropped: u64,
+    identity: u64,
     pub(super) pressure_limited: bool,
     #[cfg(test)]
     old: Option<super::legacy::LegacyHistory>,
@@ -38,6 +39,7 @@ impl History {
             byte_limit: HISTORY_BYTES,
             decoded: 0,
             dropped: 0,
+            identity: super::next_storage_identity(),
             pressure_limited: false,
             #[cfg(test)]
             old: None,
@@ -55,6 +57,9 @@ impl History {
     #[cfg(test)]
     pub(in crate::term) fn is_legacy(&self) -> bool {
         self.old.is_some()
+    }
+    pub(in crate::term) fn identity(&self) -> u64 {
+        self.identity
     }
     pub fn allocated_bytes(&self) -> usize {
         #[cfg(test)]

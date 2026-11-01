@@ -203,13 +203,27 @@ impl<'a> Framebuffer<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(super) struct RowKey {
+    stamp: (u64, u64, u64, u64),
+    decoration: u64,
+    #[cfg(debug_assertions)]
+    content: u64,
+}
+impl PartialEq for RowKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.stamp == other.stamp && self.decoration == other.decoration
+    }
+}
+impl Eq for RowKey {}
+
 pub struct Renderer {
     fonts: Fonts,
     generation: u64,
     padding: usize,
     colors: Colors,
     /// 上一帧每一行的指纹，没变的行不重画
-    last_rows: crate::resources::Tracked<Vec<u64>>,
+    last_rows: crate::resources::Tracked<Vec<RowKey>>,
     work: work::Work,
     /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
     last_frame: u64,
@@ -224,7 +238,7 @@ pub struct Renderer {
 
 /// 每个窗格的脏行/装饰状态；字体和缓存留在唯一的 Renderer 中。
 pub struct ViewState {
-    rows: crate::resources::Tracked<Vec<u64>>,
+    rows: crate::resources::Tracked<Vec<RowKey>>,
     frame: u64,
     top: Option<u64>,
     ui: crate::ui::State,
@@ -677,9 +691,9 @@ impl Renderer {
                 fb.scroll_up(dy);
                 self.last_rows.data.copy_within(k..rows, 0);
                 // 上边距不能保留被丢弃行的笔画；新露出的尾部也必须重画。
-                self.last_rows.data[0] = self.work.rows[0] ^ 1;
+                self.last_rows.data[0].decoration = self.work.rows[0].decoration ^ 1;
                 for r in rows - k..rows {
-                    self.last_rows.data[r] = self.work.rows[r] ^ 1;
+                    self.last_rows.data[r].decoration = self.work.rows[r].decoration ^ 1;
                 }
                 shifted = true;
             } else {
@@ -765,11 +779,20 @@ impl Renderer {
             .any(|i| self.work.rows[i] != self.last_rows[i])
     }
 
-    /// 一行的"指纹"：内容、光标、选区、输入法文字。指纹没变的行不用重画。
-    fn row_key(&self, term: &Terminal, row: usize, cursor: &Cursor, selection: Option<(Point, Point)>) -> u64 {
+    /// 行身份/修改计数加上光标、选区、输入法等装饰；热路径不扫描 Cell。
+    fn row_key(&self, term: &Terminal, row: usize, cursor: &Cursor, selection: Option<(Point, Point)>) -> RowKey {
         let mut hasher = Fnv::default();
-        let line = term.visible_row(row);
-        line.hash_cells(term.cols(), &mut hasher);
+        let stamp = term.visible_row_stamp(row);
+        #[cfg(debug_assertions)]
+        let content = {
+            let mut old = Fnv::default();
+            term.visible_row(row).hash_cells(term.cols(), &mut old);
+            let content = old.finish();
+            if let Some(previous) = self.last_rows.iter().find(|key| key.stamp == stamp) {
+                assert_eq!(previous.content, content, "visible row {row} changed without revision: {stamp:?}");
+            }
+            content
+        };
         // 历史长度只影响回看时的滚动条；放在行装饰指纹，不再让正常输出的整帧失效。
         if term.display_offset() != 0 {
             term.history().len().hash(&mut hasher);
@@ -801,7 +824,12 @@ impl Renderer {
         {
             bar.hash(&mut hasher);
         }
-        hasher.finish()
+        RowKey {
+            stamp,
+            decoration: hasher.finish(),
+            #[cfg(debug_assertions)]
+            content,
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1410,6 +1438,40 @@ mod bench {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn equal_history_coordinates_from_different_sessions_do_not_share_row_keys() {
+        let mut renderer = Renderer::new(&Config::default(), 1.0);
+        let mut first = Terminal::new(8, 3);
+        let mut second = Terminal::new(8, 3);
+        Parser::new().advance(&mut first, b"a\r\na\r\na\r\na\r\n");
+        Parser::new().advance(&mut second, b"b\r\nb\r\nb\r\nb\r\n");
+        first.scroll_display(2);
+        second.scroll_display(2);
+        assert_eq!(first.line_id(0), second.line_id(0));
+        assert_ne!(first.visible_row_stamp(0), second.visible_row_stamp(0));
+        let (w, h) = renderer.pixel_size(8, 3);
+        let mut fb = Framebuffer::new(w as usize, h as usize);
+        renderer.draw(&first, "", None, true, true, &mut fb);
+        assert!(renderer.draw(&second, "", None, true, true, &mut fb).is_some());
+        let partial = fb.pixels.to_vec();
+        renderer.invalidate();
+        renderer.draw(&second, "", None, true, true, &mut fb);
+        assert_eq!(partial, fb.pixels.to_vec());
+    }
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "changed without revision")]
+    fn previous_visible_history_hash_is_checked_even_when_stamp_is_unchanged() {
+        let mut renderer = Renderer::new(&Config::default(), 1.0);
+        let mut term = Terminal::new(8, 3);
+        Parser::new().advance(&mut term, b"a\r\nb\r\nc\r\nd\r\n");
+        term.scroll_display(1);
+        let (w, h) = renderer.pixel_size(8, 3);
+        let mut fb = Framebuffer::new(w as usize, h as usize);
+        renderer.draw(&term, "", None, true, true, &mut fb);
+        renderer.last_rows.data[0].content ^= 1;
+        renderer.draw(&term, "", None, true, true, &mut fb);
+    }
     #[test]
     fn bounded_chrome_clipping_preserves_unicode_ellipsis_without_heap_strings() {
         for text in ["", "abc", "中文路径", "a\u{301}bc", "\0\nA\t中文Z", "🙂x", "\u{301}\u{301}"] {

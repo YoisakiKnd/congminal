@@ -8,7 +8,7 @@ pub(super) fn release<T: Default>(value: &mut Tracked<T>) {
     value.memory.resize(0).unwrap();
 }
 pub(super) struct Work {
-    pub rows: Tracked<Vec<u64>>,
+    pub rows: Tracked<Vec<super::RowKey>>,
     pub ligatures: Tracked<Vec<Option<u16>>>,
     pub word: Tracked<String>,
     pub emoji: Tracked<String>,

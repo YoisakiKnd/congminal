@@ -1,5 +1,6 @@
 //! 历史物理行：UTF-8、属性游程和稀疏旁表共享一个缓冲；读取不分配。
 use super::{Cell, Color, Flags, Row};
+#[cfg(debug_assertions)]
 use std::hash::{Hash, Hasher};
 
 const STEP: usize = 16;
@@ -397,6 +398,7 @@ impl RowView<'_> {
     pub fn decode(self) -> Row {
         Row { cells: self.cells.iter().collect(), wrapped: self.wrapped }
     }
+    #[cfg(debug_assertions)]
     pub fn hash_cells(self, cols: usize, hasher: &mut impl Hasher) {
         if let Cells::Raw(cells) = self.cells {
             cells[..cols.min(cells.len())].hash(hasher);

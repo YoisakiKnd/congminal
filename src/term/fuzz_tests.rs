@@ -91,6 +91,11 @@ fn random_byte_streams_never_panic_and_keep_the_response_buffer_bounded() {
         let mut parser = Parser::new();
         let mut slow = Terminal::try_new(80, 24).expect("慢路径额度");
         slow.slow_print = true;
+        #[cfg(debug_assertions)]
+        {
+            term.validate_grids();
+            slow.validate_grids();
+        }
         let mut slow_parser = Parser::new();
         let mut bytes = Vec::new();
         for round in 0..64 {

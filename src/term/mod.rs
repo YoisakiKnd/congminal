@@ -469,6 +469,22 @@ impl Terminal {
         self.history.dropped() + (self.history.len() - self.display_offset + visible_row) as u64
     }
 
+    /// 历史行不可变，以 epoch/稳定行号标识；屏幕行另带网格身份与修改计数。
+    pub(crate) fn visible_row_stamp(&self, row: usize) -> (u64, u64, u64, u64) {
+        let (grid, revision) = if row < self.display_offset {
+            (self.history.identity(), 0)
+        } else {
+            self.grid.row_stamp(row - self.display_offset)
+        };
+        (self.text_epoch, self.line_id(row), grid, revision)
+    }
+
+    #[cfg(all(test, debug_assertions))]
+    pub(crate) fn validate_grids(&self) {
+        self.grid.validate();
+        self.alt_grid.validate();
+    }
+
     /// 稳定行号对应的行；已经从历史里丢掉的行返回 None
     pub fn row_by_id(&self, id: u64) -> Option<RowView<'_>> {
         let index = id.checked_sub(self.history.dropped())? as usize;

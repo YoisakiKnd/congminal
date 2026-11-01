@@ -51,7 +51,11 @@ fn real_application_output_replays_without_breaking_the_terminal() {
         let mut saw_text = corpus.expect.is_empty();
         // 按 512 字节分块回放：真实程序的输出本来就跨读边界。
         for chunk in corpus.bytes.chunks(512) {
+            #[cfg(debug_assertions)]
+            term.validate_grids();
             parser.advance(&mut term, chunk);
+            #[cfg(debug_assertions)]
+            term.validate_grids();
             assert!(term.response.len() <= Terminal::RESPONSE_LIMIT, "{}: 应答缓冲超过上限", corpus.name);
             if term.is_alt_screen() {
                 saw_alt = true;

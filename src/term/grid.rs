@@ -3,6 +3,9 @@
 #[cfg(test)]
 use std::collections::VecDeque;
 use std::ops::{BitOr, Index, IndexMut};
+#[cfg(debug_assertions)]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Color {
@@ -169,7 +172,33 @@ impl IndexMut<usize> for Row {
 
 pub struct Grid {
     rows: Vec<Row>,
+    states: Vec<RowState>,
     cols: usize,
+    identity: u64,
+    clock: u64,
+}
+
+static NEXT_STORAGE: AtomicU64 = AtomicU64::new(1);
+fn next_storage_identity() -> u64 {
+    NEXT_STORAGE.fetch_add(1, Ordering::Relaxed)
+}
+struct RowState {
+    revision: u64,
+    #[cfg(debug_assertions)]
+    observed: AtomicBool,
+    #[cfg(debug_assertions)]
+    content_hash: AtomicU64,
+}
+impl RowState {
+    fn new() -> Self {
+        Self {
+            revision: 0,
+            #[cfg(debug_assertions)]
+            observed: AtomicBool::new(false),
+            #[cfg(debug_assertions)]
+            content_hash: AtomicU64::new(0),
+        }
+    }
 }
 
 /// 容量预留，不实际预分配；覆盖正常缩放后的两倍保留容量和小 Vec 下限。
@@ -179,16 +208,23 @@ pub fn retained_cols(cols: usize) -> usize {
 pub fn grid_reservation(cols: usize, rows: usize) -> usize {
     // 各留一行余量，覆盖滚动时空行已准备好、旧屏幕行尚未转入历史的重叠。
     2 * ((rows + 1) * retained_cols(cols) * std::mem::size_of::<Cell>()
-        + rows.saturating_mul(2).max(32) * std::mem::size_of::<Row>())
+        + rows.saturating_mul(2).max(32) * (std::mem::size_of::<Row>() + 2 * std::mem::size_of::<RowState>()))
 }
 
 impl Grid {
     pub fn new(cols: usize, rows: usize) -> Grid {
-        Grid { rows: (0..rows).map(|_| Row::new(cols)).collect(), cols }
+        Grid {
+            rows: (0..rows).map(|_| Row::new(cols)).collect(),
+            states: (0..rows).map(|_| RowState::new()).collect(),
+            cols,
+            identity: next_storage_identity(),
+            clock: 0,
+        }
     }
 
     pub fn allocated_bytes(&self) -> usize {
         self.rows.capacity() * std::mem::size_of::<Row>()
+            + self.states.capacity() * std::mem::size_of::<RowState>()
             + self.rows.iter().map(|r| r.cells.capacity() * std::mem::size_of::<Cell>()).sum::<usize>()
     }
 
@@ -204,7 +240,53 @@ impl Grid {
         self.rows.iter()
     }
 
+    fn touch(&mut self, row: usize) {
+        self.clock = self.clock.wrapping_add(1);
+        self.states[row].revision = self.clock;
+        #[cfg(debug_assertions)]
+        self.states[row].observed.store(false, Ordering::Relaxed);
+    }
+
+    pub(super) fn row_stamp(&self, row: usize) -> (u64, u64) {
+        #[cfg(debug_assertions)]
+        self.validate_row(row);
+        (self.identity, self.states[row].revision)
+    }
+
+    #[cfg(debug_assertions)]
+    fn validate_row(&self, row: usize) {
+        use std::hash::Hasher;
+        let mut hash = crate::hash::Fnv::default();
+        RowView::from(&self.rows[row]).hash_cells(self.cols, &mut hash);
+        let hash = hash.finish();
+        let state = &self.states[row];
+        if state.observed.load(Ordering::Acquire) {
+            assert_eq!(
+                state.content_hash.load(Ordering::Relaxed),
+                hash,
+                "grid {} row {row} changed without revision {}",
+                self.identity,
+                state.revision
+            );
+        } else {
+            // 同一不可变网格可并行校验；所有读者写入的都是当前内容的同一哈希。
+            state.content_hash.store(hash, Ordering::Relaxed);
+            state.observed.store(true, Ordering::Release);
+        }
+    }
+
+    #[cfg(all(test, debug_assertions))]
+    pub(super) fn validate(&self) {
+        assert_eq!(self.rows.len(), self.states.len());
+        for row in 0..self.rows() {
+            self.validate_row(row);
+        }
+    }
+
     pub fn clear(&mut self, blank: Cell) {
+        for row in 0..self.rows() {
+            self.touch(row);
+        }
         for row in &mut self.rows {
             row.reset(blank);
         }
@@ -215,6 +297,10 @@ impl Grid {
     pub fn scroll_up(&mut self, top: usize, bottom: usize, n: usize, blank: Cell, history: Option<&mut History>) {
         let n = n.min(bottom + 1 - top);
         self.rows[top..=bottom].rotate_left(n);
+        self.states[top..=bottom].rotate_left(n);
+        for row in bottom + 1 - n..=bottom {
+            self.touch(row);
+        }
         match history {
             Some(history) if history.limit > 0 => {
                 for i in bottom + 1 - n..=bottom {
@@ -233,6 +319,10 @@ impl Grid {
     pub fn scroll_down(&mut self, top: usize, bottom: usize, n: usize, blank: Cell) {
         let n = n.min(bottom + 1 - top);
         self.rows[top..=bottom].rotate_right(n);
+        self.states[top..=bottom].rotate_right(n);
+        for row in top..top + n {
+            self.touch(row);
+        }
         for row in &mut self.rows[top..top + n] {
             row.reset(blank);
         }
@@ -240,22 +330,29 @@ impl Grid {
 
     /// 取走所有行（重排用）
     pub fn take_rows(&mut self) -> Vec<Row> {
+        self.states.clear();
         std::mem::take(&mut self.rows)
     }
 
     /// 退休网格分批销毁；只用于不再可见、无需保持矩形的旧网格。
     pub(super) fn retire_row(&mut self) -> Option<Row> {
+        self.states.pop();
         self.rows.pop()
     }
 
     /// 换成一组新的行（重排之后放回来）
     pub fn set_rows(&mut self, rows: Vec<Row>, cols: usize) {
         self.rows = rows;
+        self.resize_states(self.rows());
+        for row in 0..self.rows() {
+            self.touch(row);
+        }
         self.cols = cols;
     }
 
     /// 取走最上面的 n 行（窗口变矮时用）
     pub fn take_top_rows(&mut self, n: usize) -> Vec<Row> {
+        self.states.drain(..n.min(self.rows.len()));
         self.rows.drain(..n.min(self.rows.len())).collect()
     }
 
@@ -265,12 +362,19 @@ impl Grid {
         row.repair_wide(Cell::default());
         // 先移除尾行，避免满容量 insert 让行索引翻倍。
         self.rows.pop();
+        self.states.pop();
         self.rows.insert(0, row);
+        self.states.insert(0, RowState::new());
+        self.touch(0);
     }
 
     /// 简单的缩放：多截少补，不做重排
     pub fn resize(&mut self, cols: usize, rows: usize) {
         self.rows.resize_with(rows, || Row::new(cols));
+        self.resize_states(rows);
+        for row in 0..rows {
+            self.touch(row);
+        }
         if self.rows.capacity() > rows.saturating_mul(2).max(32) {
             self.rows.shrink_to(rows);
         }
@@ -279,6 +383,13 @@ impl Grid {
             row.repair_wide(Cell::default());
         }
         self.cols = cols;
+    }
+
+    fn resize_states(&mut self, rows: usize) {
+        self.states.resize_with(rows, RowState::new);
+        if self.states.capacity() > rows.saturating_mul(2).max(32) {
+            self.states.shrink_to(rows);
+        }
     }
 }
 
@@ -292,6 +403,7 @@ impl Index<usize> for Grid {
 
 impl IndexMut<usize> for Grid {
     fn index_mut(&mut self, row: usize) -> &mut Row {
+        self.touch(row);
         &mut self.rows[row]
     }
 }
@@ -313,6 +425,8 @@ mod compact_tests;
 #[cfg(test)]
 #[allow(dead_code)]
 mod legacy;
+#[cfg(test)]
+mod revision_tests;
 
 #[cfg(test)]
 mod budget_tests {

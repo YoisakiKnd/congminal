@@ -69,7 +69,15 @@ VT Ground 且 UTF-8 解码器空闲时合并可打印 ASCII；连续高位字节
 
 2027 的边界判断保存 Segmenter，先校验实际 Cell 再增量 push；Cell 不匹配时从格子和 marks 迭代重建，不构造临时 String。附加成功后同步推进状态，拒绝附加时保留旧状态；只存在 flags 中的变体选择符不补入分段文本，以保持原有行为。RIS 随终端初始化清空状态。
 
-每终端的内联缓存 `Option<(Cell, Segmenter)>` 不产生堆分配，与 cursor、modes 等内联字段一样不计入额度。Kind::Grid 沿用原两屏的容量预留公式，创建/缩放仍先申请额度，失败保持原网格，不新增 Kind 或 Lease。
+每终端的内联缓存 `Option<(Cell, Segmenter)>` 不产生堆分配，与 cursor、modes 等内联字段一样不计入额度。T7 行状态数组的堆容量另纳入下面的 Grid 公式；创建/缩放仍先申请额度，失败保持原网格，不新增 Kind 或 Lease。
+
+## 行修改计数与网格额度
+
+T7 的 Grid 另有与行同步移动的 RowState 数组，release 元素为 8 B 修改计数，debug_assertions 时加入旧内容哈希及有效标志，元素 24 B。所有 IndexMut 及网格内部修改入口均推进计数，整体/局部滚动同步搬移状态。Grid/History 的唯一存储身份、clock 是内联字段；Row 仍为 32 B，压缩历史行索引口径不变。
+
+令 R=rows、C=retained_cols(cols)、I=max(2R,32)、S=sizeof(RowState)，两屏 Grid 预留为 `2*((R+1)*C*sizeof(Cell)+I*(sizeof(Row)+2*S))`；2*S 覆盖状态数组重分配时新旧重叠，allocated_bytes 按 states.capacity()*S 计实际保留容量。原有新旧目标网格重叠 Lease 与 Reflow 工作集另外保持，准入失败不取走原网格。80×24 相比旧公式增加 release 1536 B / debug 4608 B，状态容量不会随逻辑长度清零而停止计费。
+
+渲染行键由四元组 `(text_epoch,line_id,storage_identity,revision)` 和装饰哈希构成，release 40 B、debug 48 B（含防漏画旧内容哈希），旧帧/工作数组及每窗格 ViewState 仍由 Tracked<Vec> 按真实容量计入 Kind::Render。release 跳过逐格哈希；调试/测试构建在计数未变而内容哈希变化时 panic，历史行也由上一帧键检查，语料及随机差分逐块执行两屏校验。
 
 ## 性能基准
 
