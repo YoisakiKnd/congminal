@@ -167,6 +167,17 @@ impl<'a> Framebuffer<'a> {
             memory: None,
         }
     }
+    fn scroll_down(&mut self, dy: usize) {
+        if self.stride == self.width {
+            self.pixels.copy_within(0..(self.height - dy) * self.stride, dy * self.stride);
+        } else {
+            // 从下往上逐行移动，只动视图宽度内的像素。
+            for row in (0..self.height.saturating_sub(dy)).rev() {
+                let src = row * self.stride;
+                self.pixels.copy_within(src..src + self.width, (row + dy) * self.stride);
+            }
+        }
+    }
     fn scroll_up(&mut self, dy: usize) {
         if self.stride == self.width {
             self.pixels.copy_within(dy * self.stride..self.height * self.stride, 0);
@@ -228,6 +239,10 @@ pub struct Renderer {
     /// 上一帧的整体状态（窗口尺寸、往回翻的位置……），变了就整屏重画
     last_frame: u64,
     last_top: Option<u64>,
+    /// 上一帧滚动条滑块的像素范围 (y, 高)；回看时只重画它扫过的行。
+    last_thumb: Option<(usize, usize)>,
+    #[cfg(test)]
+    translated: usize,
     cache_epoch: u64,
     ui: crate::ui::State,
     /// 命令行标记：在提示行左侧画一条结果色条（成功绿、失败红、中断黄）
@@ -241,11 +256,12 @@ pub struct ViewState {
     rows: crate::resources::Tracked<Vec<RowKey>>,
     frame: u64,
     top: Option<u64>,
+    thumb: Option<(usize, usize)>,
     ui: crate::ui::State,
 }
 impl Default for ViewState {
     fn default() -> Self {
-        Self { rows: work::buffer(), frame: 0, top: None, ui: crate::ui::State::default() }
+        Self { rows: work::buffer(), frame: 0, top: None, thumb: None, ui: crate::ui::State::default() }
     }
 }
 
@@ -378,6 +394,9 @@ impl Renderer {
             work: work::Work::default(),
             last_frame: 0,
             last_top: None,
+            last_thumb: None,
+            #[cfg(test)]
+            translated: 0,
             cache_epoch: 0,
             ui: crate::ui::State::default(),
             command_marks: config.command_marks,
@@ -395,6 +414,7 @@ impl Renderer {
         std::mem::swap(&mut self.last_rows, &mut view.rows);
         std::mem::swap(&mut self.last_frame, &mut view.frame);
         std::mem::swap(&mut self.last_top, &mut view.top);
+        std::mem::swap(&mut self.last_thumb, &mut view.thumb);
         std::mem::swap(&mut self.ui, &mut view.ui);
     }
     pub fn chrome(&mut self, frame: &mut Framebuffer, bounds: [usize; 4], text: &str, selected: bool) {
@@ -654,7 +674,7 @@ impl Renderer {
             fb.height,
             rows,
             cols,
-            term.display_offset(),
+            at_bottom,
             term.full_scroll_region(),
             term.text_stamp().0,
             (self.generation, self.cache_epoch),
@@ -678,33 +698,62 @@ impl Renderer {
             && let Some(old) = self.last_top
             && top_line != old
         {
-            let shift = top_line.checked_sub(old).and_then(|k| usize::try_from(k).ok());
             let fits = fb.width >= cols.saturating_mul(self.fonts.cell_width).saturating_add(2 * self.padding)
                 && fb.height >= rows.saturating_mul(self.fonts.cell_height).saturating_add(2 * self.padding);
-            if at_bottom
-                && term.full_scroll_region()
+            // 底部视图只在整屏滚动区里平移；回看时整个视图随历史移动，与滚动区无关。
+            let k = usize::try_from(top_line.abs_diff(old)).unwrap_or(usize::MAX);
+            if (!at_bottom || term.full_scroll_region())
                 && term.graphics.placements().next().is_none()
                 && fits
-                && let Some(k) = shift.filter(|&k| k > 0 && k < rows)
+                && k > 0
+                && k < rows
             {
                 let dy = k * self.fonts.cell_height;
-                fb.scroll_up(dy);
-                self.last_rows.data.copy_within(k..rows, 0);
-                // 上边距不能保留被丢弃行的笔画；新露出的尾部也必须重画。
-                self.last_rows.data[0].decoration = self.work.rows[0].decoration ^ 1;
-                for r in rows - k..rows {
-                    self.last_rows.data[r].decoration = self.work.rows[r].decoration ^ 1;
+                if top_line > old {
+                    fb.scroll_up(dy);
+                    self.last_rows.data.copy_within(k..rows, 0);
+                    // 上边距不能保留被丢弃行的笔画；新露出的尾部也必须重画。
+                    self.force_rows(0..1);
+                    self.force_rows(rows - k..rows);
+                    self.last_thumb = self.last_thumb.map(|(y, h)| (y.saturating_sub(dy), h));
+                } else {
+                    fb.scroll_down(dy);
+                    self.last_rows.data.copy_within(0..rows - k, k);
+                    // 回看往上翻：新露出的顶部几行，以及下边距里移进来的笔画都要重画。
+                    self.force_rows(0..k);
+                    self.force_rows(rows - 1..rows);
+                    self.last_thumb = self.last_thumb.map(|(y, h)| (y + dy, h));
                 }
                 shifted = true;
+                #[cfg(test)]
+                {
+                    self.translated += 1;
+                }
             } else {
                 full = true;
+            }
+        }
+        // 滚动条叠在内容上：滑块移动时重画新旧位置覆盖的行，滑块下的行重画时整段重新叠加。
+        let thumb = (!at_bottom).then(|| self.scrollbar_thumb(fb, term));
+        let mut draw_thumb = full && thumb.is_some();
+        if !full {
+            if self.last_thumb != thumb {
+                for (y, h) in self.last_thumb.into_iter().chain(thumb) {
+                    let range = self.pixel_rows(y, h, rows);
+                    self.force_rows(range);
+                }
+            }
+            if let Some((y, h)) = thumb {
+                let range = self.pixel_rows(y, h, rows);
+                if range.clone().any(|row| self.dirty_row(row, rows, false)) {
+                    self.force_rows(range);
+                    draw_thumb = true;
+                }
             }
         }
         if !full && self.work.rows.data == self.last_rows.data {
             return None;
         }
-        // 回看时滚动条横跨所有行，避免局部清背景擦掉它；静止帧仍已在上面直接返回。
-        full |= !at_bottom;
         let had_overflow = self.fonts.has_vertical_overflow();
         self.work.text(cols);
 
@@ -754,17 +803,23 @@ impl Renderer {
             }
             damage.add(top, bottom - top);
         }
-        if !at_bottom && full {
+        if draw_thumb {
             self.draw_scrollbar(fb, term);
         }
         if indexed {
             std::mem::swap(&mut self.last_rows, &mut self.work.rows);
             self.last_frame = frame_key;
             self.last_top = Some(top_line);
+            self.last_thumb = thumb;
         } else {
             self.last_rows.data.clear();
             self.last_frame = 0;
             self.last_top = None;
+            self.last_thumb = None;
+        }
+        if !had_overflow && self.fonts.has_vertical_overflow() {
+            // 诊断用：字体是否会让“相邻行补画”生效，只记一次（清缓存后重新计）。
+            crate::term::trace(format_args!("字形超出格子上下边界，此后局部重画会连带相邻行"));
         }
         if !full && !had_overflow && self.fonts.has_vertical_overflow() {
             // 新溢出字形首次出现时原脏区还没扩邻行，立即补一帧完整绘制清掉边界旧像素。
@@ -793,10 +848,6 @@ impl Renderer {
             }
             content
         };
-        // 历史长度只影响回看时的滚动条；放在行装饰指纹，不再让正常输出的整帧失效。
-        if term.display_offset() != 0 {
-            term.history().len().hash(&mut hasher);
-        }
         if cursor.visible && row == cursor.row {
             (cursor.col, cursor.shape, cursor.focused, cursor.preedit).hash(&mut hasher);
         }
@@ -1147,21 +1198,33 @@ impl Renderer {
     }
 
     /// 往回翻的时候在右边画一条半透明的滚动位置指示
-    fn draw_scrollbar(&self, fb: &mut Framebuffer, term: &Terminal) {
+    /// 滚动条滑块的像素范围 (y, 高)
+    fn scrollbar_thumb(&self, fb: &Framebuffer, term: &Terminal) -> (usize, usize) {
         let total = (term.history().len() + term.rows()) as f32;
         let first_visible = (term.history().len() - term.display_offset()) as f32;
         let track = fb.height as f32;
         let thumb = (track * term.rows() as f32 / total).max(self.fonts.cell_height as f32);
         let y = (track - thumb) * first_visible / (total - term.rows() as f32).max(1.0);
+        (y as usize, thumb as usize)
+    }
+
+    fn draw_scrollbar(&self, fb: &mut Framebuffer, term: &Terminal) {
+        let (y, height) = self.scrollbar_thumb(fb, term);
         let width = (self.fonts.cell_width / 3).max(3);
-        fb.blend_rect(
-            fb.width.saturating_sub(width + 2),
-            y as usize,
-            width,
-            thumb as usize,
-            self.colors.foreground,
-            100,
-        );
+        fb.blend_rect(fb.width.saturating_sub(width + 2), y, width, height, self.colors.foreground, 100);
+    }
+
+    /// 覆盖像素行 `[y, y + h)` 的终端行；上下边距算入首末行。
+    fn pixel_rows(&self, y: usize, h: usize, rows: usize) -> std::ops::Range<usize> {
+        let row = |y: usize| (y.saturating_sub(self.padding) / self.fonts.cell_height).min(rows - 1);
+        row(y)..row(y + h.max(1) - 1) + 1
+    }
+
+    /// 让这些行的旧指纹失效，本帧必定重画。
+    fn force_rows(&mut self, range: std::ops::Range<usize>) {
+        for row in range {
+            self.last_rows.data[row].decoration = self.work.rows[row].decoration ^ 1;
+        }
     }
 
     /// 窗口像素坐标对应的位置：(行, 列)。行限制在屏幕范围内，列是小数（选区要据此判断点在格子的哪一半）。
@@ -2143,6 +2206,59 @@ mod optimization_tests {
             draw_pair(&mut renderer, &mut reference, &terms[i], &mut frames[i], &mut fresh, &mut old, None);
             renderer.swap_view(&mut views[i]);
         }
+    }
+
+    #[test]
+    fn scrollback_translation_and_scrollbar_match_full_redraw() {
+        let pool = Budget::root(512 * 1024 * 1024, 256 * 1024 * 1024).unwrap();
+        let _scope = Scope::enter(pool.clone());
+        let initial = pool.snapshot().used;
+        for decorated in [false, true] {
+            let config = Config::default();
+            let (mut renderer, mut reference) = (Renderer::new(&config, 1.0), Renderer::new(&config, 1.0));
+            let mut term = Terminal::new(24, 8);
+            term.set_scrollback_limit(400);
+            let mut parser = Parser::new();
+            for i in 0..200 {
+                parser.advance(&mut term, format!("\x1b[{}mline {i} 中 gy\x1b[0m\r\n", 41 + i % 3).as_bytes());
+            }
+            let (w, h) = renderer.pixel_size(24, 8);
+            let (mut frame, mut fresh, mut old) = (
+                Framebuffer::new(w as usize, h as usize),
+                Framebuffer::new(w as usize, h as usize),
+                Framebuffer::new(w as usize, h as usize),
+            );
+            term.scroll_display(100);
+            let base = term.line_id(0);
+            let selection = decorated.then_some((Point { line: base - 20, col: 1 }, Point { line: base + 30, col: 5 }));
+            if decorated {
+                let decorations = vec![Decoration {
+                    range: (Point { line: base - 10, col: 0 }, Point { line: base + 10, col: 6 }),
+                    kind: DecorationKind::Match,
+                }];
+                renderer.set_ui(decorations.clone(), None);
+                reference.set_ui(decorations, None);
+            }
+            draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, selection);
+            let translated = renderer.translated;
+            // 上下翻动不同行数（含接近整屏），以及回看时新输出只移动滑块。
+            for step in [1, 7, -1, -7, 3, 0, -6, 2, 0, 1] {
+                if step == 0 {
+                    parser.advance(&mut term, b"more output\r\n");
+                } else {
+                    term.scroll_display(step);
+                }
+                assert_ne!(term.display_offset(), 0);
+                draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, selection);
+            }
+            assert_eq!(renderer.translated - translated, 8, "八次翻动都应平移画面，而不是整屏重画");
+            // 回到底部和再次离开底部都整屏重画。
+            term.scroll_display(-1000);
+            draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, selection);
+            term.scroll_display(3);
+            draw_pair(&mut renderer, &mut reference, &term, &mut frame, &mut fresh, &mut old, selection);
+        }
+        assert_eq!(pool.snapshot().used, initial);
     }
 
     #[test]

@@ -366,7 +366,7 @@ impl History {
             cells.extend_from_slice(&row.cells);
             StoredRow::Raw(Row { cells, wrapped: row.wrapped })
         };
-        assert!(self.allocated_bytes() + stored.payload_bytes() <= self.byte_limit);
+        debug_assert!(self.allocated_bytes() + stored.payload_bytes() <= self.byte_limit);
         self.bytes += stored.bytes();
         self.decoded += super::row_bytes(row.cells.len());
         self.rows.push_back(stored);
