@@ -28,7 +28,8 @@ pub(super) struct State {
     invalid: bool,
     pool: Option<PoolHandle>,
 }
-const POOL_LIMIT: usize = 3;
+// 系统显示第 N 帧时第 N-1 帧通常已归还，一块备用即可命中；4K 每块约 33 MB，多留只抬高常驻内存。
+const POOL_LIMIT: usize = 1;
 // 固定注册表不另分配；窗口销毁后，provider 回调仍可独立持有池。
 static POOLS: Mutex<[Option<PoolHandle>; 8]> = Mutex::new([const { None }; 8]);
 struct PoolData {

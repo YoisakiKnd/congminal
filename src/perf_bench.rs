@@ -332,6 +332,23 @@ fn benchmarks() {
             }
         });
     }
+    // 先写满长彩色行再写短行：复用的旧缓冲不能把短行长期撑成长行的容量。
+    isolated(|| {
+        let mut term = terminal();
+        let mut parser = Parser::new();
+        let long: Vec<u8> = (0..COLS / 2)
+            .flat_map(|i| format!("\x1b[{}mab", 31 + i % 7).into_bytes())
+            .chain(b"\x1b[0m\r\n".iter().copied())
+            .collect();
+        for _ in 0..10_000 {
+            parser.advance(&mut term, &long);
+        }
+        for _ in 0..10_000 {
+            parser.advance(&mut term, ASCII);
+        }
+        assert_eq!(term.history().len(), 10_000);
+        metric("history_bytes_10k_after_long", term.history().used_bytes() as f64, "bytes");
+    });
     for (name, line) in [("history_bytes_10k", ASCII), ("history_bytes_10k_cjk", CJK)] {
         isolated(|| {
             let mut term = terminal();

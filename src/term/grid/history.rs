@@ -4,6 +4,10 @@ use crate::resources::{Kind, Lease};
 use std::collections::VecDeque;
 
 const BLOCK: usize = 64 * 1024;
+/// 复用旧行缓冲的上限：太大的缓冲会让短行长期占着长行的容量，宁可释放后按需分配。
+fn reusable(capacity: usize, payload: usize) -> bool {
+    capacity >= payload && capacity <= payload.saturating_mul(2).saturating_add(32)
+}
 pub struct History {
     pub(super) rows: VecDeque<StoredRow>,
     pub(super) limit: usize,
@@ -280,7 +284,7 @@ impl History {
             && funding.is_none()
             && let Some(front) = self.rows.front()
             && let Some(capacity) = front.packed_capacity()
-            && capacity >= payload
+            && reusable(capacity, payload)
             && (self.len() >= self.limit
                 || self.pressure_limited
                 || self.allocated_bytes() + capacity > self.byte_limit)
@@ -329,7 +333,7 @@ impl History {
                 self.dropped += 1;
                 return None;
             };
-            if packed && spare.is_empty() {
+            if packed && spare.is_empty() && old.packed_capacity().is_some_and(|c| reusable(c, payload)) {
                 spare = old.into_buffer();
             } else {
                 drop(old);

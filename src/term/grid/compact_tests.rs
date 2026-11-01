@@ -105,3 +105,29 @@ fn old_and_compact_history_preserve_all_readers_copy_search_and_reflow() {
     drop(work);
     assert_eq!(pool.snapshot().used, 0);
 }
+
+#[test]
+fn reused_buffers_do_not_keep_short_rows_at_long_row_capacity() {
+    let pool = Budget::new(64 * 1024 * 1024, 0);
+    let _scope = Scope::enter(pool.clone());
+    let bytes_after = |first: &[u8]| {
+        let mut term = Terminal::new(80, 4);
+        term.set_scrollback_limit(256);
+        let mut parser = Parser::new();
+        for _ in 0..256 {
+            parser.advance(&mut term, first);
+        }
+        for _ in 0..256 {
+            parser.advance(&mut term, b"short line\r\n");
+        }
+        assert_eq!(term.history().len(), 256);
+        term.history().used_bytes()
+    };
+    let long: Vec<u8> =
+        (0..40).flat_map(|i| format!("\x1b[{}mab", 31 + i % 7).into_bytes()).chain(*b"\x1b[0m\r\n").collect();
+    let fresh = bytes_after(b"short line\r\n");
+    let reused = bytes_after(&long);
+    // 允许复用略大的缓冲，但不能长期保留长行容量。
+    assert!(reused <= fresh * 3 / 2, "长行之后的短行历史 {reused} B，直接写短行 {fresh} B");
+    assert_eq!(pool.snapshot().used, 0);
+}
