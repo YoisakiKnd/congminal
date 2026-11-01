@@ -205,7 +205,7 @@ pub trait App {
     fn tick(&mut self) -> bool;
     fn needs_redraw(&self) -> bool;
     /// 画一帧，返回画面和变化了的区域；什么都没变时返回 None（不用提交）
-    fn draw(&mut self) -> Option<(&Framebuffer, Damage)>;
+    fn draw(&mut self) -> Option<(&Framebuffer<'static>, Damage)>;
     /// 如果窗口标题需要改，返回新标题
     fn take_title(&mut self) -> Option<String>;
     /// 最晚什么时候要被叫醒（比如推迟到下一帧的重画）。None 表示没事就一直等到有事件。

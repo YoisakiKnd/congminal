@@ -434,7 +434,7 @@ mod tests {
             fn needs_redraw(&self) -> bool {
                 false
             }
-            fn draw(&mut self) -> Option<(&Framebuffer, crate::render::Damage)> {
+            fn draw(&mut self) -> Option<(&Framebuffer<'static>, crate::render::Damage)> {
                 None
             }
             fn take_title(&mut self) -> Option<String> {

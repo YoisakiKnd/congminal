@@ -222,7 +222,7 @@ impl Workspace {
         let height = frame.height.min(ch.saturating_mul(34));
         [(frame.width - width) / 2, (frame.height - height) / 2, width, height]
     }
-    pub(super) fn authentication_draw_single(&mut self) -> Option<(&Framebuffer, Damage)> {
+    pub(super) fn authentication_draw_single(&mut self) -> Option<(&Framebuffer<'static>, Damage)> {
         let dirty = self.authentication.as_ref().is_some_and(|overlay| overlay.dirty);
         let base = self.driver.needs_redraw() && self.driver.draw().is_some();
         if !dirty && !base {

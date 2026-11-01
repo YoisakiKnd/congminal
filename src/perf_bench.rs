@@ -201,7 +201,7 @@ struct Scene {
     renderer: Renderer,
     term: Terminal,
     parser: Parser,
-    frame: Framebuffer,
+    frame: Framebuffer<'static>,
 }
 impl Scene {
     fn new() -> Self {

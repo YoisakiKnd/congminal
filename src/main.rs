@@ -87,7 +87,9 @@ const CURSOR_BLINK_MS: u64 = 530;
 struct Congminal {
     session: Session,
     renderer: Renderer,
-    framebuffer: Framebuffer,
+    framebuffer: Framebuffer<'static>,
+    viewport: (usize, usize),
+    shared_canvas: bool,
     config_changed: Arc<AtomicBool>,
     last_io_notice: Option<Instant>,
     wake_pending: Arc<AtomicBool>,
@@ -183,7 +185,7 @@ impl Congminal {
             self.schedule_fonts();
         }
         if layout_changed {
-            self.resize(self.framebuffer.width as u32, self.framebuffer.height as u32);
+            self.resize(self.viewport.0 as u32, self.viewport.1 as u32);
         }
         self.dirty = true;
         term::trace(format_args!("已重新加载配置"));
@@ -211,13 +213,14 @@ impl Congminal {
         // 字符格子的像素尺寸随字体缩放变化，CSI 14/16 t 的查询按它换算。
         let (cell_w, cell_h) = self.renderer.cell_size();
         self.session.term.set_cell_pixels(cell_w as u32, cell_h as u32);
-        if !self.framebuffer.resize(width as usize, height as usize) {
+        if !self.shared_canvas && !self.framebuffer.resize(width as usize, height as usize) {
             self.renderer.reclaim_caches();
             if !self.framebuffer.resize(width as usize, height as usize) {
                 eprintln!("congminal: 窗口像素超过帧缓冲/共享额度或分配失败：{width}×{height}");
                 return false;
             }
         }
+        self.viewport = (width as usize, height as usize);
         self.hover = None;
         self.hover_cell = None;
         if let Err(e) = self.session.commit_resize(plan) {
@@ -501,7 +504,7 @@ impl Congminal {
                     let warnings = fonts.take_warnings();
                     self.renderer.replace_fonts(fonts);
                     self.loaded_font = font;
-                    self.resize(self.framebuffer.width as u32, self.framebuffer.height as u32);
+                    self.resize(self.viewport.0 as u32, self.viewport.1 as u32);
                     self.show_warning_refs(warnings.iter());
                     term::trace(format_args!("字体提交：{}px", self.loaded_font.size));
                 }
@@ -662,8 +665,8 @@ impl Congminal {
         if self.search.active
             || x < 0.0
             || y < 0.0
-            || x >= self.framebuffer.width as f64
-            || y >= self.framebuffer.height as f64
+            || x >= self.viewport.0 as f64
+            || y >= self.viewport.1 as f64
             || self.renderer.is_bar(&self.session.term, y)
         {
             return None;
@@ -674,8 +677,8 @@ impl Congminal {
     fn update_hover(&mut self, x: f64, y: f64) {
         if !self.search.active
             && x >= 0.0
-            && x < self.framebuffer.width as f64
-            && y < self.framebuffer.height as f64
+            && x < self.viewport.0 as f64
+            && y < self.viewport.1 as f64
             && self.renderer.is_bar(&self.session.term, y)
         {
             return;
@@ -875,7 +878,7 @@ impl Congminal {
         // 拖到窗口外面时自动滚动
         if y < 0.0 {
             self.session.term.scroll_display(1);
-        } else if y > self.framebuffer.height as f64 {
+        } else if y > self.viewport.1 as f64 {
             self.session.term.scroll_display(-1);
         }
         let (row, col) = self.renderer.grid_position(x, y, &self.session.term);
@@ -981,6 +984,22 @@ impl Congminal {
             self.session.term.scroll_display(whole as isize);
             self.dirty = true;
         }
+    }
+}
+
+impl Congminal {
+    fn prepare_draw(&mut self) -> (Option<(Point, Point)>, bool, bool) {
+        self.update_ui();
+        self.dirty = false;
+        self.last_draw = Instant::now();
+        let selection = self.session.selection.as_ref().and_then(|s| s.range(&self.session.term));
+        let cursor_on = self.cursor_on();
+        self.last_cursor_on = cursor_on;
+        (selection, self.focus.active && !self.search.active && !self.notifications.open, cursor_on)
+    }
+    fn draw_into(&mut self, frame: &mut Framebuffer<'_>) -> Option<Damage> {
+        let (selection, focused, cursor_on) = self.prepare_draw();
+        self.renderer.draw(&self.session.term, &self.session.preedit, selection, focused, cursor_on, frame)
     }
 }
 
@@ -1247,18 +1266,13 @@ impl App for Congminal {
         }
     }
 
-    fn draw(&mut self) -> Option<(&Framebuffer, Damage)> {
-        self.update_ui();
-        self.dirty = false;
-        self.last_draw = Instant::now();
-        let selection = self.session.selection.as_ref().and_then(|s| s.range(&self.session.term));
-        let cursor_on = self.cursor_on();
-        self.last_cursor_on = cursor_on;
+    fn draw(&mut self) -> Option<(&Framebuffer<'static>, Damage)> {
+        let (selection, focused, cursor_on) = self.prepare_draw();
         let damage = self.renderer.draw(
             &self.session.term,
             &self.session.preedit,
             selection,
-            self.focus.active && !self.search.active && !self.notifications.open,
+            focused,
             cursor_on,
             &mut self.framebuffer,
         )?;
@@ -1290,7 +1304,7 @@ impl App for Congminal {
             .bar_cursor_rect(&self.session.term)
             .unwrap_or_else(|| self.renderer.cursor_rect(&self.session.term));
         // 准备新布局时旧光标可能落在已经缩小的画布之外。
-        let (width, height) = (self.framebuffer.width.max(1) as u32, self.framebuffer.height.max(1) as u32);
+        let (width, height) = (self.viewport.0.max(1) as u32, self.viewport.1.max(1) as u32);
         let (x, y) = (x.min(width - 1), y.min(height - 1));
         (x, y, w.min(width - x).max(1), h.min(height - y).max(1))
     }
@@ -1416,6 +1430,8 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         session,
         renderer,
         framebuffer: Framebuffer::new(0, 0),
+        viewport: (0, 0),
+        shared_canvas: false,
         config_changed,
         last_io_notice: None,
         wake_pending,
@@ -1648,7 +1664,7 @@ mod integration_tests {
             app.session.term.rows(),
             app.session.term.text_stamp(),
         );
-        let pixels = app.framebuffer.pixels.clone();
+        let pixels = app.framebuffer.pixels.to_vec();
         let _hold = pool.lease(resources::Kind::Queue, 128 * 1024 * 1024 - pool.snapshot().used).unwrap();
         assert!(!app.resize(before.0 as u32 + 64, before.1 as u32 + 64));
         assert!(
@@ -1698,6 +1714,8 @@ mod integration_tests {
             renderer,
             config,
             framebuffer: Framebuffer::new(0, 0),
+            viewport: (0, 0),
+            shared_canvas: false,
             config_path: None,
             scale: 1.0,
             config_changed: Arc::new(AtomicBool::new(false)),

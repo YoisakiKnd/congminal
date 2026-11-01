@@ -422,13 +422,13 @@ impl Workspace {
         let mut fresh = Frozen::new(session);
         if index == self.loaded {
             fresh.exchange(&mut self.driver);
-            std::mem::swap(&mut self.driver.framebuffer, &mut fresh.framebuffer);
+            std::mem::swap(&mut self.driver.viewport, &mut fresh.viewport);
             self.driver.focus.active = self.selected == id && self.window_focus;
             self.driver.renderer.invalidate();
             self.driver.dirty = true;
         } else {
             let old = self.panes[index].state.as_mut().unwrap();
-            std::mem::swap(&mut fresh.framebuffer, &mut old.framebuffer);
+            std::mem::swap(&mut fresh.viewport, &mut old.viewport);
             std::mem::swap(old, &mut fresh);
         }
         let new_id = self.next_id;

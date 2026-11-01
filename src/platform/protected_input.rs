@@ -166,7 +166,7 @@ mod tests {
             fn needs_redraw(&self) -> bool {
                 false
             }
-            fn draw(&mut self) -> Option<(&Framebuffer, Damage)> {
+            fn draw(&mut self) -> Option<(&Framebuffer<'static>, Damage)> {
                 None
             }
             fn take_title(&mut self) -> Option<String> {

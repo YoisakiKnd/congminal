@@ -37,20 +37,75 @@ fn chrome_text(text: &str, cells: usize) -> impl Iterator<Item = char> + '_ {
         .chain(ellipsis)
 }
 
-pub struct Framebuffer {
+#[derive(Debug)]
+pub enum PixelStorage<'a> {
+    Owned(Vec<u32>),
+    Borrowed(&'a mut [u32]),
+}
+impl PixelStorage<'_> {
+    pub fn capacity(&self) -> usize {
+        match self {
+            Self::Owned(pixels) => pixels.capacity(),
+            Self::Borrowed(_) => 0,
+        }
+    }
+}
+impl std::ops::Deref for PixelStorage<'_> {
+    type Target = [u32];
+    fn deref(&self) -> &[u32] {
+        match self {
+            Self::Owned(pixels) => pixels,
+            Self::Borrowed(pixels) => pixels,
+        }
+    }
+}
+impl std::ops::DerefMut for PixelStorage<'_> {
+    fn deref_mut(&mut self) -> &mut [u32] {
+        match self {
+            Self::Owned(pixels) => pixels,
+            Self::Borrowed(pixels) => pixels,
+        }
+    }
+}
+#[cfg(test)]
+impl Hash for PixelStorage<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (**self).hash(state);
+    }
+}
+impl PartialEq for PixelStorage<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        **self == **other
+    }
+}
+impl PartialEq<Vec<u32>> for PixelStorage<'_> {
+    fn eq(&self, other: &Vec<u32>) -> bool {
+        **self == **other
+    }
+}
+impl<'a, 'b> IntoIterator for &'b PixelStorage<'a> {
+    type Item = &'b u32;
+    type IntoIter = std::slice::Iter<'b, u32>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+pub struct Framebuffer<'a> {
     pub width: usize,
     pub height: usize,
-    pub pixels: Vec<u32>,
-    memory: crate::resources::Lease,
+    pub stride: usize,
+    pub pixels: PixelStorage<'a>,
+    memory: Option<crate::resources::Lease>,
 }
 
-impl Framebuffer {
-    pub fn new(width: usize, height: usize) -> Framebuffer {
+impl<'a> Framebuffer<'a> {
+    pub fn new(width: usize, height: usize) -> Self {
         let mut framebuffer = Framebuffer {
             width: 0,
             height: 0,
-            pixels: Vec::new(),
-            memory: crate::resources::current().lease(crate::resources::Kind::Canvas, 0).unwrap(),
+            stride: 0,
+            pixels: PixelStorage::Owned(Vec::new()),
+            memory: Some(crate::resources::current().lease(crate::resources::Kind::Canvas, 0).unwrap()),
         };
         assert!(framebuffer.resize(width, height), "帧缓冲大小超过预算或分配失败");
         framebuffer
@@ -59,8 +114,11 @@ impl Framebuffer {
     pub fn release(&mut self) {
         self.width = 0;
         self.height = 0;
-        self.pixels = Vec::new();
-        self.memory.resize(0).unwrap();
+        self.stride = 0;
+        self.pixels = PixelStorage::Owned(Vec::new());
+        if let Some(memory) = &mut self.memory {
+            memory.resize(0).unwrap();
+        }
     }
     pub fn resize(&mut self, width: usize, height: usize) -> bool {
         let Some(count) = width.checked_mul(height) else {
@@ -69,10 +127,12 @@ impl Framebuffer {
         if width > MAX_WINDOW_SIDE || height > MAX_WINDOW_SIDE || count > MAX_FRAME_PIXELS {
             return false;
         }
-        if count > self.pixels.capacity() {
+        let Some(owner) = &self.memory else { return false };
+        let PixelStorage::Owned(current) = &mut self.pixels else { return false };
+        if count > current.capacity() {
             // 先占新缓冲完整额度，旧缓冲/额度在分配、复制成功前保持有效。
             let Some(bytes) = count.checked_mul(std::mem::size_of::<u32>()) else { return false };
-            let Ok(mut memory) = self.memory.budget().lease(crate::resources::Kind::Canvas, bytes) else {
+            let Ok(mut memory) = owner.budget().lease(crate::resources::Kind::Canvas, bytes) else {
                 return false;
             };
             let mut pixels = Vec::new();
@@ -82,14 +142,41 @@ impl Framebuffer {
             if memory.resize(pixels.capacity() * std::mem::size_of::<u32>()).is_err() {
                 return false;
             }
-            pixels.extend_from_slice(&self.pixels);
-            drop(std::mem::replace(&mut self.pixels, pixels));
-            self.memory = memory;
+            pixels.extend_from_slice(current);
+            drop(std::mem::replace(current, pixels));
+            self.memory = Some(memory);
         }
         self.width = width;
         self.height = height;
-        self.pixels.resize(count, 0);
+        self.stride = width;
+        current.resize(count, 0);
         true
+    }
+
+    /// 视图只借用像素；父画布和 Canvas 票据在借用期间都不能销毁或重分配。
+    pub(crate) fn view(&mut self, x: usize, y: usize, width: usize, height: usize) -> Framebuffer<'_> {
+        let width = width.min(self.width.saturating_sub(x));
+        let height = height.min(self.height.saturating_sub(y));
+        let (start, count) =
+            if width == 0 || height == 0 { (0, 0) } else { (y * self.stride + x, (height - 1) * self.stride + width) };
+        Framebuffer {
+            width,
+            height,
+            stride: self.stride,
+            pixels: PixelStorage::Borrowed(&mut self.pixels[start..start + count]),
+            memory: None,
+        }
+    }
+    fn scroll_up(&mut self, dy: usize) {
+        if self.stride == self.width {
+            self.pixels.copy_within(dy * self.stride..self.height * self.stride, 0);
+        } else {
+            // 每行只移动视图宽度，跨度中的其他窗格和边框不能被修改。
+            for row in 0..self.height.saturating_sub(dy) {
+                let src = (row + dy) * self.stride;
+                self.pixels.copy_within(src..src + self.width, row * self.stride);
+            }
+        }
     }
 
     /// 半透明地叠一个矩形，alpha 是 0-255
@@ -97,7 +184,7 @@ impl Framebuffer {
         let x_end = (x + w).min(self.width);
         let y_end = (y + h).min(self.height);
         for row in y..y_end {
-            for pixel in &mut self.pixels[row * self.width + x.min(x_end)..row * self.width + x_end] {
+            for pixel in &mut self.pixels[row * self.stride + x.min(x_end)..row * self.stride + x_end] {
                 *pixel = mix(color, *pixel, alpha);
             }
         }
@@ -110,7 +197,7 @@ impl Framebuffer {
             return;
         }
         for row in y..y_end {
-            let start = row * self.width;
+            let start = row * self.stride;
             self.pixels[start + x..start + x_end].fill(color);
         }
     }
@@ -586,7 +673,7 @@ impl Renderer {
                 && let Some(k) = shift.filter(|&k| k > 0 && k < rows)
             {
                 let dy = k * self.fonts.cell_height;
-                fb.pixels.copy_within(dy * fb.width..fb.height * fb.width, 0);
+                fb.scroll_up(dy);
                 self.last_rows.data.copy_within(k..rows, 0);
                 // 上边距不能保留被丢弃行的笔画；新露出的尾部也必须重画。
                 self.last_rows.data[0] = self.work.rows[0] ^ 1;
@@ -1170,7 +1257,7 @@ fn blend_auth_glyph(fb: &mut Framebuffer, base: usize, row: usize, glyph: &Glyph
     let width = (x1 - x0) as usize;
     for py in y0..y1 {
         let source = (py - y) as usize * glyph.width + (x0 - x) as usize;
-        let target = py as usize * fb.width + x0 as usize;
+        let target = py as usize * fb.stride + x0 as usize;
         let target = &mut fb.pixels[target..target + width];
         match &glyph.pixels {
             Pixels::Alpha(alpha) => {
@@ -1198,7 +1285,7 @@ fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32, 
     let width = (x1 - x0) as usize;
     for py in y0..y1 {
         let src = (py - y) as usize * glyph.width + (x0 - x) as usize;
-        let dst = py as usize * fb.width + x0 as usize;
+        let dst = py as usize * fb.stride + x0 as usize;
         let dst = &mut fb.pixels[dst..dst + width];
         // 每一行判断一次字形种类，内层循环只做混合
         match &glyph.pixels {
@@ -1713,7 +1800,7 @@ mod boundary_tests {
     #[test]
     fn command_marks_paint_a_result_bar_in_the_left_padding() {
         // 第一行提示符 + 一条结束的命令；返回（帧缓冲, 提示行左侧色条的像素下标）
-        fn render_with(code: &str, marks: bool) -> (Framebuffer, usize, crate::config::Colors) {
+        fn render_with(code: &str, marks: bool) -> (Framebuffer<'static>, usize, crate::config::Colors) {
             let mut config = crate::config::Config::default();
             config.command_marks = marks;
             let mut renderer = Renderer::new(&config, 1.0);
@@ -2024,5 +2111,92 @@ mod optimization_tests {
             assert_eq!(mix(src, dst, a), scalar_mix(src, dst, a));
             assert_eq!(over(src, dst), scalar_over(src, dst));
         }
+    }
+}
+
+#[cfg(test)]
+mod stride_tests {
+    use super::*;
+    use crate::{
+        resources::{Budget, Scope},
+        vt::Parser,
+    };
+    #[test]
+    fn borrowed_stride_clips_scrolling_overflow_graphics_and_chrome_to_its_rectangle() {
+        let pool = Budget::root(512 * 1024 * 1024, 256 * 1024 * 1024).unwrap();
+        let _scope = Scope::enter(pool.clone());
+        let initial = pool.snapshot().used;
+        for cropped in [false, true] {
+            let config = Config::default();
+            let mut renderer = Renderer::new(&config, 1.0);
+            let mut term = Terminal::new(20, 8);
+            let (cw, ch) = renderer.cell_size();
+            term.set_cell_pixels(cw as u32, ch as u32);
+            let (w, h) = renderer.pixel_size(20, 8);
+            let (w, h) = (w as usize - usize::from(cropped) * 13, h as usize - usize::from(cropped) * 17);
+            let (x, y) = (7, 11);
+            let mut parent = Framebuffer::new(w + 43, h + 29);
+            parent.pixels.fill(0x123456);
+            let mut expected = Framebuffer::new(w, h);
+            let mut parser = Parser::new();
+            parser.advance(&mut term, "ab中e\u{301}\x1b[44m background\x1b[m\r\n".repeat(30).as_bytes());
+            for step in 0..6 {
+                match step {
+                    1 => parser.advance(&mut term, b"\x1b[2;1Hchanged"),
+                    2 => {
+                        renderer.fonts.inject_overflow_glyph('~');
+                        parser.advance(&mut term, b"\x1b[3;1H~");
+                    }
+                    3 => parser.advance(&mut term, b"\x1b[999;1H\r\nscroll"),
+                    4 => parser.advance(&mut term, b"\x1b[7S"),
+                    5 => parser.advance(&mut term, b"\x1b[1;1H\x1b_Ga=T,f=32,s=1,v=1,c=1,r=1;/wAA/w==\x1b\\"),
+                    _ => {}
+                }
+                let selection =
+                    Some((Point { line: term.line_id(1), col: 1 }, Point { line: term.line_id(3), col: 5 }));
+                let canvas = pool.snapshot().kinds[crate::resources::Kind::Canvas as usize];
+                {
+                    let mut view = parent.view(x, y, w, h);
+                    assert!(!view.resize(w + 1, h + 1));
+                    assert_eq!(view.pixels.capacity(), 0);
+                    renderer.draw(&term, "", selection, true, true, &mut view);
+                }
+                assert_eq!(pool.snapshot().kinds[crate::resources::Kind::Canvas as usize], canvas);
+                renderer.invalidate();
+                renderer.draw(&term, "", selection, true, true, &mut expected);
+                for py in 0..parent.height {
+                    for px in 0..parent.width {
+                        let wanted = if (x..x + w).contains(&px) && (y..y + h).contains(&py) {
+                            expected.pixels[(py - y) * expected.stride + px - x]
+                        } else {
+                            0x123456
+                        };
+                        assert_eq!(
+                            parent.pixels[py * parent.stride + px],
+                            wanted,
+                            "crop={cropped} step={step} ({px},{py})"
+                        );
+                    }
+                }
+            }
+            {
+                let mut view = parent.view(x, y, w, h);
+                renderer.chrome(&mut view, [0, 0, w, ch * 2], "pane 中", true);
+                renderer.auth_text(&mut view, [cw, ch * 2, w - cw, ch * 2], "e\u{301} AUTH", true);
+            }
+            renderer.chrome(&mut expected, [0, 0, w, ch * 2], "pane 中", true);
+            renderer.auth_text(&mut expected, [cw, ch * 2, w - cw, ch * 2], "e\u{301} AUTH", true);
+            for py in 0..parent.height {
+                for px in 0..parent.width {
+                    let wanted = if (x..x + w).contains(&px) && (y..y + h).contains(&py) {
+                        expected.pixels[(py - y) * expected.stride + px - x]
+                    } else {
+                        0x123456
+                    };
+                    assert_eq!(parent.pixels[py * parent.stride + px], wanted);
+                }
+            }
+        }
+        assert_eq!(pool.snapshot().used, initial);
     }
 }

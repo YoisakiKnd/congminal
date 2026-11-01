@@ -240,7 +240,7 @@ mod tests {
             }
         }
         assert!(frame.pixels.contains(&accent));
-        let before = frame.pixels.clone();
+        let before = frame.pixels.to_vec();
         renderer.panel_spark(&mut frame, [10, 10, 0, 30], [100.0].into_iter(), 1);
         renderer.panel_spark(&mut frame, [10, 10, 180, 0], [100.0].into_iter(), 1);
         renderer.panel_spark(&mut frame, [10, 10, 180, 30], std::iter::empty(), 0);

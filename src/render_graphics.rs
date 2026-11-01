@@ -79,7 +79,7 @@ impl Renderer {
                 }
                 for dx in 0..tile.width.min(fb.width - x) {
                     if let Some(pixel) = tile.pixel(dx, sy as usize) {
-                        blend(fb, screen_y * fb.width + x + dx, pixel);
+                        blend(fb, screen_y * fb.stride + x + dx, pixel);
                     }
                 }
             }
@@ -105,7 +105,7 @@ fn blit_cell(
         }
         for dx in 0..cell.0.min(fb.width - x) {
             if let Some(pixel) = tile.pixel(source.0.saturating_add(dx), source.1.saturating_add(dy)) {
-                blend(fb, screen_y * fb.width + x + dx, pixel);
+                blend(fb, screen_y * fb.stride + x + dx, pixel);
             }
         }
     }

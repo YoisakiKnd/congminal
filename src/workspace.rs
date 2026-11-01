@@ -179,7 +179,7 @@ impl Node {
 // 当前借出窗格的状态住在 Congminal 内；切换只 swap 所有权，不复制网格/输出/字体。
 struct Frozen {
     session: Session,
-    framebuffer: Framebuffer,
+    viewport: (usize, usize),
     last_io_notice: Option<Instant>,
     clipboard_request: Option<ClipboardRequest>,
     focus: Focus,
@@ -202,7 +202,7 @@ impl Frozen {
     fn new(session: Session) -> Self {
         Self {
             session,
-            framebuffer: Framebuffer::new(0, 0),
+            viewport: (0, 0),
             last_io_notice: None,
             clipboard_request: None,
             focus: Focus { active: false },
@@ -224,7 +224,7 @@ impl Frozen {
     }
     fn exchange(&mut self, app: &mut Congminal) {
         std::mem::swap(&mut self.session, &mut app.session);
-        std::mem::swap(&mut self.framebuffer, &mut app.framebuffer);
+        std::mem::swap(&mut self.viewport, &mut app.viewport);
         std::mem::swap(&mut self.last_io_notice, &mut app.last_io_notice);
         std::mem::swap(&mut self.clipboard_request, &mut app.clipboard_request);
         std::mem::swap(&mut self.focus, &mut app.focus);
@@ -291,7 +291,7 @@ pub struct Workspace {
     loaded: usize,
     selected: u64,
     next_id: u64,
-    frame: Framebuffer,
+    frame: Framebuffer<'static>,
     width: usize,
     height: usize,
     generation: u64,
@@ -624,6 +624,7 @@ impl Workspace {
         self.tab = layout.active;
         self.selected = self.tab_focus[self.tab];
         self.enabled = layout.enabled;
+        self.driver.shared_canvas = self.enabled;
         self.multiple = self.panes.len() > 1;
         self.left = layout.left;
         self.right = layout.right;
@@ -642,6 +643,7 @@ impl Workspace {
             self.selected = 1;
             self.next_id = 2;
             self.enabled = old.enabled;
+            self.driver.shared_canvas = self.enabled;
             self.multiple = false;
             self.left = old.left;
             self.right = old.right;
@@ -965,17 +967,7 @@ impl Workspace {
             self.notice("新窗格超过网格预算");
             return;
         }
-        self.reclaim_for(
-            rect.w * rect.h * 4
-                + pty::flow::ByteQueue::session_reservation()
-                + crate::term::grid_reservation(cols, rows),
-        );
-        // 先准备画布，再启动 Shell；额度不足时不创建一个无法显示的会话。
-        let mut canvas = Framebuffer::new(0, 0);
-        if !canvas.resize(rect.w, rect.h) {
-            self.notice("新窗格画布超过共享额度，保留现有会话");
-            return;
-        }
+        self.reclaim_for(pty::flow::ByteQueue::session_reservation() + crate::term::grid_reservation(cols, rows));
         let local = match profile {
             Some(config::profiles::Profile { connection: config::profiles::Connection::Local(shell), .. }) => {
                 Some(shell)
@@ -992,8 +984,7 @@ impl Workspace {
         };
         self.driver.event(Event::Focus(false));
         let previous = (self.tabs.clone(), self.tab_focus, self.tab, self.selected, self.multiple, self.next_id);
-        let mut state = Frozen::new(session);
-        state.framebuffer = canvas;
+        let state = Frozen::new(session);
         self.panes.push(Pane {
             #[cfg(any(test, feature = "sftp"))] // auth-workspace
             auth_generation: 0,
@@ -1214,6 +1205,8 @@ impl Workspace {
                 return Err("工作区画布分配失败或超过共享额度".into());
             }
         }
+        self.driver.shared_canvas = true;
+        self.driver.framebuffer.release();
         self.dividers = dividers;
         let (cell_w, cell_h) = self.driver.renderer.cell_size();
         self.left_rect =
@@ -1237,17 +1230,13 @@ impl Workspace {
             let rect = placed.iter().find(|(id, _)| *id == self.panes[index].id).map(|(_, r)| *r).unwrap_or_default();
             self.panes[index].rect = rect;
             if rect.visible() {
-                // 收缩时释放过大的旧画布，画布总量不会按历史最大窗格面积累积。
-                if self.driver.framebuffer.pixels.capacity() > rect.w * rect.h * 5 / 4 {
-                    self.driver.framebuffer.release();
-                }
                 let plan = plans.iter_mut().find(|(i, _)| *i == index).unwrap().1.take().unwrap();
                 if !self.driver.resize_prepared(rect.w as u32, rect.h as u32, plan) {
                     self.restore();
                     return Err("窗格画布分配失败".into());
                 }
             } else {
-                self.driver.framebuffer.release();
+                self.driver.viewport = (0, 0);
             }
             apply_runtime_settings(&self.driver.config, &mut self.driver.session.term);
         }
@@ -1361,7 +1350,7 @@ impl Workspace {
             totals[1] += history;
             totals[2] += marks;
             totals[3] += input + output;
-            totals[4] += self.driver.framebuffer.pixels.capacity() * 4;
+
             totals[5] += self.driver.session.term.shell.resource_bytes()
                 + self.driver.session.term.link_bytes()
                 + self.driver.search.resource_bytes()
@@ -2900,7 +2889,7 @@ impl App for Workspace {
         }
         self.draw_time().is_some_and(|at| Instant::now() >= at)
     }
-    fn draw(&mut self) -> Option<(&Framebuffer, Damage)> {
+    fn draw(&mut self) -> Option<(&Framebuffer<'static>, Damage)> {
         #[cfg(any(test, feature = "sftp"))]
         if !self.enabled && self.sftp_exiting() {
             if !self.sftp_exit_dirty() {
@@ -2937,29 +2926,29 @@ impl App for Workspace {
                 self.driver.dirty = true;
                 self.panes[index].generation = self.driver.renderer.generation();
             }
-            let damage = if self.driver.needs_redraw() { self.driver.draw().map(|(_, damage)| damage) } else { None };
-            let range = if full { Some((0, rect.h)) } else { damage.map(|d| (d.y, d.y + d.height)) };
-            if let Some((start, end)) = range {
-                let source = &self.driver.framebuffer;
-                for row in start.min(source.height)..end.min(rect.h).min(source.height) {
-                    let width = rect.w.min(source.width).min(self.frame.width.saturating_sub(rect.x));
-                    let dst = (rect.y + row) * self.frame.width + rect.x;
-                    let src = row * source.width;
-                    if dst + width <= self.frame.pixels.len() {
-                        self.frame.pixels[dst..dst + width].copy_from_slice(&source.pixels[src..src + width]);
-                    }
-                }
-                if full {
+            if full {
+                self.driver.renderer.invalidate();
+                self.driver.dirty = true;
+            }
+            let damage = if full || self.driver.needs_redraw() {
+                let mut view = self.frame.view(rect.x, rect.y, rect.w, rect.h);
+                self.driver.draw_into(&mut view)
+            } else {
+                None
+            };
+            if full {
+                let height = rect.h.min(self.frame.height.saturating_sub(rect.y));
+                regions.add(rect.y, height);
+                top = top.min(rect.y.min(self.frame.height));
+                bottom = bottom.max((rect.y + height).min(self.frame.height));
+            } else if let Some(damage) = damage {
+                for band in damage.bands() {
+                    let start = band.y.min(rect.h);
+                    let end = band.y.saturating_add(band.height).min(rect.h);
                     regions.add(rect.y + start, end.saturating_sub(start));
-                } else if let Some(damage) = damage {
-                    for band in damage.bands() {
-                        let top = band.y.min(rect.h).min(source.height);
-                        let bottom = band.y.saturating_add(band.height).min(rect.h).min(source.height);
-                        regions.add(rect.y + top, bottom.saturating_sub(top));
-                    }
                 }
-                top = top.min(rect.y + start);
-                bottom = bottom.max((rect.y + end).min(self.frame.height));
+                top = top.min(rect.y + damage.y.min(rect.h));
+                bottom = bottom.max((rect.y + damage.y + damage.height).min(rect.y + rect.h));
             }
         }
         self.restore();
@@ -6134,8 +6123,8 @@ program="/definitely/missing/congminal-shell"
                     app.driver.session.term.cols(),
                     app.driver.session.term.rows(),
                     app.driver.session.term.text_stamp(),
-                    app.driver.framebuffer.width,
-                    app.driver.framebuffer.height,
+                    app.driver.viewport.0,
+                    app.driver.viewport.1,
                     app.panes[index].rect,
                 )
             })
@@ -6182,8 +6171,8 @@ program="/definitely/missing/congminal-shell"
                     app.driver.session.term.cols(),
                     app.driver.session.term.rows(),
                     app.driver.session.term.text_stamp(),
-                    app.driver.framebuffer.width,
-                    app.driver.framebuffer.height,
+                    app.driver.viewport.0,
+                    app.driver.viewport.1,
                     app.panes[index].rect
                 ),
                 *expected
@@ -6228,6 +6217,110 @@ program="/definitely/missing/congminal-shell"
         app.restore();
         app.last_draw = Instant::now() - FRAME_INTERVAL;
         app.draw();
+    }
+    fn same_canvas(actual: &Framebuffer<'_>, expected: &Framebuffer<'_>, label: &str) {
+        assert_eq!((actual.width, actual.height), (expected.width, expected.height));
+        if let Some(at) = actual.pixels.iter().zip(expected.pixels.iter()).position(|(a, b)| a != b) {
+            panic!(
+                "{label}: pixel ({},{}) actual={:x} expected={:x}",
+                at % actual.width,
+                at / actual.width,
+                actual.pixels[at],
+                expected.pixels[at]
+            );
+        }
+    }
+    fn reference_pane_composition(app: &mut Workspace) -> Framebuffer<'static> {
+        let fresh = Framebuffer::new(app.frame.width, app.frame.height);
+        let actual = std::mem::replace(&mut app.frame, fresh);
+        app.frame.pixels.fill(app.driver.config.colors.background);
+        for index in 0..app.panes.len() {
+            let rect = app.panes[index].rect;
+            if !rect.visible() {
+                continue;
+            }
+            app.load(index);
+            let mut pane = Framebuffer::new(rect.w, rect.h);
+            app.driver.renderer.invalidate();
+            app.driver.draw_into(&mut pane);
+            let width = rect.w.min(app.frame.width.saturating_sub(rect.x));
+            let height = rect.h.min(app.frame.height.saturating_sub(rect.y));
+            if width > 0 {
+                for row in 0..height {
+                    let start = (rect.y + row) * app.frame.stride + rect.x;
+                    app.frame.pixels[start..start + width]
+                        .copy_from_slice(&pane.pixels[row * pane.stride..row * pane.stride + width]);
+                }
+            }
+        }
+        app.restore();
+        app.chrome();
+        std::mem::replace(&mut app.frame, actual)
+    }
+    #[test]
+    fn direct_panes_match_owned_canvas_composition_across_layouts_and_partial_updates() {
+        for axis in [Axis::Across, Axis::Down] {
+            let mut app = workspace();
+            app.width = 1000;
+            app.height = 720;
+            for count in 2..=4 {
+                app.add(Some(axis));
+                assert_eq!(app.panes.len(), count);
+                for index in 0..count {
+                    app.load(index);
+                    let rows = app.driver.session.term.rows();
+                    let input = "ab中e\u{301} \x1b[44mbackground\x1b[m\r\n".repeat(rows * 3);
+                    vt::Parser::new().advance(&mut app.driver.session.term, input.as_bytes());
+                    app.driver.search.open(&app.driver.session.term);
+                    app.driver.search.insert("ab", &app.driver.session.term);
+                    for _ in 0..8 {
+                        app.driver.search.step(&app.driver.session.term);
+                    }
+                    app.driver.dirty = true;
+                }
+                app.restore();
+                force_draw(&mut app);
+                for step in 0..4 {
+                    let expected = reference_pane_composition(&mut app);
+                    same_canvas(&app.frame, &expected, &format!("panes={count} step={step}"));
+                    drop(expected);
+                    for index in 0..count {
+                        app.load(index);
+                        let input: &[u8] = if step % 2 == 0 { b"\x1b[2;1Hchanged" } else { b"\x1b[999;1H\r\nscroll" };
+                        vt::Parser::new().advance(&mut app.driver.session.term, input);
+                        app.driver.dirty = true;
+                    }
+                    app.restore();
+                    force_draw(&mut app);
+                }
+                app.event(Event::Resize { width: 620, height: 300 });
+                app.relayout().unwrap();
+                force_draw(&mut app);
+                let expected = reference_pane_composition(&mut app);
+                same_canvas(&app.frame, &expected, "旧网格仍可见时也须裁剪到新画布");
+                drop(expected);
+                app.width = 1000;
+                app.height = 720;
+                app.relayout().unwrap();
+            }
+        }
+    }
+    #[test]
+    fn canvas_at_4k() {
+        let initial = crate::resources::current().snapshot().kinds[crate::resources::Kind::Canvas as usize];
+        let mut app = workspace();
+        app.width = 3840;
+        app.height = 2160;
+        app.add(Some(Axis::Across));
+        app.add(Some(Axis::Down));
+        app.select(1);
+        app.add(Some(Axis::Down));
+        assert_eq!(app.panes.len(), 4);
+        let bytes = crate::resources::current().snapshot().kinds[crate::resources::Kind::Canvas as usize] - initial;
+        assert_eq!(app.frame.pixels.capacity() * 4, 3840 * 2160 * 4);
+        assert_eq!(app.driver.framebuffer.pixels.capacity(), 0);
+        assert_eq!(bytes, app.frame.pixels.capacity() * 4);
+        eprintln!("WORKSPACE_CANVAS_4K bytes={bytes}");
     }
     #[test]
     fn workspace_preview_and_mouse_focus_loss_use_real_rendered_pane_coordinates() {
@@ -6336,14 +6429,7 @@ program="/definitely/missing/congminal-shell"
             app.draw();
             partial += time.elapsed();
         }
-        let canvases = app.frame.pixels.capacity() * 4
-            + app.driver.framebuffer.pixels.capacity() * 4
-            + app
-                .panes
-                .iter()
-                .filter_map(|p| p.state.as_ref())
-                .map(|s| s.framebuffer.pixels.capacity() * 4)
-                .sum::<usize>();
+        let canvases = app.frame.pixels.capacity() * 4 + app.driver.framebuffer.pixels.capacity() * 4;
         eprintln!(
             "WORKSPACE_FRAME panes=4 pixels=1600x900 full_us={} partial_us={} canvases={}B",
             full.as_micros() / 100,
