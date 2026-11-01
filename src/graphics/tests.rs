@@ -67,14 +67,14 @@ fn fragmented_apc_and_cancel_are_not_terminal_text() {
 #[test]
 fn placeholder_inherits_columns_and_full_32_bit_id() {
     use crate::term::Color;
-    let a = Placeholder::parse(Color::Indexed(42), Color::Default, "\u{305}\u{305}\u{30e}", None).unwrap();
+    let a = Placeholder::parse(Color::indexed(42), Color::DEFAULT, "\u{305}\u{305}\u{30e}", None).unwrap();
     assert_eq!(a.image, 42 + (2 << 24));
     assert_eq!(a.row, 0);
     assert_eq!(a.column, 0);
-    let b = Placeholder::parse(Color::Indexed(42), Color::Default, "", Some(a)).unwrap();
+    let b = Placeholder::parse(Color::indexed(42), Color::DEFAULT, "", Some(a)).unwrap();
     assert_eq!(b.column, 1);
     assert_eq!(b.image, a.image);
-    assert!(Placeholder::parse(Color::Indexed(42), Color::Default, "", None).is_none());
+    assert!(Placeholder::parse(Color::indexed(42), Color::DEFAULT, "", None).is_none());
 }
 fn b64(bytes: &[u8]) -> String {
     const A: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -200,11 +200,11 @@ fn sgr_underline_selects_virtual_placement_and_inherited_row_survives_scroll() {
 fn image_attributes_keep_the_original_cell_size_and_never_retarget_old_indices() {
     assert_eq!(std::mem::size_of::<crate::term::Cell>(), 20);
     let mut g = Graphics::new(Budget::new(1024 * 1024, 0));
-    let first = g.underline_index(crate::term::Color::Rgb(0, 0, 7));
+    let first = g.underline_index(crate::term::Color::rgb(0, 0, 7));
     for v in 1..=256 {
-        let _ = g.underline_index(crate::term::Color::Rgb(1, v as u8, 0));
+        let _ = g.underline_index(crate::term::Color::rgb(1, v as u8, 0));
     }
-    assert_eq!(g.underline_color(first << 17), Some(crate::term::Color::Rgb(0, 0, 7)));
+    assert_eq!(g.underline_color(first << 17), Some(crate::term::Color::rgb(0, 0, 7)));
     assert!(g.underline_color(32767 << 17).is_none());
 }
 

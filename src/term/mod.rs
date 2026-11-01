@@ -27,7 +27,7 @@ mod width_table;
 pub(crate) use compose::compose_borrowed;
 pub(crate) use emoji::{sequence_into as emoji_sequence_into, workspace_bytes as emoji_work_bytes};
 pub(crate) use grid::grid_reservation;
-pub use grid::{Cell, Color, Flags, Grid, History, Row, RowView};
+pub use grid::{Cell, Color, ColorKind, Flags, Grid, History, Row, RowView};
 #[cfg(test)]
 pub use width::clip_ellipsis;
 pub use width::{char_width, clip, clip_tail, display_width};
@@ -669,16 +669,16 @@ impl Terminal {
             }
         }
         for (color, base) in [(cell.fg, 30), (cell.bg, 40)] {
-            match color {
-                Color::Default => {}
-                Color::Indexed(i) if i < 8 => {
+            match color.kind() {
+                ColorKind::Default => {}
+                ColorKind::Indexed(i) if i < 8 => {
                     out.push_str(&format!(";{}", base + i as u32));
                 }
-                Color::Indexed(i) if i < 16 => {
+                ColorKind::Indexed(i) if i < 16 => {
                     out.push_str(&format!(";{}", base + 60 + (i - 8) as u32));
                 }
-                Color::Indexed(i) => out.push_str(&format!(";{};5;{i}", base + 8)),
-                Color::Rgb(r, g, b) => out.push_str(&format!(";{};2;{r};{g};{b}", base + 8)),
+                ColorKind::Indexed(i) => out.push_str(&format!(";{};5;{i}", base + 8)),
+                ColorKind::Rgb(r, g, b) => out.push_str(&format!(";{};2;{r};{g};{b}", base + 8)),
             }
         }
         out
@@ -983,19 +983,21 @@ impl Terminal {
         }
 
         let (row, col) = (self.cursor.row, self.cursor.col);
-        self.clear_wide_fragment(row, col);
         let template = self.cursor.template;
+        // 只取一次行：修改计数加一次，被清掉的另一半原本就不是默认格，已写范围只需扩到本字末尾。
+        let line = self.grid.row_mut_upto(row, col + width);
+        line.clear_wide_fragment(col);
         if width == 2 {
-            self.clear_wide_fragment(row, col + 1);
+            line.clear_wide_fragment(col + 1);
             let mut cell = Cell { c, ..template };
             cell.flags.insert(Flags::WIDE);
-            self.grid[row][col] = cell;
+            line[col] = cell;
             // 占位格带上背景色，这样整个宽字符的背景是连续的
             let mut spacer = Cell::blank(&template);
             spacer.flags = Flags::WIDE_SPACER;
-            self.grid[row][col + 1] = spacer;
+            line[col + 1] = spacer;
         } else {
-            self.grid[row][col] = Cell { c, ..template };
+            line[col] = Cell { c, ..template };
         }
 
         if col + width < cols {
@@ -1074,7 +1076,7 @@ impl Terminal {
             let (row, start) = (self.cursor.row, self.cursor.col);
             let count = bytes.len().min(cols - start);
             let template = self.cursor.template;
-            let cells = &mut self.grid[row].cells;
+            let cells = &mut self.grid.row_mut_upto(row, start + count).cells;
             for (offset, &byte) in bytes[..count].iter().enumerate() {
                 let col = start + offset;
                 let flags = cells[col].flags;
@@ -1166,17 +1168,8 @@ impl Terminal {
 
     /// 要覆盖 (row, col) 之前调用：如果它是宽字符的一半，把另一半也擦掉，避免屏幕上留下半个字
     fn clear_wide_fragment(&mut self, row: usize, col: usize) {
-        let flags = self.grid[row][col].flags;
-        let neighbor = if flags.contains(Flags::WIDE) {
-            col + 1
-        } else if flags.contains(Flags::WIDE_SPACER) && col > 0 {
-            col - 1
-        } else {
-            return;
-        };
-        if neighbor < self.cols() {
-            let cell = &mut self.grid[row][neighbor];
-            *cell = Cell::blank(cell);
+        if self.grid[row][col].flags.intersects(Flags::WIDE | Flags::WIDE_SPACER) {
+            self.grid[row].clear_wide_fragment(col);
         }
     }
 
@@ -1706,28 +1699,28 @@ impl Terminal {
                 27 => t.flags.remove(Flags::INVERSE),
                 28 => t.flags.remove(Flags::HIDDEN),
                 29 => t.flags.remove(Flags::STRIKE),
-                n @ 30..=37 => t.fg = Color::Indexed((n - 30) as u8),
+                n @ 30..=37 => t.fg = Color::indexed((n - 30) as u8),
                 38 => {
                     if let Some(color) = extended_color(group, &mut groups) {
                         t.fg = color;
                     }
                 }
-                39 => t.fg = Color::Default,
-                n @ 40..=47 => t.bg = Color::Indexed((n - 40) as u8),
+                39 => t.fg = Color::DEFAULT,
+                n @ 40..=47 => t.bg = Color::indexed((n - 40) as u8),
                 48 => {
                     if let Some(color) = extended_color(group, &mut groups) {
                         t.bg = color;
                     }
                 }
-                49 => t.bg = Color::Default,
+                49 => t.bg = Color::DEFAULT,
                 58 => {
                     if let Some(color) = extended_color(group, &mut groups) {
                         t.marks = (self.graphics.underline_index(color) << 17) | (t.marks & 0x1ffff);
                     }
                 }
                 59 => t.marks &= 0x1ffff,
-                n @ 90..=97 => t.fg = Color::Indexed((n - 90 + 8) as u8),
-                n @ 100..=107 => t.bg = Color::Indexed((n - 100 + 8) as u8),
+                n @ 90..=97 => t.fg = Color::indexed((n - 90 + 8) as u8),
+                n @ 100..=107 => t.bg = Color::indexed((n - 100 + 8) as u8),
                 n => trace(format_args!("未处理的 SGR {n}")),
             }
         }
@@ -2081,7 +2074,7 @@ fn arg(params: &Params, i: usize, default: usize) -> usize {
 fn extended_color<'a>(group: &[u16], rest: &mut impl Iterator<Item = &'a [u16]>) -> Option<Color> {
     if group.len() > 1 {
         return match group[1] {
-            5 => group.get(2).map(|&i| Color::Indexed(i as u8)),
+            5 => group.get(2).map(|&i| Color::indexed(i as u8)),
             2 => {
                 // 带色彩空间 ID 时是 6 个值，不带是 5 个
                 let rgb = match group.len() {
@@ -2089,18 +2082,18 @@ fn extended_color<'a>(group: &[u16], rest: &mut impl Iterator<Item = &'a [u16]>)
                     n if n >= 6 => &group[3..6],
                     _ => return None,
                 };
-                Some(Color::Rgb(rgb[0] as u8, rgb[1] as u8, rgb[2] as u8))
+                Some(Color::rgb(rgb[0] as u8, rgb[1] as u8, rgb[2] as u8))
             }
             _ => None,
         };
     }
     match rest.next()?[0] {
-        5 => Some(Color::Indexed(rest.next()?[0] as u8)),
+        5 => Some(Color::indexed(rest.next()?[0] as u8)),
         2 => {
             let r = rest.next()?[0] as u8;
             let g = rest.next()?[0] as u8;
             let b = rest.next()?[0] as u8;
-            Some(Color::Rgb(r, g, b))
+            Some(Color::rgb(r, g, b))
         }
         _ => None,
     }
@@ -2190,7 +2183,7 @@ mod tests {
     #[test]
     fn erase_uses_background_color() {
         let t = run(5, 1, "\x1b[41m\x1b[2J");
-        assert_eq!(t.grid()[0][3].bg, Color::Indexed(1));
+        assert_eq!(t.grid()[0][3].bg, Color::indexed(1));
     }
 
     #[test]
@@ -2228,11 +2221,11 @@ mod tests {
     fn sgr_colors() {
         let t = run(10, 1, "\x1b[1;31mA\x1b[38;5;200mB\x1b[38;2;1;2;3mC\x1b[48:2::4:5:6mD\x1b[0mE");
         let row = &t.grid()[0];
-        assert_eq!(row[0].fg, Color::Indexed(1));
+        assert_eq!(row[0].fg, Color::indexed(1));
         assert!(row[0].flags.contains(Flags::BOLD));
-        assert_eq!(row[1].fg, Color::Indexed(200));
-        assert_eq!(row[2].fg, Color::Rgb(1, 2, 3));
-        assert_eq!(row[3].bg, Color::Rgb(4, 5, 6));
+        assert_eq!(row[1].fg, Color::indexed(200));
+        assert_eq!(row[2].fg, Color::rgb(1, 2, 3));
+        assert_eq!(row[3].bg, Color::rgb(4, 5, 6));
         assert_eq!(row[4], Cell { c: 'E', ..Cell::default() });
     }
 

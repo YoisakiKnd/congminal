@@ -128,7 +128,7 @@ impl Graphics {
     /// Cell.marks low 17 bits remain the mark id; high 15 bits reference this immutable table.
     /// No slot reuse: history can never be retargeted to a newer placement color.
     pub fn underline_index(&mut self, color: crate::term::Color) -> u32 {
-        if color == crate::term::Color::Default {
+        if color == crate::term::Color::DEFAULT {
             return 0;
         }
         if self.meta.is_none() {
@@ -149,7 +149,7 @@ impl Graphics {
     pub fn underline_color(&self, marks: u32) -> Option<crate::term::Color> {
         let index = marks >> 17;
         if index == 0 {
-            Some(crate::term::Color::Default)
+            Some(crate::term::Color::DEFAULT)
         } else {
             self.underline_colors.get(index as usize - 1).copied().flatten()
         }

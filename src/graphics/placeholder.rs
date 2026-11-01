@@ -1,4 +1,4 @@
-use crate::term::Color;
+use crate::term::{Color, ColorKind};
 pub const PLACEHOLDER: char = '\u{10eeee}';
 #[derive(Clone, Copy)]
 pub struct Placeholder {
@@ -10,10 +10,10 @@ pub struct Placeholder {
 impl Placeholder {
     pub fn parse(fg: Color, underline: Color, marks: &str, previous: Option<Self>) -> Option<Self> {
         fn id(c: Color) -> u32 {
-            match c {
-                Color::Default => 0,
-                Color::Indexed(i) => u32::from(i),
-                Color::Rgb(r, g, b) => (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b),
+            match c.kind() {
+                ColorKind::Default => 0,
+                ColorKind::Indexed(i) => u32::from(i),
+                ColorKind::Rgb(r, g, b) => (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b),
             }
         }
         let low = id(fg);

@@ -8,7 +8,7 @@ import sys
 
 UNITS = {
     "size_of::<Cell>()": "bytes", "size_of::<Row>()": "bytes",
-    "history_bytes_10k": "bytes",
+    "history_bytes_10k": "bytes", "history_bytes_10k_cjk": "bytes",
     "allocs_per_mib_parsed": "allocs/MiB",
     "alloc_bytes_per_mib_parsed": "bytes/MiB",
     "allocs_per_frame": "allocs/frame", "alloc_bytes_per_frame": "bytes/frame",

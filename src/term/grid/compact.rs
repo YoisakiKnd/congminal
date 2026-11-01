@@ -6,6 +6,12 @@ use std::hash::{Hash, Hasher};
 const STEP: usize = 16;
 const ATTR: usize = 11;
 const SIDE: usize = 10;
+/// 宽字符两半的标记按每格 2 位单独成表；中文行不必每格占一个 10 字节旁表项。
+const WIDE_BITS: u32 = Flags::WIDE.0 | Flags::WIDE_SPACER.0;
+#[inline]
+fn has_side(cell: &Cell) -> bool {
+    cell.flags.0 & !(0xff | WIDE_BITS) != 0 || cell.marks != 0
+}
 
 pub struct Packed {
     data: Vec<u8>,
@@ -14,6 +20,7 @@ pub struct Packed {
     text: u16,
     attrs: u16,
     sides: u16,
+    wide: bool,
     wrapped: bool,
 }
 pub enum StoredRow {
@@ -21,21 +28,12 @@ pub enum StoredRow {
     Packed(Packed),
 }
 
+// 颜色本身就是紧凑整数，编码直接保存；解码只接收编码器写入的值。
 fn color(c: Color) -> u32 {
-    match c {
-        Color::Default => 0,
-        Color::Indexed(i) => 0x100 | u32::from(i),
-        Color::Rgb(r, g, b) => 0x1000000 | u32::from(r) << 16 | u32::from(g) << 8 | u32::from(b),
-    }
+    c.0
 }
 fn decode_color(c: u32) -> Color {
-    if c & 0x1000000 != 0 {
-        Color::Rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
-    } else if c & 0x100 != 0 {
-        Color::Indexed(c as u8)
-    } else {
-        Color::Default
-    }
+    Color(c)
 }
 fn u16_at(data: &[u8], at: usize) -> usize {
     usize::from(u16::from_le_bytes(data[at..at + 2].try_into().unwrap()))
@@ -43,77 +41,102 @@ fn u16_at(data: &[u8], at: usize) -> usize {
 fn u32_at(data: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(data[at..at + 4].try_into().unwrap())
 }
-fn attr(cell: Cell) -> (Color, Color, u8) {
-    (cell.fg, cell.bg, cell.flags.0 as u8)
+fn attr(cell: Cell) -> u64 {
+    // 颜色最多 25 位：前景、背景和低 8 位样式拼成一个整数，属性游程只需一次比较。
+    u64::from(color(cell.fg)) | u64::from(color(cell.bg)) << 25 | u64::from(cell.flags.0 as u8) << 50
 }
 pub(super) struct Encoding {
     kept: usize,
     text: usize,
     attrs: usize,
     sides: usize,
+    wide: bool,
     pub bytes: usize,
 }
 impl Encoding {
     pub fn of(row: &Row) -> Self {
-        let kept = row.cells.iter().rposition(|c| *c != Cell::default()).map_or(0, |i| i + 1);
-        let (mut text, mut attrs, mut sides) = (0, 0, 0);
+        Self::of_prefix(row, usize::MAX)
+    }
+    /// 调用方保证 `used` 起的格子都是默认值，行尾空白不再逐格比较。
+    pub fn of_prefix(row: &Row, used: usize) -> Self {
+        let used = used.min(row.cells.len());
+        debug_assert!(row.cells[used..].iter().all(|c| *c == Cell::default()), "行尾范围标记有误");
+        let kept = row.cells[..used].iter().rposition(|c| *c != Cell::default()).map_or(0, |i| i + 1);
+        let (mut text, mut attrs, mut sides, mut wide) = (0, 0, 0, 0);
         let mut previous = attr(Cell::default());
-        for &cell in &row.cells[..kept] {
+        for cell in &row.cells[..kept] {
             text += cell.c.len_utf8();
-            let next = attr(cell);
+            let next = attr(*cell);
             attrs += usize::from(next != previous);
             previous = next;
-            sides += usize::from(cell.flags.0 >> 8 != 0 || cell.marks != 0);
+            sides += usize::from(has_side(cell));
+            wide |= cell.flags.0;
         }
-        Self { kept, text, attrs, sides, bytes: text + kept.div_ceil(STEP) * 2 + attrs * ATTR + sides * SIDE }
+        let wide = wide & WIDE_BITS != 0;
+        let map = if wide { kept.div_ceil(4) } else { 0 };
+        Self {
+            kept,
+            text,
+            attrs,
+            sides,
+            wide,
+            bytes: text + kept.div_ceil(STEP) * 2 + attrs * ATTR + map + sides * SIDE,
+        }
     }
     /// 调用方已按容量申请额度；旧/新缓冲重叠也由调用方的工作集覆盖。
     pub fn encode(self, row: &Row, mut data: Vec<u8>) -> Packed {
         assert!(row.cells.len() <= 4096 && self.text <= u16::MAX as usize && data.capacity() >= self.bytes);
+        // 各段长度已由计数遍得出：先定好段起点，一遍写完文本、检查点、属性、宽字位图和旁表。
         data.clear();
+        data.resize(self.bytes, 0);
+        let cells = &row.cells[..self.kept];
+        let offsets = self.text;
+        let attrs = offsets + self.kept.div_ceil(STEP) * 2;
+        let map = attrs + self.attrs * ATTR;
+        let sides = map + if self.wide { self.kept.div_ceil(4) } else { 0 };
         if self.text == self.kept {
-            // 已证明一格一字节；连续写入避免逐字调用 UTF-8 编码器和短切片复制。
-            data.extend(row.cells[..self.kept].iter().map(|cell| cell.c as u8));
-        } else {
-            let mut scratch = [0; 4];
-            for cell in &row.cells[..self.kept] {
-                data.extend_from_slice(cell.c.encode_utf8(&mut scratch).as_bytes());
+            // 一格一字节，检查点就是列号；连续写入，不逐字调用 UTF-8 编码器。
+            for (byte, cell) in data.iter_mut().zip(cells) {
+                *byte = cell.c as u8;
             }
-        }
-        if self.text == self.kept {
-            for offset in (0..self.kept).step_by(STEP) {
-                data.extend_from_slice(&(offset as u16).to_le_bytes());
+            for (i, at) in (offsets..attrs).step_by(2).enumerate() {
+                data[at..at + 2].copy_from_slice(&((i * STEP) as u16).to_le_bytes());
             }
         } else {
-            let mut offset = 0;
-            for (i, cell) in row.cells[..self.kept].iter().enumerate() {
+            let mut text = 0;
+            for (i, cell) in cells.iter().enumerate() {
                 if i % STEP == 0 {
-                    data.extend_from_slice(&(offset as u16).to_le_bytes());
+                    let at = offsets + i / STEP * 2;
+                    data[at..at + 2].copy_from_slice(&(text as u16).to_le_bytes());
                 }
-                offset += cell.c.len_utf8();
+                text += cell.c.encode_utf8(&mut data[text..offsets]).len();
             }
+            assert_eq!(text, self.text);
         }
-        if self.attrs != 0 {
+        if self.attrs != 0 || self.wide || self.sides != 0 {
+            let (mut attr_at, mut side_at) = (attrs, sides);
             let mut previous = attr(Cell::default());
-            for (i, &cell) in row.cells[..self.kept].iter().enumerate() {
-                let next = attr(cell);
+            for (i, cell) in cells.iter().enumerate() {
+                let next = attr(*cell);
                 if next != previous {
-                    data.extend_from_slice(&(i as u16).to_le_bytes());
-                    data.extend_from_slice(&color(cell.fg).to_le_bytes());
-                    data.extend_from_slice(&color(cell.bg).to_le_bytes());
-                    data.push(cell.flags.0 as u8);
+                    data[attr_at..attr_at + 2].copy_from_slice(&(i as u16).to_le_bytes());
+                    data[attr_at + 2..attr_at + 6].copy_from_slice(&color(cell.fg).to_le_bytes());
+                    data[attr_at + 6..attr_at + 10].copy_from_slice(&color(cell.bg).to_le_bytes());
+                    data[attr_at + 10] = cell.flags.0 as u8;
+                    attr_at += ATTR;
                     previous = next;
                 }
-            }
-        }
-        if self.sides != 0 {
-            for (i, cell) in row.cells[..self.kept].iter().enumerate() {
-                if cell.flags.0 >> 8 != 0 || cell.marks != 0 {
-                    data.extend_from_slice(&(i as u16).to_le_bytes());
-                    data.extend_from_slice(&(cell.flags.0 & !0xff).to_le_bytes());
-                    data.extend_from_slice(&cell.marks.to_le_bytes());
+                if self.wide {
+                    data[map + i / 4] |= (((cell.flags.0 & WIDE_BITS) >> 8) as u8) << (2 * (i % 4));
+                }
+                if has_side(cell) {
+                    data[side_at..side_at + 2].copy_from_slice(&(i as u16).to_le_bytes());
+                    data[side_at + 2..side_at + 6].copy_from_slice(&(cell.flags.0 & !(0xff | WIDE_BITS)).to_le_bytes());
+                    data[side_at + 6..side_at + 10].copy_from_slice(&cell.marks.to_le_bytes());
+                    side_at += SIDE;
                 }
             }
+            assert_eq!((attr_at, side_at), (map, self.bytes));
         }
         assert_eq!(data.len(), self.bytes);
         Packed {
@@ -123,6 +146,7 @@ impl Encoding {
             text: self.text as u16,
             attrs: self.attrs as u16,
             sides: self.sides as u16,
+            wide: self.wide,
             wrapped: row.wrapped,
         }
     }
@@ -130,6 +154,18 @@ impl Encoding {
 impl Packed {
     fn attr_start(&self) -> usize {
         usize::from(self.text) + usize::from(self.kept).div_ceil(STEP) * 2
+    }
+    fn side_start(&self) -> usize {
+        let map = if self.wide { usize::from(self.kept).div_ceil(4) } else { 0 };
+        self.attr_start() + usize::from(self.attrs) * ATTR + map
+    }
+    #[inline]
+    fn wide_flags(&self, col: usize) -> u32 {
+        if !self.wide {
+            return 0;
+        }
+        let at = self.attr_start() + usize::from(self.attrs) * ATTR + col / 4;
+        u32::from(self.data[at] >> (2 * (col % 4)) & 3) << 8
     }
     #[inline(never)]
     fn cell(&self, col: usize, text: &str) -> Cell {
@@ -158,7 +194,8 @@ impl Packed {
             cell.bg = decode_color(u32_at(&self.data, at + 6));
             cell.flags = Flags(u32::from(self.data[at + 10]));
         }
-        let start = start + usize::from(self.attrs) * ATTR;
+        cell.flags.0 |= self.wide_flags(col);
+        let start = self.side_start();
         let mut low = 0;
         let mut high = usize::from(self.sides);
         while low < high {
@@ -211,6 +248,7 @@ impl StoredRow {
                     text: row.text,
                     attrs: row.attrs,
                     sides: row.sides,
+                    wide: row.wide,
                     wrapped: row.wrapped,
                 })
             }
@@ -328,8 +366,9 @@ impl CellIter<'_> {
             }
         }
         let mut cell = Cell { c: self.chars.next().unwrap(), ..self.template };
+        cell.flags.0 |= row.wide_flags(col);
         if self.side < usize::from(row.sides) {
-            let at = start + usize::from(row.attrs) * ATTR + self.side * SIDE;
+            let at = row.side_start() + self.side * SIDE;
             if u16_at(&row.data, at) == col {
                 cell.flags.0 |= u32_at(&row.data, at + 2);
                 cell.marks = u32_at(&row.data, at + 6);
@@ -440,11 +479,11 @@ mod tests {
                 };
                 let c = next();
                 cell.fg = match c % 3 {
-                    0 => Color::Default,
-                    1 => Color::Indexed(c as u8),
-                    _ => Color::Rgb(c as u8, (c >> 8) as u8, (c >> 16) as u8),
+                    0 => Color::DEFAULT,
+                    1 => Color::indexed(c as u8),
+                    _ => Color::rgb(c as u8, (c >> 8) as u8, (c >> 16) as u8),
                 };
-                cell.bg = if next() % 2 == 0 { Color::Default } else { Color::Indexed(next() as u8) };
+                cell.bg = if next() % 2 == 0 { Color::DEFAULT } else { Color::indexed(next() as u8) };
                 cell.flags = Flags(next());
                 cell.marks = next();
             }
@@ -479,8 +518,8 @@ mod tests {
         let work = crate::resources::current().lease(crate::resources::Kind::Reflow, 64 * 1024).unwrap();
         for cell in [
             Cell::default(),
-            Cell { bg: Color::Indexed(0), ..Cell::default() },
-            Cell { fg: Color::Default, flags: Flags::WIDE_SPACER, ..Cell::default() },
+            Cell { bg: Color::indexed(0), ..Cell::default() },
+            Cell { fg: Color::DEFAULT, flags: Flags::WIDE_SPACER, ..Cell::default() },
             Cell { marks: 0x80000001, ..Cell::default() },
             Cell { flags: Flags(u32::MAX), ..Cell::default() },
         ] {

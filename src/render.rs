@@ -5,7 +5,7 @@ use crate::font::{Fonts, Glyph, Pixels};
 use crate::hash::Fnv;
 use crate::selection::Point;
 use crate::term::{
-    Cell, Color, CursorShape, Flags, RowView, Terminal, char_width, compose_borrowed, emoji_sequence_into,
+    Cell, Color, ColorKind, CursorShape, Flags, RowView, Terminal, char_width, compose_borrowed, emoji_sequence_into,
 };
 #[cfg(test)]
 use crate::ui::Bar;
@@ -1256,12 +1256,12 @@ impl Renderer {
     }
 
     fn resolve(&self, color: Color, default: u32, bold: bool) -> u32 {
-        match color {
-            Color::Default => default,
+        match color.kind() {
+            ColorKind::Default => default,
             // 传统做法：粗体的基本色显示为对应的亮色
-            Color::Indexed(i) if bold && i < 8 && self.colors.bold_is_bright => self.colors.palette[i as usize + 8],
-            Color::Indexed(i) => self.colors.palette[i as usize],
-            Color::Rgb(r, g, b) => rgb(r, g, b),
+            ColorKind::Indexed(i) if bold && i < 8 && self.colors.bold_is_bright => self.colors.palette[i as usize + 8],
+            ColorKind::Indexed(i) => self.colors.palette[i as usize],
+            ColorKind::Rgb(r, g, b) => rgb(r, g, b),
         }
     }
 }

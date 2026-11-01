@@ -7,13 +7,44 @@ use std::ops::{BitOr, Index, IndexMut};
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Color {
+/// 颜色压成一个整数：0 是默认色，`0x100 | i` 是调色板，`0x100_0000 | rgb` 是真彩色。
+/// 整数表示让格子比较、哈希和历史编码不必逐个变体分支。
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Color(u32);
+
+/// 按种类处理颜色时使用
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColorKind {
     /// 使用终端默认的前景色或背景色
     Default,
     /// 256 色调色板中的一项（0-15 是基本色）
     Indexed(u8),
     Rgb(u8, u8, u8),
+}
+
+impl Color {
+    pub const DEFAULT: Color = Color(0);
+    pub const fn indexed(i: u8) -> Color {
+        Color(0x100 | i as u32)
+    }
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Color {
+        Color(0x100_0000 | (r as u32) << 16 | (g as u32) << 8 | b as u32)
+    }
+    pub fn kind(self) -> ColorKind {
+        if self.0 & 0x100_0000 != 0 {
+            ColorKind::Rgb((self.0 >> 16) as u8, (self.0 >> 8) as u8, self.0 as u8)
+        } else if self.0 & 0x100 != 0 {
+            ColorKind::Indexed(self.0 as u8)
+        } else {
+            ColorKind::Default
+        }
+    }
+}
+
+impl std::fmt::Debug for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind().fmt(f)
+    }
 }
 
 /// 字符属性位
@@ -82,7 +113,7 @@ pub struct Cell {
 
 impl Default for Cell {
     fn default() -> Cell {
-        Cell { c: ' ', fg: Color::Default, bg: Color::Default, flags: Flags::default(), marks: 0 }
+        Cell { c: ' ', fg: Color::DEFAULT, bg: Color::DEFAULT, flags: Flags::default(), marks: 0 }
     }
 }
 
@@ -126,6 +157,17 @@ impl Row {
         self.wrapped = false;
     }
 
+    /// `used` 起本来就是默认格时，换成默认空白只需填前面写过的部分。
+    pub(super) fn reset_upto(&mut self, blank: Cell, used: usize) {
+        if blank == Cell::default() {
+            let used = used.min(self.cells.len());
+            self.cells[..used].fill(blank);
+            self.wrapped = false;
+        } else {
+            self.reset(blank);
+        }
+    }
+
     /// 把 `[start, end)` 范围内的格子填成空白，自动裁剪到行宽
     pub fn erase(&mut self, start: usize, end: usize, blank: Cell) {
         let end = end.min(self.cells.len());
@@ -138,6 +180,21 @@ impl Row {
                 self.cells[end] = blank;
             }
             self.cells[start..end].fill(blank);
+        }
+    }
+
+    /// 要覆盖 `col` 之前调用：如果它是宽字符的一半，把另一半也擦掉，避免屏幕上留下半个字
+    pub fn clear_wide_fragment(&mut self, col: usize) {
+        let flags = self.cells[col].flags;
+        let neighbor = if flags.contains(Flags::WIDE) {
+            col + 1
+        } else if flags.contains(Flags::WIDE_SPACER) && col > 0 {
+            col - 1
+        } else {
+            return;
+        };
+        if let Some(cell) = self.cells.get_mut(neighbor) {
+            *cell = Cell::blank(cell);
         }
     }
 
@@ -178,12 +235,18 @@ pub struct Grid {
     clock: u64,
 }
 
+fn blank_extent(blank: Cell) -> usize {
+    if blank == Cell::default() { 0 } else { usize::MAX }
+}
+
 static NEXT_STORAGE: AtomicU64 = AtomicU64::new(1);
 fn next_storage_identity() -> u64 {
     NEXT_STORAGE.fetch_add(1, Ordering::Relaxed)
 }
 struct RowState {
     revision: u64,
+    /// 从这一列起全是 `Cell::default()`；`usize::MAX` 表示未知。历史编码据此跳过行尾空白。
+    used: usize,
     #[cfg(debug_assertions)]
     observed: AtomicBool,
     #[cfg(debug_assertions)]
@@ -193,6 +256,7 @@ impl RowState {
     fn new() -> Self {
         Self {
             revision: 0,
+            used: 0,
             #[cfg(debug_assertions)]
             observed: AtomicBool::new(false),
             #[cfg(debug_assertions)]
@@ -243,8 +307,23 @@ impl Grid {
     fn touch(&mut self, row: usize) {
         self.clock = self.clock.wrapping_add(1);
         self.states[row].revision = self.clock;
+        self.states[row].used = usize::MAX;
         #[cfg(debug_assertions)]
         self.states[row].observed.store(false, Ordering::Relaxed);
+    }
+
+    /// 只写 `[.., end)` 内的格子，或改写本来就不是默认值的格子（它们必在原范围内）。
+    /// 普通 `grid[row]` 可变访问会把范围标为未知。
+    pub(super) fn row_mut_upto(&mut self, row: usize, end: usize) -> &mut Row {
+        let used = self.states[row].used;
+        self.touch(row);
+        self.states[row].used = if used == usize::MAX { used } else { used.max(end) };
+        &mut self.rows[row]
+    }
+
+    fn reset_row(&mut self, row: usize, blank: Cell) {
+        self.rows[row].reset(blank);
+        self.states[row].used = blank_extent(blank);
     }
 
     pub(super) fn row_stamp(&self, row: usize) -> (u64, u64) {
@@ -280,15 +359,19 @@ impl Grid {
         assert_eq!(self.rows.len(), self.states.len());
         for row in 0..self.rows() {
             self.validate_row(row);
+            let used = self.states[row].used.min(self.rows[row].cells.len());
+            assert!(
+                self.rows[row].cells[used..].iter().all(|c| *c == Cell::default()),
+                "grid {} row {row} 在已写范围 {used} 之后还有非默认格",
+                self.identity
+            );
         }
     }
 
     pub fn clear(&mut self, blank: Cell) {
         for row in 0..self.rows() {
             self.touch(row);
-        }
-        for row in &mut self.rows {
-            row.reset(blank);
+            self.reset_row(row, blank);
         }
     }
 
@@ -298,18 +381,27 @@ impl Grid {
         let n = n.min(bottom + 1 - top);
         self.rows[top..=bottom].rotate_left(n);
         self.states[top..=bottom].rotate_left(n);
-        for row in bottom + 1 - n..=bottom {
-            self.touch(row);
-        }
         match history {
             Some(history) if history.limit > 0 => {
                 for i in bottom + 1 - n..=bottom {
-                    history.scroll_row(&mut self.rows[i], self.cols, blank);
+                    // 先取范围再 touch：滚出的行内容未变，编码只需扫描已写部分。
+                    history.scroll_row(&mut self.rows[i], self.cols, self.states[i].used, blank);
+                    self.touch(i);
+                    self.states[i].used = blank_extent(blank);
                 }
             }
             _ => {
-                for row in &mut self.rows[bottom + 1 - n..=bottom] {
-                    row.reset(blank);
+                for (row, state) in
+                    self.rows[bottom + 1 - n..=bottom].iter_mut().zip(&self.states[bottom + 1 - n..=bottom])
+                {
+                    row.reset_upto(blank, state.used);
+                }
+                for row in bottom + 1 - n..=bottom {
+                    self.touch(row);
+                }
+                let used = blank_extent(blank);
+                for state in &mut self.states[bottom + 1 - n..=bottom] {
+                    state.used = used;
                 }
             }
         }
@@ -325,6 +417,10 @@ impl Grid {
         }
         for row in &mut self.rows[top..top + n] {
             row.reset(blank);
+        }
+        let used = blank_extent(blank);
+        for state in &mut self.states[top..top + n] {
+            state.used = used;
         }
     }
 
@@ -446,7 +542,7 @@ mod budget_tests {
                     row.cells[0].c = 'x';
                 }
                 if n % 7 == 0 {
-                    row.cells[15].bg = Color::Indexed(3);
+                    row.cells[15].bg = Color::indexed(3);
                 }
                 history.push(row);
                 let actual = history.rows.iter().map(StoredRow::payload_bytes).sum::<usize>()
@@ -710,5 +806,26 @@ mod budget_tests {
         }
         assert!(history.bytes <= HISTORY_BYTES);
         assert_eq!(history.len() as u64 + history.dropped(), count as u64);
+    }
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::*;
+    #[test]
+    fn packed_colors_roundtrip_every_kind_and_keep_variants_distinct() {
+        assert_eq!(Color::DEFAULT.kind(), ColorKind::Default);
+        assert_eq!(Cell::default().fg, Color::DEFAULT);
+        for i in 0..=255u8 {
+            assert_eq!(Color::indexed(i).kind(), ColorKind::Indexed(i));
+            // 调色板 0 号、黑色真彩色与默认色是三种不同的颜色。
+            assert_ne!(Color::indexed(i), Color::rgb(0, 0, i));
+            for v in [0u8, 1, 127, 255] {
+                assert_eq!(Color::rgb(i, v, 255 - i).kind(), ColorKind::Rgb(i, v, 255 - i));
+            }
+        }
+        assert_ne!(Color::DEFAULT, Color::indexed(0));
+        assert_ne!(Color::DEFAULT, Color::rgb(0, 0, 0));
+        assert_eq!(format!("{:?}", Color::rgb(1, 2, 3)), "Rgb(1, 2, 3)");
     }
 }

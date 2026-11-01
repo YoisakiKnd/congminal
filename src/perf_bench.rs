@@ -332,15 +332,17 @@ fn benchmarks() {
             }
         });
     }
-    isolated(|| {
-        let mut term = terminal();
-        let mut parser = Parser::new();
-        for _ in 0..10_000 {
-            parser.advance(&mut term, ASCII);
-        }
-        assert_eq!(term.history().len(), 10_000 - (ROWS - 1));
-        metric("history_bytes_10k", term.history().used_bytes() as f64, "bytes");
-    });
+    for (name, line) in [("history_bytes_10k", ASCII), ("history_bytes_10k_cjk", CJK)] {
+        isolated(|| {
+            let mut term = terminal();
+            let mut parser = Parser::new();
+            for _ in 0..10_000 {
+                parser.advance(&mut term, line);
+            }
+            assert_eq!(term.history().len(), 10_000 - (ROWS - 1));
+            metric(name, term.history().used_bytes() as f64, "bytes");
+        });
+    }
     // nocapture 会把指标插在框架的名称与 ok 之间；全部断言通过后给比较器明确标记。
     println!("test perf_bench::benchmarks ... ok");
 }

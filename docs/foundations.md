@@ -97,7 +97,7 @@ python3 ci/perf-compare.py run-1.log run-2.log run-3.log
 
 绘制使用默认字体、2.0 缩放和满屏彩色 ASCII，各场景独立创建并预热 64 帧。full/one_row/unchanged/scroll_growing/scroll_full 分别测量 1800/25000/60000/3000/3000 帧的平均 draw 微秒数；准备输入不计时。one_row 交替修改中间一格，无垂直溢出字形时只画一行，有溢出时保守扩展到三行；unchanged 断言没有 damage；两个 scroll 场景分别断言历史未满和已满。不同字体/机器不能直接比较。
 
-`history_bytes_10k` 为写入 10000 行后的 `history().used_bytes()`，其中 9941 行留在历史、59 行仍在屏幕。T4 起包含实际压缩缓冲容量及完整行索引（含闲置槽），不含 64 KiB 票据余量或 RSS；T0–T3 的历史报告保留当时 Row 元数据与 Cell 容量的旧口径。结构大小用 `size_of::<Cell>()` 和 `size_of::<Row>()` 输出。
+`history_bytes_10k` 为写入 10000 行后的 `history().used_bytes()`，其中 9941 行留在历史、59 行仍在屏幕。T4 起包含实际压缩缓冲容量及完整行索引（含闲置槽），不含 64 KiB 票据余量或 RSS；T0–T3 的历史报告保留当时 Row 元数据与 Cell 容量的旧口径。`history_bytes_10k_cjk` 用同样方式写入每行 40 个汉字的中文行，衡量宽字符行的压缩效果。结构大小用 `size_of::<Cell>()` 和 `size_of::<Row>()` 输出。
 
 分配器拒绝/unwind 和 System 调用自检进入常规回归，仅性能 benchmarks 忽略。比较工具检查基准自身的通过标记及测试总体通过状态，不依赖通过测试的数量。
 
@@ -122,7 +122,7 @@ ASCII 单格字形使用 128×2×2 的非拥有地址表，Kind::CacheIndex 按�
 
 ## 紧凑历史与重排容量
 
-活动网格仍使用 Row/Vec<Cell>。历史按物理行保存 UTF-8 文本、每 16 格一个字节偏移、11 B 属性游程（列/fg/bg/样式）及 10 B 稀疏旁表（列/其余 flags/完整 marks）。Color 区分 Default、Indexed、Rgb；旁表保留超链接、WIDE/WIDE_SPACER、EMOJI、mark id 及 Kitty 色位。仅裁去逐字段完全默认的尾空白，原始列宽和 wrapped 保存在内联头部；复杂行可回退 Raw，读取返回按值 Cell 的借用视图，不分配整份解码缓存。
+活动网格仍使用 Row/Vec<Cell>。历史按物理行保存 UTF-8 文本、每 16 格一个字节偏移、11 B 属性游程（列/fg/bg/样式）、有宽字符时每格 2 位的 WIDE/WIDE_SPACER 位图，以及 10 B 稀疏旁表（列/其余 flags/完整 marks）。Color 是紧凑整数（默认、调色板、真彩色三种互不相同），按种类处理时用 `kind()`；旁表保留超链接、EMOJI、mark id 及 Kitty 色位。网格每行记录“此列之后全是默认格”的范围：通用可变访问把它设为未知，打印路径只推进到实际写入的列，滚入历史时编码与清空只处理这一段；调试构建和网格校验会检查范围之外确实全是默认格。仅裁去逐字段完全默认的尾空白，原始列宽和 wrapped 保存在内联头部；复杂行可回退 Raw，读取返回按值 Cell 的借用视图，不分配整份解码缓存。
 
 令 S=sizeof(StoredRow)，实际历史占用为 `索引.capacity()*S + Σ(payload.capacity())`；Raw payload 为 Cell 容量乘 sizeof(Cell)。used_bytes 与字节上限都采用此口径。索引增长若超过上限则按原头部淘汰政策复用槽位；小配额也限制初始槽数。Kind::History 仍按 64 KiB 聚合申请，覆盖旧/新索引与编码缓冲重叠，精确申请可作为聚合申请拒绝后的回退；释放数据后才收缩票据。满历史的等容量替换只重写原缓冲，不分配或修改额度。
 

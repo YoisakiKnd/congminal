@@ -255,11 +255,17 @@ impl History {
             }
             return;
         }
-        let _ = self.store_row(&row, Some(row.cells.capacity()), funding);
+        let _ = self.store_row(&row, Some(row.cells.capacity()), funding, usize::MAX);
     }
     /// 返回 None 时没有保存新行；Raw 路径由拥有调用方移交，滚动路径复制到已准入容量。
-    fn store_row(&mut self, row: &Row, raw_capacity: Option<usize>, mut funding: Option<&mut Lease>) -> Option<()> {
-        let encoding = Encoding::of(row);
+    fn store_row(
+        &mut self,
+        row: &Row,
+        raw_capacity: Option<usize>,
+        mut funding: Option<&mut Lease>,
+        used: usize,
+    ) -> Option<()> {
+        let encoding = Encoding::of_prefix(row, used);
         let raw_bytes = raw_capacity.unwrap_or(row.cells.len()) * std::mem::size_of::<Cell>();
         let packed = encoding.bytes < raw_bytes;
         let payload = if packed { encoding.bytes } else { row.cells.len() * std::mem::size_of::<Cell>() };
@@ -365,15 +371,18 @@ impl History {
         }
         Some(())
     }
-    pub(super) fn scroll_row(&mut self, screen: &mut Row, cols: usize, blank: Cell) {
+    /// `used` 之后的格子都是默认值，编码不必扫描。
+    /// 编码体积较大，不内联进滚动路径，避免拖慢不写历史时的换行。
+    #[inline(never)]
+    pub(super) fn scroll_row(&mut self, screen: &mut Row, cols: usize, used: usize, blank: Cell) {
         #[cfg(test)]
         if let Some(old) = &mut self.old {
             old.scroll_row(screen, cols, blank);
             return;
         }
         let _ = cols;
-        self.store_row(screen, None, None);
-        screen.reset(blank);
+        self.store_row(screen, None, None, used);
+        screen.reset_upto(blank, used);
     }
     /// 只从已准入的缩放工作集调用；数据及原票据一起转交。
     pub(in crate::term) fn take_rows(&mut self) -> HistoryRows {

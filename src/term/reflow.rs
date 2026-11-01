@@ -253,7 +253,7 @@ mod differential_tests {
                     row.cells[1].flags = Flags::WIDE_SPACER;
                 }
                 if cols < width && seed % 5 == 0 {
-                    row.cells[width - 1].bg = crate::term::Color::Indexed(2);
+                    row.cells[width - 1].bg = crate::term::Color::indexed(2);
                 }
                 rows.push(row);
             }
@@ -338,7 +338,7 @@ mod differential_tests {
                             col += 2;
                         }
                         1 => {
-                            row.cells[col].bg = crate::term::Color::Indexed(2);
+                            row.cells[col].bg = crate::term::Color::indexed(2);
                             col += 1;
                         }
                         2 | 3 => {
