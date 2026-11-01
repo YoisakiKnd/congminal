@@ -399,6 +399,9 @@ impl Session {
             }
         }
         self.term.reconcile_history_memory();
+        if std::mem::take(&mut self.term.memory_released) {
+            crate::platform::return_memory();
+        }
         self.term.prune_links();
         self.term.shell.prune(self.term.text_bounds().0);
         self.output_pending =

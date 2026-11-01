@@ -126,7 +126,7 @@ unsafe fn class(name: &CStr) -> Id {
     unsafe { objc_getClass(name.as_ptr()) }
 }
 
-mod presentation;
+pub(super) mod presentation;
 
 unsafe fn nsstring(s: &str) -> Id {
     const UTF8: usize = 4;
@@ -259,6 +259,7 @@ pub struct Window {
     height: u32,
     /// 上次看到的窗口是否是键盘焦点所在（变化时通知 App）
     focused: bool,
+    occluded: Option<bool>,
     /// 已经设过的窗口 alpha，只在变化时才发消息。
     alpha: Option<f64>,
     presentation: presentation::State,
@@ -361,6 +362,7 @@ impl Window {
                 width,
                 height,
                 focused: true,
+                occluded: None,
                 alpha: None,
                 presentation: presentation::State::default(),
             })
@@ -441,7 +443,8 @@ impl Window {
     /// 等到至少一个事件，把排队的事件处理完，然后检查尺寸、重画
     unsafe fn pump(&mut self, app: &mut dyn App, distant_future: Id, distant_past: Id) -> bool {
         unsafe {
-            if !self.observe_focus(app)
+            if !self.observe_visibility(app)
+                || !self.observe_focus(app)
                 || !protected_window::sync(self.view, self.focused, app)
                 || !protected_window::drain(self.view, self.focused, app)
             {
@@ -463,7 +466,10 @@ impl Window {
                 if event.is_null() {
                     break;
                 }
-                if !self.observe_focus(app) || !protected_window::sync(self.view, self.focused, app) {
+                if !self.observe_visibility(app)
+                    || !self.observe_focus(app)
+                    || !protected_window::sync(self.view, self.focused, app)
+                {
                     return false;
                 }
                 // 第一个事件到了之后，剩下的只取已经排队的，不再等待
@@ -485,7 +491,8 @@ impl Window {
                         return false;
                     }
                 }
-                if !self.observe_focus(app)
+                if !self.observe_visibility(app)
+                    || !self.observe_focus(app)
                     || !protected_window::sync(self.view, self.focused, app)
                     || !protected_window::drain(self.view, self.focused, app)
                 {
@@ -501,7 +508,8 @@ impl Window {
             if !app.tick() {
                 return false;
             }
-            if !self.observe_focus(app)
+            if !self.observe_visibility(app)
+                || !self.observe_focus(app)
                 || !protected_window::sync(self.view, self.focused, app)
                 || !protected_window::drain(self.view, self.focused, app)
             {
@@ -515,7 +523,10 @@ impl Window {
             if visible == 0 && minimized == 0 && !app.event(Event::CloseRequested) {
                 return false;
             }
-            if !self.observe_focus(app) || !protected_window::sync(self.view, self.focused, app) {
+            if !self.observe_visibility(app)
+                || !self.observe_focus(app)
+                || !protected_window::sync(self.view, self.focused, app)
+            {
                 return false;
             }
 
@@ -524,6 +535,8 @@ impl Window {
             let width = (frame.size.width * scale).round() as u32;
             let height = (frame.size.height * scale).round() as u32;
             if (width, height) != (self.width, self.height) {
+                // 先释放旧尺寸快照池，避免它占用新画布的准入额度。
+                self.release_pool();
                 self.width = width;
                 self.height = height;
                 if !app.event(Event::Resize { width, height }) {
@@ -537,7 +550,8 @@ impl Window {
             if let Some(opacity) = app.window_opacity() {
                 self.apply_opacity(opacity);
             }
-            if app.needs_redraw()
+            if self.occluded != Some(true)
+                && app.needs_redraw()
                 && let Some((fb, damage)) = app.draw()
             {
                 self.present(fb, damage);
@@ -582,6 +596,18 @@ impl Window {
         }
     }
 
+    unsafe fn observe_visibility(&mut self, app: &mut dyn App) -> bool {
+        let visible = unsafe { msg![self.window, "occlusionState"; usize] } & (1 << 1) != 0;
+        let occluded = !visible;
+        if self.occluded != Some(occluded) {
+            self.occluded = Some(occluded);
+            if !app.event(Event::Occluded(occluded)) {
+                return false;
+            }
+        }
+        true
+    }
+
     unsafe fn observe_focus(&mut self, app: &mut dyn App) -> bool {
         let focused = unsafe { msg![self.window,"isKeyWindow";i8] } != 0;
         if focused != self.focused {
@@ -622,6 +648,7 @@ impl Drop for Window {
             msg![self.app, "setDelegate:", NIL => Id; ()];
             msg![self.window,"setDelegate:",NIL=>Id;()];
             self.clear_patches();
+            self.release_pool();
             CGColorSpaceRelease(self.color_space);
             msg![self.window, "close"; ()];
             msg![self.window, "release"; ()];
@@ -751,6 +778,11 @@ thread_local! {
     }) };
 }
 
+extern "C" fn occlusion_changed(_: Id, _: Sel, _: Id) {
+    // 通知可能在 AppKit 分发期间到来，唤醒后由窗口查询自己的状态。
+    Waker.wake();
+}
+
 /// 在运行时注册 CongminalView（NSView 的子类），只注册一次
 fn view_class() -> Id {
     static CLASS: OnceLock<usize> = OnceLock::new();
@@ -783,6 +815,7 @@ unsafe fn register_view_class() -> Id {
             (c"inputContext", protected_window::input_context as *const c_void, c"@@:"),
             (c"windowDidResignKey:", protected_window::resigned as *const c_void, c"v@:@"),
             (c"windowDidBecomeKey:", protected_window::became as *const c_void, c"v@:@"),
+            (c"windowDidChangeOcclusionState:", occlusion_changed as *const c_void, c"v@:@"),
             (c"insertText:replacementRange:", insert_text as *const c_void, c"v@:@{_NSRange=QQ}"),
             (
                 c"setMarkedText:selectedRange:replacementRange:",

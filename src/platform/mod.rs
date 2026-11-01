@@ -9,6 +9,12 @@
 //! 平台层只认识像素和按键，完全不知道终端的存在。
 
 mod clipboard;
+mod memory;
+pub(crate) use memory::return_memory;
+pub(crate) fn reclaim_presentation() {
+    #[cfg(target_os = "macos")]
+    macos::presentation::reclaim_pools();
+}
 pub(crate) mod protected_input;
 pub(crate) use clipboard::{CopyError, CopyText, PasteRequest, ProtectedPaste};
 pub(crate) use clipboard::{PlainPaste, paste_bytes};
@@ -139,6 +145,8 @@ pub enum Event {
     },
     /// 窗口获得（true）或失去（false）键盘焦点
     Focus(bool),
+    /// 整个窗口不可见；仍需处理 PTY 输出，不改变焦点状态。
+    Occluded(bool),
     /// 用户要求复制（macOS 的 Cmd+C 菜单）
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Copy,

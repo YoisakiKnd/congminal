@@ -404,7 +404,8 @@ impl Controller {
                 }
                 Ok(None)
             }
-            Event::Key { .. }
+            Event::Occluded(_)
+            | Event::Key { .. }
             | Event::Copy
             | Event::PasteRequest
             | Event::PasteFailed

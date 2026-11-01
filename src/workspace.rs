@@ -1094,6 +1094,7 @@ impl Workspace {
         self.load(self.index(next).unwrap());
         let index = self.index(removed).unwrap();
         self.panes.remove(index);
+        crate::platform::return_memory();
         if index < self.loaded {
             self.loaded -= 1;
         }
@@ -1481,6 +1482,9 @@ impl Workspace {
         }
     }
     fn draw_time(&self) -> Option<Instant> {
+        if self.driver.occluded {
+            return None;
+        }
         let paced = self.last_draw + FRAME_INTERVAL;
         if self.chrome_dirty {
             return Some(paced);
@@ -2557,6 +2561,10 @@ impl App for Workspace {
         self.sftp_exit_gate(!self.quit)
     }
     fn event(&mut self, event: Event) -> bool {
+        if let Event::Occluded(occluded) = event {
+            self.full = true;
+            return self.driver.event(Event::Occluded(occluded));
+        }
         if self.capture_closing {
             if matches!(&event, Event::Resize { .. } | Event::Focus(_)) {
                 self.event_inner(event);
@@ -2874,6 +2882,9 @@ impl App for Workspace {
         self.capture_exit_gate(keep)
     }
     fn needs_redraw(&self) -> bool {
+        if self.driver.occluded {
+            return false;
+        }
         #[cfg(any(test, feature = "sftp"))]
         if self.sftp_exit_dirty() {
             return true;
@@ -3015,7 +3026,7 @@ impl App for Workspace {
             .chain(self.authentication.as_ref().and_then(|overlay| {
                 if overlay.controller.pending() {
                     Some(Instant::now())
-                } else if overlay.dirty {
+                } else if overlay.dirty && !self.driver.occluded {
                     Some(self.last_draw + FRAME_INTERVAL)
                 } else {
                     None
@@ -3106,6 +3117,31 @@ mod tests {
     use super::*;
     pub(super) fn workspace() -> Workspace {
         Workspace::new(crate::integration_tests::app("")).unwrap()
+    }
+
+    #[test]
+    fn occlusion_suppresses_drawing_but_preserves_terminal_and_focus() {
+        let mut app = workspace();
+        app.action(Action::NewTab);
+        app.relayout().unwrap();
+        app.draw();
+        let focus = app.window_focus;
+        assert!(app.event(Event::Occluded(true)));
+        for n in 0..app.panes.len() {
+            app.load(n);
+            crate::vt::Parser::new().advance(&mut app.driver.session.term, b"still parsed\r\n");
+            app.driver.dirty = true;
+        }
+        app.restore();
+        assert!(!app.needs_redraw());
+        assert!(app.draw_time().is_none());
+        assert_eq!(app.window_focus, focus);
+        assert!(app.event(Event::Occluded(false)));
+        app.last_draw = Instant::now() - FRAME_INTERVAL;
+        app.driver.last_draw = app.last_draw;
+        assert!(app.needs_redraw());
+        assert!(app.full);
+        assert!(app.draw().is_some());
     }
 
     #[test]

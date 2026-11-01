@@ -85,6 +85,7 @@ struct BitmapInfo {
 }
 
 const WM_SIZE: u32 = 0x0005;
+const SIZE_MINIMIZED: usize = 1;
 const WM_PAINT: u32 = 0x000F;
 const WM_CLOSE: u32 = 0x0010;
 const WM_DESTROY: u32 = 0x0002;
@@ -618,6 +619,7 @@ unsafe extern "system" fn wnd_proc(hwnd: Hwnd, msg: u32, wparam: usize, lparam: 
             0
         }
         WM_SIZE => {
+            push(Event::Occluded(wparam == SIZE_MINIMIZED));
             let (width, height) = ((lparam & 0xFFFF) as u32, ((lparam >> 16) & 0xFFFF) as u32);
             // 最小化时尺寸是 0，忽略
             if width > 0 && height > 0 {

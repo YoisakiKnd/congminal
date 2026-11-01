@@ -218,6 +218,8 @@ pub struct Terminal {
     last_char: char,
     /// 最近写入字符的格子，变体选择符、组合字符要附加到它上面
     last_glyph: Option<(usize, usize)>,
+    /// 解析器只标记释放事件，由会话在解析后提示系统分配器。
+    pub(crate) memory_released: bool,
     /// 以实际格子内容校验缓存；移动、擦除、重排后不能沿用过期的分段状态。
     last_segment: Option<(Cell, grapheme::Segmenter)>,
     #[cfg(test)]
@@ -341,6 +343,7 @@ impl Terminal {
             active_charset: 0,
             last_char: ' ',
             last_glyph: None,
+            memory_released: false,
             last_segment: None,
             #[cfg(test)]
             slow_print: false,
@@ -1406,6 +1409,7 @@ impl Terminal {
                 self.shell.invalidate_positions();
                 self.text_epoch = self.text_epoch.wrapping_add(1);
                 self.history.clear();
+                self.memory_released = true;
                 self.display_offset = 0;
             }
             _ => {}
@@ -1742,6 +1746,7 @@ impl Terminal {
                 self.history.use_legacy();
             }
         }
+        self.memory_released = true;
         self.shell = shell;
         self.text_epoch = epoch;
         self.default_cursor_shape = default_cursor_shape;

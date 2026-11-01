@@ -120,6 +120,7 @@ struct Congminal {
     selected_command: Option<u64>,
     output_copy: Option<shell::CopyOutput>,
     pane_visible: bool,
+    occluded: bool,
     last_draw: Instant,
     dirty: bool,
     /// 状态栏摘要的复用缓冲，避免命令视图每帧新分配字符串。
@@ -1103,6 +1104,19 @@ impl App for Congminal {
                 }
             }
             Event::Scroll { delta, x, y, mods } => self.scroll(delta, x, y, mods),
+            Event::Occluded(occluded) => {
+                if self.occluded != occluded {
+                    self.occluded = occluded;
+                    crate::term::trace(format_args!("occluded={occluded}"));
+                    if occluded {
+                        self.renderer.reclaim_caches();
+                        platform::return_memory();
+                    } else {
+                        self.renderer.invalidate();
+                        self.dirty = true;
+                    }
+                }
+            }
             Event::Focus(focused) => {
                 self.focus.active = focused;
                 if self.session.term.modes().focus_events {
@@ -1247,14 +1261,21 @@ impl App for Congminal {
     }
 
     fn needs_redraw(&self) -> bool {
+        if self.occluded {
+            return false;
+        }
         (self.dirty && Instant::now() >= self.next_draw_time())
             // 闪烁相位翻转时也要重画：只重画光标所在行（行指纹含光标状态）。
             || (self.cursor_blinking() && self.cursor_on() != self.last_cursor_on)
     }
 
     fn deadline(&self) -> Option<Instant> {
-        let draw = self.dirty.then(|| self.next_draw_time());
-        let deadline = draw.into_iter().chain(self.font_deadline).chain(self.blink_deadline()).min();
+        let draw = (self.dirty && !self.occluded).then(|| self.next_draw_time());
+        let deadline = draw
+            .into_iter()
+            .chain(self.font_deadline)
+            .chain((!self.occluded).then(|| self.blink_deadline()).flatten())
+            .min();
         if self.session.resize_pending()
             || self.session.output_pending
             || self.search.pending()
@@ -1461,6 +1482,7 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
         copy_exhausted: false,
         focus: Focus { active: true },
         pane_visible: true,
+        occluded: false,
         last_draw: Instant::now(),
         dirty: true,
         status_scratch: String::new(),
@@ -1743,6 +1765,7 @@ mod integration_tests {
             selected_command: None,
             output_copy: None,
             pane_visible: true,
+            occluded: false,
             last_draw: Instant::now(),
             dirty: true,
             status_scratch: String::new(),
@@ -1770,6 +1793,25 @@ mod integration_tests {
             assert!(Instant::now() < deadline, "等待超时");
             std::thread::sleep(Duration::from_millis(2));
         }
+    }
+
+    #[test]
+    fn occluded_pty_still_parses_and_has_no_blink_or_draw_deadline() {
+        let mut app = app("[appearance]\ncursor-blink=true\n");
+        app.draw();
+        let focused = app.focus.active;
+        assert!(app.event(Event::Occluded(true)));
+        app.session.write(b"hidden-output\x1b[3J").unwrap();
+        wait_until(&mut app, |app| screen(app).contains("hidden-output"));
+        assert!(app.tick());
+        assert!(!app.needs_redraw());
+        assert!(app.deadline().is_none());
+        assert_eq!(app.focus.active, focused);
+        assert!(!app.session.term.memory_released);
+        assert!(app.event(Event::Occluded(false)));
+        app.last_draw = Instant::now() - FRAME_INTERVAL;
+        assert!(app.needs_redraw());
+        assert!(app.draw().is_some());
     }
 
     #[test]

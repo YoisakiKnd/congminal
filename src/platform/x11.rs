@@ -162,6 +162,17 @@ struct XSelectionEvent {
     time: c_ulong,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct XVisibilityEvent {
+    type_: c_int,
+    serial: c_ulong,
+    send_event: c_int,
+    display: *mut Display,
+    window: XWindow,
+    state: c_int,
+}
+
 /// XEvent 是一个联合体，C 里定义为 24 个 long 那么大
 #[repr(C)]
 union XEvent {
@@ -171,6 +182,7 @@ union XEvent {
     motion: XMotionEvent,
     configure: XConfigureEvent,
     expose: XExposeEvent,
+    visibility: XVisibilityEvent,
     client: XClientMessageEvent,
     selection_request: XSelectionRequestEvent,
     selection: XSelectionEvent,
@@ -187,12 +199,17 @@ const SELECTION_NOTIFY: c_int = 31;
 const FOCUS_IN: c_int = 9;
 const FOCUS_OUT: c_int = 10;
 const EXPOSE: c_int = 12;
+const VISIBILITY_NOTIFY: c_int = 15;
+const UNMAP_NOTIFY: c_int = 18;
+const MAP_NOTIFY: c_int = 19;
+const VISIBILITY_FULLY_OBSCURED: c_int = 2;
 const CONFIGURE_NOTIFY: c_int = 22;
 const CLIENT_MESSAGE: c_int = 33;
 const DESTROY_NOTIFY: c_int = 17;
 
 const KEY_PRESS_MASK: c_long = 1 << 0;
 const EXPOSURE_MASK: c_long = 1 << 15;
+const VISIBILITY_CHANGE_MASK: c_long = 1 << 16;
 const STRUCTURE_NOTIFY_MASK: c_long = 1 << 17;
 const FOCUS_CHANGE_MASK: c_long = 1 << 21;
 const BUTTON_PRESS_MASK: c_long = 1 << 2;
@@ -427,6 +444,7 @@ impl Window {
                 window,
                 KEY_PRESS_MASK
                     | EXPOSURE_MASK
+                    | VISIBILITY_CHANGE_MASK
                     | STRUCTURE_NOTIFY_MASK
                     | FOCUS_CHANGE_MASK
                     | BUTTON_PRESS_MASK
@@ -650,6 +668,9 @@ impl Window {
     fn translate(&mut self, event: &mut XEvent) -> Vec<Event> {
         unsafe {
             match event.type_ {
+                VISIBILITY_NOTIFY => vec![Event::Occluded(event.visibility.state == VISIBILITY_FULLY_OBSCURED)],
+                UNMAP_NOTIFY => vec![Event::Occluded(true)],
+                MAP_NOTIFY => vec![Event::Occluded(false)],
                 KEY_PRESS => self.key_press(&mut event.key),
                 CONFIGURE_NOTIFY => {
                     let (w, h) = (event.configure.width as u32, event.configure.height as u32);

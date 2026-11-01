@@ -2,7 +2,7 @@
 //! Core Animation may retain images asynchronously; each provider owns its pixels and budget lease.
 use super::*;
 use crate::resources::{Budget, Kind, Lease};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 const MAX_PATCHES: usize = 16;
 const PATCH_BYTES: usize = 4 * 1024 * 1024;
@@ -26,10 +26,116 @@ pub(super) struct State {
     patches: [Patch; MAX_PATCHES],
     // Allocation failure preserves the last image; the next successful update must rebuild the base.
     invalid: bool,
+    pool: Option<PoolHandle>,
+}
+const POOL_LIMIT: usize = 3;
+// 固定注册表不另分配；窗口销毁后，provider 回调仍可独立持有池。
+static POOLS: Mutex<[Option<PoolHandle>; 8]> = Mutex::new([const { None }; 8]);
+struct PoolData {
+    frames: [Option<Snapshot>; POOL_LIMIT],
+    size: (usize, usize),
+    epoch: u64,
+    hits: u64,
+    misses: u64,
+    _memory: Lease,
+}
+struct PoolHandle(Option<Arc<Mutex<PoolData>>>);
+impl Clone for PoolHandle {
+    fn clone(&self) -> Self {
+        Self(Some(self.0.as_ref().unwrap().clone()))
+    }
+}
+impl Drop for PoolHandle {
+    fn drop(&mut self) {
+        // 最后一个句柄先释放 Arc 分配，再销毁像素、归还额度。
+        if let Some(data) = Arc::into_inner(self.0.take().unwrap()) {
+            drop(data.into_inner().unwrap());
+        }
+    }
+}
+impl PoolHandle {
+    fn new(budget: &Arc<Budget>) -> Option<Self> {
+        let bytes = std::mem::size_of::<Mutex<PoolData>>()
+            + 2 * std::mem::size_of::<usize>()
+            + std::mem::align_of::<Mutex<PoolData>>();
+        let memory = budget.lease(Kind::Canvas, bytes).ok()?;
+        Some(Self(Some(Arc::new(Mutex::new(PoolData {
+            frames: std::array::from_fn(|_| None),
+            size: (0, 0),
+            epoch: 0,
+            hits: 0,
+            misses: 0,
+            _memory: memory,
+        })))))
+    }
+    fn clear(&self, size: Option<(usize, usize)>) {
+        let mut pool = self.0.as_ref().unwrap().lock().unwrap();
+        for frame in &mut pool.frames {
+            *frame = None;
+        }
+        pool.epoch = pool.epoch.wrapping_add(1);
+        if let Some(size) = size {
+            pool.size = size;
+        }
+    }
+    fn prepare(&self, size: (usize, usize)) {
+        if self.0.as_ref().unwrap().lock().unwrap().size != size {
+            self.clear(Some(size));
+        }
+    }
+    fn copy(&self, pixels: &[u32], size: (usize, usize), budget: &Arc<Budget>) -> Option<Box<Snapshot>> {
+        self.prepare(size);
+        let (cached, epoch) = {
+            let mut pool = self.0.as_ref().unwrap().lock().unwrap();
+            let cached = pool.frames.iter_mut().find_map(Option::take);
+            if cached.is_some() {
+                pool.hits += 1;
+            } else {
+                pool.misses += 1;
+            }
+            crate::term::trace(format_args!(
+                "snapshot_pool hit={} hits={} misses={}",
+                cached.is_some(),
+                pool.hits,
+                pool.misses
+            ));
+            (cached, pool.epoch)
+        };
+        let mut snapshot = match cached {
+            Some(mut snapshot) => {
+                snapshot.pixels.clear();
+                snapshot.pixels.extend(pixels.iter().map(|pixel| pixel | 0xff00_0000));
+                Box::new(snapshot)
+            }
+            None => Snapshot::copy(pixels, budget)?,
+        };
+        snapshot.pool = Some(self.clone());
+        snapshot.size = size;
+        snapshot.epoch = epoch;
+        Some(snapshot)
+    }
+    fn recycle(&self, snapshot: Snapshot) {
+        let mut pool = self.0.as_ref().unwrap().lock().unwrap();
+        if snapshot.size == pool.size
+            && snapshot.epoch == pool.epoch
+            && let Some(slot) = pool.frames.iter_mut().find(|slot| slot.is_none())
+        {
+            *slot = Some(snapshot);
+        }
+    }
+}
+pub(in crate::platform) fn reclaim_pools() {
+    let pools = POOLS.lock().unwrap();
+    for pool in pools.iter().flatten() {
+        pool.clear(None);
+    }
 }
 struct Snapshot {
     pixels: Vec<u32>,
     _memory: Lease,
+    pool: Option<PoolHandle>,
+    size: (usize, usize),
+    epoch: u64,
 }
 impl Snapshot {
     fn copy(pixels: &[u32], pool: &Arc<Budget>) -> Option<Box<Self>> {
@@ -40,13 +146,14 @@ impl Snapshot {
         memory.resize(data.capacity().checked_mul(4)?.checked_add(std::mem::size_of::<Self>())?).ok()?;
         // Native BGRA images use opaque alpha, allowing Core Animation to avoid format conversion.
         data.extend(pixels.iter().map(|pixel| pixel | 0xff00_0000));
-        Some(Box::new(Self { pixels: data, _memory: memory }))
+        Some(Box::new(Self { pixels: data, _memory: memory, pool: None, size: (0, 0), epoch: 0 }))
     }
 }
 extern "C" fn release_snapshot(info: *mut c_void, _: *const c_void, _: usize) {
-    // The provider calls this exactly once, possibly after the window or UI scope has gone away.
-    unsafe {
-        drop(Box::from_raw(info.cast::<Snapshot>()));
+    // 先释放 provider 的 Box；池里的像素和 Lease 一起保留。
+    let mut snapshot = unsafe { *Box::from_raw(info.cast::<Snapshot>()) };
+    if let Some(pool) = snapshot.pool.take() {
+        pool.recycle(snapshot);
     }
 }
 struct Image(*mut c_void);
@@ -57,10 +164,29 @@ impl Drop for Image {
         }
     }
 }
+#[cfg(test)]
 fn image(fb: &Framebuffer, y: usize, height: usize, color: *mut c_void) -> Option<Image> {
+    image_with_pool(fb, y, height, color, None)
+}
+fn image_with_pool(
+    fb: &Framebuffer,
+    y: usize,
+    height: usize,
+    color: *mut c_void,
+    pool: Option<&PoolHandle>,
+) -> Option<Image> {
     let start = y.checked_mul(fb.width)?;
     let end = y.checked_add(height)?.checked_mul(fb.width)?;
-    let snapshot = Snapshot::copy(fb.pixels.get(start..end)?, &crate::resources::current())?;
+    let pixels = fb.pixels.get(start..end)?;
+    let budget = crate::resources::current();
+    let snapshot = if y == 0
+        && height == fb.height
+        && let Some(pool) = pool
+    {
+        pool.copy(pixels, (fb.width, fb.height), &budget)?
+    } else {
+        Snapshot::copy(pixels, &budget)?
+    };
     let data = snapshot.pixels.as_ptr().cast();
     let size = snapshot.pixels.len() * 4;
     let owner = Box::into_raw(snapshot).cast();
@@ -99,6 +225,23 @@ impl State {
     }
 }
 impl Window {
+    pub(super) fn release_pool(&mut self) {
+        if let Some(pool) = self.presentation.pool.take() {
+            let removed = {
+                let mut pools = POOLS.lock().unwrap();
+                pools
+                    .iter_mut()
+                    .find(|entry| {
+                        entry
+                            .as_ref()
+                            .is_some_and(|entry| Arc::ptr_eq(entry.0.as_ref().unwrap(), pool.0.as_ref().unwrap()))
+                    })
+                    .and_then(Option::take)
+            };
+            pool.clear(None);
+            drop(removed);
+        }
+    }
     pub(super) unsafe fn clear_patches(&mut self) {
         unsafe {
             for patch in &mut self.presentation.patches {
@@ -112,6 +255,18 @@ impl Window {
         self.presentation.bytes = 0;
     }
     pub(super) fn present(&mut self, fb: &Framebuffer, damage: Damage) {
+        if self.presentation.pool.is_none() {
+            let mut pools = POOLS.lock().unwrap();
+            if let Some(slot) = pools.iter_mut().find(|slot| slot.is_none())
+                && let Some(pool) = PoolHandle::new(&crate::resources::current())
+            {
+                *slot = Some(pool.clone());
+                self.presentation.pool = Some(pool);
+            }
+        }
+        if let Some(pool) = &self.presentation.pool {
+            pool.prepare((fb.width, fb.height));
+        }
         let y = damage.y.min(fb.height);
         let rows = damage.height.min(fb.height.saturating_sub(y));
         if fb.width == 0 || rows == 0 {
@@ -136,7 +291,8 @@ impl Window {
         let count = if partial { bands.len() } else { 1 };
         for (i, entry) in images.iter_mut().enumerate().take(count) {
             let (start, rows) = if partial { (bands[i].y, bands[i].height) } else { (0, fb.height) };
-            let Some(native) = image(fb, start, rows, self.color_space) else {
+            let Some(native) = image_with_pool(fb, start, rows, self.color_space, self.presentation.pool.as_ref())
+            else {
                 self.presentation.invalid = true;
                 crate::term::trace(format_args!("原生画面快照额度不足或创建失败，保留上一帧"));
                 return;
@@ -194,6 +350,95 @@ impl Window {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn release(snapshot: Box<Snapshot>) {
+        release_snapshot(Box::into_raw(snapshot).cast(), std::ptr::null(), 0);
+    }
+    #[test]
+    fn pool_bounds_cross_thread_returns_and_keeps_leases() {
+        let budget = Budget::new(65536, 0);
+        let pool = PoolHandle::new(&budget).unwrap();
+        let metadata = budget.snapshot().used;
+        let mut frames = Vec::new();
+        for _ in 0..5 {
+            frames.push(pool.copy(&[7; 64], (8, 8), &budget).unwrap());
+        }
+        let threads: Vec<_> = frames
+            .into_iter()
+            .map(|frame| {
+                let owner = Box::into_raw(frame) as usize;
+                std::thread::spawn(move || release_snapshot(owner as *mut c_void, std::ptr::null(), 0))
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+        let retained = pool.0.as_ref().unwrap().lock().unwrap();
+        assert_eq!(retained.frames.iter().flatten().count(), POOL_LIMIT);
+        let address = retained.frames.iter().flatten().next().unwrap().pixels.as_ptr();
+        drop(retained);
+        let held = budget.snapshot().used;
+        let frame = pool.copy(&[9; 64], (8, 8), &budget).unwrap();
+        assert_eq!(frame.pixels.as_ptr(), address);
+        assert_eq!(frame.pixels, [0xff00_0009; 64]);
+        assert_eq!(budget.snapshot().used, held);
+        release(frame);
+        pool.clear(None);
+        assert_eq!(budget.snapshot().used, metadata);
+        drop(pool);
+        assert_eq!(budget.snapshot().used, 0);
+    }
+    #[test]
+    fn resizing_and_reclaim_reject_late_callbacks() {
+        let budget = Budget::new(65536, 0);
+        let pool = PoolHandle::new(&budget).unwrap();
+        let metadata = budget.snapshot().used;
+        let old = pool.copy(&[1; 64], (8, 8), &budget).unwrap();
+        release(pool.copy(&[2; 64], (8, 8), &budget).unwrap());
+        pool.prepare((16, 4));
+        release(old);
+        assert_eq!(budget.snapshot().used, metadata);
+        let late = pool.copy(&[3; 64], (16, 4), &budget).unwrap();
+        pool.clear(None);
+        release(late);
+        assert_eq!(budget.snapshot().used, metadata);
+        let last =
+            std::array::from_fn::<_, 3, _>(|_| Box::into_raw(pool.copy(&[4; 64], (16, 4), &budget).unwrap()) as usize);
+        drop(pool);
+        let barrier = &std::sync::Barrier::new(3);
+        std::thread::scope(|scope| {
+            let threads = last.map(|owner| {
+                scope.spawn(move || {
+                    barrier.wait();
+                    release_snapshot(owner as *mut c_void, std::ptr::null(), 0);
+                })
+            });
+            for thread in threads {
+                thread.join().unwrap();
+            }
+        });
+        assert_eq!(budget.snapshot().used, 0);
+        let denied = Budget::new(0, 0);
+        assert!(PoolHandle::new(&denied).is_none());
+    }
+    #[test]
+    fn renderer_pressure_reclaims_registered_snapshots() {
+        let budget = Budget::new(65536, 0);
+        let pool = PoolHandle::new(&budget).unwrap();
+        let metadata = budget.snapshot().used;
+        release(pool.copy(&[1; 64], (8, 8), &budget).unwrap());
+        let slot = {
+            let mut pools = POOLS.lock().unwrap();
+            let slot = pools.iter().position(Option::is_none).unwrap();
+            pools[slot] = Some(pool.clone());
+            slot
+        };
+        let mut renderer = crate::render::Renderer::new(&crate::config::Config::default(), 1.0);
+        renderer.reclaim_caches();
+        assert_eq!(budget.snapshot().used, metadata);
+        let removed = POOLS.lock().unwrap()[slot].take();
+        drop((removed, pool));
+        assert_eq!(budget.snapshot().used, 0);
+    }
     #[test]
     fn snapshots_preserve_pixels_and_keep_credit_until_provider_release() {
         let pool = Budget::new(4096, 0);

@@ -49,6 +49,12 @@ Windows 附带固定版本的微软 ConPTY。APC 应答中的 ESC 通过 Win32 U
 
 原生快照按实际像素容量和拥有者元数据申请共享 Canvas 额度，由 CGDataProvider 回调在系统释放图像时归还，来源帧不会与异步使用的像素混用。差分范围最多八段，超过时合并；macOS 最多保留 16 个局部图层、局部像素合计最多 4 MiB，超限或尺寸变化回到完整底图。系统图层与 GPU 缓存尚非完整账本，不能把准入额度当作 RSS 上限。
 
+macOS 的完整快照在 provider 释放后可归还最多三块的同尺寸复用池，像素及原 Lease 一起保留，局部条带仍直接释放。每块票据为 `pixels.capacity()*4 + size_of::<Snapshot>()`；池自身先申请 `size_of::<Mutex<PoolData>>() + 2*size_of::<usize>() + align_of::<Mutex<PoolData>>()` 的 Canvas 额度，覆盖 Arc 头部及对齐的上界。池内固定数组不另分配；注册表为固定八个内联句柄，注册槽满则沿用不复用的快照路径。借用屏幕像素不能进入池，所有快照仍独立复制。
+
+尺寸变化、关闭窗格、清历史或不可见时清空池并推进代次，旧回调不能重新填入已清空的池。回调先释放 Box 外壳，再把像素与票据移入池；最后一个句柄用 Arc::into_inner 先释放共享分配，再销毁池内数据并归还额度。池中 Snapshot 元数据仍保守计费，不把复用容量当作零。不可见窗口停止绘制和光标计时，继续处理 PTY，恢复时 invalidate 整屏；焦点、监控与 Git 的原门控独立保留。
+
+关闭窗格、会话解析到清历史/RIS、不可见事件后提示系统分配器归还空闲页；全进程以五秒为最小间隔，清池不受此间隔阻挡。glibc 使用 malloc_trim(0)，musl 排除此调用；macOS 使用 malloc_zone_pressure_relief(NULL,0)，Windows 使用 HeapCompact(GetProcessHeap(),0)。提示不保证 RSS 降低，受管额度、系统分配器空闲页与 RSS 分开报告。
+
 M4 本机相同万行 Neovim 4K 缓冲负载、前后各三轮诊断测量中，活动 CPU 中位数由单核 49.47% 到 21.80%，终端 RSS 采样峰值中位数由 270.86 MiB 到 194.69 MiB。修正标准 sRGB 与原生 BGRA 提交，并减少局部变化的整屏上传。同步绘制/提交 P95 从 2.89 ms 到 8.24 ms，未宣称延迟或 FPS 提升：此前数字不含后续 Core Animation 颜色转换。完整本机记录在 `target/evaluations/macos-presentation-optimization-20261031/`，不纳入历史版本证据，也不代表跨机器或外接 4K 实屏验收。
 
 ## PTY 输出缓冲复用

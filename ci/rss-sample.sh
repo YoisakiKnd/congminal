@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Linux/macOS 原生窗口手动采样：ci/rss-sample.sh [release 可执行文件] [输出目录]
 set -euo pipefail
+# tabs 场景由同目录控制器采样；默认单窗口负载与清理规则不变。
+if [[ "${3:-}" == tabs ]]; then exec python3 "$(dirname "$0")/rss-sample-tabs.py" "$1" "$2"; fi
 case "$(uname -s)" in Linux|Darwin) ;; *) echo '仅支持 Linux/macOS' >&2; exit 2 ;; esac
 bin=${1:-target/release/congminal}
 bin=$(cd "$(dirname "$bin")" && pwd)/$(basename "$bin")

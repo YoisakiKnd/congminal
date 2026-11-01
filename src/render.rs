@@ -340,6 +340,7 @@ fn hash<T: Hash>(value: &T) -> u64 {
 
 impl Renderer {
     pub fn reclaim_caches(&mut self) {
+        crate::platform::reclaim_presentation();
         self.fonts.clear_caches();
         self.cache_epoch = self.cache_epoch.wrapping_add(1);
         self.last_top = None;
