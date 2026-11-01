@@ -555,44 +555,53 @@ impl Window {
         }
     }
 
-    /// 只把变化的那几行像素贴到窗口上：把它们当成一张单独的图
+    /// 只把变化的那几段像素贴到窗口上：每段当成一张单独的图。
+    /// 光标行和状态栏离得远时分段提交，不把中间没变的行一起传过去。
     fn present(&self, fb: &Framebuffer, damage: Damage) {
         if fb.width == 0 || fb.height == 0 || damage.height == 0 {
             return;
         }
-        let info = BitmapInfo {
-            header: BitmapInfoHeader {
-                size: size_of::<BitmapInfoHeader>() as u32,
-                width: fb.width as i32,
-                // 负数表示自上而下存储，和我们的缓冲区一致
-                height: -(damage.height as i32),
-                planes: 1,
-                bit_count: 32,
-                compression: 0,
-                size_image: 0,
-                x_pels_per_meter: 0,
-                y_pels_per_meter: 0,
-                clr_used: 0,
-                clr_important: 0,
-            },
-            colors: [0],
-        };
         unsafe {
             let hdc = GetDC(self.hwnd);
-            SetDIBitsToDevice(
-                hdc,
-                0,
-                damage.y as i32,
-                fb.width as u32,
-                damage.height as u32,
-                0,
-                0,
-                0,
-                damage.height as u32,
-                fb.pixels[damage.y * fb.width..].as_ptr().cast(),
-                &info,
-                DIB_RGB_COLORS,
-            );
+            for band in damage.bands() {
+                let y = band.y.min(fb.height);
+                let end = band.y.saturating_add(band.height).min(fb.height);
+                if y == end {
+                    continue;
+                }
+                let info = BitmapInfo {
+                    header: BitmapInfoHeader {
+                        size: size_of::<BitmapInfoHeader>() as u32,
+                        // 行距按缓冲的 stride，实际只贴可见宽度
+                        width: fb.stride as i32,
+                        // 负数表示自上而下存储，和我们的缓冲区一致
+                        height: -((end - y) as i32),
+                        planes: 1,
+                        bit_count: 32,
+                        compression: 0,
+                        size_image: 0,
+                        x_pels_per_meter: 0,
+                        y_pels_per_meter: 0,
+                        clr_used: 0,
+                        clr_important: 0,
+                    },
+                    colors: [0],
+                };
+                SetDIBitsToDevice(
+                    hdc,
+                    0,
+                    y as i32,
+                    fb.width as u32,
+                    (end - y) as u32,
+                    0,
+                    0,
+                    0,
+                    (end - y) as u32,
+                    fb.pixels[y * fb.stride..].as_ptr().cast(),
+                    &info,
+                    DIB_RGB_COLORS,
+                );
+            }
             ReleaseDC(self.hwnd, hdc);
         }
     }

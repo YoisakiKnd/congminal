@@ -15,6 +15,8 @@ use std::os::unix::net::UnixStream;
 use std::ptr::{null, null_mut};
 use std::sync::Arc;
 
+mod shm;
+
 type Display = c_void;
 type XWindow = c_ulong;
 type Atom = c_ulong;
@@ -387,6 +389,7 @@ pub struct Window {
     paste_read: Option<super::PasteRequest>,
     /// 已经设过的 `_NET_WM_WINDOW_OPACITY`（32 位定点），只在变化时才发请求。
     opacity: Option<c_ulong>,
+    shm: shm::Shm,
 }
 
 struct Atoms {
@@ -540,6 +543,7 @@ impl Window {
                 clipboard: None,
                 paste_read: None,
                 opacity: None,
+                shm: shm::Shm::new(display),
             })
         }
     }
@@ -905,16 +909,21 @@ impl Window {
         text.chars().map(|c| Event::Key { key: Key::Char(c), mods }).collect()
     }
 
-    /// 只把变化的那几行像素送给 X 服务器
-    fn present(&self, fb: &Framebuffer, damage: Damage) {
+    /// 只把变化的那几段像素送给 X 服务器；优先走共享内存，不可用时用 XPutImage。
+    fn present(&mut self, fb: &Framebuffer, damage: Damage) {
         if fb.width == 0 || fb.height == 0 || damage.height == 0 {
+            return;
+        }
+        let (gc, visual) =
+            unsafe { (XDefaultGC(self.display, self.screen), XDefaultVisual(self.display, self.screen)) };
+        if self.shm.present(self.display, self.window, gc, visual, fb, &damage) {
             return;
         }
         unsafe {
             // XImage 只是借用我们的像素数据，用完只释放结构体本身（XFree），不释放数据
             let image = XCreateImage(
                 self.display,
-                XDefaultVisual(self.display, self.screen),
+                visual,
                 24,
                 Z_PIXMAP,
                 0,
@@ -922,23 +931,30 @@ impl Window {
                 fb.width as c_uint,
                 fb.height as c_uint,
                 32,
-                (fb.width * 4) as c_int,
+                (fb.stride * 4) as c_int,
             );
             if image.is_null() {
                 return;
             }
-            XPutImage(
-                self.display,
-                self.window,
-                XDefaultGC(self.display, self.screen),
-                image,
-                0,
-                damage.y as c_int,
-                0,
-                damage.y as c_int,
-                fb.width as c_uint,
-                damage.height as c_uint,
-            );
+            // 光标行和状态栏离得远时分段发送，不把中间没变的行一起传过去。
+            for band in damage.bands() {
+                let y = band.y.min(fb.height);
+                let end = band.y.saturating_add(band.height).min(fb.height);
+                if y < end {
+                    XPutImage(
+                        self.display,
+                        self.window,
+                        gc,
+                        image,
+                        0,
+                        y as c_int,
+                        0,
+                        y as c_int,
+                        fb.width as c_uint,
+                        (end - y) as c_uint,
+                    );
+                }
+            }
             XFree(image);
         }
     }
@@ -946,6 +962,8 @@ impl Window {
 
 impl Drop for Window {
     fn drop(&mut self) {
+        // 共享段要在关闭连接前断开。
+        self.shm.release(self.display);
         unsafe {
             if !self.ic.is_null() {
                 XDestroyIC(self.ic);
