@@ -81,6 +81,9 @@ unsafe extern "C" {
     fn waitid(kind: c_int, id: u32, info: *mut std::ffi::c_void, options: c_int) -> c_int;
     fn poll(fds: *mut PollFd, count: PollCount, timeout: c_int) -> c_int;
     fn write(fd: c_int, data: *const std::ffi::c_void, len: usize) -> isize;
+    fn tcgetpgrp(fd: c_int) -> c_int;
+    #[cfg(target_os = "macos")]
+    fn proc_name(pid: c_int, buffer: *mut std::ffi::c_void, size: u32) -> c_int;
     #[cfg(target_os = "macos")]
     fn __error() -> *mut c_int;
     #[cfg(target_os = "linux")]
@@ -364,6 +367,35 @@ impl Pty {
         // 内核会自动给 shell 的前台进程组发 SIGWINCH
         set_winsize(self.master.as_raw_fd(), cols, rows)
     }
+
+    /// 前台进程组的组长：管道 `a | b` 显示 `a`。名字每次重读，程序 exec 成别的程序后也对。
+    pub fn foreground(&self) -> Option<super::Foreground> {
+        let shell = (*self.process.pid.lock().unwrap())?;
+        let group = unsafe { tcgetpgrp(self.master.as_raw_fd()) };
+        if group <= 0 {
+            return None;
+        }
+        if group == shell {
+            return Some(super::Foreground::Shell);
+        }
+        process_name(group).map(super::Foreground::Program)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn process_name(pid: c_int) -> Option<String> {
+    let mut name = std::fs::read(format!("/proc/{pid}/comm")).ok()?;
+    name.pop_if(|b| *b == b'\n');
+    (!name.is_empty()).then(|| String::from_utf8_lossy(&name).into_owned())
+}
+
+#[cfg(target_os = "macos")]
+fn process_name(pid: c_int) -> Option<String> {
+    // 2 * MAXCOMLEN：libproc 先取 p_name，比 p_comm 的 16 字节长
+    let mut name = [0u8; 64];
+    let len = unsafe { proc_name(pid, name.as_mut_ptr().cast(), name.len() as u32) };
+    let name = name.get(..usize::try_from(len).ok().filter(|&n| n > 0)?)?;
+    Some(String::from_utf8_lossy(name).into_owned())
 }
 
 impl Drop for Pty {
@@ -583,6 +615,32 @@ mod tests {
         assert_eq!(bytes.len(), 2097152 + 4);
         assert!(bytes[..2097152].iter().all(|&b| b == 0));
         assert_eq!(&bytes[2097152..], b"tail");
+    }
+
+    #[test]
+    fn foreground_follows_the_job_the_shell_waits_for() {
+        let (send, receive) = mpsc::channel();
+        let sink: EventSink = Arc::new(move |event| {
+            if let PtyEvent::Data(data) = event {
+                let _ = send.send(data);
+            }
+            true
+        });
+        // set -m 打开作业控制：前台命令进入自己的进程组，与交互式 shell 一致
+        let command = Command {
+            program: Some("/bin/sh".into()),
+            args: vec!["-c".into(), "set -m; printf ready; read x; sleep 5".into()],
+            ..Default::default()
+        };
+        let mut pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+        assert_eq!(receive.recv_timeout(Duration::from_secs(2)).unwrap(), b"ready");
+        assert_eq!(pty.foreground(), Some(crate::pty::Foreground::Shell));
+        pty.write(b"\n").unwrap();
+        let until = Instant::now() + Duration::from_secs(3);
+        while pty.foreground() != Some(crate::pty::Foreground::Program("sleep".into())) {
+            assert!(Instant::now() < until, "前台仍是 {:?}", pty.foreground());
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     #[test]

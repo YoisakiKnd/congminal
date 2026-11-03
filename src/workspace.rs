@@ -10,6 +10,7 @@ mod forwards;
 mod git_panel;
 mod layout;
 mod monitor_panel;
+mod program_title;
 mod remote;
 #[cfg(any(test, feature = "sftp"))] // auth-workspace
 mod remote_files;
@@ -266,6 +267,7 @@ struct Pane {
     state: Option<Frozen>,
     rect: Rect,
     title: String,
+    program: program_title::ProgramTitle,
     profile: Option<(config::profiles::Profiles, usize)>,
     remote: Option<remote::State>,
     ended: bool,
@@ -378,6 +380,7 @@ impl Workspace {
                 state: None,
                 rect: Rect::default(),
                 title: "终端 1".into(),
+                program: Default::default(),
                 profile: None,
                 remote: None,
                 ended: false,
@@ -609,6 +612,7 @@ impl Workspace {
                 state: Some(Frozen::new(session)),
                 rect: Rect::default(),
                 title: format!("终端 {id}"),
+                program: Default::default(),
                 profile: None,
                 remote: None,
                 ended: false,
@@ -768,6 +772,7 @@ impl Workspace {
             .chain(self.driver.font_deadline)
             .chain(self.git.deadline())
             .chain(self.monitor.deadline())
+            .chain(self.panes.iter().filter(|p| !p.ended && p.remote.is_none()).filter_map(|p| p.program.deadline()))
             .min()
     }
     fn terminal_focused(&self) -> bool {
@@ -992,6 +997,7 @@ impl Workspace {
             state: Some(state),
             rect: Rect::default(),
             title: format!("终端 {id}"),
+            program: Default::default(),
             profile: profile_index.map(|index| (profiles, index)),
             remote: launch.as_ref().map(|launch| remote::State::new(launch.check_elapsed)),
             ended: false,
@@ -1513,7 +1519,7 @@ impl Workspace {
         let cells = tab_width.saturating_sub(3) / cw.max(1);
         for i in 0..self.tabs.len() {
             let id = self.tabs[i].first();
-            let title = self.index(id).map(|j| self.panes[j].title.as_str()).unwrap_or("终端");
+            let title = self.index(id).map(|j| self.panes[j].program.label(&self.panes[j].title)).unwrap_or("终端");
             // 标题多为 `user@host: ~/path`：保留尾部（目录名）比保留开头有用。
             let title = crate::term::clip_tail(title, cells.saturating_sub(2));
             let text = format!("{} {}", i + 1, title);
@@ -1727,8 +1733,10 @@ impl Workspace {
                 for i in 0..self.panes.len() {
                     let p = &self.panes[i];
                     let suffix = if p.ended { " · 已结束" } else { "" };
-                    let title =
-                        crate::term::clip_tail(&p.title, cells.saturating_sub(2 + crate::term::display_width(suffix)));
+                    let title = crate::term::clip_tail(
+                        p.program.label(&p.title),
+                        cells.saturating_sub(2 + crate::term::display_width(suffix)),
+                    );
                     let text = format!("{} {}{}", p.id, title, suffix);
                     let y = r.y + (i + 1) * h;
                     if y + h <= r.y + r.h {
@@ -2765,6 +2773,18 @@ impl App for Workspace {
                     let title: String = title.chars().filter(|c| !c.is_control()).take(128).collect();
                     if title != self.panes[index].title {
                         self.panes[index].title = title;
+                        self.panes[index].program.title_changed();
+                        self.chrome_dirty = true;
+                    }
+                }
+                // 远程窗格的前台总是 ssh，标题交给远端
+                let now = Instant::now();
+                if !self.panes[index].ended
+                    && self.panes[index].remote.is_none()
+                    && self.panes[index].program.observe(self.driver.session.output_bytes(), now)
+                {
+                    let foreground = self.driver.session.foreground();
+                    if self.panes[index].program.probed(foreground, now) {
                         self.chrome_dirty = true;
                     }
                 }

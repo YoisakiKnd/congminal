@@ -21,6 +21,8 @@ use std::sync::{Arc, Mutex};
 
 #[path = "conpty_runtime.rs"]
 mod backend;
+#[path = "windows_job.rs"]
+mod job;
 #[path = "windows_shell.rs"]
 mod shell;
 pub(crate) fn default_working_directory() -> Option<std::path::PathBuf> {
@@ -134,6 +136,8 @@ impl Console {
 pub struct Pty {
     console: Arc<Console>,
     input: Option<AsyncWriter>,
+    job: Option<job::Job>,
+    process_id: u32,
 }
 
 impl Pty {
@@ -195,15 +199,19 @@ impl Pty {
             if hr < 0 {
                 return Err(io::Error::other(format!("CreatePseudoConsole 失败：HRESULT {hr:#010x}")));
             }
-            let mut pty =
-                Pty { console: Arc::new(Console { handle: Mutex::new(Some(SendHandle(console))), api }), input: None };
+            let mut pty = Pty {
+                console: Arc::new(Console { handle: Mutex::new(Some(SendHandle(console))), api }),
+                input: None,
+                job: job::Job::create(),
+                process_id: 0,
+            };
 
-            // 3. 属性列表：告诉 CreateProcessW 把这个伪控制台交给子进程
+            // 3. 属性列表：告诉 CreateProcessW 把这个伪控制台交给子进程，并放进会话的 Job 对象
             let mut size = 0;
-            InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut size);
+            InitializeProcThreadAttributeList(null_mut(), 2, 0, &mut size);
             let mut list = vec![0u8; size];
             let list_ptr = list.as_mut_ptr().cast::<c_void>();
-            if InitializeProcThreadAttributeList(list_ptr, 1, 0, &mut size) == 0 {
+            if InitializeProcThreadAttributeList(list_ptr, 2, 0, &mut size) == 0 {
                 return Err(io::Error::last_os_error());
             }
             if UpdateProcThreadAttribute(
@@ -219,6 +227,20 @@ impl Pty {
                 let err = io::Error::last_os_error();
                 DeleteProcThreadAttributeList(list_ptr);
                 return Err(err);
+            }
+            let jobs = [pty.job.as_ref().map_or(null_mut(), job::Job::raw)];
+            if pty.job.is_some()
+                && UpdateProcThreadAttribute(
+                    list_ptr,
+                    0,
+                    job::PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                    jobs.as_ptr().cast(),
+                    size_of_val(&jobs),
+                    null_mut(),
+                    null_mut(),
+                ) == 0
+            {
+                pty.job = None;
             }
 
             let mut startup: StartupInfoExW = std::mem::zeroed();
@@ -250,6 +272,7 @@ impl Pty {
                 return Err(io::Error::last_os_error());
             }
             CloseHandle(info.thread);
+            pty.process_id = info.process_id;
             let process = OwnedHandle::from_raw_handle(info.process);
 
             // 4. 读线程：把 shell 输出送出去
@@ -309,6 +332,10 @@ impl Pty {
         let encoded = super::response::encode(data, &mut buffer)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "终端应答超过编码上限"))?;
         self.write(encoded)
+    }
+
+    pub fn foreground(&self) -> Option<super::Foreground> {
+        self.job.as_ref()?.foreground(self.process_id)
     }
 
     pub fn resize(&mut self, cols: u16, rows: u16) -> io::Result<()> {

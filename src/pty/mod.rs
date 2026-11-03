@@ -7,11 +7,14 @@
 //! - `Pty::spawn_with_output(command, cols, rows, sink, output)` 共享输出缓冲池并启动 shell，后台线程把读到的输出通过 `sink` 回调送出
 //! - `Pty::write` 把键盘输入写给 shell
 //! - `Pty::resize` 通知 shell 窗口尺寸变了
+//! - `Pty::foreground` 查询前台程序，供会话标签使用
 
 pub mod flow;
+mod foreground;
 #[cfg(any(windows, test))]
 mod response;
 
+pub use foreground::{Foreground, console_default_title};
 use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;

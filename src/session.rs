@@ -325,6 +325,9 @@ impl Session {
     }
 
     /// 已经解析的输出字节数；只增不减，SSH 连接状态用它区分“还没有输出”。
+    pub fn foreground(&self) -> Option<crate::pty::Foreground> {
+        self.pty.as_ref()?.foreground()
+    }
     pub fn output_bytes(&self) -> u64 {
         self.output_bytes
     }
