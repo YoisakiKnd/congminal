@@ -758,7 +758,14 @@ pub(super) mod fixture_tests {
                 overflow: false,
                 text: "different".into(),
                 cells: 2,
-                glyph: Some(Glyph { left: 0, top: 0, width: 1, height: 1, pixels: Pixels::Alpha(vec![255]) }),
+                glyph: Some(Glyph {
+                    id: crate::font::next_glyph_id(),
+                    left: 0,
+                    top: 0,
+                    width: 1,
+                    height: 1,
+                    pixels: Pixels::Alpha(vec![255]),
+                }),
             },
             256,
         );

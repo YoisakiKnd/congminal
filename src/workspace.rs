@@ -2944,7 +2944,8 @@ impl App for Workspace {
         let mut top = self.height;
         let mut bottom = 0;
         if full {
-            self.frame.pixels.fill(self.driver.config.colors.background);
+            let (width, height) = (self.frame.width, self.frame.height);
+            self.frame.fill_rect(0, 0, width, height, self.driver.config.colors.background);
         }
         for index in 0..self.panes.len() {
             let rect = self.panes[index].rect;

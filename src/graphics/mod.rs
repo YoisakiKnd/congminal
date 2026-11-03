@@ -55,6 +55,12 @@ pub struct Tile<'a> {
     crop: [u32; 4],
 }
 impl Tile<'_> {
+    pub fn image(&self) -> &Image {
+        self.image
+    }
+    pub fn crop(&self) -> [u32; 4] {
+        self.crop
+    }
     pub fn pixel(&self, x: usize, y: usize) -> Option<[u8; 4]> {
         if x >= self.width || y >= self.height {
             return None;

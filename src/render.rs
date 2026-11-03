@@ -15,6 +15,8 @@ use std::hash::{Hash, Hasher};
 mod chrome;
 #[path = "render_graphics.rs"]
 mod graphics;
+#[path = "render_list.rs"]
+pub(crate) mod list;
 #[path = "render_work.rs"]
 mod work;
 pub(crate) use chrome::Style as ChromeStyle;
@@ -96,6 +98,8 @@ pub struct Framebuffer<'a> {
     pub stride: usize,
     pub pixels: PixelStorage<'a>,
     memory: Option<crate::resources::Lease>,
+    /// 记录模式：不写 `pixels`（为空），操作追加到绘制记录，由平台层回放
+    recording: Option<list::Recording<'a>>,
 }
 
 impl<'a> Framebuffer<'a> {
@@ -106,12 +110,46 @@ impl<'a> Framebuffer<'a> {
             stride: 0,
             pixels: PixelStorage::Owned(Vec::new()),
             memory: Some(crate::resources::current().lease(crate::resources::Kind::Canvas, 0).unwrap()),
+            recording: None,
         };
         assert!(framebuffer.resize(width, height), "帧缓冲大小超过预算或分配失败");
         framebuffer
     }
 
+    /// 记录模式的根画布：没有像素，绘制操作进入 `list()`
+    #[cfg_attr(not(test), allow(dead_code))] // G2 平台回放接入前只有测试使用
+    pub fn recording(width: usize, height: usize) -> Self {
+        let mut framebuffer = Framebuffer {
+            width: 0,
+            height: 0,
+            stride: 0,
+            pixels: PixelStorage::Owned(Vec::new()),
+            memory: None,
+            recording: Some(list::Recording::Root(Box::new(list::DrawList::new()))),
+        };
+        assert!(framebuffer.resize(width, height), "帧缓冲大小超过上限");
+        framebuffer
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))] // G2 平台回放接入前只有测试使用
+    pub fn list(&self) -> Option<&list::DrawList> {
+        self.recording.as_ref().map(list::Recording::list)
+    }
+
+    /// 记录模式每帧绘制前调用；返回 true 表示回放端内容作废，需要整屏重画
+    #[cfg_attr(not(test), allow(dead_code))] // G2 平台回放接入前只有测试使用
+    pub fn begin_frame(&mut self) -> bool {
+        match &mut self.recording {
+            Some(list::Recording::Root(list)) => list.begin(),
+            _ => false,
+        }
+    }
+
     pub fn release(&mut self) {
+        if let Some(list::Recording::Root(list)) = &mut self.recording {
+            **list = list::DrawList::new();
+            list.mark_lost();
+        }
         self.width = 0;
         self.height = 0;
         self.stride = 0;
@@ -126,6 +164,13 @@ impl<'a> Framebuffer<'a> {
         };
         if width > MAX_WINDOW_SIDE || height > MAX_WINDOW_SIDE || count > MAX_FRAME_PIXELS {
             return false;
+        }
+        if let Some(list::Recording::Root(_)) = &self.recording {
+            // 渲染目标由回放端按新尺寸重建；上层在尺寸变化后本来就整屏重画
+            self.width = width;
+            self.height = height;
+            self.stride = width;
+            return true;
         }
         let Some(owner) = &self.memory else { return false };
         let PixelStorage::Owned(current) = &mut self.pixels else { return false };
@@ -157,6 +202,21 @@ impl<'a> Framebuffer<'a> {
     pub(crate) fn view(&mut self, x: usize, y: usize, width: usize, height: usize) -> Framebuffer<'_> {
         let width = width.min(self.width.saturating_sub(x));
         let height = height.min(self.height.saturating_sub(y));
+        if let Some(recording) = &mut self.recording {
+            let (list, ox, oy) = recording.parts();
+            return Framebuffer {
+                width,
+                height,
+                stride: width,
+                pixels: PixelStorage::Borrowed(&mut []),
+                memory: None,
+                recording: Some(list::Recording::View {
+                    list,
+                    x: (ox as usize + x.min(self.width)) as u32,
+                    y: (oy as usize + y.min(self.height)) as u32,
+                }),
+            };
+        }
         let (start, count) =
             if width == 0 || height == 0 { (0, 0) } else { (y * self.stride + x, (height - 1) * self.stride + width) };
         Framebuffer {
@@ -165,9 +225,13 @@ impl<'a> Framebuffer<'a> {
             stride: self.stride,
             pixels: PixelStorage::Borrowed(&mut self.pixels[start..start + count]),
             memory: None,
+            recording: None,
         }
     }
     fn scroll_down(&mut self, dy: usize) {
+        if let Some((rect, _, _)) = self.record_rect(0, 0, self.width as i64, self.height as i64) {
+            return self.recording.as_mut().unwrap().parts().0.shift(rect, dy as i32);
+        }
         if self.stride == self.width {
             self.pixels.copy_within(0..(self.height - dy) * self.stride, dy * self.stride);
         } else {
@@ -179,6 +243,9 @@ impl<'a> Framebuffer<'a> {
         }
     }
     fn scroll_up(&mut self, dy: usize) {
+        if let Some((rect, _, _)) = self.record_rect(0, 0, self.width as i64, self.height as i64) {
+            return self.recording.as_mut().unwrap().parts().0.shift(rect, -(dy as i32));
+        }
         if self.stride == self.width {
             self.pixels.copy_within(dy * self.stride..self.height * self.stride, 0);
         } else {
@@ -192,6 +259,9 @@ impl<'a> Framebuffer<'a> {
 
     /// 半透明地叠一个矩形，alpha 是 0-255
     fn blend_rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32, alpha: u32) {
+        if let Some((rect, _, _)) = self.record_rect(x as i64, y as i64, w as i64, h as i64) {
+            return self.recording.as_mut().unwrap().parts().0.blend(rect, color, alpha);
+        }
         let x_end = (x + w).min(self.width);
         let y_end = (y + h).min(self.height);
         for row in y..y_end {
@@ -202,6 +272,9 @@ impl<'a> Framebuffer<'a> {
     }
 
     pub(crate) fn fill_rect(&mut self, x: usize, y: usize, w: usize, h: usize, color: u32) {
+        if let Some((rect, _, _)) = self.record_rect(x as i64, y as i64, w as i64, h as i64) {
+            return self.recording.as_mut().unwrap().parts().0.fill(rect, color);
+        }
         let x_end = (x + w).min(self.width);
         let y_end = (y + h).min(self.height);
         if x >= x_end {
@@ -1340,6 +1413,10 @@ fn clipped_bounds(frame: &Framebuffer, bounds: [usize; 4]) -> [usize; 4] {
 #[cfg(any(test, feature = "sftp"))]
 fn blend_auth_glyph(fb: &mut Framebuffer, base: usize, row: usize, glyph: &Glyph, color: u32, bounds: [usize; 4]) {
     let [cx, cy, cw, ch] = bounds;
+    if let Some((clip, ox, oy)) = fb.record_rect(cx as i64, cy as i64, cw as i64, ch as i64) {
+        let (x, y) = (ox + base as i64 + i64::from(glyph.left), oy + row as i64 + i64::from(glyph.top));
+        return fb.recording.as_mut().unwrap().parts().0.glyph(glyph, x, y, color, clip);
+    }
     let (x, y) = (base as i64 + i64::from(glyph.left), row as i64 + i64::from(glyph.top));
     let (x0, y0) = (x.max(cx as i64), y.max(cy as i64));
     let (x1, y1) = ((x + glyph.width as i64).min((cx + cw) as i64), (y + glyph.height as i64).min((cy + ch) as i64));
@@ -1366,6 +1443,18 @@ fn blend_auth_glyph(fb: &mut Framebuffer, base: usize, row: usize, glyph: &Glyph
     }
 }
 fn blend_glyph(fb: &mut Framebuffer, x: i32, y: i32, glyph: &Glyph, color: u32, clip: (usize, usize)) {
+    let rows = (clip.0.min(fb.height), clip.1.min(fb.height));
+    if let Some((clip, ox, oy)) =
+        fb.record_rect(0, rows.0 as i64, fb.width as i64, (rows.1 - rows.0.min(rows.1)) as i64)
+    {
+        return fb.recording.as_mut().unwrap().parts().0.glyph(
+            glyph,
+            ox + i64::from(x),
+            oy + i64::from(y),
+            color,
+            clip,
+        );
+    }
     // 先算出字形和画面（以及裁剪范围）重叠的矩形，循环里就不用逐个像素判断越界了
     let x0 = x.max(0);
     let x1 = (x + glyph.width as i32).min(fb.width as i32);
@@ -1601,7 +1690,14 @@ mod tests {
     #[test]
     fn authentication_rect_blending_clips_negative_alpha_and_color_glyph_offsets() {
         let mut frame = Framebuffer::new(8, 8);
-        let alpha = Glyph { left: -2, top: -2, width: 4, height: 4, pixels: Pixels::Alpha(vec![255; 16]) };
+        let alpha = Glyph {
+            id: crate::font::next_glyph_id(),
+            left: -2,
+            top: -2,
+            width: 4,
+            height: 4,
+            pixels: Pixels::Alpha(vec![255; 16]),
+        };
         blend_auth_glyph(&mut frame, 3, 3, &alpha, 0x11aa33, [2, 2, 2, 2]);
         for y in 0..8 {
             for x in 0..8 {
@@ -1611,7 +1707,14 @@ mod tests {
                 );
             }
         }
-        let color = Glyph { left: -2, top: -2, width: 4, height: 4, pixels: Pixels::Color(vec![0xffff0000; 16]) };
+        let color = Glyph {
+            id: crate::font::next_glyph_id(),
+            left: -2,
+            top: -2,
+            width: 4,
+            height: 4,
+            pixels: Pixels::Color(vec![0xffff0000; 16]),
+        };
         blend_auth_glyph(&mut frame, 3, 3, &color, 0, [3, 3, 1, 1]);
         for y in 0..8 {
             for x in 0..8 {

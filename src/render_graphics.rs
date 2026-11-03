@@ -68,6 +68,16 @@ impl Renderer {
             if x >= fb.width {
                 continue;
             }
+            // 记录模式：目标是 (x, y) 起、图块宽 × 一行高，图块内从第 row_y 行开始
+            let rows = (clip.0.min(fb.height), clip.1.min(fb.height));
+            let local = (x as i64, y.max(rows.0) as i64);
+            let height = (y + ch).min(rows.1) as i64 - local.1;
+            if let Some((rect, ox, oy)) = fb.record_rect(local.0, local.1, tile.width as i64, height) {
+                let list = fb.recording.as_mut().unwrap().parts().0;
+                let tile_size = (tile.width, tile.height);
+                list.image(tile.image(), tile.crop(), tile_size, (0, row_y as i64), ox + x as i64, oy + y as i64, rect);
+                continue;
+            }
             for dy in 0..ch.min(fb.height.saturating_sub(y)) {
                 let screen_y = y + dy;
                 if screen_y < clip.0 || screen_y >= clip.1 {
@@ -98,6 +108,16 @@ fn blit_cell(
     if x >= fb.width || y >= fb.height {
         return;
     }
+    let rows = (clip.0.min(fb.height).max(y), clip.1.min(fb.height).min(y + cell.1));
+    if let Some((rect, ox, oy)) =
+        fb.record_rect(x as i64, rows.0 as i64, cell.0 as i64, rows.1 as i64 - rows.0.min(rows.1) as i64)
+    {
+        let list = fb.recording.as_mut().unwrap().parts().0;
+        let tile_size = (tile.width, tile.height);
+        let source = (source.0 as i64, source.1 as i64);
+        list.image(tile.image(), tile.crop(), tile_size, source, ox + x as i64, oy + y as i64, rect);
+        return;
+    }
     for dy in 0..cell.1.min(fb.height - y) {
         let screen_y = y + dy;
         if screen_y < clip.0 || screen_y >= clip.1 {
@@ -111,16 +131,18 @@ fn blit_cell(
     }
 }
 fn blend(fb: &mut Framebuffer, at: usize, rgba: [u8; 4]) {
+    fb.pixels[at] = blend_rgba(fb.pixels[at], rgba);
+}
+/// 非预乘 RGBA 盖在不透明像素上
+pub(super) fn blend_rgba(old: u32, rgba: [u8; 4]) -> u32 {
     let [r, g, b, a] = rgba;
     let a = u32::from(a);
-    if a == 0 {
-        return;
+    match a {
+        0 => old,
+        255 => (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b),
+        _ => {
+            let mix = |c: u8, shift: u32| (u32::from(c) * a + ((old >> shift) & 255) * (255 - a) + 127) / 255;
+            (mix(r, 16) << 16) | (mix(g, 8) << 8) | mix(b, 0)
+        }
     }
-    if a == 255 {
-        fb.pixels[at] = (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b);
-        return;
-    }
-    let old = fb.pixels[at];
-    let mix = |c: u8, shift: u32| (u32::from(c) * a + ((old >> shift) & 255) * (255 - a) + 127) / 255;
-    fb.pixels[at] = (mix(r, 16) << 16) | (mix(g, 8) << 8) | mix(b, 0);
 }

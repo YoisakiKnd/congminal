@@ -197,7 +197,7 @@ pub fn decode(data: &[u8]) -> Result<Image, String> {
     drop(raw);
     drop(compressed);
     memory.resize(rgba.capacity()).unwrap();
-    Ok(Image { width: header.width, height: header.height, rgba, _memory: memory })
+    Ok(Image { serial: super::next_image_serial(), width: header.width, height: header.height, rgba, _memory: memory })
 }
 
 const fn crc_table() -> [u32; 256] {

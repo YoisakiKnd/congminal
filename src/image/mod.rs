@@ -5,11 +5,18 @@ pub mod png;
 
 /// RGBA 图片，每个像素 4 个字节，透明度没有预乘
 pub struct Image {
+    /// 进程内唯一、不复用：GPU 纹理缓存按它识别像素。图片解码后不再修改。
+    pub serial: u64,
     pub width: usize,
     pub height: usize,
     rgba: Vec<u8>,
     // 像素销毁后才归还 PNG 输出额度；缩放生成的最终字形另由缓存计费。
     _memory: crate::resources::Lease,
+}
+
+pub(crate) fn next_image_serial() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 impl Image {
@@ -20,13 +27,13 @@ impl Image {
         &self.rgba
     }
     pub(crate) fn from_rgba(width: usize, height: usize, rgba: crate::resources::Tracked<Vec<u8>>) -> Self {
-        Self { width, height, rgba: rgba.data, _memory: rgba.memory }
+        Self { serial: next_image_serial(), width, height, rgba: rgba.data, _memory: rgba.memory }
     }
 
     #[cfg(test)]
     fn test_image(width: usize, height: usize, rgba: Vec<u8>) -> Self {
         let memory = crate::resources::current().lease(crate::resources::Kind::Image, rgba.capacity()).unwrap();
-        Self { width, height, rgba, _memory: memory }
+        Self { serial: next_image_serial(), width, height, rgba, _memory: memory }
     }
     /// 缩放到 width × height，返回预乘过透明度的像素（0xAARRGGBB）。
     ///

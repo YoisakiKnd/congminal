@@ -54,11 +54,18 @@ static TERMINUS_BOLD_32: &[u8] = include_bytes!("../../assets/fonts/TerminusBold
 
 /// 一个字的灰度点阵。`left`、`top` 是相对于格子左上角的偏移（可以是负数，也可以超出格子）。
 pub struct Glyph {
+    /// 进程内唯一、不复用：GPU 图集按它识别位图。字形构造后不再修改像素。
+    pub id: u64,
     pub left: i32,
     pub top: i32,
     pub width: usize,
     pub height: usize,
     pub pixels: Pixels,
+}
+
+pub(crate) fn next_glyph_id() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 struct CachedGlyph {
@@ -519,7 +526,7 @@ impl Fonts {
         let height = self.cell_height + 2;
         let memory = self.cache.owner().lease(crate::resources::Kind::FontRaster, height).unwrap();
         let glyph = crate::resources::Tracked::new(
-            Glyph { left: 0, top: -1, width: 1, height, pixels: Pixels::Alpha(vec![255; height]) },
+            Glyph { id: next_glyph_id(), left: 0, top: -1, width: 1, height, pixels: Pixels::Alpha(vec![255; height]) },
             memory,
         );
         let glyph =
@@ -770,6 +777,7 @@ impl Outline {
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span - advance) / 2.0).round() as i32;
         let mut glyph = bitmap.map(|bitmap| Glyph {
+            id: next_glyph_id(),
             left: bitmap.left + shift,
             top: self.baseline + bitmap.top,
             width: bitmap.width,
@@ -851,6 +859,7 @@ impl Outline {
             ((span as f32 - advance) / 2.0).round() as i32
         };
         Some(bitmap.map(|bitmap| Glyph {
+            id: next_glyph_id(),
             left: bitmap.left + shift,
             top: self.baseline + bitmap.top,
             width: bitmap.width,
@@ -872,6 +881,7 @@ impl Outline {
                 let height = ((image.height as f32 * scale).round() as usize).max(1);
                 let pixels = image.resize_premultiplied(width, height)?;
                 Some(pixels.map(|pixels| Glyph {
+                    id: next_glyph_id(),
                     left: (span as i32 - width as i32) / 2,
                     top: (self.cell_height as i32 - height as i32) / 2,
                     width,
@@ -961,7 +971,14 @@ impl Outline {
         let advance = face.advance(index) as f32 * scale;
         let shift = ((span as f32 - advance) / 2.0).round() as i32;
         Some(crate::resources::Tracked::new(
-            Glyph { left: left + shift, top: self.baseline + top, width, height, pixels: Pixels::Color(output) },
+            Glyph {
+                id: next_glyph_id(),
+                left: left + shift,
+                top: self.baseline + top,
+                width,
+                height,
+                pixels: Pixels::Color(output),
+            },
             memory,
         ))
     }
@@ -1067,7 +1084,14 @@ fn bitmap_glyph(font: &psf::Font, c: char, top: i32) -> Option<GlyphBuild> {
         }
     }
     Some(crate::resources::Tracked::new(
-        Glyph { left: 0, top, width: font.width, height: font.height, pixels: Pixels::Alpha(alpha) },
+        Glyph {
+            id: next_glyph_id(),
+            left: 0,
+            top,
+            width: font.width,
+            height: font.height,
+            pixels: Pixels::Alpha(alpha),
+        },
         memory,
     ))
 }
@@ -1160,7 +1184,7 @@ mod tests {
         let column: Vec<u8> = (10..20).collect();
         let pool = Budget::new(50, 0);
         let mut glyph = Tracked::new(
-            Glyph { left: 0, top: 0, width: 1, height: 10, pixels: Pixels::Alpha(column.clone()) },
+            Glyph { id: next_glyph_id(), left: 0, top: 0, width: 1, height: 10, pixels: Pixels::Alpha(column.clone()) },
             pool.lease(Kind::FontRaster, 10).unwrap(),
         );
         oblique(&mut glyph).unwrap();
@@ -1178,7 +1202,7 @@ mod tests {
         // 额度不够时不动原图
         let pool = Budget::new(49, 0);
         let mut glyph = Tracked::new(
-            Glyph { left: 0, top: 0, width: 1, height: 10, pixels: Pixels::Alpha(column.clone()) },
+            Glyph { id: next_glyph_id(), left: 0, top: 0, width: 1, height: 10, pixels: Pixels::Alpha(column.clone()) },
             pool.lease(Kind::FontRaster, 10).unwrap(),
         );
         assert!(oblique(&mut glyph).is_none());
