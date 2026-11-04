@@ -804,7 +804,7 @@ mod tests {
         let window = Window::new("congminal gles test", |_| (64, 64)).expect("需要 DISPLAY");
         let visual = unsafe { XVisualIDFromVisual(XDefaultVisual(window.display, window.screen)) };
         let gles = Gles::new(window.display, window.window, visual).expect("EGL/GLES 不可用");
-        eprintln!("GLES：{}", gles.renderer);
-        gpu_scenarios(&mut Backend { gles, _window: window });
+        let device = format!("GLES：{}", gles.renderer);
+        gpu_scenarios(&device, &mut Backend { gles, _window: window });
     }
 }

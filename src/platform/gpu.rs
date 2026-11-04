@@ -108,6 +108,18 @@ impl<B: Backend> Gpu<B> {
         }
     }
 
+    /// 平台条件不再允许 GPU（Windows 改成分层窗口）：关掉后端，以后也不再创建
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(super) fn disable(&mut self, reason: &str) -> Option<Notice> {
+        if std::mem::take(&mut self.pending) {
+            crate::term::trace(format_args!("renderer: 不使用 GPU：{reason}"));
+        }
+        self.backend.take()?;
+        crate::term::trace(format_args!("renderer: GPU 关闭，退回 CPU：{reason}"));
+        self.list = 0;
+        Some(Notice::Fallback)
+    }
+
     /// 平台层析构窗口前调用：GPU 资源先于窗口和显示连接释放
     pub(super) fn release(&mut self) {
         self.backend = None;

@@ -808,8 +808,8 @@ mod tests {
                 }
                 Err(error) => panic!("Metal 不可用：{error}"),
             };
-            eprintln!("Metal：{}", metal.name);
-            gpu_scenarios(&mut metal);
+            let device = format!("Metal：{}", metal.name);
+            gpu_scenarios(&device, &mut metal);
             drop(metal);
             objc_autoreleasePoolPop(pool);
         }

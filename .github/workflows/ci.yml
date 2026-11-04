@@ -104,6 +104,11 @@ jobs:
           for i in $(seq 50); do [ -S /tmp/.X11-unix/X98 ] && break; sleep 0.2; done
           DISPLAY=:98 cargo test --bin congminal platform::x11::gles -- --ignored --nocapture --test-threads=1
 
+      # 托管的 Windows 运行机没有显卡，测试改用 WARP
+      - name: GPU 回放与 CPU 对照（Direct3D 11）
+        if: runner.os == 'Windows'
+        run: cargo test --bin congminal platform::win32::d3d11 -- --ignored --nocapture --test-threads=1
+
       # 托管的 macOS 运行机是虚拟机，不一定有 Metal 设备；没有时只留 notice
       - name: GPU 回放与 CPU 对照（Metal）
         if: runner.os == 'macOS'

@@ -131,14 +131,12 @@ impl<'a> Framebuffer<'a> {
         framebuffer
     }
 
-    #[cfg_attr(windows, allow(dead_code))] // Windows 后端接入前那里没有回放
     pub fn list(&self) -> Option<&list::DrawList> {
         self.recording.as_ref().map(list::Recording::list)
     }
 
     /// 根画布在记录模式与像素模式之间切换，尺寸不变，内容作废（调用方整屏重画）。
     /// 切回像素模式时分配不到画布返回 false，画布变成 0×0，等下一次调整尺寸。
-    #[cfg_attr(windows, allow(dead_code))]
     pub fn set_recording(&mut self, on: bool) -> bool {
         if on == self.recording.is_some() {
             return true;

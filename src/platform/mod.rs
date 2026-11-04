@@ -233,7 +233,6 @@ pub trait App {
     }
     /// 平台层的 GPU 后端可用时切到记录模式（`Framebuffer::list`），出错退回 CPU 时切回像素模式。
     /// 切换后平台层会再发 `Event::Redraw` 要求整屏重画。
-    #[cfg_attr(windows, allow(dead_code))]
     fn set_recording(&mut self, _on: bool) {}
 }
 
@@ -254,7 +253,6 @@ fn option_as_alt() -> OptionAsAlt {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod gpu;
 #[cfg(target_os = "linux")]
 mod x11;

@@ -76,6 +76,8 @@ Metal 的两点与 GLES 不同（G3）：
 - Apple GPU 是分块渲染，每开一个渲染 pass 都要加载、存回整张目标。两次清空图集/纹理之间字形槽位不复用、绘制只读已上传的字形，所以这一段的上传全部提到段首做成一次 blit，每帧的 pass 数约为 1 + 平移次数 + 段数，不随新字形个数增长。上传经暂存缓冲在命令缓冲里按序执行，不用 `replaceRegion`（它立即写纹理，会越过还没执行的绘制）。
 - `CAMetalLayer` 叠在视图图层之上，`presentsWithTransaction`：切到 GPU 时清掉 CPU 图层内容与 Metal 画面出现在同一个 Core Animation 事务里。
 
+Direct3D 11（G4）与 GLES 一样是立即模式：`UpdateSubresource` 在命令流里有序执行，结构照搬 GLES。COM 方法按虚函数表下标调用，下标集中写在常量里。两点限制：翻转模型交换链不能用于分层窗口，所以设置了整窗不透明度时不启用 GPU，运行中改成半透明时关掉 GPU 退回 CPU；`d3d11.dll`、`d3dcompiler_47.dll` 只从 System32 加载。
+
 垂直同步：交换链/drawable 按显示器刷新节奏提交，但空闲时不提交、不唤醒，沿用现有的 `deadline()`/damage 驱动，不引入渲染循环。
 
 ## 4. 验收测量
@@ -107,3 +109,13 @@ Linux 在本机 Xvfb（Mesa llvmpipe）验证正确性与回退；llvmpipe 是�
 | G5 | 各平台按验收结果决定 `auto` 的默认值，更新文档 | 发布说明列出各平台状态与未验证项 |
 
 G1 不改变任何用户可见行为，是后面所有后端的共同基础；它也让 CPU 路径多了一个可测的“只记录”模式，用来单独测量上层逻辑的开销。
+
+## 6. 现状
+
+| 平台 | 后端 | 已验证 | 待验证 |
+| --- | --- | --- | --- |
+| Linux | EGL + GLES 3 | Xvfb/llvmpipe：回放对照（CI 每次运行）、窗口截图、回退、窗口销毁（[G2](../evaluations/gpu-g2/README.md)） | 真实显卡的正确性与性能 |
+| macOS | Metal | CI 的 Apple Silicon 虚拟机上回放对照通过（[G3](../evaluations/gpu-g3/README.md)） | 真机窗口截图、回退、分屏/改尺寸/换屏、性能 |
+| Windows | Direct3D 11 | wine（wined3d → llvmpipe）下回放对照、真实窗口截图、回退；CI 用 WARP 跑回放对照（[G4](../evaluations/gpu-g4/README.md)） | 真机窗口截图、回退、性能 |
+
+G5 要等各平台真机结果：在那之前三个平台的默认值都保持 `cpu`，`auto` 也不会被默认选中。

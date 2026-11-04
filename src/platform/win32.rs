@@ -3,6 +3,7 @@
 //! 窗口过程（WndProc）只负责把消息翻译成 [`Event`] 放进队列，
 //! 真正的处理都在 `run` 的主循环里，这样就不用在回调里拿到 App 的引用。
 
+use super::gpu::{Gpu, Notice};
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::input::{Key, Keypad, Mods};
 use crate::render::{Damage, Framebuffer};
@@ -10,6 +11,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::ptr::{null, null_mut};
+
+mod d3d11;
 
 type Hwnd = isize;
 type Hinstance = isize;
@@ -309,6 +312,8 @@ pub struct Window {
     ime_area: Option<(u32, u32, u32, u32)>,
     /// 已经设过的整窗 alpha（0–255），只在变化时才改窗口样式。
     alpha: Option<u8>,
+    /// Direct3D 11 后端；没有时用 SetDIBitsToDevice
+    gpu: Gpu<d3d11::D3d11>,
 }
 
 /// 跨线程唤醒：PostMessageW 是线程安全的
@@ -376,7 +381,14 @@ impl Window {
                 return Err("CreateWindowExW 失败".into());
             }
             ShowWindow(hwnd, SW_SHOW);
-            Ok(Window { hwnd, scale, ime_area: None, alpha: None, _icons: icons })
+            Ok(Window {
+                hwnd,
+                scale,
+                ime_area: None,
+                alpha: None,
+                gpu: Gpu::new(crate::config::RendererChoice::Cpu),
+                _icons: icons,
+            })
         }
     }
 
@@ -384,11 +396,14 @@ impl Window {
         self.scale
     }
 
-    /// GPU 后端还没实现（见 docs/design/gpu-rendering.md 的 G4），总是 CPU 渲染
+    /// 在 `run` 之前调用；Direct3D 11 在首帧之后创建，不可用时继续用 CPU
     pub fn set_renderer(&mut self, choice: crate::config::RendererChoice) {
-        if choice != crate::config::RendererChoice::Cpu {
-            crate::term::trace(format_args!("renderer: 本平台还没有 GPU 后端，使用 CPU"));
-        }
+        self.gpu = Gpu::new(choice);
+    }
+
+    fn start_gpu(&mut self, app: &mut dyn App, width: usize, height: usize) -> Option<Notice> {
+        let hwnd = self.hwnd;
+        self.gpu.start(app, || d3d11::D3d11::new(hwnd, width, height))
     }
 
     pub fn waker(&self) -> Waker {
@@ -435,12 +450,24 @@ impl Window {
                 unsafe { SetWindowTextW(self.hwnd, wide(&title).as_ptr()) };
             }
             if let Some(opacity) = app.window_opacity() {
+                // 翻转模型交换链不能用于分层窗口（WS_EX_LAYERED）
+                let notice = self.gpu.disable("半透明窗口不能使用翻转模型交换链");
+                if !super::gpu::deliver(app, notice) {
+                    return;
+                }
                 self.apply_opacity(opacity);
             }
+            let mut notice = None;
             if app.needs_redraw()
                 && let Some((fb, damage)) = app.draw()
             {
-                self.present(fb, damage);
+                let size = (fb.width, fb.height);
+                notice = self.present(fb, damage);
+                // 创建设备、编译着色器要几十毫秒，放到首帧之后
+                notice = notice.or_else(|| self.start_gpu(app, size.0, size.1));
+            }
+            if !super::gpu::deliver(app, notice) {
+                return;
             }
             if let Some(request) = app.take_clipboard_request() {
                 match request {
@@ -564,9 +591,12 @@ impl Window {
 
     /// 只把变化的那几段像素贴到窗口上：每段当成一张单独的图。
     /// 光标行和状态栏离得远时分段提交，不把中间没变的行一起传过去。
-    fn present(&self, fb: &Framebuffer, damage: Damage) {
+    fn present(&mut self, fb: &Framebuffer, damage: Damage) -> Option<Notice> {
         if fb.width == 0 || fb.height == 0 || damage.height == 0 {
-            return;
+            return None;
+        }
+        if let Some(list) = fb.list() {
+            return self.gpu.present(list, fb.width, fb.height);
         }
         unsafe {
             let hdc = GetDC(self.hwnd);
@@ -611,11 +641,14 @@ impl Window {
             }
             ReleaseDC(self.hwnd, hdc);
         }
+        None
     }
 }
 
 impl Drop for Window {
     fn drop(&mut self) {
+        // 交换链先于窗口释放
+        self.gpu.release();
         unsafe {
             DestroyWindow(self.hwnd);
             UnregisterClassW(wide("congminal").as_ptr(), GetModuleHandleW(null()));
