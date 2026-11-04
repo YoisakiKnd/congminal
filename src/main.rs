@@ -1304,6 +1304,13 @@ impl App for Congminal {
         self.session.term.take_title()
     }
 
+    fn set_recording(&mut self, on: bool) {
+        // 工作区模式下这份画布已释放（0×0），切换只换存储方式
+        let (width, height) = (self.framebuffer.width, self.framebuffer.height);
+        if !self.framebuffer.set_recording(on) {
+            eprintln!("congminal: 窗口像素超过帧缓冲/共享额度或分配失败：{width}×{height}");
+        }
+    }
     fn take_clipboard_request(&mut self) -> Option<ClipboardRequest> {
         let request = self.clipboard_request.take();
         if let Some(ClipboardRequest::Copy(text)) = &request
@@ -1405,10 +1412,11 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
     let _runtime_owner = runtime::initialize().map_err(|error| format!("无法创建后台线程回收器：{error}"))?;
     config.admit_connections(&mut config_warnings);
     let (cols, rows) = (config.window.columns, config.window.rows);
+    let renderer_choice = config.window.renderer;
 
     // 加载字体要扫描系统字体目录，只做一次；除非窗口实际所在屏幕的缩放比例和预估的不一样
     let mut initial: Option<(f64, Renderer)> = None;
-    let window = Window::new("congminal", |scale| {
+    let mut window = Window::new("congminal", |scale| {
         let scale = scale_override().unwrap_or(scale);
         let renderer = Renderer::new(&config, scale);
         let size = renderer.pixel_size(cols, rows);
@@ -1498,6 +1506,7 @@ fn run(config_path: Option<PathBuf>) -> Result<(), String> {
     }
 
     let mut workspace = workspace::Workspace::new(app)?;
+    window.set_renderer(renderer_choice);
     window.run(&mut workspace);
     workspace.finish_persistence();
     drop(workspace);

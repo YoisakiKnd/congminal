@@ -3,16 +3,21 @@
 //! - 字形位图首次使用时复制进上传队列，按 `Glyph::id` 记住它在图集里的位置；图集满了先清空再放
 //! - 图片同理按 `Image::serial` 上传整张像素，合计超过上限时全部作废
 //! - 回放必须严格按顺序：上传和清空图集夹在绘制之间，GPU 后端遇到它们要先提交已排队的绘制
+//! - 回放后的第一条新操作先清空旧记录；没回放的记录继续追加。回放端换了另一份记录或记录溢出时，
+//!   平台层标记 `mark_lost` 并发 `Event::Redraw`，下一帧整屏重画、字形重新上传
 //!
 //! `SoftwareTarget` 是同一语义的 CPU 回放器：测试用它证明“记录 → 回放”与直接绘制逐字节相同，
 //! GPU 后端以它为参照。
-// G2 平台回放接入前，记录模式只有测试使用。
-#![cfg_attr(not(test), allow(dead_code))]
-use super::{Framebuffer, graphics::blend_rgba, mix, over};
+// macOS、Windows 的 GPU 后端接入前，只有 Linux 回放记录。
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+use super::Framebuffer;
+#[cfg(test)]
+use super::{graphics::blend_rgba, mix, over};
 use crate::font::{Glyph, Pixels};
 use crate::hash::FnvHashMap;
 use crate::resources::{Kind, Tracked};
 use std::cell::Cell;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 两张图集的边长（像素）：灰度 R8 与彩色 RGBA8
 pub const ATLAS_SIZE: u32 = 2048;
@@ -123,6 +128,8 @@ fn buffer<T>() -> Tracked<Vec<T>> {
 }
 
 pub struct DrawList {
+    /// 每份记录各自假定图集里有哪些字形；回放端换了记录就必须让新记录作废
+    id: u64,
     ops: Tracked<Vec<Op>>,
     alpha: Tracked<Vec<u8>>,
     color: Tracked<Vec<u32>>,
@@ -139,7 +146,9 @@ pub struct DrawList {
 
 impl DrawList {
     pub fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
         Self {
+            id: NEXT.fetch_add(1, Ordering::Relaxed),
             ops: buffer(),
             alpha: buffer(),
             color: buffer(),
@@ -154,12 +163,12 @@ impl DrawList {
         }
     }
 
-    /// 每帧绘制前调用：上一帧已回放就清空记录。返回 true 表示回放端的内容已经作废
-    /// （记录溢出、设备重建），调用方必须让渲染器整屏重画。
-    pub fn begin(&mut self) -> bool {
-        let lost = self.lost.replace(false) || std::mem::take(&mut self.overflow);
+    /// 每条记录操作先调用：上一轮已回放就清空，回放端作废就连图集和纹理的位置一起忘掉
+    fn sync(&mut self) {
+        let lost = self.lost.replace(false);
         if self.replayed.replace(false) || lost {
             self.clear();
+            self.overflow = false;
         }
         if lost {
             self.packers.iter_mut().for_each(Packer::reset);
@@ -167,9 +176,18 @@ impl DrawList {
             self.textures.clear();
             self.texture_bytes = 0;
         }
-        lost
     }
 
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+    pub fn is_replayed(&self) -> bool {
+        self.replayed.get()
+    }
+    /// 记录溢出或额度不足，本轮操作已丢弃：回放端不能回放，要 `mark_lost` 并整屏重画
+    pub fn overflowed(&self) -> bool {
+        self.overflow
+    }
     pub fn ops(&self) -> &[Op] {
         &self.ops.data
     }
@@ -222,24 +240,28 @@ impl DrawList {
     }
 
     pub(super) fn fill(&mut self, rect: Rect, color: u32) {
+        self.sync();
         if !rect.is_empty() {
             self.push(Op::Fill { rect, color });
         }
     }
 
     pub(super) fn blend(&mut self, rect: Rect, color: u32, alpha: u32) {
+        self.sync();
         if !rect.is_empty() && alpha > 0 {
             self.push(Op::Blend { rect, color, alpha: alpha.min(255) as u8 });
         }
     }
 
     pub(super) fn shift(&mut self, rect: Rect, dy: i32) {
+        self.sync();
         if !rect.is_empty() && dy != 0 {
             self.push(Op::Shift { rect, dy });
         }
     }
 
     pub(super) fn glyph(&mut self, glyph: &Glyph, x: i64, y: i64, color: u32, clip: Rect) {
+        self.sync();
         let clip = clip.intersect(Rect::new(x, y, glyph.width as i64, glyph.height as i64));
         if clip.is_empty() || self.overflow {
             return;
@@ -292,6 +314,7 @@ impl DrawList {
         y: i64,
         clip: Rect,
     ) {
+        self.sync();
         if clip.is_empty() || self.overflow {
             return;
         }
@@ -363,6 +386,7 @@ impl Framebuffer<'_> {
 }
 
 /// CPU 回放器：持久画布 + 图集 + 纹理，语义与 GPU 后端一致
+#[cfg(test)]
 pub struct SoftwareTarget {
     pub frame: Framebuffer<'static>,
     alpha: Vec<u8>,
@@ -370,6 +394,7 @@ pub struct SoftwareTarget {
     textures: FnvHashMap<u64, (u32, u32, Vec<u8>)>,
 }
 
+#[cfg(test)]
 impl SoftwareTarget {
     pub fn new(width: usize, height: usize) -> Self {
         let side = ATLAS_SIZE as usize;
@@ -486,7 +511,7 @@ impl SoftwareTarget {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::super::{ChromeStyle, Renderer};
     use super::*;
     use crate::config::Config;
@@ -494,17 +519,20 @@ mod tests {
     use crate::term::Terminal;
     use crate::vt::Parser;
 
-    /// 直接绘制与“记录 → 软件回放”并排推进，每一步逐像素比较
-    struct Pair {
+    /// 回放端：拿到本步的直接绘制结果和记录，回放并比较；`step` 用于报错
+    pub(crate) type Verify<'a> = &'a mut dyn FnMut(&str, &Framebuffer<'static>, &DrawList);
+
+    /// 直接绘制与“记录 → 回放”并排推进，每一步交给回放端比较
+    struct Pair<'a> {
         direct: Renderer,
         recorded: Renderer,
         frame: Framebuffer<'static>,
         record: Framebuffer<'static>,
-        target: SoftwareTarget,
+        verify: Verify<'a>,
         seen: std::collections::BTreeSet<&'static str>,
     }
-    impl Pair {
-        fn new(config: &Config, scale: f64, cols: usize, rows: usize) -> Self {
+    impl<'a> Pair<'a> {
+        fn new(config: &Config, scale: f64, cols: usize, rows: usize, verify: Verify<'a>) -> Self {
             let direct = Renderer::new(config, scale);
             let (w, h) = direct.pixel_size(cols, rows);
             let (w, h) = (w as usize, h as usize);
@@ -513,19 +541,15 @@ mod tests {
                 recorded: Renderer::new(config, scale),
                 frame: Framebuffer::new(w, h),
                 record: Framebuffer::recording(w, h),
-                target: SoftwareTarget::new(w, h),
+                verify,
                 seen: Default::default(),
             }
         }
         fn draw(&mut self, term: &Terminal, preedit: &str, selection: Option<(Point, Point)>, focused: bool) {
             self.direct.draw(term, preedit, selection, focused, true, &mut self.frame);
-            if self.record.begin_frame() {
-                self.recorded.invalidate();
-            }
             self.recorded.draw(term, preedit, selection, focused, true, &mut self.record);
-            self.replay();
         }
-        fn replay(&mut self) {
+        fn check(&mut self, step: &str) {
             let list = self.record.list().unwrap();
             self.seen.extend(list.ops().iter().map(|op| match op {
                 Op::Fill { .. } => "fill",
@@ -540,10 +564,17 @@ mod tests {
                 Op::ResetTextures => "reset textures",
                 Op::Image { .. } => "image",
             }));
-            self.target.replay(list);
+            (self.verify)(step, &self.frame, list);
         }
-        fn check(&self, step: &str) {
-            let (a, b) = (&self.frame, &self.target.frame);
+    }
+
+    /// 软件回放，与直接绘制逐字节比较
+    fn software() -> impl FnMut(&str, &Framebuffer<'static>, &DrawList) {
+        let mut target: Option<SoftwareTarget> = None;
+        move |step, frame, list| {
+            let target = target.get_or_insert_with(|| SoftwareTarget::new(frame.width, frame.height));
+            target.replay(list);
+            let (a, b) = (frame, &target.frame);
             if let Some(at) = a.pixels.iter().zip(b.pixels.iter()).position(|(a, b)| a != b) {
                 panic!(
                     "{step}：像素 ({}, {}) 直接绘制 {:06x}，回放 {:06x}",
@@ -558,11 +589,24 @@ mod tests {
 
     #[test]
     fn replayed_frames_match_direct_drawing() {
+        for scale in [1.0, 2.0] {
+            terminal_scenario(scale, &mut software());
+        }
+    }
+
+    #[test]
+    fn views_record_with_their_origin_and_clip() {
+        views_scenario(&mut software());
+    }
+
+    /// 文字、装饰、彩色字形、选区、光标、命令标记、整屏滚动、回看滚动条、图片、预编辑，
+    /// 每种记录操作都至少出现一次
+    pub(crate) fn terminal_scenario(scale: f64, verify: Verify) {
         let mut config = Config::default();
         config.command_marks = true;
-        for scale in [1.0, 2.0] {
+        {
             let (cols, rows) = (40, 10);
-            let mut pair = Pair::new(&config, scale, cols, rows);
+            let mut pair = Pair::new(&config, scale, cols, rows, verify);
             let mut term = Terminal::new(cols, rows);
             term.set_scrollback_limit(100);
             let (cw, ch) = pair.direct.cell_size();
@@ -618,10 +662,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn views_record_with_their_origin_and_clip() {
+    /// 工作区窗格视图：原点偏移、越过画布边缘的裁剪、面板
+    pub(crate) fn views_scenario(verify: Verify) {
         let config = Config::default();
-        let mut pair = Pair::new(&config, 1.0, 60, 12);
+        let mut pair = Pair::new(&config, 1.0, 60, 12, verify);
         let (cw, ch) = pair.direct.cell_size();
         let mut term = Terminal::new(20, 4);
         let mut parser = Parser::new();
@@ -630,7 +674,6 @@ mod tests {
         let (w, h) = (w as usize, h as usize);
         for (direct, record) in [(&mut pair.frame, &mut pair.record)] {
             direct.fill_rect(0, 0, direct.width, direct.height, 0x101010);
-            record.begin_frame();
             record.fill_rect(0, 0, record.width, record.height, 0x101010);
             for (x, y) in [(5, 3), (w + 9, ch * 2 + 1)] {
                 pair.direct.invalidate();
@@ -648,7 +691,6 @@ mod tests {
             pair.direct.panel(&mut direct.view(2, 1, 40 * cw, 10 * ch), panel, "页签 tab", ChromeStyle::Tab(true));
             pair.recorded.panel(&mut record.view(2, 1, 40 * cw, 10 * ch), panel, "页签 tab", ChromeStyle::Tab(true));
         }
-        pair.replay();
         pair.check("视图");
     }
 
@@ -658,11 +700,13 @@ mod tests {
 
     #[test]
     fn full_atlas_resets_between_uses_and_huge_glyphs_are_skipped() {
+        atlas_scenario(&mut software());
+    }
+
+    pub(crate) fn atlas_scenario(verify: Verify) {
         let (w, h) = (1200, 1100);
         let mut direct = Framebuffer::new(w, h);
         let mut record = Framebuffer::recording(w, h);
-        let mut target = SoftwareTarget::new(w, h);
-        record.begin_frame();
         // 每个 1000×1000：一张图集放四个，第五个触发清空
         let glyphs: Vec<Glyph> = (0..6u8)
             .map(|i| glyph(1000, Pixels::Alpha((0..1_000_000u32).map(|p| (p as u8).wrapping_mul(i + 1)).collect())))
@@ -677,31 +721,28 @@ mod tests {
         assert_eq!(resets, 1);
         let huge = glyph(ATLAS_SIZE as usize + 1, Pixels::Alpha(vec![255; (ATLAS_SIZE as usize + 1).pow(2)]));
         super::super::blend_glyph(&mut record, 0, 0, &huge, 0, (0, h));
-        target.replay(record.list().unwrap());
-        assert_eq!(direct.pixels, target.frame.pixels);
+        verify("图集", &direct, record.list().unwrap());
     }
 
     #[test]
-    fn unreplayed_frames_accumulate_and_lost_targets_force_a_full_redraw() {
+    fn unreplayed_frames_accumulate_and_lost_targets_reupload() {
         let mut record = Framebuffer::recording(64, 64);
-        assert!(!record.begin_frame());
         record.fill_rect(0, 0, 8, 8, 1);
         // 没有回放：下一帧继续追加，不丢操作
-        assert!(!record.begin_frame());
         record.fill_rect(8, 8, 8, 8, 2);
         assert_eq!(record.list().unwrap().ops().len(), 2);
         record.list().unwrap().mark_replayed();
-        assert!(!record.begin_frame());
-        assert!(record.list().unwrap().ops().is_empty());
+        assert!(record.list().unwrap().is_replayed());
+        record.fill_rect(8, 8, 8, 8, 3);
+        assert_eq!(record.list().unwrap().ops().len(), 1);
         let g = glyph(4, Pixels::Alpha(vec![255; 16]));
         super::super::blend_glyph(&mut record, 0, 0, &g, 7, (0, 64));
         super::super::blend_glyph(&mut record, 9, 0, &g, 7, (0, 64));
         let uploads =
             |r: &Framebuffer| r.list().unwrap().ops().iter().filter(|op| matches!(op, Op::Upload { .. })).count();
         assert_eq!(uploads(&record), 1);
-        // 回放端丢了图集：要求整屏重画，字形重新上传
+        // 回放端丢了图集：旧记录清空，字形重新上传
         record.list().unwrap().mark_lost();
-        assert!(record.begin_frame());
         super::super::blend_glyph(&mut record, 0, 0, &g, 7, (0, 64));
         assert_eq!(uploads(&record), 1);
         // 尺寸变化不分配像素

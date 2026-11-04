@@ -145,3 +145,5 @@ Framebuffer 增加 stride，并可借用父画布矩形内的像素跨度。借�
 ## X11 / Windows 提交
 
 X11 和 Windows 按 damage 的各段（最多 8 段）分别提交，不再提交首尾之间的整块。X11 在本机 DISPLAY 上运行时加载 libXext 使用 MIT-SHM：每次把各段像素拷入共享段，再请求服务器读取；下一次写入前先同步，保证服务器读完上一帧。共享段按窗口像素计入 Canvas 额度，窗口变大时重建、缩小到一半以下时换小段；附加成功后立即标记删除，进程异常退出也不会残留。缺库、远程 DISPLAY、扩展不可用、额度不足或附加失败时退回 XPutImage；设置 `CONGMINAL_NO_SHM=1` 可强制关闭。`ci/check-x11-shm.sh` 在 Xvfb 下比较两种方式的窗口截图并检查共享段残留。
+
+`window.renderer = "gpu"`（或 `"auto"` 且不是软件光栅器）时，X11 在首帧之后运行时加载 `libEGL.so.1`/`libGLESv2.so.2` 创建 GLES 3 上下文，应用切到记录模式：`Framebuffer` 不写像素，绘制操作记成 `render::list::DrawList`，平台层按顺序回放到与窗口同尺寸的持久渲染目标（另有一张暂存目标供区域平移），再整张翻转拷到窗口。行指纹、平移、damage 与 CPU 路径相同。渲染目标、暂存目标、灰度图集（2048² R8）、彩色图集（2048² RGBA，首次用到彩色字形才建）和图片纹理按字节计入 Canvas 额度；驱动内部开销不计入。缺库、远程 DISPLAY、没有匹配窗口视觉类型的配置、着色器失败、额度不足时继续用 CPU；运行中出错时关闭 GPU、切回像素模式并整屏重画，原因都写进 `CONGMINAL_TRACE`。`CONGMINAL_GPU_FAULT=init` / `present` 分别在创建时、第 3 帧呈现时注入故障。`ci/check-x11-gles.sh` 在 Xvfb（Mesa llvmpipe）下跑回放对照单元测试，并比较 CPU、GPU 与各回退路径的窗口截图。

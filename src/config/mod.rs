@@ -76,6 +76,19 @@ pub struct WindowConfig {
     pub columns: usize,
     pub rows: usize,
     pub padding: f32,
+    pub renderer: RendererChoice,
+}
+
+/// 渲染方式；需要重启生效
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RendererChoice {
+    /// CPU 软件渲染
+    #[default]
+    Cpu,
+    /// GPU 可用就用，软件光栅器（llvmpipe 等）也用；不可用时退回 CPU
+    Gpu,
+    /// 只在有硬件加速时用 GPU
+    Auto,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct MemoryConfig {
@@ -159,7 +172,7 @@ impl Default for Config {
                 line_height: 1.0,
                 ligatures: true,
             },
-            window: WindowConfig { columns: 80, rows: 24, padding: 4.0 },
+            window: WindowConfig { columns: 80, rows: 24, padding: 4.0, renderer: RendererChoice::Cpu },
             colors: Colors::default(),
             theme: theme::Theme::default(),
             theme_default: theme::Theme::default(),
@@ -206,7 +219,7 @@ const SCHEMA: &[(&str, &[&str])] = &[
     ("appearance", &["theme", "cursor-blink", "command-marks", "opacity"]),
     ("keybindings", &[]),
     ("font", &["family", "size", "line-height", "ligatures"]),
-    ("window", &["columns", "rows", "padding"]),
+    ("window", &["columns", "rows", "padding", "renderer"]),
     ("workspace", &["restore-layout"]),
     ("git", &["enabled", "program", "refresh-seconds", "timeout-seconds", "max-files", "diff-mib"]),
     ("ssh", &["program", "config-file"]),
@@ -349,6 +362,13 @@ impl Config {
         }
         if let Some(padding) = r.number("window", "padding", 0.0, 200.0) {
             config.window.padding = padding as f32;
+        }
+        match r.get("window", "renderer") {
+            None => {}
+            Some(Value::String(s)) if s == "cpu" => config.window.renderer = RendererChoice::Cpu,
+            Some(Value::String(s)) if s == "gpu" => config.window.renderer = RendererChoice::Gpu,
+            Some(Value::String(s)) if s == "auto" => config.window.renderer = RendererChoice::Auto,
+            Some(_) => r.warn("window", "renderer", "可以是 \"cpu\"、\"gpu\"、\"auto\"".into()),
         }
         if let Some(enabled) = r.boolean("workspace", "restore-layout") {
             config.restore_layout = enabled;
@@ -985,6 +1005,7 @@ family = "JetBrains Mono"
 size = 13.5
 [window]
 columns = 120
+renderer = "auto"
 [colors]
 background = "#000"
 palette = ["#111111"]
@@ -1004,6 +1025,7 @@ option-as-alt = "left"
         assert_eq!(config.font.size, 13.5);
         assert_eq!(config.window.columns, 120);
         assert_eq!(config.window.rows, 24);
+        assert_eq!(config.window.renderer, RendererChoice::Auto);
         assert_eq!(config.colors.background, 0x000000);
         assert_eq!(config.colors.palette[0], 0x111111);
         assert_eq!(config.colors.palette[1], 0xCD3131);

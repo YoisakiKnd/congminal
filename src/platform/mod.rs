@@ -231,6 +231,10 @@ pub trait App {
     fn window_opacity(&self) -> Option<f32> {
         None
     }
+    /// 平台层的 GPU 后端可用时切到记录模式（`Framebuffer::list`），出错退回 CPU 时切回像素模式。
+    /// 切换后平台层会再发 `Event::Redraw` 要求整屏重画。
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    fn set_recording(&mut self, _on: bool) {}
 }
 
 /// macOS 上 Option 键是否当作 Alt（其他平台没有这个问题，忽略）

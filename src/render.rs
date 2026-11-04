@@ -117,7 +117,7 @@ impl<'a> Framebuffer<'a> {
     }
 
     /// 记录模式的根画布：没有像素，绘制操作进入 `list()`
-    #[cfg_attr(not(test), allow(dead_code))] // G2 平台回放接入前只有测试使用
+    #[cfg(test)]
     pub fn recording(width: usize, height: usize) -> Self {
         let mut framebuffer = Framebuffer {
             width: 0,
@@ -131,18 +131,28 @@ impl<'a> Framebuffer<'a> {
         framebuffer
     }
 
-    #[cfg_attr(not(test), allow(dead_code))] // G2 平台回放接入前只有测试使用
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))] // macOS、Windows 后端接入前只有 Linux 回放
     pub fn list(&self) -> Option<&list::DrawList> {
         self.recording.as_ref().map(list::Recording::list)
     }
 
-    /// 记录模式每帧绘制前调用；返回 true 表示回放端内容作废，需要整屏重画
-    #[cfg_attr(not(test), allow(dead_code))] // G2 平台回放接入前只有测试使用
-    pub fn begin_frame(&mut self) -> bool {
-        match &mut self.recording {
-            Some(list::Recording::Root(list)) => list.begin(),
-            _ => false,
+    /// 根画布在记录模式与像素模式之间切换，尺寸不变，内容作废（调用方整屏重画）。
+    /// 切回像素模式时分配不到画布返回 false，画布变成 0×0，等下一次调整尺寸。
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    pub fn set_recording(&mut self, on: bool) -> bool {
+        if on == self.recording.is_some() {
+            return true;
         }
+        let (width, height) = (self.width, self.height);
+        self.release();
+        if on {
+            self.memory = None;
+            self.recording = Some(list::Recording::Root(Box::new(list::DrawList::new())));
+        } else {
+            self.recording = None;
+            self.memory = Some(crate::resources::current().lease(crate::resources::Kind::Canvas, 0).unwrap());
+        }
+        self.resize(width, height)
     }
 
     pub fn release(&mut self) {

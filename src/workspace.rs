@@ -653,7 +653,7 @@ impl Workspace {
             self.right = old.right;
             self.left_width = (f64::from(old.left_width) * self.driver.scale).round() as usize;
             self.right_width = (f64::from(old.right_width) * self.driver.scale).round() as usize;
-            self.frame = Framebuffer::new(0, 0);
+            self.frame.release();
             self.driver.resize(self.width as u32, self.height as u32);
             self.panes[0].rect = Rect { x: 0, y: 0, w: self.width, h: self.height };
             self.notice(&format!("恢复布局失败，保留初始终端：{e}"));
@@ -3130,6 +3130,13 @@ impl App for Workspace {
         // 1.0 是默认值：返回 None 让平台层完全不碰窗口属性，避免每轮多一次系统调用。
         let opacity = self.driver.config.opacity;
         (opacity < 0.999).then_some(opacity as f32)
+    }
+    fn set_recording(&mut self, on: bool) {
+        self.driver.set_recording(on);
+        let (width, height) = (self.frame.width, self.frame.height);
+        if !self.frame.set_recording(on) {
+            eprintln!("congminal: 工作区画布分配失败或超过共享额度：{width}×{height}");
+        }
     }
 }
 

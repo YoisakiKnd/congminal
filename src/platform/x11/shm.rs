@@ -105,7 +105,7 @@ fn symbol<T>(library: *mut c_void, name: &CStr) -> Option<T> {
 }
 
 /// DISPLAY 带主机名时服务器在别处，共享内存不可用。
-fn local_display() -> bool {
+pub(super) fn local_display() -> bool {
     std::env::var("DISPLAY").is_ok_and(|display| {
         let host = display.split(':').next().unwrap_or("");
         host.is_empty() || host == "unix" || host.starts_with('/')

@@ -15,6 +15,7 @@ use std::os::unix::net::UnixStream;
 use std::ptr::{null, null_mut};
 use std::sync::Arc;
 
+mod gles;
 mod shm;
 
 type Display = c_void;
@@ -245,6 +246,7 @@ unsafe extern "C" {
     fn XDefaultScreen(display: *mut Display) -> c_int;
     fn XRootWindow(display: *mut Display, screen: c_int) -> XWindow;
     fn XDefaultVisual(display: *mut Display, screen: c_int) -> *mut Visual;
+    fn XVisualIDFromVisual(visual: *mut Visual) -> c_ulong;
     fn XDefaultDepth(display: *mut Display, screen: c_int) -> c_int;
     fn XDefaultGC(display: *mut Display, screen: c_int) -> Gc;
     fn XBlackPixel(display: *mut Display, screen: c_int) -> c_ulong;
@@ -390,6 +392,19 @@ pub struct Window {
     /// 已经设过的 `_NET_WM_WINDOW_OPACITY`（32 位定点），只在变化时才发请求。
     opacity: Option<c_ulong>,
     shm: shm::Shm,
+    renderer: crate::config::RendererChoice,
+    /// GPU 后端；None 时走 MIT-SHM/XPutImage
+    gles: Option<gles::Gles>,
+    /// 上次回放的绘制记录
+    gles_list: u64,
+}
+
+/// GPU 呈现之后平台层要通知应用的事
+enum GpuNotice {
+    /// 回放端内容作废：整屏重画
+    Redraw,
+    /// GPU 出错已关闭：切回 CPU 并整屏重画
+    Fallback,
 }
 
 struct Atoms {
@@ -544,6 +559,9 @@ impl Window {
                 paste_read: None,
                 opacity: None,
                 shm: shm::Shm::new(display),
+                renderer: crate::config::RendererChoice::Cpu,
+                gles: None,
+                gles_list: 0,
             })
         }
     }
@@ -555,6 +573,29 @@ impl Window {
 
     pub fn scale_factor(&self) -> f64 {
         Self::scale_from_env()
+    }
+
+    /// 在 `run` 之前调用；GPU 在 `run` 开头创建，不可用时继续用 CPU
+    pub fn set_renderer(&mut self, choice: crate::config::RendererChoice) {
+        self.renderer = choice;
+    }
+
+    fn start_gpu(&mut self) -> Result<gles::Gles, String> {
+        use crate::config::RendererChoice;
+        if !shm::local_display() {
+            return Err("DISPLAY 不在本机".into());
+        }
+        if std::env::var("CONGMINAL_GPU_FAULT").as_deref() == Ok("init") {
+            return Err("CONGMINAL_GPU_FAULT 注入的故障".into());
+        }
+        let visual = unsafe { XVisualIDFromVisual(XDefaultVisual(self.display, self.screen)) };
+        let started = std::time::Instant::now();
+        let gles = gles::Gles::new(self.display, self.window, visual)?;
+        crate::term::trace(format_args!("renderer: {}，创建用时 {:?}", gles.renderer, started.elapsed()));
+        if self.renderer == RendererChoice::Auto && gles.software {
+            return Err(format!("{} 是软件光栅器（renderer = \"gpu\" 时照用）", gles.renderer));
+        }
+        Ok(gles)
     }
 
     pub fn waker(&self) -> Waker {
@@ -590,6 +631,8 @@ impl Window {
     }
 
     pub fn run(mut self, app: &mut dyn App) {
+        // 创建上下文要几十毫秒（llvmpipe 约 45 ms），放到首帧之后，不推迟窗口第一次出现内容
+        let mut gpu_pending = self.renderer != crate::config::RendererChoice::Cpu;
         if !app.event(Event::Resize { width: self.width, height: self.height }) {
             return;
         }
@@ -642,10 +685,35 @@ impl Window {
             if let Some(opacity) = app.window_opacity() {
                 self.apply_opacity(opacity);
             }
+            let mut notice = None;
             if app.needs_redraw()
                 && let Some((fb, damage)) = app.draw()
             {
-                self.present(fb, damage);
+                notice = self.present(fb, damage);
+                if std::mem::take(&mut gpu_pending) {
+                    match self.start_gpu() {
+                        Ok(gles) => {
+                            self.gles = Some(gles);
+                            app.set_recording(true);
+                            notice = Some(GpuNotice::Redraw);
+                        }
+                        Err(error) => crate::term::trace(format_args!("renderer: GPU 不可用，使用 CPU：{error}")),
+                    }
+                }
+            }
+            match notice {
+                None => {}
+                Some(GpuNotice::Redraw) => {
+                    if !app.event(Event::Redraw) {
+                        return;
+                    }
+                }
+                Some(GpuNotice::Fallback) => {
+                    app.set_recording(false);
+                    if !app.event(Event::Redraw) {
+                        return;
+                    }
+                }
             }
             unsafe { XFlush(self.display) };
 
@@ -909,15 +977,35 @@ impl Window {
         text.chars().map(|c| Event::Key { key: Key::Char(c), mods }).collect()
     }
 
-    /// 只把变化的那几段像素送给 X 服务器；优先走共享内存，不可用时用 XPutImage。
-    fn present(&mut self, fb: &Framebuffer, damage: Damage) {
+    /// 记录模式交给 GPU 回放；否则只把变化的那几段像素送给 X 服务器，优先走共享内存，不可用时用 XPutImage。
+    fn present(&mut self, fb: &Framebuffer, damage: Damage) -> Option<GpuNotice> {
         if fb.width == 0 || fb.height == 0 || damage.height == 0 {
-            return;
+            return None;
+        }
+        if let Some(list) = fb.list() {
+            let gles = self.gles.as_mut()?;
+            // 另一份记录（单窗格与工作区切换）或溢出的记录以为图集里有的字形不可信：作废，整屏重画
+            if list.id() != self.gles_list || list.overflowed() {
+                self.gles_list = list.id();
+                list.mark_lost();
+                return Some(GpuNotice::Redraw);
+            }
+            return match gles.present(list, fb.width, fb.height) {
+                Ok(false) => None,
+                // 渲染目标按新尺寸重建：图集和纹理还在，只需整屏重画
+                Ok(true) => Some(GpuNotice::Redraw),
+                Err(error) => {
+                    crate::term::trace(format_args!("renderer: GPU 出错，退回 CPU：{error}"));
+                    self.gles = None;
+                    self.gles_list = 0;
+                    Some(GpuNotice::Fallback)
+                }
+            };
         }
         let (gc, visual) =
             unsafe { (XDefaultGC(self.display, self.screen), XDefaultVisual(self.display, self.screen)) };
         if self.shm.present(self.display, self.window, gc, visual, fb, &damage) {
-            return;
+            return None;
         }
         unsafe {
             // XImage 只是借用我们的像素数据，用完只释放结构体本身（XFree），不释放数据
@@ -934,7 +1022,7 @@ impl Window {
                 (fb.stride * 4) as c_int,
             );
             if image.is_null() {
-                return;
+                return None;
             }
             // 光标行和状态栏离得远时分段发送，不把中间没变的行一起传过去。
             for band in damage.bands() {
@@ -957,13 +1045,15 @@ impl Window {
             }
             XFree(image);
         }
+        None
     }
 }
 
 impl Drop for Window {
     fn drop(&mut self) {
-        // 共享段要在关闭连接前断开。
+        // 共享段、EGL 表面要在关闭连接前断开。
         self.shm.release(self.display);
+        self.gles = None;
         unsafe {
             if !self.ic.is_null() {
                 XDestroyIC(self.ic);

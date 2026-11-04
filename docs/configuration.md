@@ -12,7 +12,7 @@
 
 - `--config <路径>` 或环境变量 `CONGMINAL_CONFIG` 可以指定别的文件。
 - 保存后自动重新读取：字体、主题、颜色、快捷键、内边距、光标、Option 键、通知开关、Git/监控/SFTP 的开关与阈值立即生效。
-- 需要重启才生效：`shell`、`window.columns`/`rows`、`workspace.restore-layout`、`memory`。
+- 需要重启才生效：`shell`、`window.columns`/`rows`/`renderer`、`workspace.restore-layout`、`memory`。
 - 解析失败或越界的项会在状态页与启动日志里给出警告，并按默认值继续运行；不认识的键不会让整份配置失效。
 
 ## 分组与配置项
@@ -33,6 +33,7 @@
 | `window.columns` | `80` | 启动列数 |
 | `window.rows` | `24` | 启动行数 |
 | `window.padding` | `4` | 文字与窗口边缘的空白（逻辑像素） |
+| `window.renderer` | `"cpu"` | `"cpu"`：CPU 绘制；`"gpu"`：用 GPU 绘制（Linux：EGL + OpenGL ES 3），软件光栅器也照用；`"auto"`：只在有硬件加速时用 GPU。GPU 不可用或运行中出错时自动退回 CPU，原因写进 `CONGMINAL_TRACE` 日志。macOS、Windows 暂时总是 CPU |
 
 ### `workspace`
 

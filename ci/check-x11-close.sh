@@ -29,13 +29,17 @@ Xvfb "$DISPLAY_NUM" -screen 0 800x480x24 >/dev/null 2>&1 &
 XVFB_PID=$!
 sleep 2
 
-cat >"$WORK/c.toml" <<'EOF'
+# GPU 渲染时 EGL 表面在窗口销毁之后才释放，也不能让 Xlib 的错误处理提前结束进程
+for renderer in cpu gpu; do
+cat >"$WORK/c.toml" <<EOF
 [shell]
 program = "/bin/sh"
 args = ["-c", "printf READY; cat"]
+[window]
+renderer = "$renderer"
 EOF
 
-echo "X11 窗口销毁后退出（$DISPLAY_NUM）"
+echo "X11 窗口销毁后退出（$DISPLAY_NUM，renderer = $renderer）"
 DISPLAY=$DISPLAY_NUM "$BIN" --config "$WORK/c.toml" >/dev/null 2>&1 &
 APP_PID=$!
 sleep 3
@@ -60,6 +64,7 @@ else
 fi
 # 不在这里 wait：无参数 wait 会连 Xvfb 一起等，脚本会卡住。Xvfb 交给 cleanup。
 APP_PID=
+done
 
 if [ "$STATUS" -eq 0 ]; then echo "结论：通过"; else echo "结论：失败"; fi
 exit "$STATUS"

@@ -1,0 +1,23 @@
+Linux GPU 渲染（:96）
+  ✓ 回放对照单元测试（test result: ok. 1 passed）
+  ✓ gpu：创建了 GLES 上下文（renderer: llvmpipe (LLVM 20.1.2, 256 bits)）
+  ✓ auto：软件光栅器下退回 CPU
+  ✓ 创建时故障：退回 CPU
+  ✓ 运行中故障：退回 CPU
+  ✓ single：GPU 与 CPU 每通道差 ≤ 3（最大差 1，不同像素 8143/302848）
+  ✓ single：auto 回退后与 CPU 逐字节相同
+  ✓ single：init 回退后与 CPU 逐字节相同
+  ✓ single：present 故障前后的画面与 CPU 每通道差 ≤ 3（最大差 1，不同像素 8143/302848）
+  ✓ split：GPU 与 CPU 每通道差 ≤ 3（最大差 1，不同像素 15349/302848）
+  ✓ split：auto 回退后与 CPU 逐字节相同
+  ✓ split：init 回退后与 CPU 逐字节相同
+  ✓ split：present 回退后与 CPU 逐字节相同
+  ✓ back：GPU 与 CPU 每通道差 ≤ 3（最大差 1，不同像素 7980/302848）
+  ✓ back：auto 回退后与 CPU 逐字节相同
+  ✓ back：init 回退后与 CPU 逐字节相同
+  ✓ back：present 回退后与 CPU 逐字节相同
+  ✓ resize：GPU 与 CPU 每通道差 ≤ 3（最大差 1，不同像素 10739/504000）
+  ✓ resize：auto 回退后与 CPU 逐字节相同
+  ✓ resize：init 回退后与 CPU 逐字节相同
+  ✓ resize：present 回退后与 CPU 逐字节相同
+结论：通过
