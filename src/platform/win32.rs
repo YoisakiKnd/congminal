@@ -384,7 +384,7 @@ impl Window {
         self.scale
     }
 
-    /// GPU 后端还没实现（见 docs/design/gpu-rendering.md 的 G3/G4），总是 CPU 渲染
+    /// GPU 后端还没实现（见 docs/design/gpu-rendering.md 的 G4），总是 CPU 渲染
     pub fn set_renderer(&mut self, choice: crate::config::RendererChoice) {
         if choice != crate::config::RendererChoice::Cpu {
             crate::term::trace(format_args!("renderer: 本平台还没有 GPU 后端，使用 CPU"));

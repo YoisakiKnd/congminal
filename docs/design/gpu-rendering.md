@@ -71,6 +71,11 @@ GPU 显存不在进程堆里，但必须计入预算：渲染目标、图集、�
 - **macOS 用 Metal**：OpenGL 在 macOS 上已弃用。`CAMetalLayer` 替换现有的 CGImage 分层呈现。
 - **Windows 用 D3D11 而不是 OpenGL**：D3D11 在所有 Win10 机器上都有，OpenGL 驱动质量参差，远程桌面下还会退化成 GDI 软件实现。`d3dcompiler_47.dll` 是 Win10 系统组件，不需要构建期工具。
 
+Metal 的两点与 GLES 不同（G3）：
+
+- Apple GPU 是分块渲染，每开一个渲染 pass 都要加载、存回整张目标。两次清空图集/纹理之间字形槽位不复用、绘制只读已上传的字形，所以这一段的上传全部提到段首做成一次 blit，每帧的 pass 数约为 1 + 平移次数 + 段数，不随新字形个数增长。上传经暂存缓冲在命令缓冲里按序执行，不用 `replaceRegion`（它立即写纹理，会越过还没执行的绘制）。
+- `CAMetalLayer` 叠在视图图层之上，`presentsWithTransaction`：切到 GPU 时清掉 CPU 图层内容与 Metal 画面出现在同一个 Core Animation 事务里。
+
 垂直同步：交换链/drawable 按显示器刷新节奏提交，但空闲时不提交、不唤醒，沿用现有的 `deadline()`/damage 驱动，不引入渲染循环。
 
 ## 4. 验收测量

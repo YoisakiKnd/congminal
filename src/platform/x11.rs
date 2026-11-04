@@ -5,6 +5,7 @@
 //!
 //! 事件循环：用 `poll` 同时等待 X 服务器的连接和一个唤醒用的 socket。
 
+use super::gpu::{Gpu, Notice};
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::input::{Key, Keypad, Mods};
 use crate::render::{Damage, Framebuffer};
@@ -392,19 +393,8 @@ pub struct Window {
     /// 已经设过的 `_NET_WM_WINDOW_OPACITY`（32 位定点），只在变化时才发请求。
     opacity: Option<c_ulong>,
     shm: shm::Shm,
-    renderer: crate::config::RendererChoice,
-    /// GPU 后端；None 时走 MIT-SHM/XPutImage
-    gles: Option<gles::Gles>,
-    /// 上次回放的绘制记录
-    gles_list: u64,
-}
-
-/// GPU 呈现之后平台层要通知应用的事
-enum GpuNotice {
-    /// 回放端内容作废：整屏重画
-    Redraw,
-    /// GPU 出错已关闭：切回 CPU 并整屏重画
-    Fallback,
+    /// GPU 后端；没有时走 MIT-SHM/XPutImage
+    gpu: Gpu<gles::Gles>,
 }
 
 struct Atoms {
@@ -559,9 +549,7 @@ impl Window {
                 paste_read: None,
                 opacity: None,
                 shm: shm::Shm::new(display),
-                renderer: crate::config::RendererChoice::Cpu,
-                gles: None,
-                gles_list: 0,
+                gpu: Gpu::new(crate::config::RendererChoice::Cpu),
             })
         }
     }
@@ -577,25 +565,18 @@ impl Window {
 
     /// 在 `run` 之前调用；GPU 在 `run` 开头创建，不可用时继续用 CPU
     pub fn set_renderer(&mut self, choice: crate::config::RendererChoice) {
-        self.renderer = choice;
+        self.gpu = Gpu::new(choice);
     }
 
-    fn start_gpu(&mut self) -> Result<gles::Gles, String> {
-        use crate::config::RendererChoice;
-        if !shm::local_display() {
-            return Err("DISPLAY 不在本机".into());
-        }
-        if std::env::var("CONGMINAL_GPU_FAULT").as_deref() == Ok("init") {
-            return Err("CONGMINAL_GPU_FAULT 注入的故障".into());
-        }
-        let visual = unsafe { XVisualIDFromVisual(XDefaultVisual(self.display, self.screen)) };
-        let started = std::time::Instant::now();
-        let gles = gles::Gles::new(self.display, self.window, visual)?;
-        crate::term::trace(format_args!("renderer: {}，创建用时 {:?}", gles.renderer, started.elapsed()));
-        if self.renderer == RendererChoice::Auto && gles.software {
-            return Err(format!("{} 是软件光栅器（renderer = \"gpu\" 时照用）", gles.renderer));
-        }
-        Ok(gles)
+    fn start_gpu(&mut self, app: &mut dyn App) -> Option<super::gpu::Notice> {
+        let (display, window, screen) = (self.display, self.window, self.screen);
+        self.gpu.start(app, || {
+            if !shm::local_display() {
+                return Err("DISPLAY 不在本机".into());
+            }
+            let visual = unsafe { XVisualIDFromVisual(XDefaultVisual(display, screen)) };
+            gles::Gles::new(display, window, visual)
+        })
     }
 
     pub fn waker(&self) -> Waker {
@@ -631,8 +612,6 @@ impl Window {
     }
 
     pub fn run(mut self, app: &mut dyn App) {
-        // 创建上下文要几十毫秒（llvmpipe 约 45 ms），放到首帧之后，不推迟窗口第一次出现内容
-        let mut gpu_pending = self.renderer != crate::config::RendererChoice::Cpu;
         if !app.event(Event::Resize { width: self.width, height: self.height }) {
             return;
         }
@@ -690,30 +669,11 @@ impl Window {
                 && let Some((fb, damage)) = app.draw()
             {
                 notice = self.present(fb, damage);
-                if std::mem::take(&mut gpu_pending) {
-                    match self.start_gpu() {
-                        Ok(gles) => {
-                            self.gles = Some(gles);
-                            app.set_recording(true);
-                            notice = Some(GpuNotice::Redraw);
-                        }
-                        Err(error) => crate::term::trace(format_args!("renderer: GPU 不可用，使用 CPU：{error}")),
-                    }
-                }
+                // 创建上下文要几十毫秒（llvmpipe 约 45 ms），放到首帧之后
+                notice = notice.or_else(|| self.start_gpu(app));
             }
-            match notice {
-                None => {}
-                Some(GpuNotice::Redraw) => {
-                    if !app.event(Event::Redraw) {
-                        return;
-                    }
-                }
-                Some(GpuNotice::Fallback) => {
-                    app.set_recording(false);
-                    if !app.event(Event::Redraw) {
-                        return;
-                    }
-                }
+            if !super::gpu::deliver(app, notice) {
+                return;
             }
             unsafe { XFlush(self.display) };
 
@@ -978,29 +938,12 @@ impl Window {
     }
 
     /// 记录模式交给 GPU 回放；否则只把变化的那几段像素送给 X 服务器，优先走共享内存，不可用时用 XPutImage。
-    fn present(&mut self, fb: &Framebuffer, damage: Damage) -> Option<GpuNotice> {
+    fn present(&mut self, fb: &Framebuffer, damage: Damage) -> Option<Notice> {
         if fb.width == 0 || fb.height == 0 || damage.height == 0 {
             return None;
         }
         if let Some(list) = fb.list() {
-            let gles = self.gles.as_mut()?;
-            // 另一份记录（单窗格与工作区切换）或溢出的记录以为图集里有的字形不可信：作废，整屏重画
-            if list.id() != self.gles_list || list.overflowed() {
-                self.gles_list = list.id();
-                list.mark_lost();
-                return Some(GpuNotice::Redraw);
-            }
-            return match gles.present(list, fb.width, fb.height) {
-                Ok(false) => None,
-                // 渲染目标按新尺寸重建：图集和纹理还在，只需整屏重画
-                Ok(true) => Some(GpuNotice::Redraw),
-                Err(error) => {
-                    crate::term::trace(format_args!("renderer: GPU 出错，退回 CPU：{error}"));
-                    self.gles = None;
-                    self.gles_list = 0;
-                    Some(GpuNotice::Fallback)
-                }
-            };
+            return self.gpu.present(list, fb.width, fb.height);
         }
         let (gc, visual) =
             unsafe { (XDefaultGC(self.display, self.screen), XDefaultVisual(self.display, self.screen)) };
@@ -1053,7 +996,7 @@ impl Drop for Window {
     fn drop(&mut self) {
         // 共享段、EGL 表面要在关闭连接前断开。
         self.shm.release(self.display);
-        self.gles = None;
+        self.gpu.release();
         unsafe {
             if !self.ic.is_null() {
                 XDestroyIC(self.ic);

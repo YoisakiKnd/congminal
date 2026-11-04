@@ -255,6 +255,16 @@ impl Window {
         }
         self.presentation.bytes = 0;
     }
+    /// GPU 接管画面后：清掉 CPU 图层内容、补丁图层和快照池；退回 CPU 时下一帧重建底图
+    pub(super) fn release_presentation(&mut self) {
+        unsafe {
+            self.clear_patches();
+            let root: Id = msg![self.view, "layer"; Id];
+            msg![root, "setContents:", NIL => Id; ()];
+        }
+        self.release_pool();
+        self.presentation.invalid = true;
+    }
     pub(super) fn present(&mut self, fb: &Framebuffer, damage: Damage) {
         if self.presentation.pool.is_none() {
             let mut pools = POOLS.lock().unwrap();

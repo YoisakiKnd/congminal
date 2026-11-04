@@ -3,9 +3,9 @@
 //! - `libEGL.so.1`、`libGLESv2.so.2` 在运行时加载，缺库、远程 DISPLAY、没有合适配置、着色器编译失败、
 //!   额度不足都返回错误，调用方继续用 CPU
 //! - 持久渲染目标与窗口同尺寸；坐标与 CPU 画布一致（第 0 行在纹理第 0 行），呈现时上下翻转拷到窗口
+//! - 混合只作用于颜色，目标的 alpha 保持 1
 //! - 所有采样都是整数纹素读取，混合在 8 位非 sRGB 目标上进行；每次混合与 CPU 结果每通道最多差 1，
 //!   多层叠加时逐层累积（硬件对 src·a 与 dst·(1−a) 分别舍入）
-//! - `CONGMINAL_GPU_FAULT=present` 让第 3 帧呈现失败，用来验证运行中退回 CPU
 use super::{Display, XWindow};
 use crate::render::list::{ATLAS_SIZE, Atlas, DrawList, Op, Rect};
 use crate::resources::{Kind, Lease};
@@ -52,6 +52,7 @@ const GL_INT: u32 = 0x1404;
 const GL_TRIANGLE_STRIP: u32 = 0x0005;
 const GL_BLEND: u32 = 0x0BE2;
 const GL_DITHER: u32 = 0x0BD0;
+const GL_ZERO: u32 = 0;
 const GL_ONE: u32 = 1;
 const GL_SRC_ALPHA: u32 = 0x0302;
 const GL_ONE_MINUS_SRC_ALPHA: u32 = 0x0303;
@@ -99,7 +100,7 @@ api!(GlApi {
     get_error: c"glGetError" fn() -> u32;
     enable: c"glEnable" fn(u32);
     disable: c"glDisable" fn(u32);
-    blend_func: c"glBlendFunc" fn(u32, u32);
+    blend_func: c"glBlendFuncSeparate" fn(u32, u32, u32, u32);
     viewport: c"glViewport" fn(i32, i32, i32, i32);
     clear_color: c"glClearColor" fn(f32, f32, f32, f32);
     clear: c"glClear" fn(u32);
@@ -255,11 +256,8 @@ pub(super) struct Gles {
     instances: Vec<[i32; 12]>,
     batch: Batch,
     memory: Lease,
-    /// 已呈现的帧数与注入故障的帧号
-    frames: u32,
-    fault: Option<u32>,
-    pub renderer: String,
-    pub software: bool,
+    renderer: String,
+    software: bool,
 }
 
 impl Gles {
@@ -289,8 +287,6 @@ impl Gles {
                 instances: Vec::new(),
                 batch: Batch::Rect,
                 memory,
-                frames: 0,
-                fault: (std::env::var("CONGMINAL_GPU_FAULT").as_deref() == Ok("present")).then_some(3),
                 renderer: String::new(),
                 software: false,
             };
@@ -536,16 +532,16 @@ impl Gles {
             (gl.use_program)(program.id);
             (gl.uniform2f)(program.size, self.size.0 as f32, self.size.1 as f32);
             match self.batch {
-                Batch::Rect => (gl.blend_func)(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
+                Batch::Rect => (gl.blend_func)(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE),
                 Batch::Alpha | Batch::Color => {
                     let atlas = if self.batch == Batch::Alpha { Atlas::Alpha } else { Atlas::Color };
                     (gl.active_texture)(GL_TEXTURE0);
                     (gl.bind_texture)(GL_TEXTURE_2D, self.atlases[atlas as usize].unwrap_or(0));
                     (gl.uniform1i)(program.texture, 0);
                     if self.batch == Batch::Alpha {
-                        (gl.blend_func)(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                        (gl.blend_func)(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
                     } else {
-                        (gl.blend_func)(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                        (gl.blend_func)(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
                     }
                 }
             }
@@ -578,11 +574,7 @@ impl Gles {
     }
 
     /// 回放一帧并拷到窗口。返回 Ok(true) 表示渲染目标是新建的，调用方要让应用整屏重画。
-    pub(super) fn present(&mut self, list: &DrawList, width: usize, height: usize) -> Result<bool, String> {
-        self.frames += 1;
-        if self.fault == Some(self.frames) {
-            return Err("CONGMINAL_GPU_FAULT 注入的故障".into());
-        }
+    fn present(&mut self, list: &DrawList, width: usize, height: usize) -> Result<bool, String> {
         let recreated = self.resize(width, height)?;
         if !list.is_replayed() {
             self.replay(list)?;
@@ -680,7 +672,7 @@ impl Gles {
                         (gl.active_texture)(GL_TEXTURE0);
                         (gl.bind_texture)(GL_TEXTURE_2D, texture);
                         (gl.uniform1i)(program.texture, 0);
-                        (gl.blend_func)(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                        (gl.blend_func)(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
                         self.draw_instances();
                     }
                     self.instances.clear();
@@ -746,6 +738,18 @@ impl Gles {
     }
 }
 
+impl super::super::gpu::Backend for Gles {
+    fn name(&self) -> &str {
+        &self.renderer
+    }
+    fn software(&self) -> bool {
+        self.software
+    }
+    fn present(&mut self, list: &DrawList, width: usize, height: usize) -> Result<bool, String> {
+        Gles::present(self, list, width, height)
+    }
+}
+
 impl Drop for Gles {
     fn drop(&mut self) {
         self.drop_target();
@@ -777,9 +781,7 @@ impl Drop for Gles {
 mod tests {
     use super::super::{Window, XDefaultVisual, XVisualIDFromVisual};
     use super::*;
-    use crate::render::Framebuffer;
-    use crate::render::list::SoftwareTarget;
-    use crate::render::list::tests::{Verify, atlas_scenario, terminal_scenario, views_scenario};
+    use crate::render::list::tests::{GpuTarget, gpu_scenarios};
 
     /// 字段顺序就是析构顺序：EGL 表面先于 X 连接释放
     struct Backend {
@@ -787,90 +789,22 @@ mod tests {
         _window: Window,
     }
 
-    fn backend() -> Backend {
-        let window = Window::new("congminal gles test", |_| (64, 64)).expect("需要 DISPLAY");
-        let visual = unsafe { XVisualIDFromVisual(XDefaultVisual(window.display, window.screen)) };
-        let gles = Gles::new(window.display, window.window, visual).expect("EGL/GLES 不可用");
-        eprintln!("GLES：{}", gles.renderer);
-        Backend { gles, _window: window }
-    }
-
-    /// 本帧每个像素经过几次混合（填充清零，平移跟着像素走）
-    fn layers(list: &DrawList, width: usize, height: usize) -> Vec<u32> {
-        let mut layers = vec![0u32; width * height];
-        for op in list.ops() {
-            let (rect, blend) = match *op {
-                Op::Fill { rect, .. } => (rect, false),
-                Op::Blend { rect, .. } => (rect, true),
-                Op::Glyph { clip, .. } | Op::Image { clip, .. } => (clip, true),
-                Op::Shift { rect, dy } => {
-                    let (x0, x1) = (rect.x0 as usize, rect.x1 as usize);
-                    let rows: Vec<usize> = (rect.y0 as usize..rect.y1 as usize).collect();
-                    let k = dy.unsigned_abs() as usize;
-                    if k < rows.len() {
-                        let order: Vec<usize> = if dy > 0 {
-                            rows[k..].iter().rev().copied().collect()
-                        } else {
-                            rows[..rows.len() - k].to_vec()
-                        };
-                        for to in order {
-                            let from = if dy > 0 { to - k } else { to + k };
-                            layers.copy_within(from * width + x0..from * width + x1, to * width + x0);
-                        }
-                    }
-                    continue;
-                }
-                _ => continue,
-            };
-            for y in rect.y0 as usize..rect.y1 as usize {
-                for count in &mut layers[y * width + rect.x0 as usize..y * width + rect.x1 as usize] {
-                    *count = if blend { *count + 1 } else { 0 };
-                }
-            }
+    impl GpuTarget for Backend {
+        fn replay(&mut self, list: &DrawList, width: usize, height: usize) {
+            self.gles.present(list, width, height).unwrap();
         }
-        layers
-    }
-
-    /// 回放到 GPU 渲染目标并读回。参照是从 GPU 上一帧内容出发的软件回放（G1 已证明它与直接绘制逐字节相同），
-    /// 所以误差不跨帧累积：填充的像素必须完全相同，每经过一次混合每通道最多多差 1
-    fn gpu(backend: &mut Backend) -> impl FnMut(&str, &Framebuffer<'static>, &DrawList) + '_ {
-        let mut reference: Option<SoftwareTarget> = None;
-        move |step, frame, list| {
-            let (width, height) = (frame.width, frame.height);
-            let before = if backend.gles.target.is_some() && backend.gles.size == (width, height) {
-                backend.gles.read()
-            } else {
-                vec![0; width * height]
-            };
-            let layers = layers(list, width, height);
-            backend.gles.present(list, width, height).unwrap();
-            assert!(list.is_replayed());
-            let actual = backend.gles.read();
-            let reference = reference.get_or_insert_with(|| SoftwareTarget::new(width, height));
-            reference.frame.pixels.copy_from_slice(&before);
-            reference.replay(list);
-            let channels = |p: u32| [(p >> 16) & 255, (p >> 8) & 255, p & 255];
-            for (at, (&a, &b)) in reference.frame.pixels.iter().zip(&actual).enumerate() {
-                let d = channels(a).iter().zip(channels(b)).map(|(&x, y)| x.abs_diff(y)).max().unwrap();
-                assert!(
-                    d <= layers[at],
-                    "{step}：像素 ({}, {}) CPU {a:06x}，GPU {b:06x}，本帧混合 {} 次",
-                    at % width,
-                    at / width,
-                    layers[at]
-                );
-            }
+        fn read(&mut self, width: usize, height: usize) -> Option<Vec<u32>> {
+            (self.gles.target.is_some() && self.gles.size == (width, height)).then(|| self.gles.read())
         }
     }
 
     #[test]
     #[ignore = "需要 X 服务器和 EGL"]
     fn gpu_replay_matches_cpu_within_one_per_channel() {
-        let mut backend = backend();
-        for scale in [1.0, 2.0] {
-            terminal_scenario(scale, &mut gpu(&mut backend) as Verify);
-        }
-        views_scenario(&mut gpu(&mut backend));
-        atlas_scenario(&mut gpu(&mut backend));
+        let window = Window::new("congminal gles test", |_| (64, 64)).expect("需要 DISPLAY");
+        let visual = unsafe { XVisualIDFromVisual(XDefaultVisual(window.display, window.screen)) };
+        let gles = Gles::new(window.display, window.window, visual).expect("EGL/GLES 不可用");
+        eprintln!("GLES：{}", gles.renderer);
+        gpu_scenarios(&mut Backend { gles, _window: window });
     }
 }

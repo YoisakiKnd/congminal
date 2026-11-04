@@ -42,7 +42,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libx11-dev xvfb imagemagick openssh-server
+          sudo apt-get install -y --no-install-recommends libx11-dev xvfb imagemagick openssh-server libegl1 libgles2 libegl-mesa0
 
       - name: 添加 macOS 编译目标
         if: runner.os == 'macOS'
@@ -96,6 +96,20 @@ jobs:
 
       - name: 单元测试
         run: cargo test -- --test-threads=1
+
+      - name: GPU 回放与 CPU 对照（EGL + GLES 3，Mesa llvmpipe）
+        if: runner.os == 'Linux'
+        run: |
+          Xvfb :98 -screen 0 1024x768x24 &
+          for i in $(seq 50); do [ -S /tmp/.X11-unix/X98 ] && break; sleep 0.2; done
+          DISPLAY=:98 cargo test --bin congminal platform::x11::gles -- --ignored --nocapture --test-threads=1
+
+      # 托管的 macOS 运行机是虚拟机，不一定有 Metal 设备；没有时只留 notice
+      - name: GPU 回放与 CPU 对照（Metal）
+        if: runner.os == 'macOS'
+        env:
+          CONGMINAL_GPU_TEST_OPTIONAL: "1"
+        run: cargo test --bin congminal platform::macos::metal -- --ignored --nocapture --test-threads=1
 
       - name: 校验发布版本
         if: startsWith(github.ref, 'refs/tags/v')

@@ -33,7 +33,7 @@
 | `window.columns` | `80` | 启动列数 |
 | `window.rows` | `24` | 启动行数 |
 | `window.padding` | `4` | 文字与窗口边缘的空白（逻辑像素） |
-| `window.renderer` | `"cpu"` | `"cpu"`：CPU 绘制；`"gpu"`：用 GPU 绘制（Linux：EGL + OpenGL ES 3），软件光栅器也照用；`"auto"`：只在有硬件加速时用 GPU。GPU 不可用或运行中出错时自动退回 CPU，原因写进 `CONGMINAL_TRACE` 日志。macOS、Windows 暂时总是 CPU |
+| `window.renderer` | `"cpu"` | `"cpu"`：CPU 绘制；`"gpu"`：用 GPU 绘制（Linux：EGL + OpenGL ES 3；macOS：Metal），软件光栅器也照用；`"auto"`：只在有硬件加速时用 GPU。GPU 不可用或运行中出错时自动退回 CPU，原因写进 `CONGMINAL_TRACE` 日志。Windows 暂时总是 CPU |
 
 ### `workspace`
 

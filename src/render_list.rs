@@ -8,8 +8,8 @@
 //!
 //! `SoftwareTarget` 是同一语义的 CPU 回放器：测试用它证明“记录 → 回放”与直接绘制逐字节相同，
 //! GPU 后端以它为参照。
-// macOS、Windows 的 GPU 后端接入前，只有 Linux 回放记录。
-#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+// Windows 的 GPU 后端接入前，那里没有人回放记录。
+#![cfg_attr(windows, allow(dead_code))]
 use super::Framebuffer;
 #[cfg(test)]
 use super::{graphics::blend_rgba, mix, over};
@@ -585,6 +585,88 @@ pub(crate) mod tests {
                 );
             }
         }
+    }
+
+    /// GPU 后端的测试接口
+    pub(crate) trait GpuTarget {
+        /// 回放一帧，回放后 `list.is_replayed()`
+        fn replay(&mut self, list: &DrawList, width: usize, height: usize);
+        /// 读回渲染目标（0x00RRGGBB，第 0 行在最上面）；还没有这个尺寸的目标时返回 None
+        fn read(&mut self, width: usize, height: usize) -> Option<Vec<u32>>;
+    }
+
+    /// 本帧每个像素经过几次混合（填充清零，平移跟着像素走）
+    fn layers(list: &DrawList, width: usize, height: usize) -> Vec<u32> {
+        let mut layers = vec![0u32; width * height];
+        for op in list.ops() {
+            let (rect, blend) = match *op {
+                Op::Fill { rect, .. } => (rect, false),
+                Op::Blend { rect, .. } => (rect, true),
+                Op::Glyph { clip, .. } | Op::Image { clip, .. } => (clip, true),
+                Op::Shift { rect, dy } => {
+                    let (x0, x1) = (rect.x0 as usize, rect.x1 as usize);
+                    let rows: Vec<usize> = (rect.y0 as usize..rect.y1 as usize).collect();
+                    let k = dy.unsigned_abs() as usize;
+                    if k < rows.len() {
+                        let order: Vec<usize> = if dy > 0 {
+                            rows[k..].iter().rev().copied().collect()
+                        } else {
+                            rows[..rows.len() - k].to_vec()
+                        };
+                        for to in order {
+                            let from = if dy > 0 { to - k } else { to + k };
+                            layers.copy_within(from * width + x0..from * width + x1, to * width + x0);
+                        }
+                    }
+                    continue;
+                }
+                _ => continue,
+            };
+            for y in rect.y0 as usize..rect.y1 as usize {
+                for count in &mut layers[y * width + rect.x0 as usize..y * width + rect.x1 as usize] {
+                    *count = if blend { *count + 1 } else { 0 };
+                }
+            }
+        }
+        layers
+    }
+
+    /// 回放到 GPU 渲染目标并读回。参照是从 GPU 上一帧内容出发的软件回放（G1 已证明它与直接绘制逐字节相同），
+    /// 所以误差不跨帧累积：填充的像素必须完全相同，每经过一次混合每通道最多多差 1
+    fn gpu(target: &mut dyn GpuTarget) -> impl FnMut(&str, &Framebuffer<'static>, &DrawList) + '_ {
+        let mut reference: Option<SoftwareTarget> = None;
+        move |step, frame, list| {
+            let (width, height) = (frame.width, frame.height);
+            // 新建的渲染目标清成黑色
+            let before = target.read(width, height).unwrap_or_else(|| vec![0; width * height]);
+            let layers = layers(list, width, height);
+            target.replay(list, width, height);
+            assert!(list.is_replayed());
+            let actual = target.read(width, height).expect("回放后应有渲染目标");
+            let reference = reference.get_or_insert_with(|| SoftwareTarget::new(width, height));
+            reference.frame.pixels.copy_from_slice(&before);
+            reference.replay(list);
+            let channels = |p: u32| [(p >> 16) & 255, (p >> 8) & 255, p & 255];
+            for (at, (&a, &b)) in reference.frame.pixels.iter().zip(&actual).enumerate() {
+                let d = channels(a).iter().zip(channels(b)).map(|(&x, y)| x.abs_diff(y)).max().unwrap();
+                assert!(
+                    d <= layers[at],
+                    "{step}：像素 ({}, {}) CPU {a:06x}，GPU {b:06x}，本帧混合 {} 次",
+                    at % width,
+                    at / width,
+                    layers[at]
+                );
+            }
+        }
+    }
+
+    /// 全部场景依次回放到 GPU 并比较
+    pub(crate) fn gpu_scenarios(target: &mut dyn GpuTarget) {
+        for scale in [1.0, 2.0] {
+            terminal_scenario(scale, &mut gpu(target));
+        }
+        views_scenario(&mut gpu(target));
+        atlas_scenario(&mut gpu(target));
     }
 
     #[test]

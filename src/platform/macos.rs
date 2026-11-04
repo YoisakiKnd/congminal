@@ -10,6 +10,7 @@
 //!
 //! 视图的方法是 AppKit 回调的，拿不到 App，所以它们把事件放进线程局部的队列，事件循环再取出来交给 App。
 
+use super::gpu::{Gpu, Notice};
 use super::{App, ClipboardRequest, Event, MouseButton, ScrollDelta};
 use crate::config::OptionAsAlt;
 use crate::input::{Key, Keypad, Mods};
@@ -126,6 +127,7 @@ unsafe fn class(name: &CStr) -> Id {
     unsafe { objc_getClass(name.as_ptr()) }
 }
 
+mod metal;
 pub(super) mod presentation;
 
 unsafe fn nsstring(s: &str) -> Id {
@@ -263,6 +265,10 @@ pub struct Window {
     /// 已经设过的窗口 alpha，只在变化时才发消息。
     alpha: Option<f64>,
     presentation: presentation::State,
+    /// Metal 后端；没有时走 CGImage 图层
+    gpu: Gpu<metal::Metal>,
+    /// GPU 画面已经出现，CPU 图层内容已清掉
+    cpu_hidden: bool,
 }
 
 /// 跨线程唤醒：往主线程的事件队列里塞一个自定义事件
@@ -350,6 +356,8 @@ impl Window {
             ));
 
             msg![window, "makeKeyAndOrderFront:", NIL => Id; ()];
+            // 就是 CGWindowID：`screencapture -l` 按它截取本窗口（ci/check-macos-metal.sh）
+            crate::term::trace(format_args!("窗口编号 {}", msg![window, "windowNumber"; isize]));
             msg![app, "finishLaunching"; ()];
             msg![app, "activateIgnoringOtherApps:", 1i8 => i8; ()];
             objc_autoreleasePoolPop(pool);
@@ -365,6 +373,8 @@ impl Window {
                 occluded: None,
                 alpha: None,
                 presentation: presentation::State::default(),
+                gpu: Gpu::new(crate::config::RendererChoice::Cpu),
+                cpu_hidden: false,
             })
         }
     }
@@ -407,11 +417,40 @@ impl Window {
         unsafe { msg![self.window, "backingScaleFactor"; f64] }
     }
 
-    /// GPU 后端还没实现（见 docs/design/gpu-rendering.md 的 G3/G4），总是 CPU 渲染
+    /// 在 `run` 之前调用；Metal 在首帧之后创建，不可用时继续用 CPU
     pub fn set_renderer(&mut self, choice: crate::config::RendererChoice) {
-        if choice != crate::config::RendererChoice::Cpu {
-            crate::term::trace(format_args!("renderer: 本平台还没有 GPU 后端，使用 CPU"));
+        self.gpu = Gpu::new(choice);
+    }
+
+    fn start_gpu(&mut self, app: &mut dyn App) -> Option<Notice> {
+        let (view, color_space) = (self.view, self.color_space);
+        self.gpu.start(app, || {
+            let mut metal = metal::Metal::new()?;
+            metal.attach(view, color_space)?;
+            Ok(metal)
+        })
+    }
+
+    /// 记录模式交给 Metal，否则做成 CGImage 设为图层内容
+    fn present_frame(&mut self, fb: &Framebuffer, damage: Damage) -> Option<Notice> {
+        let Some(list) = fb.list() else {
+            self.present(fb, damage);
+            return None;
+        };
+        if fb.width == 0 || fb.height == 0 || damage.height == 0 {
+            return None;
         }
+        let notice = self.gpu.present(list, fb.width, fb.height);
+        match notice {
+            // Metal 画面与清掉 CPU 图层在同一个事务里生效（presentsWithTransaction），不闪
+            None if list.is_replayed() && !self.cpu_hidden => {
+                self.release_presentation();
+                self.cpu_hidden = true;
+            }
+            Some(Notice::Fallback) => self.cpu_hidden = false,
+            _ => {}
+        }
+        notice
     }
 
     pub fn waker(&self) -> Waker {
@@ -557,11 +596,17 @@ impl Window {
             if let Some(opacity) = app.window_opacity() {
                 self.apply_opacity(opacity);
             }
+            let mut notice = None;
             if self.occluded != Some(true)
                 && app.needs_redraw()
                 && let Some((fb, damage)) = app.draw()
             {
-                self.present(fb, damage);
+                notice = self.present_frame(fb, damage);
+                // 创建设备和管线要编译着色器，放到首帧之后
+                notice = notice.or_else(|| self.start_gpu(app));
+            }
+            if !super::gpu::deliver(app, notice) || !protected_window::sync(self.view, self.focused, app) {
+                return false;
             }
             if let Some(request) = app.take_clipboard_request() {
                 let pasteboard: Id = msg![class(c"NSPasteboard"), "generalPasteboard"; Id];
@@ -654,6 +699,8 @@ impl Drop for Window {
             protected_window::reset(self.view);
             msg![self.app, "setDelegate:", NIL => Id; ()];
             msg![self.window,"setDelegate:",NIL=>Id;()];
+            // Metal 图层与资源先于窗口释放
+            self.gpu.release();
             self.clear_patches();
             self.release_pool();
             CGColorSpaceRelease(self.color_space);
