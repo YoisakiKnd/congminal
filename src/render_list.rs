@@ -662,7 +662,8 @@ pub(crate) mod tests {
     pub(crate) fn gpu_scenarios(device: &str, target: &mut dyn GpuTarget) {
         eprintln!("{device}");
         if std::env::var_os("GITHUB_ACTIONS").is_some() {
-            println!("::notice::GPU 回放对照：{device}");
+            // 测试框架先在同一行打印测试名，命令必须另起一行才会被识别
+            println!("\n::notice::GPU 回放对照：{device}");
         }
         for scale in [1.0, 2.0] {
             terminal_scenario(scale, &mut gpu(target));

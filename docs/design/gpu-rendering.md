@@ -115,7 +115,7 @@ G1 不改变任何用户可见行为，是后面所有后端的共同基础；�
 | 平台 | 后端 | 已验证 | 待验证 |
 | --- | --- | --- | --- |
 | Linux | EGL + GLES 3 | Xvfb/llvmpipe：回放对照（CI 每次运行）、窗口截图、回退、窗口销毁（[G2](../evaluations/gpu-g2/README.md)） | 真实显卡的正确性与性能 |
-| macOS | Metal | CI 的 Apple Silicon 虚拟机上回放对照通过（[G3](../evaluations/gpu-g3/README.md)） | 真机窗口截图、回退、分屏/改尺寸/换屏、性能 |
+| macOS | Metal | 只有交叉编译检查；CI 虚拟机上的回放对照是否真的跑了待确认（[G3](../evaluations/gpu-g3/README.md)） | 真机窗口截图、回退、分屏/改尺寸/换屏、性能 |
 | Windows | Direct3D 11 | wine（wined3d → llvmpipe）下回放对照、真实窗口截图、回退；CI 用 WARP 跑回放对照（[G4](../evaluations/gpu-g4/README.md)） | 真机窗口截图、回退、性能 |
 
 G5 要等各平台真机结果：在那之前三个平台的默认值都保持 `cpu`，`auto` 也不会被默认选中。

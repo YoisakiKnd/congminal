@@ -802,7 +802,8 @@ mod tests {
                 Ok(metal) => metal,
                 // CI 的虚拟机可能没有 Metal 设备；真机上必须有
                 Err(error) if std::env::var_os("CONGMINAL_GPU_TEST_OPTIONAL").is_some() => {
-                    println!("::notice::Metal 不可用，跳过 GPU 对照：{error}");
+                    // 测试框架先在同一行打印测试名，命令必须另起一行才会被识别
+                    println!("\n::notice::Metal 不可用，跳过 GPU 对照：{error}");
                     objc_autoreleasePoolPop(pool);
                     return;
                 }
