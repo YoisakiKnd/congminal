@@ -606,7 +606,9 @@ mod tests {
         assert!(passwd_shell().is_some_and(|shell| Path::new(&shell).is_absolute()));
         let (send, receive) = mpsc::channel();
         let sink: EventSink = Arc::new(move |event| send.send(event).is_ok());
-        let command = Command { program: Some("/bin/sh".into()), ..Default::default() };
+        // macOS 的 /bin/sh 是转发到 /private/var/select/sh 的小程序，用户实际用的是 zsh
+        let shell = if cfg!(target_os = "macos") { "/bin/zsh" } else { "/bin/sh" };
+        let command = Command { program: Some(shell.into()), ..Default::default() };
         let mut pty = Pty::spawn(&command, 80, 24, sink).unwrap();
         pty.write(b"printf '[%s]' \"$0\"; exit\n").unwrap();
         let until = Instant::now() + Duration::from_secs(10);
@@ -620,7 +622,7 @@ mod tests {
                 PtyEvent::Error(error) => panic!("{error}"),
             }
         }
-        let expected: &[u8] = if cfg!(target_os = "macos") { b"[-sh]" } else { b"[/bin/sh]" };
+        let expected: &[u8] = if cfg!(target_os = "macos") { b"[-zsh]" } else { b"[/bin/sh]" };
         assert!(output.windows(expected.len()).any(|w| w == expected), "{}", String::from_utf8_lossy(&output));
     }
 

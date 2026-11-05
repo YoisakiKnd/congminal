@@ -94,8 +94,16 @@ jobs:
           path: evidence/conpty-cost.json
           if-no-files-found: ignore
 
+      # 失败时把 failures 段落写成一条 annotation：匿名 API 读不到日志
       - name: 单元测试
-        run: cargo test -- --test-threads=1
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test -- --test-threads=1 2>&1 | tee target/unit-tests.log || {
+            msg=$(awk '/^failures:/{p=1} p{gsub(/%/,"%25"); gsub(/\r/,""); printf "%s%%0A", $0}' target/unit-tests.log | cut -c1-8000)
+            echo "::error title=单元测试失败::$msg"
+            exit 1
+          }
 
       - name: GPU 回放与 CPU 对照（EGL + GLES 3，Mesa llvmpipe）
         if: runner.os == 'Linux'
