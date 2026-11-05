@@ -17,7 +17,7 @@ use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -195,9 +195,11 @@ impl Pty {
         // 2. 在 fork 之前准备好子进程要用的所有数据。
         //    fork 之后的子进程里只能调用 async-signal-safe 的函数，不能分配内存。
         let to_c = |s: &[u8]| CString::new(s).map_err(|_| io::Error::other("参数里不能有 NUL 字符"));
-        let shell = to_c(find_shell(command.program).as_os_str().as_bytes())?;
+        let shell_path = find_shell(command.program);
+        let shell = to_c(shell_path.as_os_str().as_bytes())?;
+        let arg0 = to_c(&shell_arg0(&shell_path, command.args))?;
         let args: Vec<CString> = command.args.iter().map(|a| to_c(a.as_bytes())).collect::<io::Result<_>>()?;
-        let mut argv: Vec<*const c_char> = vec![shell.as_ptr()];
+        let mut argv: Vec<*const c_char> = vec![arg0.as_ptr()];
         argv.extend(args.iter().map(|a| a.as_ptr()));
         argv.push(std::ptr::null());
         let env = build_env(command.env);
@@ -512,12 +514,14 @@ fn os_error(call: &str) -> io::Error {
     io::Error::new(err.kind(), format!("{call}: {err}"))
 }
 
-/// 配置里指定的程序，否则用 $SHELL，最后是 /bin/sh。不是绝对路径时在 PATH 里找。
+/// 配置里指定的程序，否则用 $SHELL，再是用户数据库里的登录 shell，最后是 /bin/sh。
+/// 不是绝对路径时在 PATH 里找。
 fn find_shell(program: Option<&str>) -> PathBuf {
     let name = program
         .map(Into::into)
         .or_else(|| std::env::var_os("SHELL"))
         .filter(|s| !s.is_empty())
+        .or_else(passwd_shell)
         .unwrap_or_else(|| "/bin/sh".into());
     let path = PathBuf::from(&name);
     if path.is_absolute() {
@@ -526,6 +530,33 @@ fn find_shell(program: Option<&str>) -> PathBuf {
     std::env::var_os("PATH")
         .and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(&name)).find(|p| p.is_file()))
         .unwrap_or(path)
+}
+
+/// 当前用户在用户数据库里登记的 shell
+fn passwd_shell() -> Option<std::ffi::OsString> {
+    let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
+    let mut buffer = vec![0 as c_char; 4096];
+    let mut found = std::ptr::null_mut();
+    let status = unsafe { libc::getpwuid_r(libc::getuid(), &mut entry, buffer.as_mut_ptr(), buffer.len(), &mut found) };
+    if status != 0 || found.is_null() || entry.pw_shell.is_null() {
+        return None;
+    }
+    let shell = unsafe { CStr::from_ptr(entry.pw_shell) }.to_bytes();
+    (!shell.is_empty()).then(|| std::ffi::OsStr::from_bytes(shell).to_os_string())
+}
+
+/// shell 的 argv[0]。macOS 上终端里的 shell 按惯例都是登录 shell（Terminal.app、iTerm2、Ghostty 都这样）：
+/// 从 Dock/Finder 启动时继承的 PATH 只有 /usr/bin:/bin:/usr/sbin:/sbin，Homebrew 等路径要靠
+/// /etc/zprofile（path_helper）和 ~/.zprofile 加上。没写参数时 argv[0] 前面加 `-`，按登录 shell 启动；
+/// 写了参数（`-c`、ssh 等）原样执行。Linux 终端惯例不是登录 shell，保持不变。
+fn shell_arg0(shell: &Path, args: &[String]) -> Vec<u8> {
+    let path = shell.as_os_str().as_bytes();
+    if cfg!(target_os = "macos") && args.is_empty() {
+        let name = shell.file_name().map_or(path, |name| name.as_bytes());
+        [b"-", name].concat()
+    } else {
+        path.to_vec()
+    }
 }
 
 /// 继承当前的环境变量，加上终端相关的几个，最后是配置里的（配置优先）
@@ -567,6 +598,30 @@ mod tests {
         };
         let error = Pty::spawn(&command, 80, 24, sink).err().unwrap();
         assert!(error.to_string().contains("chdir"), "{error}");
+    }
+
+    #[test]
+    fn shell_without_arguments_starts_as_login_shell_on_macos() {
+        assert_eq!(shell_arg0(Path::new("/bin/zsh"), &["-c".into(), "true".into()]), b"/bin/zsh");
+        assert!(passwd_shell().is_some_and(|shell| Path::new(&shell).is_absolute()));
+        let (send, receive) = mpsc::channel();
+        let sink: EventSink = Arc::new(move |event| send.send(event).is_ok());
+        let command = Command { program: Some("/bin/sh".into()), ..Default::default() };
+        let mut pty = Pty::spawn(&command, 80, 24, sink).unwrap();
+        pty.write(b"printf '[%s]' \"$0\"; exit\n").unwrap();
+        let until = Instant::now() + Duration::from_secs(10);
+        let (mut output, mut exited, mut eof) = (Vec::new(), false, false);
+        // 退出通知可能先于最后一段输出到达，两者都到了再检查
+        while !(exited && eof) {
+            match receive.recv_timeout(until.saturating_duration_since(Instant::now())).expect("shell 超时") {
+                PtyEvent::Data(data) => output.extend_from_slice(&data),
+                PtyEvent::Exit(_) => exited = true,
+                PtyEvent::Eof => eof = true,
+                PtyEvent::Error(error) => panic!("{error}"),
+            }
+        }
+        let expected: &[u8] = if cfg!(target_os = "macos") { b"[-sh]" } else { b"[/bin/sh]" };
+        assert!(output.windows(expected.len()).any(|w| w == expected), "{}", String::from_utf8_lossy(&output));
     }
 
     #[test]

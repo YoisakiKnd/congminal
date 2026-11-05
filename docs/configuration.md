@@ -78,8 +78,8 @@
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
-| `shell.program` | Unix `$SHELL`；Windows 优先 PowerShell 7，再 Windows PowerShell，最后 `%COMSPEC%` | 本地会话启动的程序 |
-| `shell.args` | 空 | 传给程序的参数 |
+| `shell.program` | Unix `$SHELL`，没有时用用户数据库里登记的 shell；Windows 优先 PowerShell 7，再 Windows PowerShell，最后 `%COMSPEC%` | 本地会话启动的程序 |
+| `shell.args` | 空 | 传给程序的参数。macOS 上不写参数时按登录 shell 启动（与 Terminal.app 相同，会读 `~/.zprofile`，Homebrew 的 PATH 在这里设置）；写了参数就原样执行 |
 | `shell.working-directory` | 三平台均为用户主目录 | `~` 表示用户主目录；显式 `.` 继承启动目录。显式配置优先 |
 | `env` | 空 | 额外环境变量，`TERM` 默认 `xterm-256color` |
 
