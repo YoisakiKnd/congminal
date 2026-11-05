@@ -2,7 +2,7 @@
 
 基于 G2 `6780aff`（[设计](../../design/gpu-rendering.md)）。默认仍是 `window.renderer = "cpu"`。
 
-**状态：已实现。** CI 的 macOS 任务（GitHub 托管的 Apple Silicon 虚拟机）跑 Metal 回放对照测试，步骤通过；但早先的 notice 与测试名打在同一行、没有被识别，所以 `ae3c8ae`、`19a0159` 两次运行无法确定是真的比较了还是因为没有设备而跳过。改为另起一行输出后，以 CI 的 notice（“GPU 回放对照：Metal：…”或“Metal 不可用”）为准。真机上的窗口呈现、回退、分屏与改尺寸还没有验证，下面“真机验证”一节填完之前本阶段不算完成。
+**状态：已实现。** CI 的 macOS 任务（GitHub 托管的 Apple Silicon 虚拟机）跑 Metal 回放对照测试，步骤通过；但早先的 notice 与测试名打在同一行、没有被识别，所以 `ae3c8ae`、`19a0159` 两次运行无法确定是真的比较了还是因为没有设备而跳过。改为另起一行输出后，`fd984b5` 的 CI notice 为“GPU 回放对照：Metal：Apple Paravirtual device”，确认托管运行机上真的做了比较。真机上的窗口呈现、回退、分屏与改尺寸还没有验证，下面“真机验证”一节填完之前本阶段不算完成。
 
 ## 改动
 

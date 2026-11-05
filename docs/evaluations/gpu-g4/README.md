@@ -59,7 +59,7 @@ pwsh ci/check-windows-d3d11.ps1
 
 | 项目 | 结果 |
 | --- | --- |
-| 单元测试 | wine 通过；CI（WARP）待下一次运行；真机未验证 |
+| 单元测试 | wine 通过；CI 通过（`fd984b5`，Microsoft Basic Render Driver，即 WARP）；真机未验证 |
 | 截图对照 | wine 通过；真机未验证 |
 | 回退 | wine 通过；真机未验证 |
 | 分屏、改尺寸、最小化、换屏 | wine 下分屏、改尺寸通过；真机未验证 |
